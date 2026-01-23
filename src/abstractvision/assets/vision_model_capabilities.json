@@ -1,0 +1,228 @@
+{
+  "schema_version": "1.0",
+  "tasks": {
+    "text_to_image": {
+      "description": "Generate an image from text (prompt + optional negative prompt)."
+    },
+    "image_to_image": {
+      "description": "Edit/transform an input image using a text prompt (optionally with a mask)."
+    },
+    "multi_view_image": {
+      "description": "Generate multiple consistent views/angles for a concept (optionally conditioned on a reference image)."
+    },
+    "text_to_video": {
+      "description": "Generate a video from text (prompt + optional negative prompt)."
+    },
+    "image_to_video": {
+      "description": "Generate a video conditioned on an image (optionally with text guidance)."
+    }
+  },
+  "models": {
+    "Qwen/Qwen-Image-2512": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Primary text-to-image model.",
+      "tasks": {
+        "text_to_image": {
+          "inputs": ["text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "Tongyi-MAI/Z-Image-Turbo": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Turbo text-to-image option; backend may clamp/ignore some params.",
+      "tasks": {
+        "text_to_image": {
+          "inputs": ["text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "zai-org/GLM-Image": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "General image model family (generation + edit in some pipelines).",
+      "tasks": {
+        "text_to_image": {
+          "inputs": ["text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        },
+        "image_to_image": {
+          "inputs": ["image", "text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "image": {"required": true},
+            "mask": {"required": false},
+            "negative_prompt": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "Qwen/Qwen-Image-Edit-2511": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Primary image edit model (image-to-image).",
+      "tasks": {
+        "image_to_image": {
+          "inputs": ["image", "text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "image": {"required": true},
+            "mask": {"required": false},
+            "negative_prompt": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "LoRA adapter used with a compatible base (typically Qwen-Image-Edit-2511) to generate multiple angles.",
+      "tasks": {
+        "multi_view_image": {
+          "inputs": ["text", "image_optional"],
+          "outputs": ["image[]"],
+          "requires": {
+            "base_model_id": "Qwen/Qwen-Image-Edit-2511"
+          },
+          "params": {
+            "prompt": {"required": true},
+            "reference_image": {"required": false},
+            "angles": {"required": false},
+            "negative_prompt": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "Wan-AI/Wan2.2-T2V-A14B": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Text-to-video foundation model.",
+      "tasks": {
+        "text_to_video": {
+          "inputs": ["text"],
+          "outputs": ["video"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "fps": {"required": false},
+            "num_frames": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "tencent/HunyuanVideo-1.5": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Text-to-video model.",
+      "tasks": {
+        "text_to_video": {
+          "inputs": ["text"],
+          "outputs": ["video"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "fps": {"required": false},
+            "num_frames": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "genmo/mochi-1-preview": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "State-of-the-art open text-to-video model (Diffusers).",
+      "tasks": {
+        "text_to_video": {
+          "inputs": ["text"],
+          "outputs": ["video"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "fps": {"required": false},
+            "num_frames": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "Lightricks/LTX-2": {
+      "provider": "huggingface",
+      "license": "ltx-2-community-license-agreement",
+      "notes": "Image-to-video model family; parameters have divisibility constraints (implementation detail).",
+      "tasks": {
+        "image_to_video": {
+          "inputs": ["image", "text_optional"],
+          "outputs": ["video"],
+          "params": {
+            "image": {"required": true},
+            "prompt": {"required": false},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "fps": {"required": false},
+            "num_frames": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    }
+  }
+}
+

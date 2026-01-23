@@ -14,7 +14,9 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/abstractcore/abstractvision",
-    packages=find_packages(),
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
+    package_data={"abstractvision": ["assets/*.json"]},
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
@@ -26,6 +28,11 @@ setup(
         "Programming Language :: Python :: 3.11",
     ],
     python_requires=">=3.8",
+    entry_points={
+        "console_scripts": [
+            "abstractvision=abstractvision.cli:main",
+        ]
+    },
     install_requires=[
         # Core dependencies will be added as the project develops
     ],
