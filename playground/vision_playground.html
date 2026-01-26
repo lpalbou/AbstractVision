@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AbstractVision Playground</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0b0d12;
+        --panel: #121724;
+        --text: #e9eefb;
+        --muted: #aab4d6;
+        --border: #29314a;
+        --btn: #2d5bff;
+        --btn2: #232a3f;
+        --err: #ff5470;
+        --ok: #6ee7b7;
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+          "Segoe UI Emoji";
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 24px auto;
+        padding: 0 16px 48px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 6px;
+      }
+      p {
+        margin: 0 0 16px;
+        color: var(--muted);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      @media (min-width: 980px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin: 10px 0 6px;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.18);
+        color: var(--text);
+        outline: none;
+      }
+      textarea {
+        min-height: 86px;
+        resize: vertical;
+      }
+      .btns {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+        align-items: center;
+      }
+      button {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: var(--btn);
+        color: white;
+        padding: 10px 12px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.secondary {
+        background: var(--btn2);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .status {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .status.ok {
+        color: var(--ok);
+      }
+      .status.err {
+        color: var(--err);
+      }
+      .out {
+        margin-top: 12px;
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+      }
+      .out img {
+        max-width: 100%;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.2);
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      a {
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>AbstractVision Playground</h1>
+      <p>Calls AbstractCore Server OpenAI-compatible endpoints (<code>/v1/images/*</code>).</p>
+
+      <div class="card">
+        <label for="baseUrl">API Base URL</label>
+        <div class="row">
+          <input id="baseUrl" type="text" value="http://localhost:8000" />
+          <button class="secondary" id="pingBtn">Ping</button>
+        </div>
+        <div id="pingStatus" class="status"></div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h2 style="margin: 0 0 8px; font-size: 16px">Text → Image</h2>
+
+          <label for="t2iPrompt">Prompt</label>
+          <textarea id="t2iPrompt">a cinematic photo of a red fox in snow, 35mm, high detail</textarea>
+
+          <label for="t2iNegative">Negative prompt (optional)</label>
+          <input id="t2iNegative" type="text" value="" />
+
+          <div class="row">
+            <div>
+              <label for="t2iWidth">Width</label>
+              <input id="t2iWidth" type="number" min="64" step="64" placeholder="512" />
+            </div>
+            <div>
+              <label for="t2iHeight">Height</label>
+              <input id="t2iHeight" type="number" min="64" step="64" placeholder="512" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="t2iSteps">Steps</label>
+              <input id="t2iSteps" type="number" min="1" step="1" placeholder="20" />
+            </div>
+            <div>
+              <label for="t2iGuidance">Guidance scale</label>
+              <input id="t2iGuidance" type="number" step="0.1" placeholder="7.0" />
+            </div>
+          </div>
+
+          <label for="t2iSeed">Seed (optional)</label>
+          <input id="t2iSeed" type="number" step="1" placeholder="42" />
+
+          <label for="t2iExtra">Extra JSON (optional; forwarded to backend)</label>
+          <textarea id="t2iExtra">{}</textarea>
+
+          <div class="btns">
+            <button id="t2iBtn">Generate</button>
+            <span id="t2iStatus" class="status"></span>
+          </div>
+
+          <div class="out">
+            <img id="t2iImg" alt="" />
+            <div class="btns">
+              <a id="t2iDownload" href="#" download="output.png">Download</a>
+            </div>
+            <div id="t2iLog" class="mono"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin: 0 0 8px; font-size: 16px">Image → Image (edits)</h2>
+
+          <label for="i2iPrompt">Prompt</label>
+          <textarea id="i2iPrompt">make it watercolor</textarea>
+
+          <label for="i2iImage">Input image</label>
+          <input id="i2iImage" type="file" accept="image/*" />
+
+          <label for="i2iMask">Mask image (optional)</label>
+          <input id="i2iMask" type="file" accept="image/*" />
+
+          <label for="i2iNegative">Negative prompt (optional)</label>
+          <input id="i2iNegative" type="text" value="" />
+
+          <div class="row">
+            <div>
+              <label for="i2iSteps">Steps</label>
+              <input id="i2iSteps" type="number" min="1" step="1" placeholder="20" />
+            </div>
+            <div>
+              <label for="i2iGuidance">Guidance scale</label>
+              <input id="i2iGuidance" type="number" step="0.1" placeholder="7.0" />
+            </div>
+          </div>
+
+          <label for="i2iSeed">Seed (optional)</label>
+          <input id="i2iSeed" type="number" step="1" placeholder="42" />
+
+          <label for="i2iExtra">Extra JSON (optional; forwarded to backend)</label>
+          <textarea id="i2iExtra">{"strength": 0.75}</textarea>
+
+          <div class="btns">
+            <button id="i2iBtn">Edit</button>
+            <span id="i2iStatus" class="status"></span>
+          </div>
+
+          <div class="out">
+            <img id="i2iImg" alt="" />
+            <div class="btns">
+              <a id="i2iDownload" href="#" download="output.png">Download</a>
+            </div>
+            <div id="i2iLog" class="mono"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      function joinUrl(base, path) {
+        const b = String(base || "").replace(/\\/+$/, "");
+        const p = String(path || "");
+        return b + p;
+      }
+
+      function setStatus(el, kind, msg) {
+        el.classList.remove("ok", "err");
+        if (kind === "ok") el.classList.add("ok");
+        if (kind === "err") el.classList.add("err");
+        el.textContent = msg || "";
+      }
+
+      function parseJsonObject(text) {
+        const raw = String(text || "").trim();
+        if (!raw) return {};
+        const obj = JSON.parse(raw);
+        if (obj === null) return {};
+        if (typeof obj !== "object" || Array.isArray(obj)) throw new Error("extra JSON must be an object");
+        return obj;
+      }
+
+      function b64ToBytes(b64) {
+        const raw = String(b64 || "").replace(/\\s+/g, "");
+        const bin = atob(raw);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes;
+      }
+
+      function sniffMime(bytes) {
+        if (bytes.length >= 8) {
+          const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+          let ok = true;
+          for (let i = 0; i < sig.length; i++) ok = ok && bytes[i] === sig[i];
+          if (ok) return "image/png";
+        }
+        if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+        return "application/octet-stream";
+      }
+
+      function bytesToObjectUrl(bytes) {
+        const mime = sniffMime(bytes);
+        const blob = new Blob([bytes], { type: mime });
+        return { url: URL.createObjectURL(blob), mime };
+      }
+
+      async function fetchJson(url, init) {
+        const res = await fetch(url, init);
+        const text = await res.text();
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          // ignore
+        }
+        if (!res.ok) {
+          const msg =
+            (data && data.error && data.error.message) ||
+            (data && data.detail) ||
+            `HTTP ${res.status}: ${text.slice(0, 400)}`;
+          throw new Error(msg);
+        }
+        return data;
+      }
+
+      $("pingBtn").addEventListener("click", async () => {
+        const base = $("baseUrl").value;
+        const status = $("pingStatus");
+        setStatus(status, "", "checking…");
+        try {
+          const url = joinUrl(base, "/v1/models");
+          await fetchJson(url, { method: "GET" });
+          setStatus(status, "ok", "ok");
+        } catch (e) {
+          setStatus(status, "err", String(e.message || e));
+        }
+      });
+
+      $("t2iBtn").addEventListener("click", async () => {
+        const btn = $("t2iBtn");
+        const status = $("t2iStatus");
+        const log = $("t2iLog");
+        const img = $("t2iImg");
+        const dl = $("t2iDownload");
+
+        btn.disabled = true;
+        setStatus(status, "", "running…");
+        log.textContent = "";
+        img.removeAttribute("src");
+        dl.href = "#";
+
+        try {
+          const base = $("baseUrl").value;
+          const url = joinUrl(base, "/v1/images/generations");
+
+          const extra = parseJsonObject($("t2iExtra").value);
+          const payload = {
+            prompt: $("t2iPrompt").value,
+            response_format: "b64_json",
+            negative_prompt: $("t2iNegative").value || undefined,
+            width: $("t2iWidth").value ? Number($("t2iWidth").value) : undefined,
+            height: $("t2iHeight").value ? Number($("t2iHeight").value) : undefined,
+            steps: $("t2iSteps").value ? Number($("t2iSteps").value) : undefined,
+            guidance_scale: $("t2iGuidance").value ? Number($("t2iGuidance").value) : undefined,
+            seed: $("t2iSeed").value ? Number($("t2iSeed").value) : undefined,
+            ...extra,
+          };
+
+          const resp = await fetchJson(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const item = resp && resp.data && resp.data[0];
+          const b64 = item && item.b64_json;
+          if (!b64) throw new Error("missing data[0].b64_json");
+          const bytes = b64ToBytes(b64);
+          const out = bytesToObjectUrl(bytes);
+          img.src = out.url;
+          dl.href = out.url;
+          dl.download = out.mime === "image/jpeg" ? "output.jpg" : "output.png";
+          log.textContent = JSON.stringify(resp, null, 2);
+          setStatus(status, "ok", "done");
+        } catch (e) {
+          setStatus(status, "err", String(e.message || e));
+          log.textContent = String(e && e.stack ? e.stack : e);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      $("i2iBtn").addEventListener("click", async () => {
+        const btn = $("i2iBtn");
+        const status = $("i2iStatus");
+        const log = $("i2iLog");
+        const img = $("i2iImg");
+        const dl = $("i2iDownload");
+
+        btn.disabled = true;
+        setStatus(status, "", "running…");
+        log.textContent = "";
+        img.removeAttribute("src");
+        dl.href = "#";
+
+        try {
+          const base = $("baseUrl").value;
+          const url = joinUrl(base, "/v1/images/edits");
+
+          const imageFile = $("i2iImage").files[0];
+          if (!imageFile) throw new Error("select an input image");
+          const maskFile = $("i2iMask").files[0] || null;
+
+          const extra = parseJsonObject($("i2iExtra").value);
+
+          const fd = new FormData();
+          fd.set("prompt", $("i2iPrompt").value);
+          fd.set("image", imageFile, imageFile.name || "image.png");
+          if (maskFile) fd.set("mask", maskFile, maskFile.name || "mask.png");
+          if ($("i2iNegative").value) fd.set("negative_prompt", $("i2iNegative").value);
+          if ($("i2iSteps").value) fd.set("steps", $("i2iSteps").value);
+          if ($("i2iGuidance").value) fd.set("guidance_scale", $("i2iGuidance").value);
+          if ($("i2iSeed").value) fd.set("seed", $("i2iSeed").value);
+          fd.set("extra_json", JSON.stringify(extra));
+
+          const resp = await fetchJson(url, { method: "POST", body: fd });
+
+          const item = resp && resp.data && resp.data[0];
+          const b64 = item && item.b64_json;
+          if (!b64) throw new Error("missing data[0].b64_json");
+          const bytes = b64ToBytes(b64);
+          const out = bytesToObjectUrl(bytes);
+          img.src = out.url;
+          dl.href = out.url;
+          dl.download = out.mime === "image/jpeg" ? "output.jpg" : "output.png";
+          log.textContent = JSON.stringify(resp, null, 2);
+          setStatus(status, "ok", "done");
+        } catch (e) {
+          setStatus(status, "err", String(e.message || e));
+          log.textContent = String(e && e.stack ? e.stack : e);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
+

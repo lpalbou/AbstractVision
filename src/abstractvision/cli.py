@@ -11,7 +11,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .artifacts import LocalAssetStore, is_artifact_ref
-from .backends import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+from .backends import (
+    HuggingFaceDiffusersBackendConfig,
+    HuggingFaceDiffusersVisionBackend,
+    OpenAICompatibleBackendConfig,
+    OpenAICompatibleVisionBackend,
+    StableDiffusionCppBackendConfig,
+    StableDiffusionCppVisionBackend,
+)
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .vision_manager import VisionManager
 
@@ -22,6 +29,13 @@ def _env(key: str, default: Optional[str] = None) -> Optional[str]:
         return default
     s = str(v).strip()
     return s if s else default
+
+
+def _env_bool(key: str, default: bool = False) -> bool:
+    v = _env(key)
+    if v is None:
+        return bool(default)
+    return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _print_json(obj: Any) -> None:
@@ -162,6 +176,7 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
 
 @dataclass
 class _ReplState:
+    backend_kind: str = _env("ABSTRACTVISION_BACKEND", "openai") or "openai"
     base_url: Optional[str] = _env("ABSTRACTVISION_BASE_URL")
     api_key: Optional[str] = _env("ABSTRACTVISION_API_KEY")
     model_id: Optional[str] = _env("ABSTRACTVISION_MODEL_ID")
@@ -174,6 +189,18 @@ class _ReplState:
     text_to_video_path: Optional[str] = _env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH")
     image_to_video_path: Optional[str] = _env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH")
     image_to_video_mode: str = _env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart") or "multipart"
+
+    diffusers_device: str = _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "cpu") or "cpu"
+    diffusers_torch_dtype: Optional[str] = _env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE")
+    diffusers_allow_download: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False)
+
+    sdcpp_bin: str = _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli"
+    sdcpp_model: Optional[str] = _env("ABSTRACTVISION_SDCPP_MODEL")
+    sdcpp_diffusion_model: Optional[str] = _env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL")
+    sdcpp_vae: Optional[str] = _env("ABSTRACTVISION_SDCPP_VAE")
+    sdcpp_llm: Optional[str] = _env("ABSTRACTVISION_SDCPP_LLM")
+    sdcpp_llm_vision: Optional[str] = _env("ABSTRACTVISION_SDCPP_LLM_VISION")
+    sdcpp_extra_args: Optional[str] = _env("ABSTRACTVISION_SDCPP_EXTRA_ARGS")
 
     defaults: Dict[str, Any] = None
 
@@ -195,13 +222,18 @@ def _repl_help() -> str:
         "  /show-model <id>          Show a model's tasks + params\n"
         "  /config                   Show current backend/store config\n"
         "  /backend openai <base_url> [api_key] [model_id]\n"
+        "  /backend diffusers <model_id_or_path> [device]\n"
+        "  /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]\n"
+        "                           (Qwen Image: requires diffusion-model + vae + llm)\n"
         "  /cap-model <id|off>       Set capability-gating model id (from registry) or 'off'\n"
         "  /store <dir|default>      Set local store dir\n"
         "  /set <k> <v>              Set default param (k like width/height/steps/seed/guidance_scale/negative_prompt)\n"
         "  /unset <k>                Unset default param\n"
         "  /defaults                 Show current defaults\n"
         "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative ...] [--open]\n"
+        "                           (extra flags are forwarded via request.extra)\n"
         "  /i2i --image path <prompt...> [--mask path --steps N --seed N --guidance-scale F --negative ...] [--open]\n"
+        "                           (extra flags are forwarded via request.extra)\n"
         "  /open <artifact_id>       Open a locally stored artifact (LocalAssetStore only)\n"
         "\n"
         "Tip: typing plain text runs /t2i with that prompt.\n"
@@ -266,23 +298,72 @@ def _coerce_float(v: Any) -> Optional[float]:
         return None
 
 
+def _coerce_scalar(v: Any) -> Any:
+    if v is None:
+        return None
+    if isinstance(v, (bool, int, float)):
+        return v
+    s = str(v).strip()
+    if not s:
+        return None
+    low = s.lower()
+    if low in {"1", "true", "yes", "on"}:
+        return True
+    if low in {"0", "false", "no", "off"}:
+        return False
+    try:
+        return int(s)
+    except Exception:
+        pass
+    try:
+        return float(s)
+    except Exception:
+        return s
+
+
 def _build_manager_from_state(state: _ReplState) -> VisionManager:
-    base_url = str(state.base_url or "").strip()
-    if not base_url:
-        raise ValueError("Backend is not configured. Use: /backend openai <base_url> [api_key] [model_id]")
     store = LocalAssetStore(state.store_dir) if state.store_dir else LocalAssetStore()
-    cfg = OpenAICompatibleBackendConfig(
-        base_url=base_url,
-        api_key=str(state.api_key) if state.api_key else None,
-        model_id=str(state.model_id) if state.model_id else None,
-        timeout_s=float(state.timeout_s),
-        image_generations_path=str(state.images_generations_path),
-        image_edits_path=str(state.images_edits_path),
-        text_to_video_path=str(state.text_to_video_path) if state.text_to_video_path else None,
-        image_to_video_path=str(state.image_to_video_path) if state.image_to_video_path else None,
-        image_to_video_mode=str(state.image_to_video_mode),
-    )
-    backend = OpenAICompatibleVisionBackend(config=cfg)
+    backend_kind = str(state.backend_kind or "").strip().lower() or "openai"
+    if backend_kind == "openai":
+        base_url = str(state.base_url or "").strip()
+        if not base_url:
+            raise ValueError("Backend is not configured. Use: /backend openai <base_url> [api_key] [model_id]")
+        cfg = OpenAICompatibleBackendConfig(
+            base_url=base_url,
+            api_key=str(state.api_key) if state.api_key else None,
+            model_id=str(state.model_id) if state.model_id else None,
+            timeout_s=float(state.timeout_s),
+            image_generations_path=str(state.images_generations_path),
+            image_edits_path=str(state.images_edits_path),
+            text_to_video_path=str(state.text_to_video_path) if state.text_to_video_path else None,
+            image_to_video_path=str(state.image_to_video_path) if state.image_to_video_path else None,
+            image_to_video_mode=str(state.image_to_video_mode),
+        )
+        backend = OpenAICompatibleVisionBackend(config=cfg)
+    elif backend_kind == "diffusers":
+        model_id = str(state.model_id or "").strip()
+        if not model_id:
+            raise ValueError("Diffusers backend is not configured. Use: /backend diffusers <model_id_or_path> [device]")
+        cfg = HuggingFaceDiffusersBackendConfig(
+            model_id=model_id,
+            device=str(state.diffusers_device),
+            torch_dtype=str(state.diffusers_torch_dtype) if state.diffusers_torch_dtype else None,
+            allow_download=bool(state.diffusers_allow_download),
+        )
+        backend = HuggingFaceDiffusersVisionBackend(config=cfg)
+    elif backend_kind in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
+        cfg = StableDiffusionCppBackendConfig(
+            sd_cli_path=str(state.sdcpp_bin),
+            model=str(state.sdcpp_model) if state.sdcpp_model else None,
+            diffusion_model=str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None,
+            vae=str(state.sdcpp_vae) if state.sdcpp_vae else None,
+            llm=str(state.sdcpp_llm) if state.sdcpp_llm else None,
+            llm_vision=str(state.sdcpp_llm_vision) if state.sdcpp_llm_vision else None,
+            extra_args=shlex.split(str(state.sdcpp_extra_args)) if state.sdcpp_extra_args else (),
+        )
+        backend = StableDiffusionCppVisionBackend(config=cfg)
+    else:
+        raise ValueError(f"Unknown backend kind: {backend_kind!r} (expected 'openai', 'diffusers', or 'sdcpp')")
 
     reg = VisionModelCapabilitiesRegistry()
     cap_id = str(state.capabilities_model_id) if state.capabilities_model_id else None
@@ -346,6 +427,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 continue
             if cmd == "config":
                 out: Dict[str, Any] = {
+                    "backend_kind": state.backend_kind,
                     "base_url": state.base_url,
                     "model_id": state.model_id,
                     "capabilities_model_id": state.capabilities_model_id,
@@ -356,18 +438,60 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     "text_to_video_path": state.text_to_video_path,
                     "image_to_video_path": state.image_to_video_path,
                     "image_to_video_mode": state.image_to_video_mode,
+                    "diffusers_device": state.diffusers_device,
+                    "diffusers_torch_dtype": state.diffusers_torch_dtype,
+                    "diffusers_allow_download": state.diffusers_allow_download,
+                    "sdcpp_bin": state.sdcpp_bin,
+                    "sdcpp_model": state.sdcpp_model,
+                    "sdcpp_diffusion_model": state.sdcpp_diffusion_model,
+                    "sdcpp_vae": state.sdcpp_vae,
+                    "sdcpp_llm": state.sdcpp_llm,
+                    "sdcpp_llm_vision": state.sdcpp_llm_vision,
+                    "sdcpp_extra_args": state.sdcpp_extra_args,
                     "defaults": state.defaults,
                 }
                 _print_json(out)
                 continue
             if cmd == "backend":
-                if not args or args[0] != "openai" or len(args) < 2:
-                    print("Usage: /backend openai <base_url> [api_key] [model_id]")
+                if not args:
+                    print(
+                        "Usage: /backend openai <base_url> [api_key] [model_id]  OR  "
+                        "/backend diffusers <model_id_or_path> [device]  OR  "
+                        "/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]"
+                    )
                     continue
-                state.base_url = args[1]
-                state.api_key = args[2] if len(args) >= 3 else state.api_key
-                state.model_id = args[3] if len(args) >= 4 else state.model_id
-                print("ok")
+                kind = str(args[0]).strip().lower()
+                if kind == "openai":
+                    if len(args) < 2:
+                        print("Usage: /backend openai <base_url> [api_key] [model_id]")
+                        continue
+                    state.backend_kind = "openai"
+                    state.base_url = args[1]
+                    state.api_key = args[2] if len(args) >= 3 else state.api_key
+                    state.model_id = args[3] if len(args) >= 4 else state.model_id
+                    print("ok")
+                    continue
+                if kind == "diffusers":
+                    if len(args) < 2:
+                        print("Usage: /backend diffusers <model_id_or_path> [device]")
+                        continue
+                    state.backend_kind = "diffusers"
+                    state.model_id = args[1]
+                    state.diffusers_device = args[2] if len(args) >= 3 else state.diffusers_device
+                    print("ok")
+                    continue
+                if kind == "sdcpp":
+                    if len(args) < 4:
+                        print("Usage: /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]")
+                        continue
+                    state.backend_kind = "sdcpp"
+                    state.sdcpp_diffusion_model = args[1]
+                    state.sdcpp_vae = args[2]
+                    state.sdcpp_llm = args[3]
+                    state.sdcpp_bin = args[4] if len(args) >= 5 else state.sdcpp_bin
+                    print("ok")
+                    continue
+                print("Unknown backend kind. Use: openai | diffusers | sdcpp")
                 continue
             if cmd == "cap-model":
                 if not args:
@@ -400,9 +524,14 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     continue
                 key = args[0].replace("-", "_")
                 value = " ".join(args[1:])
+                updated = False
                 for group in ("t2i", "i2i"):
                     if key in state.defaults.get(group, {}):
                         state.defaults[group][key] = value
+                        updated = True
+                if not updated:
+                    for group in ("t2i", "i2i"):
+                        state.defaults.setdefault(group, {})[key] = value
                 print("ok")
                 continue
             if cmd == "unset":
@@ -443,6 +572,11 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 vm = _build_manager_from_state(state)
                 d = dict(state.defaults.get("t2i", {}))
                 d.update(flags)
+                extra = {
+                    k: _coerce_scalar(v)
+                    for k, v in d.items()
+                    if k not in {"width", "height", "steps", "guidance_scale", "seed", "negative_prompt", "open"} and v is not None
+                }
                 out = vm.generate_image(
                     prompt,
                     negative_prompt=d.get("negative_prompt"),
@@ -451,6 +585,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     steps=_coerce_int(d.get("steps")),
                     guidance_scale=_coerce_float(d.get("guidance_scale")),
                     seed=_coerce_int(d.get("seed")),
+                    extra=extra,
                 )
                 _print_json(out)
                 if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
@@ -478,6 +613,11 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 vm = _build_manager_from_state(state)
                 d = dict(state.defaults.get("i2i", {}))
                 d.update(flags)
+                extra = {
+                    k: _coerce_scalar(v)
+                    for k, v in d.items()
+                    if k not in {"image", "mask", "steps", "guidance_scale", "seed", "negative_prompt", "open"} and v is not None
+                }
                 img = Path(str(image_path)).expanduser().read_bytes()
                 mask = Path(str(mask_path)).expanduser().read_bytes() if mask_path else None
                 out = vm.edit_image(
@@ -488,6 +628,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     steps=_coerce_int(d.get("steps")),
                     guidance_scale=_coerce_float(d.get("guidance_scale")),
                     seed=_coerce_int(d.get("seed")),
+                    extra=extra,
                 )
                 _print_json(out)
                 if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):

@@ -1,7 +1,7 @@
 ## Task 012: Packaging + extras + release hygiene (third-party friendly installs)
 
 **Date**: 2026-01-23  
-**Status**: Planned  
+**Status**: Completed  
 **Priority**: P1  
 
 ---
@@ -63,9 +63,9 @@ Third parties adopt libraries based on install experience:
 ## Dependencies
 
 - **Backlog tasks**:
-  - Planned: `docs/backlog/planned/006_openai_compatible_backend_for_image_and_video.md`
-  - Planned: `docs/backlog/planned/007_local_hf_backend_strategy_diffusers.md`
-  - Planned: `docs/backlog/planned/011_abstractcore_tool_integration_and_artifact_refs.md`
+  - Completed: `docs/backlog/completed/006_openai_compatible_backend_for_image_and_video.md`
+  - Completed: `docs/backlog/completed/007_local_hf_backend_strategy_diffusers.md`
+  - Completed: `docs/backlog/completed/011_abstractcore_tool_integration_and_artifact_refs.md`
 
 ---
 
@@ -101,9 +101,19 @@ Third parties adopt libraries based on install experience:
 
 ### Summary
 
-TBD
+- Migrated `abstractvision` packaging to `pyproject.toml` (PEP 621) with:
+  - dependency-light base install (`dependencies = []`)
+  - optional extras for heavy/optional features:
+    - `abstractvision[huggingface]` for local diffusers backend
+    - `abstractvision[abstractcore]` for tool integration module
+    - `abstractvision[openai-compatible]` kept (currently empty; forward-compatible)
+  - console script entrypoint: `abstractvision = abstractvision.cli:main`
+  - dynamic version from `abstractvision.__version__`
+  - wheel/sdist inclusion for `assets/*.json`
+- Added `abstractvision/CHANGELOG.md` with an initial 0.1.0 entry.
 
 ### Validation
 
-- Tests: TBD
-
+- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- Packaging sanity: `abstractvision/pyproject.toml` parses via `tomllib`.
+- Editable install (src layout): `python -m pip install -e ".[huggingface]"`

@@ -29,6 +29,8 @@ pip install -e abstractvision
 
 ## Usage
 
+See `docs/getting-started.md` for step-by-step local generation with Diffusers, GGUF (`sd-cli`), and the web playground.
+
 ### Capability-driven model selection
 
 ```python
@@ -94,6 +96,21 @@ Inside the REPL:
 ```
 
 The CLI/REPL can also be configured via env vars like `ABSTRACTVISION_BASE_URL`, `ABSTRACTVISION_API_KEY`, `ABSTRACTVISION_MODEL_ID`, and `ABSTRACTVISION_STORE_DIR`.
+
+#### Local GGUF via stable-diffusion.cpp (`sd-cli`)
+
+If you want to run GGUF diffusion models locally (e.g. Qwen Image), use the `sd-cli` backend.
+
+- Install `sd-cli`: https://github.com/leejet/stable-diffusion.cpp/releases
+
+In the REPL:
+
+```text
+/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf /path/to/qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf sd-cli
+/t2i "a watercolor painting of a lighthouse" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
+```
+
+Extra flags are forwarded via `request.extra` (unknown `--foo-bar` flags become `extra={"foo_bar": ...}`).
 
 ### AbstractCore tool integration (artifact refs)
 

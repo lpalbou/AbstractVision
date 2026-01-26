@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abstractvision"
+dynamic = ["version"]
+description = "Model-agnostic generative vision abstractions (image/video) for the Abstract ecosystem"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Laurent-Philippe Albou", email = "contact@abstractcore.ai"}]
+requires-python = ">=3.8"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Multimedia",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/abstractcore/abstractvision"
+Repository = "https://github.com/abstractcore/abstractvision"
+
+[project.scripts]
+abstractvision = "abstractvision.cli:main"
+
+[project.optional-dependencies]
+# OpenAI-compatible HTTP backend is stdlib-only today; keep the extra for forward compatibility.
+openai-compatible = []
+
+# Local generation via Diffusers (heavy deps; opt-in).
+huggingface = [
+  "diffusers>=0.0",
+  "torch>=2.0",
+  "transformers>=4.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "Pillow>=9.0",
+]
+
+# Tool integration module (optional import).
+abstractcore = ["abstractcore>=0.0"]
+
+[tool.setuptools]
+packages = [
+  "abstractvision",
+  "abstractvision.backends",
+  "abstractvision.integrations",
+]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.dynamic]
+version = {attr = "abstractvision.__version__"}
+
+[tool.setuptools.package-data]
+abstractvision = ["assets/*.json"]

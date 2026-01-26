@@ -1,7 +1,7 @@
 ## Task 001: MVP — end-to-end generative vision (tools + artifact outputs + at least 1 backend)
 
 **Date**: 2026-01-23  
-**Status**: Planned  
+**Status**: Completed  
 **Priority**: P0  
 
 ---
@@ -77,11 +77,13 @@ Seed model references (for later backends; do not hardcode in the public contrac
 - **Backlog tasks**:
   - Completed: `docs/backlog/completed/003_hf_model_landscape_and_capability_registry.md`
   - Completed: `docs/backlog/completed/005_core_api_tasks_and_abstractions.md`
-  - Planned: `docs/backlog/planned/004_capability_schema_and_validation.md`
-  - Planned: `docs/backlog/planned/006_openai_compatible_backend_for_image_and_video.md`
-  - Planned: `docs/backlog/planned/008_asset_outputs_and_third_party_integration.md`
-  - Planned: `docs/backlog/planned/010_readme_and_examples_for_model_selection.md`
-  - Planned: `docs/backlog/planned/011_abstractcore_tool_integration_and_artifact_refs.md`
+  - Completed: `docs/backlog/completed/004_capability_schema_and_validation.md`
+  - Completed: `docs/backlog/completed/006_openai_compatible_backend_for_image_and_video.md`
+  - Completed: `docs/backlog/completed/008_asset_outputs_and_third_party_integration.md`
+  - Completed: `docs/backlog/completed/009_test_matrix_and_ci_for_capabilities.md`
+  - Completed: `docs/backlog/completed/010_readme_and_examples_for_model_selection.md`
+  - Completed: `docs/backlog/completed/011_abstractcore_tool_integration_and_artifact_refs.md`
+  - Completed: `docs/backlog/completed/013_cli_repl_for_manual_testing.md`
 
 ---
 
@@ -114,9 +116,17 @@ Seed model references (for later backends; do not hardcode in the public contrac
 
 ### Summary
 
-TBD
+- Shipped an end-to-end “golden path” for generative vision:
+  - stable API via `VisionManager`
+  - capability registry + validation via `VisionModelCapabilitiesRegistry`
+  - artifact-first outputs via `LocalAssetStore` (and a runtime adapter)
+  - an OpenAI-compatible HTTP backend for practical remote usage
+  - official AbstractCore tool wrappers returning artifact refs
+  - an interactive CLI/REPL for fast manual testing and parameter tuning
+
+This keeps `abstractvision` focused on generative media outputs while integrating cleanly into the AbstractCore ecosystem via tools + artifact refs.
 
 ### Validation
 
-- Tests: TBD
-
+- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- Manual: `abstractvision repl` (configure backend + run `/t2i` / `/i2i` to generate + open stored artifacts).

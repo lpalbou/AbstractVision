@@ -1,7 +1,7 @@
 ## Task 007: Local HuggingFace backend strategy (Diffusers/Transformers)
 
 **Date**: 2026-01-23  
-**Status**: Planned  
+**Status**: Completed  
 **Priority**: P1  
 
 ---
@@ -52,8 +52,8 @@ Use the seed model set in Task 003 as the initial coverage target.
 - **Backlog tasks**:
   - Completed: `docs/backlog/completed/003_hf_model_landscape_and_capability_registry.md`
   - Completed: `docs/backlog/completed/005_core_api_tasks_and_abstractions.md`
-  - Planned: `docs/backlog/planned/004_capability_schema_and_validation.md`
-  - Planned: `docs/backlog/planned/008_asset_outputs_and_third_party_integration.md`
+  - Completed: `docs/backlog/completed/004_capability_schema_and_validation.md`
+  - Completed: `docs/backlog/completed/008_asset_outputs_and_third_party_integration.md`
 
 ---
 
@@ -88,8 +88,37 @@ Use the seed model set in Task 003 as the initial coverage target.
 
 ### Summary
 
-TBD
+- Implemented a local, dependency-gated Diffusers backend for image generation/editing:
+  - `HuggingFaceDiffusersVisionBackend` in `abstractvision/src/abstractvision/backends/huggingface_diffusers.py`
+  - supports `text_to_image` and `image_to_image` (mask triggers inpainting pipeline)
+  - keeps base install import-safe by using lazy imports for `diffusers`, `torch`, `PIL`
+  - defaults to **no implicit downloads** (`allow_download=False` → `local_files_only=True`)
+- Updated the interactive REPL to support selecting this backend:
+  - `/backend diffusers <model_id_or_path> [device]`
+- Added unit tests that stub the diffusers loaders so no real models are required.
 
 ### Validation
 
-- Tests: TBD
+- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- Added tests: `abstractvision/tests/test_huggingface_diffusers_backend.py`
+
+### How to test (interactive UI)
+
+1) Pre-download (or provide a local path) for a Diffusers-compatible image model.
+   - This backend defaults to cache-only mode; it will error if the model isn’t present locally.
+
+2) Start the REPL and pick the diffusers backend:
+- `abstractvision repl`
+- `/backend diffusers <model_id_or_path> cpu`
+- Optional: `/cap-model off` (capability gating is for the registry, not diffusers compatibility)
+
+3) Tune params and generate:
+- `/set width 768`
+- `/set height 768`
+- `/set steps 30`
+- `/set seed 42`
+- `/t2i "a cinematic photo of a red fox in snow" --open`
+
+4) Image edit (requires a local input image file):
+- `/i2i --image ./input.png "make it watercolor" --open`
+- Add a mask to trigger inpainting: `/i2i --image ./input.png --mask ./mask.png "remove the background" --open`
