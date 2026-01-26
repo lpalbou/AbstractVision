@@ -40,6 +40,35 @@ def _png_bytes(color=(255, 0, 0)):
 
 
 class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
+    def test_default_torch_dtype_for_devices(self):
+        from abstractvision.backends.huggingface_diffusers import _default_torch_dtype_for_device
+
+        import torch
+
+        self.assertEqual(_default_torch_dtype_for_device(torch, "cuda"), torch.float16)
+        self.assertEqual(_default_torch_dtype_for_device(torch, "cuda:0"), torch.float16)
+        self.assertEqual(_default_torch_dtype_for_device(torch, "mps"), torch.float16)
+        self.assertEqual(_default_torch_dtype_for_device(torch, "mps:0"), torch.float16)
+
+    def test_raises_when_mps_device_unavailable(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        fake_t2i_cls = MagicMock()
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls),
+        ):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="mps", allow_download=False)
+            )
+            with self.assertRaises(ValueError) as ctx:
+                backend.generate_image(ImageGenerationRequest(prompt="hello"))
+        self.assertIn("mps", str(ctx.exception).lower())
+
     def test_generate_image_maps_common_params(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
         from abstractvision.types import ImageGenerationRequest
@@ -140,4 +169,3 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

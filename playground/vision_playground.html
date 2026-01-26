@@ -155,36 +155,39 @@
         <div class="card">
           <h2 style="margin: 0 0 8px; font-size: 16px">Text → Image</h2>
 
-          <label for="t2iPrompt">Prompt</label>
-          <textarea id="t2iPrompt">a cinematic photo of a red fox in snow, 35mm, high detail</textarea>
-
-          <label for="t2iNegative">Negative prompt (optional)</label>
-          <input id="t2iNegative" type="text" value="" />
-
-          <div class="row">
-            <div>
-              <label for="t2iWidth">Width</label>
-              <input id="t2iWidth" type="number" min="64" step="64" placeholder="512" />
-            </div>
-            <div>
-              <label for="t2iHeight">Height</label>
-              <input id="t2iHeight" type="number" min="64" step="64" placeholder="512" />
-            </div>
-          </div>
+	          <label for="t2iPrompt">Prompt</label>
+	          <textarea id="t2iPrompt">a cinematic photo of a red fox in snow, 35mm, high detail</textarea>
+	
+	          <label for="t2iModel">Model (optional)</label>
+	          <input id="t2iModel" type="text" value="" placeholder="e.g. runwayml/stable-diffusion-v1-5" />
+	
+	          <label for="t2iNegative">Negative prompt (optional)</label>
+	          <input id="t2iNegative" type="text" value="" />
 
           <div class="row">
             <div>
-              <label for="t2iSteps">Steps</label>
-              <input id="t2iSteps" type="number" min="1" step="1" placeholder="20" />
-            </div>
-            <div>
-              <label for="t2iGuidance">Guidance scale</label>
-              <input id="t2iGuidance" type="number" step="0.1" placeholder="7.0" />
-            </div>
-          </div>
+	              <label for="t2iWidth">Width</label>
+	              <input id="t2iWidth" type="number" min="64" step="64" value="512" />
+	            </div>
+	            <div>
+	              <label for="t2iHeight">Height</label>
+	              <input id="t2iHeight" type="number" min="64" step="64" value="512" />
+	            </div>
+	          </div>
 
-          <label for="t2iSeed">Seed (optional)</label>
-          <input id="t2iSeed" type="number" step="1" placeholder="42" />
+          <div class="row">
+            <div>
+	              <label for="t2iSteps">Steps</label>
+	              <input id="t2iSteps" type="number" min="1" step="1" value="10" />
+	            </div>
+	            <div>
+	              <label for="t2iGuidance">Guidance scale</label>
+	              <input id="t2iGuidance" type="number" step="0.1" value="7.0" />
+	            </div>
+	          </div>
+
+	          <label for="t2iSeed">Seed (optional)</label>
+	          <input id="t2iSeed" type="number" step="1" value="42" />
 
           <label for="t2iExtra">Extra JSON (optional; forwarded to backend)</label>
           <textarea id="t2iExtra">{}</textarea>
@@ -206,8 +209,11 @@
         <div class="card">
           <h2 style="margin: 0 0 8px; font-size: 16px">Image → Image (edits)</h2>
 
-          <label for="i2iPrompt">Prompt</label>
-          <textarea id="i2iPrompt">make it watercolor</textarea>
+	          <label for="i2iPrompt">Prompt</label>
+	          <textarea id="i2iPrompt">make it watercolor</textarea>
+	
+	          <label for="i2iModel">Model (optional)</label>
+	          <input id="i2iModel" type="text" value="" placeholder="e.g. runwayml/stable-diffusion-v1-5" />
 
           <label for="i2iImage">Input image</label>
           <input id="i2iImage" type="file" accept="image/*" />
@@ -220,17 +226,17 @@
 
           <div class="row">
             <div>
-              <label for="i2iSteps">Steps</label>
-              <input id="i2iSteps" type="number" min="1" step="1" placeholder="20" />
-            </div>
-            <div>
-              <label for="i2iGuidance">Guidance scale</label>
-              <input id="i2iGuidance" type="number" step="0.1" placeholder="7.0" />
-            </div>
-          </div>
+	              <label for="i2iSteps">Steps</label>
+	              <input id="i2iSteps" type="number" min="1" step="1" value="10" />
+	            </div>
+	            <div>
+	              <label for="i2iGuidance">Guidance scale</label>
+	              <input id="i2iGuidance" type="number" step="0.1" value="7.0" />
+	            </div>
+	          </div>
 
-          <label for="i2iSeed">Seed (optional)</label>
-          <input id="i2iSeed" type="number" step="1" placeholder="42" />
+	          <label for="i2iSeed">Seed (optional)</label>
+	          <input id="i2iSeed" type="number" step="1" value="42" />
 
           <label for="i2iExtra">Extra JSON (optional; forwarded to backend)</label>
           <textarea id="i2iExtra">{"strength": 0.75}</textarea>
@@ -255,7 +261,7 @@
       const $ = (id) => document.getElementById(id);
 
       function joinUrl(base, path) {
-        const b = String(base || "").replace(/\\/+$/, "");
+        const b = String(base || "").replace(/\/+$/, "");
         const p = String(path || "");
         return b + p;
       }
@@ -277,7 +283,7 @@
       }
 
       function b64ToBytes(b64) {
-        const raw = String(b64 || "").replace(/\\s+/g, "");
+        const raw = String(b64 || "").replace(/\s+/g, "");
         const bin = atob(raw);
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -350,18 +356,19 @@
           const base = $("baseUrl").value;
           const url = joinUrl(base, "/v1/images/generations");
 
-          const extra = parseJsonObject($("t2iExtra").value);
-          const payload = {
-            prompt: $("t2iPrompt").value,
-            response_format: "b64_json",
-            negative_prompt: $("t2iNegative").value || undefined,
-            width: $("t2iWidth").value ? Number($("t2iWidth").value) : undefined,
-            height: $("t2iHeight").value ? Number($("t2iHeight").value) : undefined,
-            steps: $("t2iSteps").value ? Number($("t2iSteps").value) : undefined,
-            guidance_scale: $("t2iGuidance").value ? Number($("t2iGuidance").value) : undefined,
-            seed: $("t2iSeed").value ? Number($("t2iSeed").value) : undefined,
-            ...extra,
-          };
+	          const extra = parseJsonObject($("t2iExtra").value);
+	          const payload = {
+	            model: $("t2iModel").value || undefined,
+	            prompt: $("t2iPrompt").value,
+	            response_format: "b64_json",
+	            negative_prompt: $("t2iNegative").value || undefined,
+	            width: $("t2iWidth").value ? Number($("t2iWidth").value) : undefined,
+	            height: $("t2iHeight").value ? Number($("t2iHeight").value) : undefined,
+	            steps: $("t2iSteps").value ? Number($("t2iSteps").value) : undefined,
+	            guidance_scale: $("t2iGuidance").value ? Number($("t2iGuidance").value) : undefined,
+	            seed: $("t2iSeed").value ? Number($("t2iSeed").value) : undefined,
+	            ...extra,
+	          };
 
           const resp = await fetchJson(url, {
             method: "POST",
@@ -410,15 +417,16 @@
 
           const extra = parseJsonObject($("i2iExtra").value);
 
-          const fd = new FormData();
-          fd.set("prompt", $("i2iPrompt").value);
-          fd.set("image", imageFile, imageFile.name || "image.png");
-          if (maskFile) fd.set("mask", maskFile, maskFile.name || "mask.png");
-          if ($("i2iNegative").value) fd.set("negative_prompt", $("i2iNegative").value);
-          if ($("i2iSteps").value) fd.set("steps", $("i2iSteps").value);
-          if ($("i2iGuidance").value) fd.set("guidance_scale", $("i2iGuidance").value);
-          if ($("i2iSeed").value) fd.set("seed", $("i2iSeed").value);
-          fd.set("extra_json", JSON.stringify(extra));
+	          const fd = new FormData();
+	          fd.set("prompt", $("i2iPrompt").value);
+	          fd.set("image", imageFile, imageFile.name || "image.png");
+	          if (maskFile) fd.set("mask", maskFile, maskFile.name || "mask.png");
+	          if ($("i2iModel").value) fd.set("model", $("i2iModel").value);
+	          if ($("i2iNegative").value) fd.set("negative_prompt", $("i2iNegative").value);
+	          if ($("i2iSteps").value) fd.set("steps", $("i2iSteps").value);
+	          if ($("i2iGuidance").value) fd.set("guidance_scale", $("i2iGuidance").value);
+	          if ($("i2iSeed").value) fd.set("seed", $("i2iSeed").value);
+	          fd.set("extra_json", JSON.stringify(extra));
 
           const resp = await fetchJson(url, { method: "POST", body: fd });
 
@@ -442,4 +450,3 @@
     </script>
   </body>
 </html>
-

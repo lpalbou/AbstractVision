@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import inspect
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
@@ -23,6 +24,16 @@ def _require_optional_dep(name: str, install_hint: str) -> None:
 
 def _lazy_import_diffusers():
     try:
+        import warnings
+
+        # Some Diffusers modules decorate functions with `torch.autocast(device_type="cuda", ...)`,
+        # which emits noisy warnings on non-CUDA machines (including Apple Silicon / MPS).
+        warnings.filterwarnings("ignore", message=r".*CUDA is not available.*Disabling autocast\\..*", category=UserWarning)
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*device_type of 'cuda'.*CUDA is not available\\..*",
+            category=UserWarning,
+        )
         from diffusers import AutoPipelineForImage2Image, AutoPipelineForInpainting, AutoPipelineForText2Image  # type: ignore
     except Exception:  # pragma: no cover
         _require_optional_dep("diffusers", "pip install 'diffusers'")
@@ -60,6 +71,58 @@ def _torch_dtype_from_str(torch: Any, value: Optional[str]) -> Any:
     raise ValueError(f"Unsupported torch_dtype: {value!r}")
 
 
+def _default_torch_dtype_for_device(torch: Any, device: str) -> Any:
+    d = str(device or "").strip().lower()
+    if not d:
+        return None
+    if d.startswith("cuda"):
+        return torch.float16
+    # On Apple Silicon, float16 on MPS is the practical default for memory/speed.
+    # Some models may produce NaNs/black images in fp16; in that case, override with `torch_dtype=float32`.
+    if d == "mps" or d.startswith("mps:"):
+        return torch.float16
+    return None
+
+
+def _require_device_available(torch: Any, device: str) -> None:
+    d = str(device or "").strip().lower()
+    if not d:
+        return
+
+    if d.startswith("cuda"):
+        cuda = getattr(torch, "cuda", None)
+        is_available = getattr(cuda, "is_available", None) if cuda is not None else None
+        ok = bool(is_available()) if callable(is_available) else False
+        if not ok:
+            raise ValueError(
+                "Device 'cuda' was requested, but torch.cuda.is_available() is False. "
+                "Install a CUDA-enabled PyTorch build or use device='cpu'."
+            )
+
+    if d == "mps" or d.startswith("mps:"):
+        backends = getattr(torch, "backends", None)
+        mps = getattr(backends, "mps", None) if backends is not None else None
+        is_available = getattr(mps, "is_available", None) if mps is not None else None
+        ok = bool(is_available()) if callable(is_available) else False
+        if not ok:
+            raise ValueError(
+                "Device 'mps' was requested, but torch.backends.mps.is_available() is False. "
+                "On macOS this typically means you are not using an Apple Silicon + MPS-enabled PyTorch build. "
+                "Use device='cpu', or use the stable-diffusion.cpp (sd-cli) backend for GGUF models."
+            )
+
+
+def _call_param_names(fn: Any) -> Optional[set[str]]:
+    try:
+        sig = inspect.signature(fn)
+        for p in sig.parameters.values():
+            if p.kind == p.VAR_KEYWORD:
+                return None
+        return {str(k) for k in sig.parameters.keys() if str(k) != "self"}
+    except Exception:
+        return None
+
+
 @dataclass(frozen=True)
 class HuggingFaceDiffusersBackendConfig:
     """Config for a local Diffusers backend.
@@ -77,6 +140,7 @@ class HuggingFaceDiffusersBackendConfig:
     revision: Optional[str] = None
     variant: Optional[str] = None
     use_safetensors: bool = True
+    low_cpu_mem_usage: bool = True
 
 
 class HuggingFaceDiffusersVisionBackend(VisionBackend):
@@ -85,6 +149,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     def __init__(self, *, config: HuggingFaceDiffusersBackendConfig):
         self._cfg = config
         self._pipelines: Dict[str, Any] = {}
+        self._call_params: Dict[str, Optional[set[str]]] = {}
 
     def get_capabilities(self) -> VisionBackendCapabilities:
         return VisionBackendCapabilities(
@@ -113,9 +178,14 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         AutoPipelineForText2Image, AutoPipelineForImage2Image, AutoPipelineForInpainting = _lazy_import_diffusers()
         torch = _lazy_import_torch()
+        _require_device_available(torch, self._cfg.device)
 
         torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype)
+        if torch_dtype is None:
+            torch_dtype = _default_torch_dtype_for_device(torch, self._cfg.device)
         common = self._pipeline_common_kwargs()
+        if bool(self._cfg.low_cpu_mem_usage):
+            common["low_cpu_mem_usage"] = True
 
         if kind == "t2i":
             pipe = AutoPipelineForText2Image.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
@@ -129,6 +199,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         # Diffusers pipelines support `.to(<device>)` with a string.
         pipe = pipe.to(str(self._cfg.device))
         self._pipelines[kind] = pipe
+        self._call_params[kind] = _call_param_names(getattr(pipe, "__call__", None))
         return pipe
 
     def _pil_from_bytes(self, data: bytes):
@@ -155,6 +226,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
         pipe = self._get_or_load_pipeline("t2i")
+        call_params = self._call_params.get("t2i")
 
         kwargs: Dict[str, Any] = {
             "prompt": request.prompt,
@@ -168,7 +240,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if request.steps is not None:
             kwargs["num_inference_steps"] = int(request.steps)
         if request.guidance_scale is not None:
-            kwargs["guidance_scale"] = float(request.guidance_scale)
+            if call_params is not None and "true_cfg_scale" in call_params:
+                kwargs["true_cfg_scale"] = float(request.guidance_scale)
+            else:
+                kwargs["guidance_scale"] = float(request.guidance_scale)
         gen = self._seed_generator(request.seed)
         if gen is not None:
             kwargs["generator"] = gen
@@ -191,8 +266,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         if request.mask is not None:
             pipe = self._get_or_load_pipeline("inpaint")
+            call_params = self._call_params.get("inpaint")
         else:
             pipe = self._get_or_load_pipeline("i2i")
+            call_params = self._call_params.get("i2i")
 
         img = self._pil_from_bytes(request.image)
         kwargs: Dict[str, Any] = {"prompt": request.prompt, "image": img}
@@ -203,7 +280,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if request.steps is not None:
             kwargs["num_inference_steps"] = int(request.steps)
         if request.guidance_scale is not None:
-            kwargs["guidance_scale"] = float(request.guidance_scale)
+            if call_params is not None and "true_cfg_scale" in call_params:
+                kwargs["true_cfg_scale"] = float(request.guidance_scale)
+            else:
+                kwargs["guidance_scale"] = float(request.guidance_scale)
         gen = self._seed_generator(request.seed)
         if gen is not None:
             kwargs["generator"] = gen
@@ -231,4 +311,3 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
     def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
         raise CapabilityNotSupportedError("HuggingFaceDiffusersVisionBackend does not implement image_to_video (phase 2).")
-

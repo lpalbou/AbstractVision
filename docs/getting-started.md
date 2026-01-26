@@ -8,15 +8,27 @@ This guide helps you generate your first image using AbstractVision with differe
 
 ---
 
-## 0) Install (monorepo dev)
+## 0) Install
 
-From `abstractvision/`:
+From PyPI:
+
+```bash
+pip install "abstractvision[huggingface]"
+```
+
+Or, from a repo checkout (run in the `abstractvision/` repo root):
 
 ```bash
 pip install -e ".[huggingface]"
 ```
 
 This installs optional local image generation support (Diffusers). If you only want the lightweight core + OpenAI-compatible HTTP backend, you can do:
+
+```bash
+pip install abstractvision
+```
+
+Or, from a repo checkout:
 
 ```bash
 pip install -e .
@@ -32,6 +44,17 @@ AbstractVision’s Diffusers backend defaults to **cache-only** (no downloads). 
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1
 export ABSTRACTVISION_DIFFUSERS_DEVICE=mps   # macOS Apple Silicon; use cuda/cpu on other machines
+# Optional (Apple Silicon): memory vs stability.
+# - `float16` is usually required for large models
+# - if you get NaNs/black images, try `float32` (but it may require a lot more memory)
+# export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float16
+# export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32
+```
+
+Quick sanity check (macOS):
+
+```bash
+python -c "import torch; print('mps', torch.backends.mps.is_available(), 'cuda', torch.cuda.is_available())"
 ```
 
 Start the REPL:
@@ -70,9 +93,17 @@ Qwen Image models in the registry:
 Use the same Diffusers flow:
 
 ```text
-/backend diffusers Qwen/Qwen-Image-2512 mps
-/t2i "a poster with the word 'ABSTRACT' rendered perfectly in bold typography" --width 1024 --height 1024 --steps 30 --guidance-scale 2.5 --open
+/backend diffusers Qwen/Qwen-Image-2512 mps float16
+/t2i "a poster with the word 'ABSTRACT' rendered perfectly in bold typography" --width 512 --height 512 --steps 10 --guidance-scale 2.5 --open
 ```
+
+Notes:
+- Qwen Image models are **large**.
+- Start with fp16 (otherwise you may run out of memory while loading):
+  - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float16` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps float16`)
+- If you get NaNs/black images in fp16, try fp32 (this can require **very** large peak memory during load):
+  - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps float32`)
+- In AbstractVision, `--guidance-scale` is mapped to Qwen’s `true_cfg_scale` when using Qwen pipelines.
 
 Tip: keep `guidance_scale` relatively low for some modern DiT models.
 
@@ -96,11 +127,37 @@ If you use gated models (like `FLUX.2-dev`), you typically must accept the model
 
 ---
 
-## 4) Qwen-Image GGUF (stable-diffusion.cpp `sd-cli`)
+## 4) Stable Diffusion 3.5 (Diffusers, gated)
+
+SD3.5 models (all gated on Hugging Face):
+
+- `stabilityai/stable-diffusion-3.5-large-turbo`
+- `stabilityai/stable-diffusion-3.5-large`
+- `stabilityai/stable-diffusion-3.5-medium`
+
+1) Accept the model terms on Hugging Face (in your browser).  
+2) Export a token:
+
+```bash
+export HF_TOKEN=...   # your Hugging Face access token
+```
+
+Then in the REPL:
+
+```text
+/backend diffusers stabilityai/stable-diffusion-3.5-large-turbo mps
+/t2i "a modern product photo of a watch, studio lighting" --width 1024 --height 1024 --steps 6 --guidance-scale 4 --seed 42 --open
+```
+
+Turbo models are usually best with low step counts (e.g. ~4–8).
+
+---
+
+## 5) Qwen-Image GGUF (stable-diffusion.cpp `sd-cli`)
 
 If you downloaded a GGUF diffusion model (like `unsloth/Qwen-Image-2512-GGUF:qwen-image-2512-Q4_K_M.gguf`), Diffusers cannot load it. Use `sd-cli` instead.
 
-### 4.1 Install `sd-cli`
+### 5.1 Install `sd-cli`
 
 Download a stable-diffusion.cpp build from:
 
@@ -108,14 +165,14 @@ Download a stable-diffusion.cpp build from:
 
 Ensure `sd-cli` is in your `PATH` (or use a full path in the `/backend sdcpp …` command below).
 
-### 4.2 Download the required Qwen Image VAE
+### 5.2 Download the required Qwen Image VAE
 
 ```bash
 curl -L -o ./qwen_image_vae.safetensors \\
   https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
 ```
 
-### 4.3 Run the REPL with `sdcpp` backend
+### 5.3 Run the REPL with `sdcpp` backend
 
 ```bash
 abstractvision repl
@@ -134,14 +191,14 @@ Any extra `--flag` you pass (like `--sampling-method euler`) is forwarded to the
 
 ---
 
-## 5) Web UI testing (recommended): AbstractCore Server + Playground
+## 6) Web UI testing (recommended): AbstractCore Server + Playground
 
 AbstractCore exposes:
 
 - `POST /v1/images/generations`
 - `POST /v1/images/edits`
 
-### 5.1 Start AbstractCore with `sdcpp` (GGUF)
+### 6.1 Start AbstractCore with `sdcpp` (GGUF)
 
 ```bash
 export ABSTRACTCORE_VISION_BACKEND=sdcpp
@@ -150,10 +207,10 @@ export ABSTRACTCORE_VISION_SDCPP_DIFFUSION_MODEL=/path/to/qwen-image-2512-Q4_K_M
 export ABSTRACTCORE_VISION_SDCPP_VAE=$PWD/qwen_image_vae.safetensors
 export ABSTRACTCORE_VISION_SDCPP_LLM=/path/to/Qwen2.5-VL-7B-Instruct-*.gguf
 export ABSTRACTCORE_VISION_SDCPP_EXTRA_ARGS="--offload-to-cpu --diffusion-fa --sampling-method euler --flow-shift 3"
-uvicorn abstractcore.server.app:app --port 8000
+python -m uvicorn abstractcore.server.app:app --port 8000
 ```
 
-### 5.2 Serve the playground page
+### 6.2 Serve the playground page
 
 ```bash
 cd abstractvision/playground
@@ -165,4 +222,3 @@ Open:
 - `http://localhost:8080/vision_playground.html`
 
 You can now interactively tweak prompt/steps/seed and (for edits) upload an input image + mask.
-

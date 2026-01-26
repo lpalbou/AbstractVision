@@ -21,10 +21,10 @@ The user’s responsibility is to choose which model(s) to use (including any li
 pip install abstractvision
 ```
 
-For local dev in this monorepo:
+For local dev (from a repo checkout):
 
 ```bash
-pip install -e abstractvision
+pip install -e .
 ```
 
 ## Usage

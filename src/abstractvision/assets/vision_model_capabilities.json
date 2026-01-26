@@ -124,6 +124,66 @@
         }
       }
     },
+    "stabilityai/stable-diffusion-3.5-large-turbo": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "Stable Diffusion 3.5 Large Turbo (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline). Optimized for low step counts.",
+      "tasks": {
+        "text_to_image": {
+          "inputs": ["text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-3.5-large": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "Stable Diffusion 3.5 Large (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline).",
+      "tasks": {
+        "text_to_image": {
+          "inputs": ["text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-3.5-medium": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "Stable Diffusion 3.5 Medium (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline).",
+      "tasks": {
+        "text_to_image": {
+          "inputs": ["text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
     "Tongyi-MAI/Z-Image-Turbo": {
       "provider": "huggingface",
       "license": "unknown",

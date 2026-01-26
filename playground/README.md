@@ -7,11 +7,11 @@ This is a tiny, dependency-free web UI for quickly testing AbstractCore’s Open
 
 ## 1) Start AbstractCore Server
 
-From the monorepo root:
+From any environment where `abstractcore` is installed:
 
 ```bash
 export ABSTRACTCORE_VISION_BACKEND=sdcpp   # or: diffusers / openai_compatible_proxy
-uvicorn abstractcore.server.app:app --port 8000
+python -m uvicorn abstractcore.server.app:app --port 8000
 ```
 
 ## 2) Serve this page
@@ -26,6 +26,9 @@ python -m http.server 8080
 Open:
 
 - `http://localhost:8080/vision_playground.html`
+
+Tip:
+- The UI has an optional **Model** field for both endpoints; if you leave it empty, the server uses your env defaults.
 
 ## 3) Configure Qwen-Image-2512 GGUF (stable-diffusion.cpp)
 
@@ -50,4 +53,3 @@ Then run:
 ```bash
 uvicorn abstractcore.server.app:app --port 8000
 ```
-

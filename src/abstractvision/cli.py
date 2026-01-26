@@ -203,6 +203,10 @@ class _ReplState:
     sdcpp_extra_args: Optional[str] = _env("ABSTRACTVISION_SDCPP_EXTRA_ARGS")
 
     defaults: Dict[str, Any] = None
+    _cached_backend_key: Optional[Tuple[Any, ...]] = None
+    _cached_backend: Any = None
+    _cached_store_dir: Optional[str] = None
+    _cached_store: Optional[LocalAssetStore] = None
 
     def __post_init__(self) -> None:
         if self.defaults is None:
@@ -222,7 +226,7 @@ def _repl_help() -> str:
         "  /show-model <id>          Show a model's tasks + params\n"
         "  /config                   Show current backend/store config\n"
         "  /backend openai <base_url> [api_key] [model_id]\n"
-        "  /backend diffusers <model_id_or_path> [device]\n"
+        "  /backend diffusers <model_id_or_path> [device] [torch_dtype]\n"
         "  /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]\n"
         "                           (Qwen Image: requires diffusion-model + vae + llm)\n"
         "  /cap-model <id|off>       Set capability-gating model id (from registry) or 'off'\n"
@@ -322,46 +326,97 @@ def _coerce_scalar(v: Any) -> Any:
 
 
 def _build_manager_from_state(state: _ReplState) -> VisionManager:
-    store = LocalAssetStore(state.store_dir) if state.store_dir else LocalAssetStore()
+    if state._cached_store is not None and state._cached_store_dir == state.store_dir:
+        store = state._cached_store
+    else:
+        store = LocalAssetStore(state.store_dir) if state.store_dir else LocalAssetStore()
+        state._cached_store = store
+        state._cached_store_dir = state.store_dir
+
     backend_kind = str(state.backend_kind or "").strip().lower() or "openai"
+    backend_key: Tuple[Any, ...]
     if backend_kind == "openai":
         base_url = str(state.base_url or "").strip()
         if not base_url:
             raise ValueError("Backend is not configured. Use: /backend openai <base_url> [api_key] [model_id]")
-        cfg = OpenAICompatibleBackendConfig(
-            base_url=base_url,
-            api_key=str(state.api_key) if state.api_key else None,
-            model_id=str(state.model_id) if state.model_id else None,
-            timeout_s=float(state.timeout_s),
-            image_generations_path=str(state.images_generations_path),
-            image_edits_path=str(state.images_edits_path),
-            text_to_video_path=str(state.text_to_video_path) if state.text_to_video_path else None,
-            image_to_video_path=str(state.image_to_video_path) if state.image_to_video_path else None,
-            image_to_video_mode=str(state.image_to_video_mode),
+        backend_key = (
+            "openai",
+            base_url,
+            state.api_key,
+            state.model_id,
+            state.timeout_s,
+            state.images_generations_path,
+            state.images_edits_path,
+            state.text_to_video_path,
+            state.image_to_video_path,
+            state.image_to_video_mode,
         )
-        backend = OpenAICompatibleVisionBackend(config=cfg)
+        if state._cached_backend is not None and state._cached_backend_key == backend_key:
+            backend = state._cached_backend
+        else:
+            cfg = OpenAICompatibleBackendConfig(
+                base_url=base_url,
+                api_key=str(state.api_key) if state.api_key else None,
+                model_id=str(state.model_id) if state.model_id else None,
+                timeout_s=float(state.timeout_s),
+                image_generations_path=str(state.images_generations_path),
+                image_edits_path=str(state.images_edits_path),
+                text_to_video_path=str(state.text_to_video_path) if state.text_to_video_path else None,
+                image_to_video_path=str(state.image_to_video_path) if state.image_to_video_path else None,
+                image_to_video_mode=str(state.image_to_video_mode),
+            )
+            backend = OpenAICompatibleVisionBackend(config=cfg)
+            state._cached_backend = backend
+            state._cached_backend_key = backend_key
     elif backend_kind == "diffusers":
         model_id = str(state.model_id or "").strip()
         if not model_id:
             raise ValueError("Diffusers backend is not configured. Use: /backend diffusers <model_id_or_path> [device]")
-        cfg = HuggingFaceDiffusersBackendConfig(
-            model_id=model_id,
-            device=str(state.diffusers_device),
-            torch_dtype=str(state.diffusers_torch_dtype) if state.diffusers_torch_dtype else None,
-            allow_download=bool(state.diffusers_allow_download),
+        backend_key = (
+            "diffusers",
+            model_id,
+            str(state.diffusers_device),
+            str(state.diffusers_torch_dtype) if state.diffusers_torch_dtype else None,
+            bool(state.diffusers_allow_download),
         )
-        backend = HuggingFaceDiffusersVisionBackend(config=cfg)
+        if state._cached_backend is not None and state._cached_backend_key == backend_key:
+            backend = state._cached_backend
+        else:
+            cfg = HuggingFaceDiffusersBackendConfig(
+                model_id=model_id,
+                device=str(state.diffusers_device),
+                torch_dtype=str(state.diffusers_torch_dtype) if state.diffusers_torch_dtype else None,
+                allow_download=bool(state.diffusers_allow_download),
+            )
+            backend = HuggingFaceDiffusersVisionBackend(config=cfg)
+            state._cached_backend = backend
+            state._cached_backend_key = backend_key
     elif backend_kind in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
-        cfg = StableDiffusionCppBackendConfig(
-            sd_cli_path=str(state.sdcpp_bin),
-            model=str(state.sdcpp_model) if state.sdcpp_model else None,
-            diffusion_model=str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None,
-            vae=str(state.sdcpp_vae) if state.sdcpp_vae else None,
-            llm=str(state.sdcpp_llm) if state.sdcpp_llm else None,
-            llm_vision=str(state.sdcpp_llm_vision) if state.sdcpp_llm_vision else None,
-            extra_args=shlex.split(str(state.sdcpp_extra_args)) if state.sdcpp_extra_args else (),
+        backend_key = (
+            "sdcpp",
+            str(state.sdcpp_bin),
+            str(state.sdcpp_model) if state.sdcpp_model else None,
+            str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None,
+            str(state.sdcpp_vae) if state.sdcpp_vae else None,
+            str(state.sdcpp_llm) if state.sdcpp_llm else None,
+            str(state.sdcpp_llm_vision) if state.sdcpp_llm_vision else None,
+            str(state.sdcpp_extra_args) if state.sdcpp_extra_args else None,
         )
-        backend = StableDiffusionCppVisionBackend(config=cfg)
+        if state._cached_backend is not None and state._cached_backend_key == backend_key:
+            backend = state._cached_backend
+        else:
+            cfg = StableDiffusionCppBackendConfig(
+                sd_cli_path=str(state.sdcpp_bin),
+                model=str(state.sdcpp_model) if state.sdcpp_model else None,
+                diffusion_model=str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None,
+                vae=str(state.sdcpp_vae) if state.sdcpp_vae else None,
+                llm=str(state.sdcpp_llm) if state.sdcpp_llm else None,
+                llm_vision=str(state.sdcpp_llm_vision) if state.sdcpp_llm_vision else None,
+                extra_args=shlex.split(str(state.sdcpp_extra_args)) if state.sdcpp_extra_args else (),
+            )
+            backend = StableDiffusionCppVisionBackend(config=cfg)
+            state._cached_backend = backend
+            state._cached_backend_key = backend_key
     else:
         raise ValueError(f"Unknown backend kind: {backend_kind!r} (expected 'openai', 'diffusers', or 'sdcpp')")
 
@@ -456,7 +511,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 if not args:
                     print(
                         "Usage: /backend openai <base_url> [api_key] [model_id]  OR  "
-                        "/backend diffusers <model_id_or_path> [device]  OR  "
+                        "/backend diffusers <model_id_or_path> [device] [torch_dtype]  OR  "
                         "/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]"
                     )
                     continue
@@ -473,11 +528,18 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     continue
                 if kind == "diffusers":
                     if len(args) < 2:
-                        print("Usage: /backend diffusers <model_id_or_path> [device]")
+                        print("Usage: /backend diffusers <model_id_or_path> [device] [torch_dtype]")
                         continue
                     state.backend_kind = "diffusers"
                     state.model_id = args[1]
-                    state.diffusers_device = args[2] if len(args) >= 3 else state.diffusers_device
+                    # Allow: /backend diffusers <model> [device] [torch_dtype]
+                    # And also: /backend diffusers <model> <torch_dtype>  (keeps existing device)
+                    dtype_tokens = {"auto", "float16", "fp16", "bfloat16", "bf16", "float32", "fp32"}
+                    if len(args) >= 3 and str(args[2]).strip().lower() in dtype_tokens:
+                        state.diffusers_torch_dtype = str(args[2]).strip()
+                    else:
+                        state.diffusers_device = args[2] if len(args) >= 3 else state.diffusers_device
+                        state.diffusers_torch_dtype = str(args[3]).strip() if len(args) >= 4 else state.diffusers_torch_dtype
                     print("ok")
                     continue
                 if kind == "sdcpp":
