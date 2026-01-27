@@ -193,6 +193,7 @@ class _ReplState:
     diffusers_device: str = _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "cpu") or "cpu"
     diffusers_torch_dtype: Optional[str] = _env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE")
     diffusers_allow_download: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False)
+    diffusers_auto_retry_fp32: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", False)
 
     sdcpp_bin: str = _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli"
     sdcpp_model: Optional[str] = _env("ABSTRACTVISION_SDCPP_MODEL")
@@ -378,6 +379,7 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             str(state.diffusers_device),
             str(state.diffusers_torch_dtype) if state.diffusers_torch_dtype else None,
             bool(state.diffusers_allow_download),
+            bool(state.diffusers_auto_retry_fp32),
         )
         if state._cached_backend is not None and state._cached_backend_key == backend_key:
             backend = state._cached_backend
@@ -387,6 +389,7 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
                 device=str(state.diffusers_device),
                 torch_dtype=str(state.diffusers_torch_dtype) if state.diffusers_torch_dtype else None,
                 allow_download=bool(state.diffusers_allow_download),
+                auto_retry_fp32=bool(state.diffusers_auto_retry_fp32),
             )
             backend = HuggingFaceDiffusersVisionBackend(config=cfg)
             state._cached_backend = backend

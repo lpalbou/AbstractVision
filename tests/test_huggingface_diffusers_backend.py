@@ -1,4 +1,5 @@
 import io
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -47,21 +48,100 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         self.assertEqual(_default_torch_dtype_for_device(torch, "cuda"), torch.float16)
         self.assertEqual(_default_torch_dtype_for_device(torch, "cuda:0"), torch.float16)
-        self.assertEqual(_default_torch_dtype_for_device(torch, "mps"), torch.float16)
-        self.assertEqual(_default_torch_dtype_for_device(torch, "mps:0"), torch.float16)
+        self.assertIn(_default_torch_dtype_for_device(torch, "mps"), (torch.bfloat16, torch.float16))
+        self.assertIn(_default_torch_dtype_for_device(torch, "mps:0"), (torch.bfloat16, torch.float16))
+
+    def test_maybe_upcasts_vae_to_fp32_on_mps(self):
+        from abstractvision.backends.huggingface_diffusers import _maybe_upcast_vae_for_mps
+
+        import torch
+
+        class _FakeVAE:
+            dtype = torch.float16
+
+            def __init__(self):
+                self.to_kwargs = None
+
+            def to(self, **kwargs):
+                self.to_kwargs = dict(kwargs)
+                return self
+
+        class _FakePipe:
+            def __init__(self):
+                self.vae = _FakeVAE()
+
+        pipe = _FakePipe()
+        _maybe_upcast_vae_for_mps(torch, pipe, "mps")
+        self.assertEqual(pipe.vae.to_kwargs, {"dtype": torch.float32})
+
+    def test_mps_vae_upcast_wraps_encode_decode_inputs(self):
+        from abstractvision.backends.huggingface_diffusers import _maybe_upcast_vae_for_mps
+
+        import torch
+
+        class _FakeVAE:
+            dtype = torch.float16
+
+            def __init__(self):
+                self.encode_seen_dtype = None
+                self.decode_seen_dtype = None
+
+            def to(self, **kwargs):
+                if "dtype" in kwargs:
+                    self.dtype = kwargs["dtype"]
+                return self
+
+            def encode(self, x, return_dict=True):
+                self.encode_seen_dtype = x.dtype
+                if x.dtype != self.dtype:
+                    raise RuntimeError("Input type and bias type should be the same")
+                return x
+
+            def decode(self, z, return_dict=True, generator=None):
+                self.decode_seen_dtype = z.dtype
+                if z.dtype != self.dtype:
+                    raise RuntimeError("Input type and bias type should be the same")
+                return (z,)
+
+        class _FakePipe:
+            def __init__(self):
+                self.vae = _FakeVAE()
+
+        pipe = _FakePipe()
+        _maybe_upcast_vae_for_mps(torch, pipe, "mps")
+
+        pipe.vae.encode(torch.zeros((1, 3, 8, 8), dtype=torch.float16))
+        pipe.vae.decode(torch.zeros((1, 4, 8, 8), dtype=torch.float16), return_dict=False)
+
+        self.assertEqual(pipe.vae.dtype, torch.float32)
+        self.assertEqual(pipe.vae.encode_seen_dtype, torch.float32)
+        self.assertEqual(pipe.vae.decode_seen_dtype, torch.float32)
 
     def test_raises_when_mps_device_unavailable(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
         from abstractvision.types import ImageGenerationRequest
 
+        class _FakeMps:
+            @staticmethod
+            def is_available():
+                return False
+
+        class _FakeBackends:
+            mps = _FakeMps()
+
+        class _FakeTorch:
+            backends = _FakeBackends()
+
+        fake_diffusion_pipeline_cls = MagicMock()
         fake_t2i_cls = MagicMock()
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
+        fake_flux2_cls = MagicMock()
 
         with patch(
             "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls),
-        ):
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
+        ), patch("abstractvision.backends.huggingface_diffusers._lazy_import_torch", return_value=_FakeTorch):
             backend = HuggingFaceDiffusersVisionBackend(
                 config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="mps", allow_download=False)
             )
@@ -79,15 +159,17 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         fake_image = Image.open(io.BytesIO(out_img_bytes))
 
         fake_pipe = _FakePipeline(fake_image)
+        fake_diffusion_pipeline_cls = MagicMock()
         fake_t2i_cls = MagicMock()
         fake_t2i_cls.from_pretrained.return_value = fake_pipe
 
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
+        fake_flux2_cls = MagicMock()
 
         with patch(
             "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls),
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
         ):
             backend = HuggingFaceDiffusersVisionBackend(
                 config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)
@@ -127,6 +209,87 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertIn("generator", call)
         self.assertEqual(call.get("foo"), "bar")
 
+    def test_offline_mode_sets_hf_env_during_load_and_restores(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        def _from_pretrained(*_args, **_kwargs):
+            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
+            self.assertEqual(os.environ.get("TRANSFORMERS_OFFLINE"), "1")
+            self.assertEqual(os.environ.get("DIFFUSERS_OFFLINE"), "1")
+            return fake_pipe
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.side_effect = _from_pretrained
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+        fake_flux2_cls = MagicMock()
+
+        old_hf = os.environ.pop("HF_HUB_OFFLINE", None)
+        old_tx = os.environ.pop("TRANSFORMERS_OFFLINE", None)
+        old_df = os.environ.pop("DIFFUSERS_OFFLINE", None)
+        try:
+            with patch(
+                "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+                return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
+            ):
+                backend = HuggingFaceDiffusersVisionBackend(
+                    config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)
+                )
+                backend.generate_image(ImageGenerationRequest(prompt="hello"))
+            self.assertIsNone(os.environ.get("HF_HUB_OFFLINE"))
+            self.assertIsNone(os.environ.get("TRANSFORMERS_OFFLINE"))
+            self.assertIsNone(os.environ.get("DIFFUSERS_OFFLINE"))
+        finally:
+            if old_hf is not None:
+                os.environ["HF_HUB_OFFLINE"] = old_hf
+            if old_tx is not None:
+                os.environ["TRANSFORMERS_OFFLINE"] = old_tx
+            if old_df is not None:
+                os.environ["DIFFUSERS_OFFLINE"] = old_df
+
+    def test_generate_image_does_not_auto_retry_on_invalid_cast_warning(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.return_value = fake_pipe
+
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+        fake_flux2_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
+        ):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)
+            )
+            with patch.object(backend, "_pipe_call", return_value=(_FakeDiffusersOutput(fake_image), True)), patch.object(
+                backend, "_maybe_retry_fp32_on_invalid_output"
+            ) as retry:
+                asset = backend.generate_image(ImageGenerationRequest(prompt="hello"))
+
+        self.assertEqual(asset.mime_type, "image/png")
+        self.assertTrue(asset.metadata.get("had_invalid_cast_warning"))
+        self.assertFalse(asset.metadata.get("retried_fp32", False))
+        retry.assert_not_called()
+
     def test_edit_image_uses_inpaint_when_mask_provided(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
         from abstractvision.types import ImageEditRequest
@@ -140,14 +303,16 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         fake_image = Image.open(io.BytesIO(out_img_bytes))
         fake_pipe = _FakePipeline(fake_image)
 
+        fake_diffusion_pipeline_cls = MagicMock()
         fake_t2i_cls = MagicMock()
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
         fake_inpaint_cls.from_pretrained.return_value = fake_pipe
+        fake_flux2_cls = MagicMock()
 
         with patch(
             "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls),
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
         ):
             backend = HuggingFaceDiffusersVisionBackend(
                 config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)

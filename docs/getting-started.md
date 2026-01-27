@@ -38,15 +38,18 @@ pip install -e .
 
 ## 1) Fastest “first image” (Diffusers + auto-download)
 
-AbstractVision’s Diffusers backend defaults to **cache-only** (no downloads). For a quick start, opt-in to downloads:
+AbstractVision’s Diffusers backend defaults to **cache-only** (no downloads) and forces Hugging Face **offline mode** (no network calls). For a quick start, opt-in to downloads:
 
 ```bash
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1
-export ABSTRACTVISION_DIFFUSERS_DEVICE=mps   # macOS Apple Silicon; use cuda/cpu on other machines
-# Optional (Apple Silicon): memory vs stability.
-# - `float16` is usually required for large models
-# - if you get NaNs/black images, try `float32` (but it may require a lot more memory)
+export ABSTRACTVISION_DIFFUSERS_DEVICE=mps   
+# mps = macOS Apple Silicon; use cuda/cpu on other machines
+# Optional: override dtype (auto defaults to bf16 on MPS when supported).
+# - `bfloat16` is a good default on Apple Silicon for numerical stability
+# - `float16` can be faster, but some models can produce NaNs/black images
+# - `float32` is the most stable, but can require much more memory
+# export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=bfloat16
 # export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float16
 # export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32
 ```
@@ -69,7 +72,7 @@ Then:
 /backend diffusers runwayml/stable-diffusion-v1-5 mps
 /set width 512
 /set height 512
-/set steps 20
+/set steps 10
 /set guidance_scale 7
 /set seed 42
 /t2i "a cinematic photo of a red fox in snow" --open
@@ -93,17 +96,21 @@ Qwen Image models in the registry:
 Use the same Diffusers flow:
 
 ```text
-/backend diffusers Qwen/Qwen-Image-2512 mps float16
+/backend diffusers Qwen/Qwen-Image-2512 mps bfloat16
 /t2i "a poster with the word 'ABSTRACT' rendered perfectly in bold typography" --width 512 --height 512 --steps 10 --guidance-scale 2.5 --open
 ```
 
 Notes:
 - Qwen Image models are **large**.
-- Start with fp16 (otherwise you may run out of memory while loading):
-  - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float16` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps float16`)
-- If you get NaNs/black images in fp16, try fp32 (this can require **very** large peak memory during load):
+- For best results, prefer the model card’s recommended sizes (e.g. 1328x1328 for 1:1). For quick tests, 512x512 is fine.
+- On Apple Silicon (MPS), start with bf16:
+  - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=bfloat16` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps bfloat16`)
+- If you explicitly use fp16 and you get NaNs/black images, try fp32 (this can require **very** large peak memory during load):
   - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps float32`)
-- In AbstractVision, `--guidance-scale` is mapped to Qwen’s `true_cfg_scale` when using Qwen pipelines.
+- On Apple Silicon (MPS), AbstractVision upcasts the VAE to fp32 when using fp16 to avoid common “black image” issues.
+- Optional: enable a one-time automatic fp32 retry on all-black output (can increase peak memory a lot):
+  - `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=1`
+- In AbstractVision, `--guidance-scale` is mapped to Qwen’s `true_cfg_scale` when using Qwen pipelines (CFG). If you didn’t provide a `negative_prompt`, AbstractVision passes an empty one so CFG is actually enabled.
 
 Tip: keep `guidance_scale` relatively low for some modern DiT models.
 
@@ -116,11 +123,17 @@ FLUX 2 models in the registry:
 - `black-forest-labs/FLUX.2-klein-4B` (Apache-2.0, not gated)
 - `black-forest-labs/FLUX.2-dev` (non-commercial license, gated on Hugging Face)
 
-Example (open klein 4B):
+Some FLUX 2 repos reference a newer Diffusers pipeline class (`Flux2KleinPipeline`) than the latest released Diffusers. AbstractVision automatically falls back to a compatible loader (`Flux2Pipeline`) so `FLUX.2-klein-4B` works on released Diffusers (0.36+). Sanity check:
+
+```bash
+python -c "import diffusers; print(diffusers.__version__)"
+```
+
+Example (open klein 4B; model card defaults are very low steps):
 
 ```text
 /backend diffusers black-forest-labs/FLUX.2-klein-4B mps
-/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 30 --guidance-scale 3.5 --open
+/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
 ```
 
 If you use gated models (like `FLUX.2-dev`), you typically must accept the model’s terms on Hugging Face and set `HF_TOKEN` in your environment.

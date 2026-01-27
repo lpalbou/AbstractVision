@@ -38,7 +38,7 @@ openai-compatible = []
 
 # Local generation via Diffusers (heavy deps; opt-in).
 huggingface = [
-  "diffusers>=0.0",
+  "diffusers>=0.36.0",
   "torch>=2.0",
   "transformers>=4.0",
   "accelerate>=0.0",
