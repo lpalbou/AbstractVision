@@ -192,8 +192,8 @@ class _ReplState:
 
     diffusers_device: str = _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "cpu") or "cpu"
     diffusers_torch_dtype: Optional[str] = _env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE")
-    diffusers_allow_download: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False)
-    diffusers_auto_retry_fp32: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", False)
+    diffusers_allow_download: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", True)
+    diffusers_auto_retry_fp32: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True)
 
     sdcpp_bin: str = _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli"
     sdcpp_model: Optional[str] = _env("ABSTRACTVISION_SDCPP_MODEL")
@@ -228,7 +228,7 @@ def _repl_help() -> str:
         "  /config                   Show current backend/store config\n"
         "  /backend openai <base_url> [api_key] [model_id]\n"
         "  /backend diffusers <model_id_or_path> [device] [torch_dtype]\n"
-        "                           (offline-by-default; set ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 to allow downloads)\n"
+        "                           (downloads enabled by default; set ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0 for cache-only)\n"
         "  /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]\n"
         "                           (Qwen Image: requires diffusion-model + vae + llm)\n"
         "  /cap-model <id|off>       Set capability-gating model id (from registry) or 'off'\n"

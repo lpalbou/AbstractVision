@@ -356,6 +356,24 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         self._py_init_kwargs: Optional[Dict[str, Any]] = None
         self._py_default_generate_kwargs: Optional[Dict[str, Any]] = None
 
+    def preload(self) -> None:
+        # Best-effort: in python-binding mode, construct the model eagerly.
+        mode = self._select_mode()
+        if mode == "python":
+            self._ensure_python_model()
+
+    def unload(self) -> None:
+        # Best-effort: drop python-binding model reference so native memory can be reclaimed.
+        self._py_model = None
+        self._py_init_kwargs = None
+        self._py_default_generate_kwargs = None
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+
     def get_capabilities(self) -> VisionBackendCapabilities:
         return VisionBackendCapabilities(
             supported_tasks=["text_to_image", "image_to_image"],

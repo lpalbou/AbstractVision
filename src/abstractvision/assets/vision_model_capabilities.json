@@ -124,6 +124,39 @@
         }
       }
     },
+    "runwayml/stable-diffusion-v1-5": {
+      "provider": "huggingface",
+      "license": "creativeml-openrail-m",
+      "notes": "Stable Diffusion 1.5 (Diffusers: StableDiffusionPipeline / StableDiffusionImg2ImgPipeline / StableDiffusionInpaintPipeline).",
+      "tasks": {
+        "text_to_image": {
+          "inputs": ["text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "negative_prompt": {"required": false},
+            "width": {"required": false},
+            "height": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        },
+        "image_to_image": {
+          "inputs": ["image", "text"],
+          "outputs": ["image"],
+          "params": {
+            "prompt": {"required": true},
+            "image": {"required": true},
+            "mask": {"required": false},
+            "negative_prompt": {"required": false},
+            "steps": {"required": false},
+            "guidance_scale": {"required": false},
+            "seed": {"required": false}
+          }
+        }
+      }
+    },
     "stabilityai/stable-diffusion-3.5-large-turbo": {
       "provider": "huggingface",
       "license": "stabilityai-ai-community",

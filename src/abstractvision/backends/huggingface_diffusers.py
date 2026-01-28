@@ -181,17 +181,18 @@ def _maybe_patch_transformers_clip_position_ids() -> None:
 
 @contextmanager
 def _hf_offline_env(enabled: bool):
-    """Force Hugging Face libraries into offline mode (no network calls)."""
-    if not enabled:
-        yield
-        return
+    """Control Hugging Face offline mode within a scope.
+
+    When `enabled=True`, we force offline mode (no network calls).
+    When `enabled=False`, we force online mode (overrides e.g. HF_HUB_OFFLINE=1 in the user's shell).
+    """
 
     # These are respected by huggingface_hub / transformers / diffusers.
     # We scope them to the load/call to avoid surprising other parts of the process.
     vars_to_set = {
-        "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1",
-        "DIFFUSERS_OFFLINE": "1",
+        "HF_HUB_OFFLINE": "1" if enabled else "0",
+        "TRANSFORMERS_OFFLINE": "1" if enabled else "0",
+        "DIFFUSERS_OFFLINE": "1" if enabled else "0",
         # Avoid any telemetry even in edge cases.
         "HF_HUB_DISABLE_TELEMETRY": "1",
     }
@@ -230,21 +231,10 @@ def _default_torch_dtype_for_device(torch: Any, device: str) -> Any:
     if d.startswith("cuda"):
         return torch.float16
     if d == "mps" or d.startswith("mps:"):
-        # Prefer bf16 on MPS when available: better numerical range than fp16 (helps large DiT models like Qwen).
-        try:
-            backends = getattr(torch, "backends", None)
-            mps = getattr(backends, "mps", None) if backends is not None else None
-            is_available = getattr(mps, "is_available", None) if mps is not None else None
-            ok = bool(is_available()) if callable(is_available) else False
-            if ok and getattr(torch, "bfloat16", None) is not None:
-                zeros = getattr(torch, "zeros", None)
-                if callable(zeros):
-                    t = zeros((1,), device="mps", dtype=torch.bfloat16)
-                    del t
-                    return torch.bfloat16
-        except Exception:
-            pass
-        # Fallback: fp16 is widely supported and typically fast.
+        # Default to fp16 on Apple Silicon for broad model compatibility.
+        # (Some pipelines mix dtypes when using bf16, which can crash with matmul dtype mismatches.)
+        #
+        # You can still force bf16 explicitly via `torch_dtype=bfloat16`.
         return torch.float16
     return None
 
@@ -286,6 +276,16 @@ def _call_param_names(fn: Any) -> Optional[set[str]]:
         return {str(k) for k in sig.parameters.keys() if str(k) != "self"}
     except Exception:
         return None
+
+
+def _looks_like_dtype_mismatch_error(e: Exception) -> bool:
+    msg = str(e or "")
+    m = msg.lower()
+    return (
+        "must have the same dtype" in m
+        or ("input type" in m and "bias type" in m and "should be the same" in m)
+        or ("expected scalar type" in m and "but found" in m)
+    )
 
 
 def _maybe_upcast_vae_for_mps(torch: Any, pipe: Any, device: str) -> None:
@@ -335,6 +335,7 @@ def _maybe_cast_pipe_modules_to_dtype(pipe: Any, *, dtype: Any) -> None:
 
     # Best-effort: different pipelines use different component names (unet vs transformer, etc).
     for attr in (
+        "model",
         "transformer",
         "unet",
         "text_encoder",
@@ -350,6 +351,13 @@ def _maybe_cast_pipe_modules_to_dtype(pipe: Any, *, dtype: Any) -> None:
     if vae is not None:
         _to(getattr(vae, "encoder", None))
         _to(getattr(vae, "decoder", None))
+
+    # As a fallback, cast all registered components when available (covers pipelines that don't follow
+    # the common attribute naming patterns above).
+    comps = getattr(pipe, "components", None)
+    if isinstance(comps, dict):
+        for v in comps.values():
+            _to(v)
 
 
 def _maybe_cast_vae_inputs_to_dtype(vae: Any) -> None:
@@ -389,16 +397,15 @@ class HuggingFaceDiffusersBackendConfig:
     """Config for a local Diffusers backend.
 
     Notes:
-    - Offline-by-default (no network calls / no auto-downloads).
-    - To allow downloads (e.g. for quick-start / fresh environments), set `allow_download=True`.
-      For AbstractCore Server, this is exposed as `ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=1`.
+    - Downloads are enabled by default so a fresh environment can work after a `pip install`.
+    - To force offline mode (no network calls / cache-only), set `allow_download=False`.
     """
 
     model_id: str
     device: str = "cpu"  # "cpu" | "cuda" | "mps" | ...
     torch_dtype: Optional[str] = None  # "float16" | "bfloat16" | "float32" | None
-    allow_download: bool = False
-    auto_retry_fp32: bool = False
+    allow_download: bool = True
+    auto_retry_fp32: bool = True
     cache_dir: Optional[str] = None
     revision: Optional[str] = None
     variant: Optional[str] = None
@@ -416,6 +423,63 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self._fused_lora_signature: Dict[str, Optional[str]] = {}
         self._rapid_transformer_key: Optional[str] = None
         self._rapid_transformer: Any = None
+
+    def preload(self) -> None:
+        # Best-effort: preload the most common pipeline.
+        self._get_or_load_pipeline("t2i")
+
+    def unload(self) -> None:
+        # Best-effort: release pipelines and GPU cache.
+        pipes = list(self._pipelines.values())
+        self._pipelines.clear()
+        self._call_params.clear()
+        self._fused_lora_signature.clear()
+        self._rapid_transformer_key = None
+        self._rapid_transformer = None
+
+        # Drop references and aggressively collect.
+        try:
+            for p in pipes:
+                try:
+                    # Try to free adapter weights.
+                    unfuse = getattr(p, "unfuse_lora", None)
+                    if callable(unfuse):
+                        unfuse()
+                except Exception:
+                    pass
+                try:
+                    unload = getattr(p, "unload_lora_weights", None)
+                    if callable(unload):
+                        unload()
+                except Exception:
+                    pass
+        finally:
+            pipes = []
+
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+
+        try:
+            torch = _lazy_import_torch()
+            cuda = getattr(torch, "cuda", None)
+            if cuda is not None and callable(getattr(cuda, "is_available", None)) and cuda.is_available():
+                empty = getattr(cuda, "empty_cache", None)
+                if callable(empty):
+                    empty()
+                ipc_collect = getattr(cuda, "ipc_collect", None)
+                if callable(ipc_collect):
+                    ipc_collect()
+
+            mps = getattr(torch, "mps", None)
+            empty_mps = getattr(mps, "empty_cache", None) if mps is not None else None
+            if callable(empty_mps):
+                empty_mps()
+        except Exception:
+            pass
 
     def _lora_signature(self, loras: List[Dict[str, Any]]) -> Optional[str]:
         if not loras:
@@ -578,7 +642,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         generic: if a pipeline has a `.transformer` module and diffusers provides a compatible transformer
         class, we can hot-swap it.
 
-        Offline-by-default: use HF offline env + local_files_only unless allow_download=True.
+        Downloads are enabled by default; set allow_download=False for cache-only/offline mode.
         """
 
         if not isinstance(extra, dict) or not extra:
@@ -919,6 +983,50 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         )
         return out, had_invalid_cast
 
+    def _maybe_retry_on_dtype_mismatch(self, *, kind: str, pipe: Any, kwargs: Dict[str, Any], error: Exception) -> Optional[Any]:
+        if not bool(getattr(self._cfg, "auto_retry_fp32", False)):
+            return None
+        if not _looks_like_dtype_mismatch_error(error):
+            return None
+
+        torch = _lazy_import_torch()
+        d = str(self._cfg.device or "").strip().lower()
+        if not (d == "mps" or d.startswith("mps:")):
+            return None
+
+        current_dtype = getattr(pipe, "dtype", None)
+        if current_dtype is None:
+            current_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(
+                torch, self._cfg.device
+            )
+
+        candidates: list[Any] = []
+        if current_dtype == getattr(torch, "bfloat16", object()):
+            candidates.append(torch.float16)
+        if current_dtype != getattr(torch, "float32", object()):
+            candidates.append(torch.float32)
+
+        for target in candidates:
+            try:
+                pipe2 = pipe.to(device=str(self._cfg.device), dtype=target)
+            except Exception:
+                try:
+                    pipe2 = pipe.to(dtype=target)
+                    pipe2 = pipe2.to(str(self._cfg.device))
+                except Exception:
+                    continue
+
+            _maybe_upcast_vae_for_mps(torch, pipe2, self._cfg.device)
+            self._pipelines[kind] = pipe2
+            self._call_params[kind] = _call_param_names(getattr(pipe2, "__call__", None))
+
+            try:
+                out2, _had_invalid_cast2 = self._pipe_call(pipe2, kwargs)
+                return out2
+            except Exception:
+                continue
+        return None
+
     def _maybe_retry_fp32_on_invalid_output(self, *, kind: str, pipe: Any, kwargs: Dict[str, Any]) -> Optional[Any]:
         if not bool(getattr(self._cfg, "auto_retry_fp32", False)):
             return None
@@ -996,7 +1104,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if isinstance(request.extra, dict) and request.extra:
             kwargs.update(dict(request.extra))
 
-        out, had_invalid_cast = self._pipe_call(pipe, kwargs)
+        try:
+            out, had_invalid_cast = self._pipe_call(pipe, kwargs)
+        except Exception as e:
+            out2 = self._maybe_retry_on_dtype_mismatch(kind="t2i", pipe=pipe, kwargs=kwargs, error=e)
+            if out2 is None:
+                raise
+            out, had_invalid_cast = out2, False
         retried_fp32 = False
         images = getattr(out, "images", None)
         if not isinstance(images, list) or not images:
@@ -1015,7 +1129,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 + (
                     "An automatic fp32 retry was attempted and it still produced an all-black image. "
                     if retried_fp32
-                    else "Try setting torch_dtype=bfloat16 (recommended on MPS) or torch_dtype=float32. "
+                    else "Try setting torch_dtype=float32. "
                 )
                 + "Try increasing steps, adjusting guidance_scale, or use the stable-diffusion.cpp backend."
             )
@@ -1085,7 +1199,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if isinstance(request.extra, dict) and request.extra:
             kwargs.update(dict(request.extra))
 
-        out, had_invalid_cast = self._pipe_call(pipe, kwargs)
+        try:
+            out, had_invalid_cast = self._pipe_call(pipe, kwargs)
+        except Exception as e:
+            out2 = self._maybe_retry_on_dtype_mismatch(kind=kind, pipe=pipe, kwargs=kwargs, error=e)
+            if out2 is None:
+                raise
+            out, had_invalid_cast = out2, False
         retried_fp32 = False
         images = getattr(out, "images", None)
         if not isinstance(images, list) or not images:

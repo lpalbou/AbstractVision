@@ -218,7 +218,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         # Pipeline load args.
         self.assertTrue(fake_t2i_cls.from_pretrained.called)
         _, kwargs = fake_t2i_cls.from_pretrained.call_args
-        self.assertEqual(kwargs.get("local_files_only"), True)
+        self.assertEqual(kwargs.get("local_files_only"), False)
         self.assertEqual(kwargs.get("use_safetensors"), True)
 
         # Pipeline call kwargs.
@@ -264,7 +264,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
                 return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
             ):
                 backend = HuggingFaceDiffusersVisionBackend(
-                    config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
+                    config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)
                 )
                 backend.generate_image(ImageGenerationRequest(prompt="hello"))
             self.assertIsNone(os.environ.get("HF_HUB_OFFLINE"))
@@ -364,7 +364,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         # Ensure LoRA loading sees offline env vars.
         def _load_lora_weights(source: str, adapter_name: str = None, **kwargs):
-            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
+            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "0")
             fake_pipe.lora_loads.append({"source": source, "adapter_name": adapter_name, "kwargs": dict(kwargs)})
 
         fake_pipe.load_lora_weights = _load_lora_weights
@@ -418,8 +418,8 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         tr = _FakeTransformer()
 
         def _from_pretrained(*_args, **_kwargs):
-            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
-            self.assertTrue(_kwargs.get("local_files_only"))
+            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "0")
+            self.assertFalse(_kwargs.get("local_files_only"))
             return tr
 
         fake_diffusion_pipeline_cls = MagicMock()

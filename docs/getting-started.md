@@ -51,38 +51,29 @@ pip install -U -e /path/to/diffusers
 Or, from a repo checkout (run in the `abstractvision/` repo root):
 
 ```bash
-pip install -e ".[huggingface]"
-```
-
-This installs optional local image generation support (Diffusers). If you only want the lightweight core + OpenAI-compatible HTTP backend, you can do:
-
-```bash
-pip install abstractvision
-```
-
-Or, from a repo checkout:
-
-```bash
 pip install -e .
 ```
 
+No extras are required: AbstractVision is batteries-included (Diffusers + stable-diffusion.cpp python bindings), so a fresh environment should only need model weights.
+
 ---
 
-## 1) First image (Diffusers, offline)
+## 1) First image (Diffusers)
 
-AbstractVision’s Diffusers backend is **offline-only** by design:
-- no network calls
-- no automatic downloads
+By default, AbstractVision allows downloading models into your Hugging Face cache.
+To force cache-only/offline mode, set:
 
-Pre-download models into your Hugging Face cache (for example via `huggingface-cli download ...`) or use a local path.
+```bash
+export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0
+```
 
 ```bash
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_DIFFUSERS_DEVICE=mps
 # mps = macOS Apple Silicon; use cuda/cpu on other machines
-# Optional: override dtype (auto defaults to bf16 on MPS when supported).
-# - `bfloat16` is a good default on Apple Silicon for numerical stability
-# - `float16` can be faster, but some models can produce NaNs/black images
+# Optional: override dtype (auto defaults to float16 on MPS for broad compatibility).
+# - `float16` is usually the best speed/compatibility tradeoff on Apple Silicon
+# - `bfloat16` can work for some models, but can trigger dtype-mismatch errors in some pipelines
 # - `float32` is the most stable, but can require much more memory
 # export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=bfloat16
 # export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float16
@@ -128,44 +119,48 @@ Qwen Image models in the registry:
 Use the same Diffusers flow:
 
 ```text
-/backend diffusers Qwen/Qwen-Image-2512 mps bfloat16
+/backend diffusers Qwen/Qwen-Image-2512 mps float16
 /t2i "a poster with the word 'ABSTRACT' rendered perfectly in bold typography" --width 512 --height 512 --steps 10 --guidance-scale 2.5 --open
 ```
 
 Notes:
 - Qwen Image models are **large**.
 - For best results, prefer the model card’s recommended sizes (e.g. 1328x1328 for 1:1). For quick tests, 512x512 is fine.
-- On Apple Silicon (MPS), start with bf16:
-  - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=bfloat16` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps bfloat16`)
-- If you explicitly use fp16 and you get NaNs/black images, try fp32 (this can require **very** large peak memory during load):
+- On Apple Silicon (MPS), start with fp16 (default; best compatibility):
+  - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float16` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps float16`)
+- If you get NaNs/black images, try fp32 (this can require **very** large peak memory during load):
   - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps float32`)
 - On Apple Silicon (MPS), AbstractVision upcasts the VAE to fp32 when using fp16 to avoid common “black image” issues.
-- Optional: enable a one-time automatic fp32 retry on all-black output (can increase peak memory a lot):
-  - `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=1`
+- Automatic fp32 retry on all-black output is enabled by default on MPS (can increase peak memory):
+  - disable with `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=0`
 - In AbstractVision, `--guidance-scale` is mapped to Qwen’s `true_cfg_scale` when using Qwen pipelines (CFG). If you didn’t provide a `negative_prompt`, AbstractVision passes an empty one so CFG is actually enabled.
 
 Tip: keep `guidance_scale` relatively low for some modern DiT models.
 
 ---
 
-## 2.1) LoRA + Rapid-AIO (Diffusers, offline)
+## 2.1) LoRA + Rapid-AIO (Diffusers)
 
 AbstractVision can apply LoRA adapters (Diffusers adapter system) and optionally swap in a distilled “Rapid-AIO”
 transformer for faster Qwen Image Edit inference.
 
-These features are **offline-only** as well: LoRA repos / Rapid-AIO repos must already exist in your local HF cache (or be a local path).
+These features can download from Hugging Face by default (same as model downloads). Use cache-only mode if needed:
+
+```bash
+export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0
+```
 
 LoRA example (REPL; note: `loras_json` is forwarded via `request.extra`):
 
 ```text
-/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
+/backend diffusers Qwen/Qwen-Image-Edit-2511 mps float16
 /t2i "a cinematic photo of a red fox in snow" --steps 8 --guidance-scale 1 --loras_json '[{"source":"lightx2v/Qwen-Image-Edit-2511-Lightning","scale":1.0}]' --open
 ```
 
 Rapid-AIO example (distilled transformer override; Qwen Image Edit):
 
 ```text
-/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
+/backend diffusers Qwen/Qwen-Image-Edit-2511 mps float16
 /t2i "a cinematic photo of a red fox in snow" --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
 ```
 
@@ -194,7 +189,7 @@ Notes:
 Recommended offline-friendly example (`FLUX.2-klein-4B`, not gated):
 
 ```text
-/backend diffusers black-forest-labs/FLUX.2-klein-4B mps bfloat16
+/backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
 /t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 10 --guidance-scale 1.0 --seed 0 --open
 ```
 
@@ -293,8 +288,6 @@ From PyPI:
 pip install "abstractcore[server]"
 ```
 
-Make sure you're on an AbstractCore version that includes the vision endpoints (`/v1/images/*`).
-
 If you're installing **AbstractVision from a repo checkout**, do:
 
 ```bash
@@ -302,33 +295,26 @@ pip install "abstractcore[server]"
 pip install -e .
 ```
 
-(`abstractcore[server]` installs FastAPI + Uvicorn + multipart support required for `/v1/images/edits`.)
+(`abstractcore[server]` installs FastAPI + Uvicorn + python-multipart (required for `/v1/images/edits`) and AbstractVision (required for `/v1/images/*`).)
 
-### 6.1 Start AbstractCore with Diffusers (Stable Diffusion 1.5)
+### 6.1 Start AbstractCore (auto backend; Stable Diffusion 1.5)
 
-This path runs standard Hugging Face Diffusers models (like SD1.5). It does **not** require `sd-cli`, but it does require the Diffusers extra:
-
-```bash
-pip install "abstractcore[server]"
-```
-
-If you're installing **AbstractVision from a repo checkout**, do:
+By default, AbstractCore uses `ABSTRACTCORE_VISION_BACKEND=auto` (you can leave it unset). The playground sends a `model` per request, so you usually don't need to set `ABSTRACTCORE_VISION_MODEL_ID`.
 
 ```bash
 pip install "abstractcore[server]"
-pip install -e ".[huggingface]"
 ```
 
 Then:
 
 ```bash
-export ABSTRACTCORE_VISION_BACKEND=diffusers
-export ABSTRACTCORE_VISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTCORE_VISION_DEVICE=mps   # or: cpu / cuda
 # Optional: disable downloads (default allows downloads).
 # export ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=0
 python -m uvicorn abstractcore.server.app:app --port 8000
 ```
+
+In the playground, set Model to `runwayml/stable-diffusion-v1-5`.
 
 ### 6.2 Start AbstractCore with `sdcpp` (GGUF / stable-diffusion.cpp)
 
@@ -339,7 +325,6 @@ This path supports two runtimes:
 
 ```bash
 pip install "abstractcore[server]"
-export ABSTRACTCORE_VISION_BACKEND=sdcpp
 export ABSTRACTCORE_VISION_SDCPP_BIN=sd-cli   # optional; only used when the executable exists
 export ABSTRACTCORE_VISION_SDCPP_DIFFUSION_MODEL=/path/to/qwen-image-2512-Q4_K_M.gguf
 export ABSTRACTCORE_VISION_SDCPP_VAE=$PWD/qwen_image_vae.safetensors
@@ -347,6 +332,8 @@ export ABSTRACTCORE_VISION_SDCPP_LLM=/path/to/Qwen2.5-VL-7B-Instruct-*.gguf
 export ABSTRACTCORE_VISION_SDCPP_EXTRA_ARGS="--offload-to-cpu --diffusion-fa --sampling-method euler --flow-shift 3"
 python -m uvicorn abstractcore.server.app:app --port 8000
 ```
+
+Tip: leave `ABSTRACTCORE_VISION_BACKEND` unset. In `auto` mode, the server routes Diffusers model ids like `runwayml/stable-diffusion-v1-5` to Diffusers, and local `.gguf` paths to stable-diffusion.cpp.
 
 If you're installing **AbstractVision from a repo checkout**, do:
 

@@ -21,6 +21,14 @@ class VisionBackend(ABC):
         """Return backend-level capability constraints (optional)."""
         return None
 
+    def preload(self) -> None:
+        """Best-effort: load model weights into memory for faster first inference."""
+        return None
+
+    def unload(self) -> None:
+        """Best-effort: release model weights from memory."""
+        return None
+
     @abstractmethod
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset: ...
 

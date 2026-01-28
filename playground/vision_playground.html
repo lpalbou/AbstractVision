@@ -86,6 +86,23 @@
         margin-top: 12px;
         align-items: center;
       }
+      .hstack {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .hstack > * {
+        flex: 1 1 auto;
+      }
+      .hstack > button {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+      progress {
+        width: 100%;
+        height: 10px;
+        margin-top: 8px;
+      }
       button {
         appearance: none;
         border: 1px solid var(--border);
@@ -155,12 +172,17 @@
         <div class="card">
           <h2 style="margin: 0 0 8px; font-size: 16px">Text → Image</h2>
 
-	          <label for="t2iPrompt">Prompt</label>
-	          <textarea id="t2iPrompt">a cinematic photo of a red fox in snow, 35mm, high detail</textarea>
-	
-	          <label for="t2iModel">Model (optional)</label>
-	          <input id="t2iModel" type="text" value="" placeholder="e.g. runwayml/stable-diffusion-v1-5" />
-	
+          <label for="t2iPrompt">Prompt</label>
+          <textarea id="t2iPrompt">a cinematic photo of a red fox in snow, 35mm, high detail</textarea>
+
+	          <label for="modelSelect">Model (cached)</label>
+            <div class="hstack">
+              <select id="modelSelect"></select>
+              <button class="secondary" id="modelUnloadBtn" disabled>Unload</button>
+            </div>
+            <progress id="modelLoadProgress" style="display: none"></progress>
+            <div id="modelLoadStatus" class="status"></div>
+
 	          <label for="t2iNegative">Negative prompt (optional)</label>
 	          <input id="t2iNegative" type="text" value="" />
 
@@ -211,9 +233,7 @@
 
 	          <label for="i2iPrompt">Prompt</label>
 	          <textarea id="i2iPrompt">make it watercolor</textarea>
-	
-	          <label for="i2iModel">Model (optional)</label>
-	          <input id="i2iModel" type="text" value="" placeholder="e.g. runwayml/stable-diffusion-v1-5" />
+            <div class="status" style="margin-top: 6px">Uses the loaded model above.</div>
 
           <label for="i2iImage">Input image</label>
           <input id="i2iImage" type="file" accept="image/*" />
@@ -334,10 +354,144 @@
           const url = joinUrl(base, "/v1/models");
           await fetchJson(url, { method: "GET" });
           setStatus(status, "ok", "ok");
+          await refreshCachedModels();
         } catch (e) {
           setStatus(status, "err", String(e.message || e));
         }
       });
+
+      let activeModelId = null;
+      let modelOpInFlight = false;
+      let inferenceInFlight = 0;
+
+      function updateModelControls() {
+        const busy = modelOpInFlight || inferenceInFlight > 0;
+        $("modelSelect").disabled = busy;
+        $("modelUnloadBtn").disabled = busy || !activeModelId;
+      }
+
+      function setModelUiBusy(busy, msg) {
+        modelOpInFlight = !!busy;
+        updateModelControls();
+        $("t2iBtn").disabled = busy;
+        $("i2iBtn").disabled = busy;
+
+        const p = $("modelLoadProgress");
+        if (busy) {
+          p.removeAttribute("value"); // indeterminate
+          p.style.display = "block";
+        } else {
+          p.style.display = "none";
+        }
+        if (msg !== undefined) setStatus($("modelLoadStatus"), "", msg);
+      }
+
+      async function refreshCachedModels() {
+        const base = $("baseUrl").value;
+        const select = $("modelSelect");
+
+        // Keep current selection if possible.
+        const prev = select.value;
+        select.innerHTML = "";
+
+        const opt0 = document.createElement("option");
+        opt0.value = "";
+        opt0.textContent = "— select a cached model —";
+        select.appendChild(opt0);
+
+        try {
+          const data = await fetchJson(joinUrl(base, "/v1/vision/models"), { method: "GET" });
+          const models = (data && data.models) || [];
+
+          for (const m of models) {
+            const opt = document.createElement("option");
+            opt.value = m.id;
+            const sources = (m.cached_in || []).join(", ");
+            opt.textContent = sources ? `${m.id}  (${sources})` : m.id;
+            select.appendChild(opt);
+          }
+
+          const active = data && data.active;
+          activeModelId = active && active.model_id ? String(active.model_id) : null;
+
+          if (activeModelId) {
+            select.value = activeModelId;
+            setStatus($("modelLoadStatus"), "ok", `loaded: ${activeModelId}`);
+          } else if (prev) {
+            select.value = prev;
+            setStatus($("modelLoadStatus"), "", "");
+          } else {
+            setStatus($("modelLoadStatus"), "", models.length ? "" : "No cached registry models found.");
+          }
+          updateModelControls();
+        } catch (e) {
+          activeModelId = null;
+          updateModelControls();
+          setStatus($("modelLoadStatus"), "err", String(e.message || e));
+        }
+      }
+
+      async function loadSelectedModel(modelId) {
+        const base = $("baseUrl").value;
+        if (!modelId) return;
+        setModelUiBusy(true, `loading ${modelId}…`);
+        try {
+          await fetchJson(joinUrl(base, "/v1/vision/model/load"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model_id: modelId }),
+          });
+          activeModelId = modelId;
+          setStatus($("modelLoadStatus"), "ok", `loaded: ${modelId}`);
+        } catch (e) {
+          activeModelId = null;
+          setStatus($("modelLoadStatus"), "err", String(e.message || e));
+          // Reset selection to empty on failure.
+          $("modelSelect").value = "";
+        } finally {
+          setModelUiBusy(false, $("modelLoadStatus").textContent);
+          updateModelControls();
+        }
+      }
+
+      async function unloadModel() {
+        const base = $("baseUrl").value;
+        setModelUiBusy(true, "unloading…");
+        try {
+          await fetchJson(joinUrl(base, "/v1/vision/model/unload"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          activeModelId = null;
+          $("modelSelect").value = "";
+          setStatus($("modelLoadStatus"), "ok", "unloaded");
+        } catch (e) {
+          setStatus($("modelLoadStatus"), "err", String(e.message || e));
+        } finally {
+          setModelUiBusy(false, $("modelLoadStatus").textContent);
+          updateModelControls();
+        }
+      }
+
+      $("modelSelect").addEventListener("change", async () => {
+        if (modelOpInFlight) return;
+        const modelId = $("modelSelect").value;
+        if (!modelId) {
+          if (activeModelId) await unloadModel();
+          return;
+        }
+        if (activeModelId && modelId === activeModelId) return;
+        await loadSelectedModel(modelId);
+      });
+
+      $("modelUnloadBtn").addEventListener("click", async () => {
+        if (modelOpInFlight) return;
+        await unloadModel();
+      });
+
+      // Initial load.
+      refreshCachedModels();
 
       $("t2iBtn").addEventListener("click", async () => {
         const btn = $("t2iBtn");
@@ -347,18 +501,21 @@
         const dl = $("t2iDownload");
 
         btn.disabled = true;
+        inferenceInFlight += 1;
+        updateModelControls();
         setStatus(status, "", "running…");
         log.textContent = "";
         img.removeAttribute("src");
         dl.href = "#";
 
         try {
+          if (!activeModelId) throw new Error("select a model (load it into memory) first");
+
           const base = $("baseUrl").value;
           const url = joinUrl(base, "/v1/images/generations");
 
 	          const extra = parseJsonObject($("t2iExtra").value);
 	          const payload = {
-	            model: $("t2iModel").value || undefined,
 	            prompt: $("t2iPrompt").value,
 	            response_format: "b64_json",
 	            negative_prompt: $("t2iNegative").value || undefined,
@@ -390,7 +547,9 @@
           setStatus(status, "err", String(e.message || e));
           log.textContent = String(e && e.stack ? e.stack : e);
         } finally {
-          btn.disabled = false;
+          btn.disabled = modelOpInFlight;
+          inferenceInFlight = Math.max(0, inferenceInFlight - 1);
+          updateModelControls();
         }
       });
 
@@ -402,12 +561,16 @@
         const dl = $("i2iDownload");
 
         btn.disabled = true;
+        inferenceInFlight += 1;
+        updateModelControls();
         setStatus(status, "", "running…");
         log.textContent = "";
         img.removeAttribute("src");
         dl.href = "#";
 
         try {
+          if (!activeModelId) throw new Error("select a model (load it into memory) first");
+
           const base = $("baseUrl").value;
           const url = joinUrl(base, "/v1/images/edits");
 
@@ -421,7 +584,6 @@
 	          fd.set("prompt", $("i2iPrompt").value);
 	          fd.set("image", imageFile, imageFile.name || "image.png");
 	          if (maskFile) fd.set("mask", maskFile, maskFile.name || "mask.png");
-	          if ($("i2iModel").value) fd.set("model", $("i2iModel").value);
 	          if ($("i2iNegative").value) fd.set("negative_prompt", $("i2iNegative").value);
 	          if ($("i2iSteps").value) fd.set("steps", $("i2iSteps").value);
 	          if ($("i2iGuidance").value) fd.set("guidance_scale", $("i2iGuidance").value);
@@ -444,7 +606,9 @@
           setStatus(status, "err", String(e.message || e));
           log.textContent = String(e && e.stack ? e.stack : e);
         } finally {
-          btn.disabled = false;
+          btn.disabled = modelOpInFlight;
+          inferenceInFlight = Math.max(0, inferenceInFlight - 1);
+          updateModelControls();
         }
       });
     </script>

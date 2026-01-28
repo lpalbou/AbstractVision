@@ -31,6 +31,14 @@ dependencies = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  # Needed by T5 tokenizers used in SD3/FLUX and some other diffusion pipelines.
+  "sentencepiece>=0.1.99",
+  # Some HF tokenizers/pipelines require protobuf at runtime.
+  "protobuf>=3.20.0",
+  # Used by some modern diffusion architectures.
+  "einops>=0.7.0",
+  # LoRA adapter support in Diffusers.
+  "peft>=0.10.0",
   "Pillow>=9.0",
   "stable-diffusion-cpp-python>=0.4.2",
 ]

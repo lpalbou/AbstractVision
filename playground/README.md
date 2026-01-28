@@ -29,8 +29,6 @@ The image endpoints return `501` until you configure a backend (see examples bel
 
 ```bash
 pip install "abstractcore[server]"
-export ABSTRACTCORE_VISION_BACKEND=diffusers
-export ABSTRACTCORE_VISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTCORE_VISION_DEVICE=mps   # or: cpu / cuda
 # Optional: disable downloads (default allows downloads).
 # export ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=0
@@ -51,7 +49,8 @@ Open:
 - `http://localhost:8080/vision_playground.html`
 
 Tip:
-- The UI has an optional **Model** field for both endpoints; if you leave it empty, the server uses your env defaults.
+- The UI lists registry models that are already present in your local caches (Hugging Face hub + LM Studio).
+- Selecting a model loads it into memory and enables an **Unload** button (this frees memory before loading another model).
 
 ## 3) Configure Qwen-Image-2512 GGUF (stable-diffusion.cpp)
 
