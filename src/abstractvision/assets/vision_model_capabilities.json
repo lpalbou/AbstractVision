@@ -61,7 +61,7 @@
     "black-forest-labs/FLUX.2-klein-4B": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Supports generation + editing pipelines.",
+      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Requires Diffusers from source (diffusers@main) today; runtime stays offline-only. Supports generation + editing pipelines.",
       "tasks": {
         "text_to_image": {
           "inputs": ["text"],
@@ -207,7 +207,7 @@
     "zai-org/GLM-Image": {
       "provider": "huggingface",
       "license": "unknown",
-      "notes": "General image model family (generation + edit in some pipelines).",
+      "notes": "General image model family (generation + edit in some pipelines). Requires Diffusers from source (diffusers@main) today; runtime stays offline-only.",
       "tasks": {
         "text_to_image": {
           "inputs": ["text"],

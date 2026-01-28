@@ -92,7 +92,7 @@ Use the seed model set in Task 003 as the initial coverage target.
   - `HuggingFaceDiffusersVisionBackend` in `abstractvision/src/abstractvision/backends/huggingface_diffusers.py`
   - supports `text_to_image` and `image_to_image` (mask triggers inpainting pipeline)
   - keeps base install import-safe by using lazy imports for `diffusers`, `torch`, `PIL`
-  - defaults to **no implicit downloads** (`allow_download=False` → `local_files_only=True`)
+  - offline-only (no network calls; `local_files_only=True`)
 - Updated the interactive REPL to support selecting this backend:
   - `/backend diffusers <model_id_or_path> [device]`
 - Added unit tests that stub the diffusers loaders so no real models are required.

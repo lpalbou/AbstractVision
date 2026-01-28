@@ -21,14 +21,40 @@ class _FakePipeline:
         self._image = image
         self.to_calls = []
         self.calls = []
+        self.lora_loads = []
+        self.adapters = None
+        self.fused = 0
+        self.unfused = 0
+        self.unloaded = 0
+        self.registered = {}
 
     def to(self, device):
         self.to_calls.append(device)
         return self
 
+    def register_modules(self, **kwargs):
+        self.registered.update(kwargs)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
     def __call__(self, **kwargs):
         self.calls.append(kwargs)
         return _FakeDiffusersOutput(self._image)
+
+    def load_lora_weights(self, source: str, adapter_name: str = None, **kwargs):
+        self.lora_loads.append({"source": source, "adapter_name": adapter_name, "kwargs": dict(kwargs)})
+
+    def set_adapters(self, names, adapter_weights=None):
+        self.adapters = {"names": list(names), "weights": list(adapter_weights) if adapter_weights is not None else None}
+
+    def fuse_lora(self):
+        self.fused += 1
+
+    def unfuse_lora(self):
+        self.unfused += 1
+
+    def unload_lora_weights(self):
+        self.unloaded += 1
 
 
 def _png_bytes(color=(255, 0, 0)):
@@ -136,14 +162,13 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         fake_t2i_cls = MagicMock()
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
-        fake_flux2_cls = MagicMock()
 
         with patch(
             "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
         ), patch("abstractvision.backends.huggingface_diffusers._lazy_import_torch", return_value=_FakeTorch):
             backend = HuggingFaceDiffusersVisionBackend(
-                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="mps", allow_download=False)
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="mps")
             )
             with self.assertRaises(ValueError) as ctx:
                 backend.generate_image(ImageGenerationRequest(prompt="hello"))
@@ -165,14 +190,13 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
-        fake_flux2_cls = MagicMock()
 
         with patch(
             "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
         ):
             backend = HuggingFaceDiffusersVisionBackend(
-                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
             )
             asset = backend.generate_image(
                 ImageGenerationRequest(
@@ -230,7 +254,6 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         fake_t2i_cls.from_pretrained.side_effect = _from_pretrained
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
-        fake_flux2_cls = MagicMock()
 
         old_hf = os.environ.pop("HF_HUB_OFFLINE", None)
         old_tx = os.environ.pop("TRANSFORMERS_OFFLINE", None)
@@ -238,10 +261,10 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         try:
             with patch(
                 "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-                return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
+                return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
             ):
                 backend = HuggingFaceDiffusersVisionBackend(
-                    config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)
+                    config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
                 )
                 backend.generate_image(ImageGenerationRequest(prompt="hello"))
             self.assertIsNone(os.environ.get("HF_HUB_OFFLINE"))
@@ -271,14 +294,13 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
-        fake_flux2_cls = MagicMock()
 
         with patch(
             "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
         ):
             backend = HuggingFaceDiffusersVisionBackend(
-                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
             )
             with patch.object(backend, "_pipe_call", return_value=(_FakeDiffusersOutput(fake_image), True)), patch.object(
                 backend, "_maybe_retry_fp32_on_invalid_output"
@@ -308,14 +330,13 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
         fake_inpaint_cls.from_pretrained.return_value = fake_pipe
-        fake_flux2_cls = MagicMock()
 
         with patch(
             "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, fake_flux2_cls, "0.0.0"),
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
         ):
             backend = HuggingFaceDiffusersVisionBackend(
-                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", allow_download=False)
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
             )
             asset = backend.edit_image(ImageEditRequest(prompt="edit", image=input_img, mask=mask_img, steps=5, seed=1))
 
@@ -330,6 +351,95 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(call.get("prompt"), "edit")
         self.assertEqual(call.get("num_inference_steps"), 5)
         self.assertIn("generator", call)
+
+    def test_generate_image_applies_loras_from_loras_json_and_caches(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        # Ensure LoRA loading sees offline env vars.
+        def _load_lora_weights(source: str, adapter_name: str = None, **kwargs):
+            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
+            fake_pipe.lora_loads.append({"source": source, "adapter_name": adapter_name, "kwargs": dict(kwargs)})
+
+        fake_pipe.load_lora_weights = _load_lora_weights
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.return_value = fake_pipe
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
+            )
+            req = ImageGenerationRequest(
+                prompt="hello",
+                extra={
+                    "loras_json": '[{"source":"org/lora","scale":0.5},{"source":"org/lora2","weight_name":"x.safetensors"}]'
+                },
+            )
+            a1 = backend.generate_image(req)
+            a2 = backend.generate_image(req)
+
+        self.assertEqual(a1.mime_type, "image/png")
+        self.assertEqual(a1.metadata.get("lora_signature"), a2.metadata.get("lora_signature"))
+        # Should only load once because signature is cached.
+        self.assertEqual(len(fake_pipe.lora_loads), 2)
+        self.assertEqual(fake_pipe.fused, 1)
+
+    def test_generate_image_applies_rapid_aio_transformer_override(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        class _FakeTransformer:
+            def __init__(self):
+                self.to_calls = []
+
+            def to(self, *args, **kwargs):
+                self.to_calls.append((args, dict(kwargs)))
+                return self
+
+        tr = _FakeTransformer()
+
+        def _from_pretrained(*_args, **_kwargs):
+            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
+            self.assertTrue(_kwargs.get("local_files_only"))
+            return tr
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.return_value = fake_pipe
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ), patch("diffusers.models.QwenImageTransformer2DModel.from_pretrained", side_effect=_from_pretrained):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", torch_dtype="float32")
+            )
+            asset = backend.generate_image(ImageGenerationRequest(prompt="hello", extra={"rapid_aio_repo": "org/rapid"}))
+
+        self.assertEqual(asset.mime_type, "image/png")
+        self.assertEqual(asset.metadata.get("rapid_aio_repo"), "org/rapid")
+        self.assertIs(fake_pipe.registered.get("transformer"), tr)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,7 @@
 """abstractvision: Generative vision capabilities for abstractcore.ai.
 
-This package is intentionally lightweight: the default install only ships the
-stable API contract + capability registry. Heavy ML runtimes live behind
-optional backends/extras.
+The default install is batteries-included (Diffusers + stable-diffusion.cpp python bindings),
+so users generally only need to download model weights.
 """
 
 from .artifacts import LocalAssetStore, RuntimeArtifactStoreAdapter, is_artifact_ref

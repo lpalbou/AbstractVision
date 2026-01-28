@@ -23,7 +23,17 @@ classifiers = [
   "Topic :: Multimedia",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = []
+# Batteries-included by default: users should only need to download model weights.
+# NOTE: This is intentionally heavy (torch + diffusers + stable-diffusion.cpp bindings).
+dependencies = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "Pillow>=9.0",
+  "stable-diffusion-cpp-python>=0.4.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/abstractcore/abstractvision"
@@ -36,6 +46,11 @@ abstractvision = "abstractvision.cli:main"
 # OpenAI-compatible HTTP backend is stdlib-only today; keep the extra for forward compatibility.
 openai-compatible = []
 
+# Local generation via stable-diffusion.cpp python bindings (pip-installable).
+sdcpp = [
+  "stable-diffusion-cpp-python>=0.4.2",
+]
+
 # Local generation via Diffusers (heavy deps; opt-in).
 huggingface = [
   "diffusers>=0.36.0",
@@ -46,8 +61,30 @@ huggingface = [
   "Pillow>=9.0",
 ]
 
-# Tool integration module (optional import).
-abstractcore = ["abstractcore>=0.0"]
+# Convenience: installs both local backends (Diffusers + stable-diffusion.cpp python bindings).
+local = [
+  "stable-diffusion-cpp-python>=0.4.2",
+  "diffusers>=0.36.0",
+  "torch>=2.0",
+  "transformers>=4.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "Pillow>=9.0",
+]
+
+# Diffusers "main" is required for some newer pipelines (e.g. GLM-Image, FLUX.2-klein-4B) that are not yet available
+# in the latest PyPI release. Runtime remains offline-only; this is purely an install-time choice.
+huggingface-dev = [
+  "diffusers @ git+https://github.com/huggingface/diffusers@main",
+  "torch>=2.0",
+  "transformers>=5.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "Pillow>=9.0",
+]
+
+# Tool integration module (optional import). Kept optional to avoid circular deps with AbstractCore.
+abstractcore = ["abstractcore>=2.0.0"]
 
 [tool.setuptools]
 packages = [

@@ -3,9 +3,11 @@ from __future__ import annotations
 import io
 import inspect
 import os
+import hashlib
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..types import (
@@ -54,7 +56,6 @@ def _lazy_import_diffusers():
     AutoPipelineForText2Image = None
     AutoPipelineForImage2Image = None
     AutoPipelineForInpainting = None
-    Flux2Pipeline = None
     try:
         from diffusers import AutoPipelineForText2Image as _AutoPipelineForText2Image  # type: ignore
 
@@ -73,19 +74,12 @@ def _lazy_import_diffusers():
         AutoPipelineForInpainting = _AutoPipelineForInpainting
     except Exception:
         pass
-    try:
-        from diffusers import Flux2Pipeline as _Flux2Pipeline  # type: ignore
-
-        Flux2Pipeline = _Flux2Pipeline
-    except Exception:
-        pass
 
     return (
         DiffusionPipeline,
         AutoPipelineForText2Image,
         AutoPipelineForImage2Image,
         AutoPipelineForInpainting,
-        Flux2Pipeline,
         getattr(diffusers, "__version__", "unknown"),
     )
 
@@ -106,6 +100,85 @@ def _lazy_import_pil():
     return Image
 
 
+_TRANSFORMERS_CLIP_POSITION_IDS_PATCHED = False
+
+
+def _maybe_patch_transformers_clip_position_ids() -> None:
+    """Fix Transformers v5 noisy LOAD REPORTs for common CLIP checkpoints.
+
+    Transformers 5 logs a detailed load report when encountering unexpected keys like
+    `*.embeddings.position_ids` in older CLIP checkpoints (e.g. SD1.5 text encoder / safety checker).
+
+    The root cause is a small architecture/state-dict mismatch: those checkpoints include a persistent
+    `position_ids` buffer, while newer CLIP embedding classes may not. We re-add that buffer so the
+    checkpoint matches the instantiated model and no "UNEXPECTED" keys are reported.
+    """
+
+    global _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED
+    if _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED:
+        return
+
+    try:
+        import transformers  # type: ignore
+        import torch as _torch  # type: ignore
+    except Exception:
+        return
+
+    ver = str(getattr(transformers, "__version__", "0"))
+    try:
+        major = int(ver.split(".", 1)[0])
+    except Exception:
+        major = 0
+    if major < 5:
+        _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED = True
+        return
+
+    try:
+        from transformers.models.clip.modeling_clip import CLIPTextEmbeddings, CLIPVisionEmbeddings  # type: ignore
+    except Exception:
+        _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED = True
+        return
+
+    def _patch(cls: Any) -> None:
+        if bool(getattr(cls, "_abstractvision_position_ids_patched", False)):
+            return
+        orig_init = getattr(cls, "__init__", None)
+        if not callable(orig_init):
+            return
+
+        def __init__(self, *args, **kwargs):  # type: ignore[no-redef]
+            orig_init(self, *args, **kwargs)
+            if hasattr(self, "position_ids"):
+                # In Transformers 5, `position_ids` is sometimes registered as a non-persistent buffer
+                # (`persistent=False`), so it isn't part of the state dict and is reported as UNEXPECTED
+                # when loading older checkpoints that include it. Make it persistent.
+                try:
+                    buffers = getattr(self, "_buffers", None)
+                    if isinstance(buffers, dict) and "position_ids" in buffers:
+                        non_persistent = getattr(self, "_non_persistent_buffers_set", None)
+                        if isinstance(non_persistent, set):
+                            non_persistent.discard("position_ids")
+                        return
+                except Exception:
+                    return
+            pos_emb = getattr(self, "position_embedding", None)
+            num = getattr(pos_emb, "num_embeddings", None) if pos_emb is not None else None
+            if num is None:
+                return
+            try:
+                position_ids = _torch.arange(int(num)).unsqueeze(0)
+                self.register_buffer("position_ids", position_ids, persistent=True)
+            except Exception:
+                return
+
+        setattr(cls, "__init__", __init__)
+        setattr(cls, "_abstractvision_position_ids_patched", True)
+
+    _patch(CLIPTextEmbeddings)
+    _patch(CLIPVisionEmbeddings)
+    _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED = True
+
+
 @contextmanager
 def _hf_offline_env(enabled: bool):
     """Force Hugging Face libraries into offline mode (no network calls)."""
@@ -114,7 +187,7 @@ def _hf_offline_env(enabled: bool):
         return
 
     # These are respected by huggingface_hub / transformers / diffusers.
-    # We scope them to the load/call to avoid affecting the whole process when downloads are enabled later.
+    # We scope them to the load/call to avoid surprising other parts of the process.
     vars_to_set = {
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
@@ -316,8 +389,9 @@ class HuggingFaceDiffusersBackendConfig:
     """Config for a local Diffusers backend.
 
     Notes:
-    - By default, this backend will not download models (`allow_download=False`).
-      Pre-download models via `huggingface-cli download ...` or provide an on-disk path as `model_id`.
+    - Offline-by-default (no network calls / no auto-downloads).
+    - To allow downloads (e.g. for quick-start / fresh environments), set `allow_download=True`.
+      For AbstractCore Server, this is exposed as `ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=1`.
     """
 
     model_id: str
@@ -339,6 +413,226 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self._cfg = config
         self._pipelines: Dict[str, Any] = {}
         self._call_params: Dict[str, Optional[set[str]]] = {}
+        self._fused_lora_signature: Dict[str, Optional[str]] = {}
+        self._rapid_transformer_key: Optional[str] = None
+        self._rapid_transformer: Any = None
+
+    def _lora_signature(self, loras: List[Dict[str, Any]]) -> Optional[str]:
+        if not loras:
+            return None
+        parts: List[str] = []
+        for spec in sorted(loras, key=lambda x: str(x.get("source") or "")):
+            parts.append(
+                "|".join(
+                    [
+                        str(spec.get("source") or ""),
+                        str(spec.get("subfolder") or ""),
+                        str(spec.get("weight_name") or ""),
+                        str(spec.get("scale") or 1.0),
+                    ]
+                )
+            )
+        combined = "::".join(parts)
+        return hashlib.md5(combined.encode("utf-8")).hexdigest()[:12]
+
+    def _parse_loras(self, extra: Any) -> List[Dict[str, Any]]:
+        if not isinstance(extra, dict) or not extra:
+            return []
+
+        raw: Any = None
+        for k in ("loras", "loras_json", "lora", "lora_json"):
+            if k in extra and extra.get(k) is not None:
+                raw = extra.get(k)
+                break
+        if raw is None:
+            return []
+
+        import json
+
+        items: Any = raw
+        if isinstance(raw, str):
+            s = raw.strip()
+            if not s:
+                return []
+            # Prefer JSON, but allow a simple comma-separated list of sources.
+            if s.startswith("[") or s.startswith("{"):
+                try:
+                    items = json.loads(s)
+                except Exception:
+                    items = raw
+            if isinstance(items, str):
+                parts = [p.strip() for p in items.split(",") if p.strip()]
+                items = [{"source": p} for p in parts]
+
+        if isinstance(items, dict):
+            items = [items]
+        if isinstance(items, str):
+            return [{"source": items.strip()}] if items.strip() else []
+        if not isinstance(items, list):
+            return []
+
+        out: List[Dict[str, Any]] = []
+        for el in items:
+            if isinstance(el, str):
+                src = el.strip()
+                if src:
+                    out.append({"source": src, "scale": 1.0})
+                continue
+            if not isinstance(el, dict):
+                continue
+            src = str(el.get("source") or "").strip()
+            if not src:
+                continue
+            spec: Dict[str, Any] = {"source": src}
+            if el.get("subfolder") is not None:
+                spec["subfolder"] = str(el.get("subfolder") or "").strip() or None
+            if el.get("weight_name") is not None:
+                spec["weight_name"] = str(el.get("weight_name") or "").strip() or None
+            if el.get("adapter_name") is not None:
+                spec["adapter_name"] = str(el.get("adapter_name") or "").strip() or None
+            try:
+                spec["scale"] = float(el.get("scale") if el.get("scale") is not None else 1.0)
+            except Exception:
+                spec["scale"] = 1.0
+            out.append(spec)
+        return out
+
+    def _resolved_adapter_name(self, spec: Dict[str, Any]) -> str:
+        name = str(spec.get("adapter_name") or "").strip()
+        if name:
+            return name
+        key = "|".join([str(spec.get("source") or ""), str(spec.get("subfolder") or ""), str(spec.get("weight_name") or "")])
+        return "lora_" + hashlib.md5(key.encode("utf-8")).hexdigest()[:12]
+
+    def _apply_loras(self, *, kind: str, pipe: Any, extra: Any) -> Optional[str]:
+        loras = self._parse_loras(extra)
+        new_sig = self._lora_signature(loras)
+        cur_sig = self._fused_lora_signature.get(kind)
+        if new_sig == cur_sig:
+            return cur_sig
+
+        # Always clear previous adapters before applying a new set.
+        if hasattr(pipe, "unfuse_lora"):
+            try:
+                pipe.unfuse_lora()
+            except Exception:
+                pass
+        if hasattr(pipe, "unload_lora_weights"):
+            try:
+                pipe.unload_lora_weights()
+            except Exception:
+                pass
+
+        if not loras:
+            self._fused_lora_signature[kind] = None
+            return None
+
+        adapter_names: List[str] = []
+        adapter_scales: List[float] = []
+
+        with _hf_offline_env(not bool(self._cfg.allow_download)):
+            for spec in loras:
+                adapter_name = self._resolved_adapter_name(spec)
+                adapter_names.append(adapter_name)
+                adapter_scales.append(float(spec.get("scale") or 1.0))
+
+                kwargs: Dict[str, Any] = {}
+                if spec.get("weight_name"):
+                    kwargs["weight_name"] = spec["weight_name"]
+                if spec.get("subfolder"):
+                    kwargs["subfolder"] = spec["subfolder"]
+                kwargs["local_files_only"] = not bool(self._cfg.allow_download)
+                if self._cfg.cache_dir:
+                    kwargs["cache_dir"] = str(self._cfg.cache_dir)
+
+                load_fn = getattr(pipe, "load_lora_weights", None)
+                if not callable(load_fn):
+                    raise ValueError("This diffusers pipeline does not support LoRA adapters (missing load_lora_weights).")
+                load_fn(spec["source"], adapter_name=adapter_name, **kwargs)
+
+            if hasattr(pipe, "set_adapters"):
+                try:
+                    pipe.set_adapters(adapter_names, adapter_weights=adapter_scales)
+                except Exception:
+                    pass
+
+            if hasattr(pipe, "fuse_lora"):
+                try:
+                    pipe.fuse_lora()
+                except Exception:
+                    pass
+
+            if hasattr(pipe, "unload_lora_weights"):
+                try:
+                    pipe.unload_lora_weights()
+                except Exception:
+                    pass
+
+        self._fused_lora_signature[kind] = new_sig
+        return new_sig
+
+    def _maybe_apply_rapid_aio_transformer(self, *, pipe: Any, extra: Any, torch_dtype: Any) -> Optional[str]:
+        """Optionally swap the pipeline's transformer with a Rapid-AIO distilled transformer.
+
+        This is primarily useful for Qwen Image Edit pipelines (very fast 4-step inference), but we keep it
+        generic: if a pipeline has a `.transformer` module and diffusers provides a compatible transformer
+        class, we can hot-swap it.
+
+        Offline-by-default: use HF offline env + local_files_only unless allow_download=True.
+        """
+
+        if not isinstance(extra, dict) or not extra:
+            return None
+
+        repo = None
+        if extra.get("rapid_aio_repo"):
+            repo = str(extra.get("rapid_aio_repo") or "").strip()
+        elif extra.get("rapid_aio") is True:
+            repo = "linoyts/Qwen-Image-Edit-Rapid-AIO"
+        elif isinstance(extra.get("rapid_aio"), str) and str(extra.get("rapid_aio")).strip():
+            repo = str(extra.get("rapid_aio")).strip()
+        if not repo:
+            return None
+
+        subfolder = str(extra.get("rapid_aio_subfolder") or "transformer").strip() or "transformer"
+        key = f"{repo}|{subfolder}|{torch_dtype}"
+        if key == self._rapid_transformer_key and self._rapid_transformer is not None:
+            tr = self._rapid_transformer
+        else:
+            try:
+                from diffusers.models import QwenImageTransformer2DModel  # type: ignore
+            except Exception:
+                raise ValueError(
+                    "Rapid-AIO transformer override requires diffusers.models.QwenImageTransformer2DModel, "
+                    "which is not available in this diffusers build."
+                )
+            kwargs: Dict[str, Any] = {"subfolder": subfolder, "local_files_only": not bool(self._cfg.allow_download)}
+            if self._cfg.cache_dir:
+                kwargs["cache_dir"] = str(self._cfg.cache_dir)
+            with _hf_offline_env(not bool(self._cfg.allow_download)):
+                tr = QwenImageTransformer2DModel.from_pretrained(repo, torch_dtype=torch_dtype, **kwargs)
+            try:
+                tr = tr.to(device=str(self._cfg.device), dtype=torch_dtype)
+            except Exception:
+                try:
+                    tr = tr.to(dtype=torch_dtype)
+                    tr = tr.to(str(self._cfg.device))
+                except Exception:
+                    pass
+
+            self._rapid_transformer_key = key
+            self._rapid_transformer = tr
+
+        if hasattr(pipe, "register_modules"):
+            try:
+                pipe.register_modules(transformer=tr)
+            except Exception:
+                setattr(pipe, "transformer", tr)
+        else:
+            setattr(pipe, "transformer", tr)
+
+        _maybe_cast_pipe_modules_to_dtype(pipe, dtype=torch_dtype)
+        return repo
 
     def get_capabilities(self) -> VisionBackendCapabilities:
         return VisionBackendCapabilities(
@@ -347,9 +641,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         )
 
     def _pipeline_common_kwargs(self) -> Dict[str, Any]:
-        local_files_only = not bool(self._cfg.allow_download)
         kwargs: Dict[str, Any] = {
-            "local_files_only": local_files_only,
+            "local_files_only": not bool(self._cfg.allow_download),
             "use_safetensors": bool(self._cfg.use_safetensors),
         }
         if self._cfg.cache_dir:
@@ -359,6 +652,125 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if self._cfg.variant:
             kwargs["variant"] = str(self._cfg.variant)
         return kwargs
+
+    def _hf_cache_root(self) -> Path:
+        if self._cfg.cache_dir:
+            return Path(self._cfg.cache_dir).expanduser()
+        hub_cache = os.environ.get("HF_HUB_CACHE")
+        if hub_cache:
+            return Path(hub_cache).expanduser()
+        hf_home = os.environ.get("HF_HOME")
+        if hf_home:
+            return Path(hf_home).expanduser() / "hub"
+        return Path.home() / ".cache" / "huggingface" / "hub"
+
+    def _resolve_snapshot_dir(self) -> Optional[Path]:
+        model_id = str(self._cfg.model_id).strip()
+        if not model_id:
+            return None
+
+        p = Path(model_id).expanduser()
+        if p.exists():
+            return p
+
+        if "/" not in model_id:
+            return None
+
+        cache_root = self._hf_cache_root()
+        repo_dir = cache_root / ("models--" + model_id.replace("/", "--"))
+        snaps = repo_dir / "snapshots"
+        if not snaps.is_dir():
+            return None
+
+        rev = str(self._cfg.revision or "main").strip() or "main"
+        ref_file = repo_dir / "refs" / rev
+        if ref_file.is_file():
+            commit = ref_file.read_text(encoding="utf-8").strip()
+            snap_dir = snaps / commit
+            if snap_dir.is_dir():
+                return snap_dir
+
+        # Fallback: pick the most recently modified snapshot.
+        candidates = [d for d in snaps.iterdir() if d.is_dir()]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda d: d.stat().st_mtime)
+
+    def _preflight_check_model_index(self) -> None:
+        snap = self._resolve_snapshot_dir()
+        if snap is None:
+            return
+        idx_path = snap / "model_index.json"
+        if not idx_path.is_file():
+            return
+
+        try:
+            import json
+
+            model_index = json.loads(idx_path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+
+        class_name = str(model_index.get("_class_name") or "").strip()
+        if not class_name:
+            return
+
+        (
+            _DiffusionPipeline,
+            _AutoPipelineForText2Image,
+            _AutoPipelineForImage2Image,
+            _AutoPipelineForInpainting,
+            diffusers_version,
+        ) = _lazy_import_diffusers()
+
+        import diffusers as _diffusers  # type: ignore
+
+        if not hasattr(_diffusers, class_name):
+            required = str(model_index.get("_diffusers_version") or "unknown")
+            install_hint = "pip install -U 'git+https://github.com/huggingface/diffusers@main'"
+            install_hint_alt = "pip install -e '.[huggingface-dev]'"
+            extra = ""
+            if class_name == "Flux2KleinPipeline":
+                extra = (
+                    " Note: this model uses a different text encoder than the released Flux2Pipeline in diffusers 0.36 "
+                    "(Klein uses Qwen3; Flux2Pipeline is built around Mistral3), so a newer diffusers is required."
+                )
+            raise ValueError(
+                f"Diffusers pipeline class {class_name!r} is required by this model, but is not available in your "
+                f"installed diffusers ({diffusers_version}). "
+                f"The model's model_index.json was authored for diffusers {required}. "
+                "This class is not available in the latest PyPI release at the time of writing. "
+                f"Install a newer diffusers (offline runtime is still supported): {install_hint}. "
+                f"If you're installing AbstractVision from a repo checkout, you can also use: {install_hint_alt}.{extra}"
+            )
+
+        # Optional: sanity-check that referenced Transformers classes exist to avoid late failures.
+        try:
+            import transformers  # type: ignore
+
+            missing_tf: list[str] = []
+            for v in model_index.values():
+                if (
+                    isinstance(v, list)
+                    and len(v) == 2
+                    and isinstance(v[0], str)
+                    and isinstance(v[1], str)
+                    and v[0].strip().lower() == "transformers"
+                ):
+                    tf_cls = v[1].strip()
+                    if tf_cls and not hasattr(transformers, tf_cls):
+                        missing_tf.append(tf_cls)
+            if missing_tf:
+                tf_ver = getattr(transformers, "__version__", "unknown")
+                raise ValueError(
+                    "This model references Transformers classes that are not available in your environment "
+                    f"(transformers={tf_ver}): {', '.join(sorted(set(missing_tf)))}. "
+                    "Upgrade transformers to a compatible version."
+                )
+        except ValueError:
+            raise
+        except Exception:
+            pass
 
     def _get_or_load_pipeline(self, kind: str) -> Any:
         existing = self._pipelines.get(kind)
@@ -370,11 +782,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             AutoPipelineForText2Image,
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
-            Flux2Pipeline,
             diffusers_version,
         ) = _lazy_import_diffusers()
         torch = _lazy_import_torch()
         _require_device_available(torch, self._cfg.device)
+
+        self._preflight_check_model_index()
+        _maybe_patch_transformers_clip_position_ids()
 
         torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype)
         if torch_dtype is None:
@@ -383,61 +797,58 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if bool(self._cfg.low_cpu_mem_usage):
             common["low_cpu_mem_usage"] = True
 
+        def _maybe_raise_offline_missing_model(e: Exception) -> None:
+            model_id = str(self._cfg.model_id or "").strip()
+            if not model_id or "/" not in model_id:
+                return
+            # If it's not in cache, provide a clearer message than the upstream
+            # "does not appear to have a file named model_index.json" wording.
+            if self._resolve_snapshot_dir() is not None:
+                return
+            msg = str(e)
+            if "model_index.json" not in msg:
+                return
+            raise ValueError(
+                f"Model {model_id!r} is not available locally and downloads are disabled. "
+                "Either pre-download it (e.g. via `huggingface-cli download ...`) or enable downloads "
+                "(set allow_download=True; for AbstractCore Server: set ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=1). "
+                "If the model is gated, accept its terms on Hugging Face and set `HF_TOKEN` before downloading."
+            ) from e
+
         pipe = None
-        offline = not bool(self._cfg.allow_download)
-        with _hf_offline_env(offline):
+        with _hf_offline_env(not bool(self._cfg.allow_download)):
             if kind == "t2i":
                 # Prefer AutoPipeline when available, but fall back to DiffusionPipeline for robustness.
                 if AutoPipelineForText2Image is not None:
                     try:
                         pipe = AutoPipelineForText2Image.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
                     except ValueError as e:
-                        msg = str(e)
-                        if (
-                            "AutoPipeline can't find a pipeline linked to" in msg
-                            and "Flux2KleinPipeline" in msg
-                            and Flux2Pipeline is not None
-                        ):
-                            pipe = Flux2Pipeline.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
-                        else:
-                            pipe = None
+                        _maybe_raise_offline_missing_model(e)
+                        pipe = None
                 if pipe is None:
                     try:
                         pipe = DiffusionPipeline.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
                     except Exception as e:
-                        msg = str(e)
-                        if "Flux2KleinPipeline" in msg and Flux2Pipeline is not None:
-                            pipe = Flux2Pipeline.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
-                        else:
-                            raise
+                        _maybe_raise_offline_missing_model(e)
+                        raise
             elif kind == "i2i":
                 if AutoPipelineForImage2Image is not None:
                     try:
                         pipe = AutoPipelineForImage2Image.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
                     except ValueError as e:
-                        msg = str(e)
-                        if (
-                            "AutoPipeline can't find a pipeline linked to" in msg
-                            and "Flux2KleinPipeline" in msg
-                            and Flux2Pipeline is not None
-                        ):
-                            pipe = Flux2Pipeline.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
-                        else:
-                            pipe = None
+                        _maybe_raise_offline_missing_model(e)
+                        pipe = None
                 if pipe is None:
                     try:
                         pipe = DiffusionPipeline.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
                     except Exception as e:
-                        msg = str(e)
-                        if "Flux2KleinPipeline" in msg and Flux2Pipeline is not None:
-                            pipe = Flux2Pipeline.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
-                        else:
-                            raise ValueError(
-                                "Diffusers could not load an image-to-image pipeline for this model id. "
-                                "Install/upgrade diffusers (and compatible transformers/torch), or use a model repo that "
-                                "ships an image-to-image pipeline. "
-                                f"(diffusers={diffusers_version})"
-                            ) from e
+                        _maybe_raise_offline_missing_model(e)
+                        raise ValueError(
+                            "Diffusers could not load an image-to-image pipeline for this model id. "
+                            "Install/upgrade diffusers (and compatible transformers/torch), or use a model repo that "
+                            "ships an image-to-image pipeline. "
+                            f"(diffusers={diffusers_version})"
+                        ) from e
             elif kind == "inpaint":
                 if AutoPipelineForInpainting is None:
                     raise ValueError(
@@ -499,8 +910,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always", RuntimeWarning)
-            offline = not bool(self._cfg.allow_download)
-            with _hf_offline_env(offline):
+            with _hf_offline_env(not bool(self._cfg.allow_download)):
                 out = pipe(**kwargs)
         had_invalid_cast = any(
             issubclass(getattr(x, "category", Warning), RuntimeWarning)
@@ -551,6 +961,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
         pipe = self._get_or_load_pipeline("t2i")
         call_params = self._call_params.get("t2i")
+
+        torch_dtype = getattr(pipe, "dtype", None)
+        if torch_dtype is None:
+            torch = _lazy_import_torch()
+            torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, self._cfg.device)
+        rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
+        lora_sig = self._apply_loras(kind="t2i", pipe=pipe, extra=request.extra)
 
         kwargs: Dict[str, Any] = {
             "prompt": request.prompt,
@@ -604,6 +1021,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             )
         png = self._png_bytes(images[0])
         meta = {"source": "diffusers", "model_id": self._cfg.model_id}
+        if rapid_repo:
+            meta["rapid_aio_repo"] = rapid_repo
+        if lora_sig:
+            meta["lora_signature"] = lora_sig
         if retried_fp32:
             meta["retried_fp32"] = True
         if had_invalid_cast:
@@ -629,9 +1050,18 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if request.mask is not None:
             pipe = self._get_or_load_pipeline("inpaint")
             call_params = self._call_params.get("inpaint")
+            kind = "inpaint"
         else:
             pipe = self._get_or_load_pipeline("i2i")
             call_params = self._call_params.get("i2i")
+            kind = "i2i"
+
+        torch_dtype = getattr(pipe, "dtype", None)
+        if torch_dtype is None:
+            torch = _lazy_import_torch()
+            torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, self._cfg.device)
+        rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
+        lora_sig = self._apply_loras(kind=kind, pipe=pipe, extra=request.extra)
 
         img = self._pil_from_bytes(request.image)
         kwargs: Dict[str, Any] = {"prompt": request.prompt, "image": img}
@@ -681,12 +1111,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             )
         png = self._png_bytes(images[0])
         meta = {"source": "diffusers", "model_id": self._cfg.model_id}
+        if rapid_repo:
+            meta["rapid_aio_repo"] = rapid_repo
+        if lora_sig:
+            meta["lora_signature"] = lora_sig
         if retried_fp32:
             meta["retried_fp32"] = True
         if had_invalid_cast:
             meta["had_invalid_cast_warning"] = True
         try:
-            kind = "inpaint" if request.mask is not None else "i2i"
             current_pipe = self._pipelines.get(kind, pipe)
             dtype = getattr(current_pipe, "dtype", None)
             device = getattr(current_pipe, "device", None)

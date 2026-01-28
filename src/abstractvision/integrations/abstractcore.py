@@ -90,7 +90,7 @@ def make_vision_tools(
         negative_prompt: Optional[str] = None,
         width: Optional[int] = None,
         height: Optional[int] = None,
-        steps: Optional[int] = None,
+        steps: Optional[int] = 10,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -121,7 +121,7 @@ def make_vision_tools(
         mask_artifact: Optional[Dict[str, Any]] = None,
         mask_b64: Optional[str] = None,
         negative_prompt: Optional[str] = None,
-        steps: Optional[int] = None,
+        steps: Optional[int] = 10,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -153,7 +153,7 @@ def make_vision_tools(
         reference_image_b64: Optional[str] = None,
         angles: Optional[List[str]] = None,
         negative_prompt: Optional[str] = None,
-        steps: Optional[int] = None,
+        steps: Optional[int] = 10,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
@@ -197,7 +197,7 @@ def make_vision_tools(
         height: Optional[int] = None,
         fps: Optional[int] = None,
         num_frames: Optional[int] = None,
-        steps: Optional[int] = None,
+        steps: Optional[int] = 10,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -232,7 +232,7 @@ def make_vision_tools(
         height: Optional[int] = None,
         fps: Optional[int] = None,
         num_frames: Optional[int] = None,
-        steps: Optional[int] = None,
+        steps: Optional[int] = 10,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:

@@ -1,5 +1,6 @@
 import base64
 import sys
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -129,6 +130,82 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         with patch("abstractvision.backends.stable_diffusion_cpp._try_read_gguf_architecture", return_value="qwen_image"):
             with self.assertRaises(OptionalDependencyMissingError):
                 backend.generate_image(ImageGenerationRequest(prompt="hello"))
+
+    def test_generate_image_falls_back_to_python_bindings_when_sd_cli_missing(self):
+        from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        class FakeImage:
+            def save(self, fp, format=None):  # noqa: A002
+                fp.write(PNG_1X1)
+
+        class FakeStableDiffusion:
+            last_init_kwargs = None
+            last_generate_kwargs = None
+
+            def __init__(self, **kwargs):
+                FakeStableDiffusion.last_init_kwargs = dict(kwargs)
+
+            def generate_image(
+                self,
+                prompt,
+                negative_prompt="",
+                width=512,
+                height=512,
+                cfg_scale=7.0,
+                sample_steps=20,
+                seed=42,
+                sample_method="default",
+            ):
+                FakeStableDiffusion.last_generate_kwargs = {
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "width": width,
+                    "height": height,
+                    "cfg_scale": cfg_scale,
+                    "sample_steps": sample_steps,
+                    "seed": seed,
+                    "sample_method": sample_method,
+                }
+                return [FakeImage()]
+
+        fake_mod = types.SimpleNamespace(__version__="0.0.0", StableDiffusion=FakeStableDiffusion)
+
+        backend = StableDiffusionCppVisionBackend(
+            config=StableDiffusionCppBackendConfig(
+                sd_cli_path="sd-cli",
+                diffusion_model="model.gguf",
+                vae="vae.safetensors",
+                llm="llm.gguf",
+                extra_args=("--offload-to-cpu", "--diffusion-fa", "--flow-shift", "3", "--sampling-method", "euler"),
+            )
+        )
+
+        with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}):
+            with patch("abstractvision.backends.stable_diffusion_cpp.shutil.which", return_value=None):
+                asset = backend.generate_image(
+                    ImageGenerationRequest(
+                        prompt="hello",
+                        negative_prompt="nope",
+                        width=64,
+                        height=32,
+                        steps=12,
+                        guidance_scale=2.5,
+                        seed=123,
+                        extra={"sampling_method": "euler"},
+                    )
+                )
+
+        self.assertEqual(asset.mime_type, "image/png")
+        self.assertEqual(asset.metadata.get("mode"), "python")
+
+        self.assertEqual(FakeStableDiffusion.last_init_kwargs.get("offload_params_to_cpu"), True)
+        self.assertEqual(FakeStableDiffusion.last_init_kwargs.get("diffusion_flash_attn"), True)
+        self.assertEqual(FakeStableDiffusion.last_init_kwargs.get("flow_shift"), 3.0)
+
+        self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("sample_method"), "euler")
+        self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("sample_steps"), 12)
+        self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("cfg_scale"), 2.5)
 
 
 if __name__ == "__main__":

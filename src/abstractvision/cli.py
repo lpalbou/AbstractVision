@@ -212,8 +212,8 @@ class _ReplState:
     def __post_init__(self) -> None:
         if self.defaults is None:
             self.defaults = {
-                "t2i": {"width": None, "height": None, "steps": None, "guidance_scale": None, "seed": None, "negative_prompt": None},
-                "i2i": {"steps": None, "guidance_scale": None, "seed": None, "negative_prompt": None},
+                "t2i": {"width": 512, "height": 512, "steps": 10, "guidance_scale": None, "seed": None, "negative_prompt": None},
+                "i2i": {"steps": 10, "guidance_scale": None, "seed": None, "negative_prompt": None},
             }
 
 
@@ -221,13 +221,14 @@ def _repl_help() -> str:
     return (
         "Commands:\n"
         "  /help                     Show this help\n"
-        "  /exit                     Quit\n"
+        "  /exit                     Quit (aliases: /quit, /q)\n"
         "  /models                   List known capability model ids\n"
         "  /tasks                    List known task keys\n"
         "  /show-model <id>          Show a model's tasks + params\n"
         "  /config                   Show current backend/store config\n"
         "  /backend openai <base_url> [api_key] [model_id]\n"
         "  /backend diffusers <model_id_or_path> [device] [torch_dtype]\n"
+        "                           (offline-by-default; set ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 to allow downloads)\n"
         "  /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]\n"
         "                           (Qwen Image: requires diffusion-model + vae + llm)\n"
         "  /cap-model <id|off>       Set capability-gating model id (from registry) or 'off'\n"
@@ -460,7 +461,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
         args = tokens[1:]
 
         try:
-            if cmd in {"exit", "quit"}:
+            if cmd in {"exit", "quit", "q"}:
                 return 0
             if cmd == "help":
                 print(_repl_help())
@@ -499,6 +500,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     "diffusers_device": state.diffusers_device,
                     "diffusers_torch_dtype": state.diffusers_torch_dtype,
                     "diffusers_allow_download": state.diffusers_allow_download,
+                    "diffusers_auto_retry_fp32": state.diffusers_auto_retry_fp32,
                     "sdcpp_bin": state.sdcpp_bin,
                     "sdcpp_model": state.sdcpp_model,
                     "sdcpp_diffusion_model": state.sdcpp_diffusion_model,
@@ -740,9 +742,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_backend_flags(t2i)
     t2i.add_argument("prompt")
     t2i.add_argument("--negative-prompt", default=None)
-    t2i.add_argument("--width", type=int, default=None)
-    t2i.add_argument("--height", type=int, default=None)
-    t2i.add_argument("--steps", type=int, default=None)
+    t2i.add_argument("--width", type=int, default=512)
+    t2i.add_argument("--height", type=int, default=512)
+    t2i.add_argument("--steps", type=int, default=10)
     t2i.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     t2i.add_argument("--seed", type=int, default=None)
     t2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
@@ -754,7 +756,7 @@ def build_parser() -> argparse.ArgumentParser:
     i2i.add_argument("--mask", default=None, help="Optional mask file path.")
     i2i.add_argument("prompt")
     i2i.add_argument("--negative-prompt", default=None)
-    i2i.add_argument("--steps", type=int, default=None)
+    i2i.add_argument("--steps", type=int, default=10)
     i2i.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     i2i.add_argument("--seed", type=int, default=None)
     i2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")

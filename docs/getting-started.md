@@ -2,8 +2,8 @@
 
 This guide helps you generate your first image using AbstractVision with different model families:
 
-- **Diffusers (Python)**: Stable Diffusion / Qwen Image / FLUX 2 (requires `abstractvision[huggingface]`)
-- **stable-diffusion.cpp (`sd-cli`)**: GGUF diffusion models (fastest path for GGUF)
+- **Diffusers (Python)**: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image
+- **stable-diffusion.cpp**: GGUF diffusion models via pip-installable python bindings (no external `sd-cli` required) or the external `sd-cli` executable
 - **AbstractCore Server**: OpenAI-compatible `/v1/images/*` endpoints + a tiny web playground UI
 
 ---
@@ -13,7 +13,39 @@ This guide helps you generate your first image using AbstractVision with differe
 From PyPI:
 
 ```bash
-pip install "abstractvision[huggingface]"
+pip install abstractvision
+```
+
+**Important (as of January 27, 2026):** Some models require Diffusers **from GitHub `main`** because their pipeline
+classes are not yet in the latest PyPI release. In this category today:
+
+- `zai-org/GLM-Image` (`GlmImagePipeline`)
+- `black-forest-labs/FLUX.2-klein-4B` (`Flux2KleinPipeline`)
+
+If you're installing **AbstractVision from a repo checkout**, install the dev extra (this installs `diffusers@main` + compatible deps):
+
+```bash
+pip install -e ".[huggingface-dev]"
+```
+
+If you're installing **AbstractVision from PyPI** (as above), the PyPI release may not ship the `huggingface-dev` extra yet.
+In that case, install Diffusers from source directly:
+
+```bash
+pip install -U "git+https://github.com/huggingface/diffusers@main"
+```
+
+Sanity check:
+
+```bash
+python -c "import diffusers; print(diffusers.__version__)"
+python -c "import diffusers; print('GlmImagePipeline', hasattr(diffusers, 'GlmImagePipeline')); print('Flux2KleinPipeline', hasattr(diffusers, 'Flux2KleinPipeline'))"
+```
+
+Offline alternative (if you already have a local Diffusers checkout):
+
+```bash
+pip install -U -e /path/to/diffusers
 ```
 
 Or, from a repo checkout (run in the `abstractvision/` repo root):
@@ -36,14 +68,17 @@ pip install -e .
 
 ---
 
-## 1) Fastest “first image” (Diffusers + auto-download)
+## 1) First image (Diffusers, offline)
 
-AbstractVision’s Diffusers backend defaults to **cache-only** (no downloads) and forces Hugging Face **offline mode** (no network calls). For a quick start, opt-in to downloads:
+AbstractVision’s Diffusers backend is **offline-only** by design:
+- no network calls
+- no automatic downloads
+
+Pre-download models into your Hugging Face cache (for example via `huggingface-cli download ...`) or use a local path.
 
 ```bash
 export ABSTRACTVISION_BACKEND=diffusers
-export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1
-export ABSTRACTVISION_DIFFUSERS_DEVICE=mps   
+export ABSTRACTVISION_DIFFUSERS_DEVICE=mps
 # mps = macOS Apple Silicon; use cuda/cpu on other machines
 # Optional: override dtype (auto defaults to bf16 on MPS when supported).
 # - `bfloat16` is a good default on Apple Silicon for numerical stability
@@ -70,9 +105,6 @@ Then:
 
 ```text
 /backend diffusers runwayml/stable-diffusion-v1-5 mps
-/set width 512
-/set height 512
-/set steps 10
 /set guidance_scale 7
 /set seed 42
 /t2i "a cinematic photo of a red fox in snow" --open
@@ -116,6 +148,29 @@ Tip: keep `guidance_scale` relatively low for some modern DiT models.
 
 ---
 
+## 2.1) LoRA + Rapid-AIO (Diffusers, offline)
+
+AbstractVision can apply LoRA adapters (Diffusers adapter system) and optionally swap in a distilled “Rapid-AIO”
+transformer for faster Qwen Image Edit inference.
+
+These features are **offline-only** as well: LoRA repos / Rapid-AIO repos must already exist in your local HF cache (or be a local path).
+
+LoRA example (REPL; note: `loras_json` is forwarded via `request.extra`):
+
+```text
+/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
+/t2i "a cinematic photo of a red fox in snow" --steps 8 --guidance-scale 1 --loras_json '[{"source":"lightx2v/Qwen-Image-Edit-2511-Lightning","scale":1.0}]' --open
+```
+
+Rapid-AIO example (distilled transformer override; Qwen Image Edit):
+
+```text
+/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
+/t2i "a cinematic photo of a red fox in snow" --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
+```
+
+---
+
 ## 3) FLUX 2 (Diffusers)
 
 FLUX 2 models in the registry:
@@ -123,16 +178,30 @@ FLUX 2 models in the registry:
 - `black-forest-labs/FLUX.2-klein-4B` (Apache-2.0, not gated)
 - `black-forest-labs/FLUX.2-dev` (non-commercial license, gated on Hugging Face)
 
-Some FLUX 2 repos reference a newer Diffusers pipeline class (`Flux2KleinPipeline`) than the latest released Diffusers. AbstractVision automatically falls back to a compatible loader (`Flux2Pipeline`) so `FLUX.2-klein-4B` works on released Diffusers (0.36+). Sanity check:
+Sanity check:
 
 ```bash
 python -c "import diffusers; print(diffusers.__version__)"
 ```
 
-Example (open klein 4B; model card defaults are very low steps):
+Notes:
+- `FLUX.2-dev` uses Diffusers `Flux2Pipeline` and works on released Diffusers (0.36+).
+- `FLUX.2-klein-4B` uses `Flux2KleinPipeline`, which is not available in the released Diffusers (0.36.0). It currently
+  requires installing Diffusers from source (or use the AbstractVision dev extra):
+  - `pip install -U "abstractvision[huggingface-dev]"`
+  - `pip install -U "git+https://github.com/huggingface/diffusers@main"`
+
+Recommended offline-friendly example (`FLUX.2-klein-4B`, not gated):
 
 ```text
-/backend diffusers black-forest-labs/FLUX.2-klein-4B mps
+/backend diffusers black-forest-labs/FLUX.2-klein-4B mps bfloat16
+/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 10 --guidance-scale 1.0 --seed 0 --open
+```
+
+Example (`FLUX.2-dev`, gated; you must pre-download it into your HF cache first):
+
+```text
+/backend diffusers black-forest-labs/FLUX.2-dev mps
 /t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
 ```
 
@@ -166,17 +235,18 @@ Turbo models are usually best with low step counts (e.g. ~4–8).
 
 ---
 
-## 5) Qwen-Image GGUF (stable-diffusion.cpp `sd-cli`)
+## 5) Qwen-Image GGUF (stable-diffusion.cpp)
 
-If you downloaded a GGUF diffusion model (like `unsloth/Qwen-Image-2512-GGUF:qwen-image-2512-Q4_K_M.gguf`), Diffusers cannot load it. Use `sd-cli` instead.
+If you downloaded a GGUF diffusion model (like `unsloth/Qwen-Image-2512-GGUF:qwen-image-2512-Q4_K_M.gguf`), Diffusers cannot load it. Use the stable-diffusion.cpp backend instead (either via pip-installed python bindings or `sd-cli`).
 
-### 5.1 Install `sd-cli`
+### 5.1 Install stable-diffusion.cpp runtime
 
-Download a stable-diffusion.cpp build from:
+By default, `pip install abstractvision` includes the pip-installable stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`).
 
-- https://github.com/leejet/stable-diffusion.cpp/releases
+Alternative (external executable):
 
-Ensure `sd-cli` is in your `PATH` (or use a full path in the `/backend sdcpp …` command below).
+- Download `sd-cli` from: https://github.com/leejet/stable-diffusion.cpp/releases
+- Ensure `sd-cli` is in your `PATH` (or pass a full path as the last arg to `/backend sdcpp …`).
 
 ### 5.2 Download the required Qwen Image VAE
 
@@ -194,13 +264,15 @@ abstractvision repl
 Then:
 
 ```text
-/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf ./qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf sd-cli
+/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf ./qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf
 /set width 1024
 /set height 1024
 /t2i "a cinematic photo of a red fox in snow" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
 ```
 
-Any extra `--flag` you pass (like `--sampling-method euler`) is forwarded to the backend as `extra` and translated to `sd-cli` flags.
+Any extra `--flag` you pass (like `--sampling-method euler`) is forwarded to the backend as `extra`.
+- CLI mode: forwarded to `sd-cli`
+- Python bindings mode: a small subset is supported (e.g. `--sampling-method`, `--steps`, `--cfg-scale`, `--seed`, `--offload-to-cpu`, `--diffusion-fa`, `--flow-shift`)
 
 ---
 
@@ -211,11 +283,64 @@ AbstractCore exposes:
 - `POST /v1/images/generations`
 - `POST /v1/images/edits`
 
-### 6.1 Start AbstractCore with `sdcpp` (GGUF)
+### 6.0 Install AbstractCore Server (required)
+
+The web UI is served by **AbstractCore**, not AbstractVision. Install AbstractCore with its server dependencies into the **same** environment:
+
+From PyPI:
 
 ```bash
+pip install "abstractcore[server]"
+```
+
+Make sure you're on an AbstractCore version that includes the vision endpoints (`/v1/images/*`).
+
+If you're installing **AbstractVision from a repo checkout**, do:
+
+```bash
+pip install "abstractcore[server]"
+pip install -e .
+```
+
+(`abstractcore[server]` installs FastAPI + Uvicorn + multipart support required for `/v1/images/edits`.)
+
+### 6.1 Start AbstractCore with Diffusers (Stable Diffusion 1.5)
+
+This path runs standard Hugging Face Diffusers models (like SD1.5). It does **not** require `sd-cli`, but it does require the Diffusers extra:
+
+```bash
+pip install "abstractcore[server]"
+```
+
+If you're installing **AbstractVision from a repo checkout**, do:
+
+```bash
+pip install "abstractcore[server]"
+pip install -e ".[huggingface]"
+```
+
+Then:
+
+```bash
+export ABSTRACTCORE_VISION_BACKEND=diffusers
+export ABSTRACTCORE_VISION_MODEL_ID=runwayml/stable-diffusion-v1-5
+export ABSTRACTCORE_VISION_DEVICE=mps   # or: cpu / cuda
+# Optional: disable downloads (default allows downloads).
+# export ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=0
+python -m uvicorn abstractcore.server.app:app --port 8000
+```
+
+### 6.2 Start AbstractCore with `sdcpp` (GGUF / stable-diffusion.cpp)
+
+This path supports two runtimes:
+
+- pip-only (default): no external `sd-cli` is needed (uses `stable-diffusion-cpp-python`)
+- external executable: install `sd-cli` and keep `ABSTRACTCORE_VISION_SDCPP_BIN` pointing to it
+
+```bash
+pip install "abstractcore[server]"
 export ABSTRACTCORE_VISION_BACKEND=sdcpp
-export ABSTRACTCORE_VISION_SDCPP_BIN=sd-cli
+export ABSTRACTCORE_VISION_SDCPP_BIN=sd-cli   # optional; only used when the executable exists
 export ABSTRACTCORE_VISION_SDCPP_DIFFUSION_MODEL=/path/to/qwen-image-2512-Q4_K_M.gguf
 export ABSTRACTCORE_VISION_SDCPP_VAE=$PWD/qwen_image_vae.safetensors
 export ABSTRACTCORE_VISION_SDCPP_LLM=/path/to/Qwen2.5-VL-7B-Instruct-*.gguf
@@ -223,7 +348,14 @@ export ABSTRACTCORE_VISION_SDCPP_EXTRA_ARGS="--offload-to-cpu --diffusion-fa --s
 python -m uvicorn abstractcore.server.app:app --port 8000
 ```
 
-### 6.2 Serve the playground page
+If you're installing **AbstractVision from a repo checkout**, do:
+
+```bash
+pip install "abstractcore[server]"
+pip install -e .
+```
+
+### 6.3 Serve the playground page
 
 ```bash
 cd abstractvision/playground

@@ -29,7 +29,7 @@ pip install -e .
 
 ## Usage
 
-See `docs/getting-started.md` for step-by-step local generation with Diffusers, GGUF (`sd-cli`), and the web playground.
+See `docs/getting-started.md` for step-by-step local generation with Diffusers, GGUF (stable-diffusion.cpp), and the web playground.
 
 ### Capability-driven model selection
 
@@ -45,7 +45,8 @@ print(reg.models_for_task("text_to_image"))
 
 ### Backend wiring + generation (artifact outputs)
 
-The default install includes a dependency-light OpenAI-compatible HTTP backend.
+The default install includes local generation backends (Diffusers + stable-diffusion.cpp python bindings) and an
+OpenAI-compatible HTTP backend.
 
 ```python
 from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry, is_artifact_ref
@@ -97,20 +98,24 @@ Inside the REPL:
 
 The CLI/REPL can also be configured via env vars like `ABSTRACTVISION_BASE_URL`, `ABSTRACTVISION_API_KEY`, `ABSTRACTVISION_MODEL_ID`, and `ABSTRACTVISION_STORE_DIR`.
 
-#### Local GGUF via stable-diffusion.cpp (`sd-cli`)
+#### Local GGUF via stable-diffusion.cpp
 
-If you want to run GGUF diffusion models locally (e.g. Qwen Image), use the `sd-cli` backend.
+If you want to run GGUF diffusion models locally (e.g. Qwen Image), use the stable-diffusion.cpp backend (`sdcpp`).
+
+Recommended (pip-only; no external binary download): `pip install abstractvision` already includes the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`).
+
+Alternative (external executable):
 
 - Install `sd-cli`: https://github.com/leejet/stable-diffusion.cpp/releases
 
 In the REPL:
 
 ```text
-/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf /path/to/qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf sd-cli
+/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf /path/to/qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf
 /t2i "a watercolor painting of a lighthouse" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
 ```
 
-Extra flags are forwarded via `request.extra` (unknown `--foo-bar` flags become `extra={"foo_bar": ...}`).
+Extra flags are forwarded via `request.extra`. In CLI mode they are forwarded to `sd-cli`; in python bindings mode a small subset is supported.
 
 ### AbstractCore tool integration (artifact refs)
 

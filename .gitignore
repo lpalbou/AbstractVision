@@ -104,6 +104,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local scratch (created by tooling)
+.tmp_*/
+.tmp-*/
+
 # Spyder project settings
 .spyderproject
 .spyproject
