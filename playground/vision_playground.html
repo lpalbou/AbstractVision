@@ -218,6 +218,7 @@
             <button id="t2iBtn">Generate</button>
             <span id="t2iStatus" class="status"></span>
           </div>
+          <progress id="t2iProgress" style="display: none"></progress>
 
           <div class="out">
             <img id="t2iImg" alt="" />
@@ -265,6 +266,7 @@
             <button id="i2iBtn">Edit</button>
             <span id="i2iStatus" class="status"></span>
           </div>
+          <progress id="i2iProgress" style="display: none"></progress>
 
           <div class="out">
             <img id="i2iImg" alt="" />
@@ -325,6 +327,27 @@
         const mime = sniffMime(bytes);
         const blob = new Blob([bytes], { type: mime });
         return { url: URL.createObjectURL(blob), mime };
+      }
+
+      function setProgress(el, step, total) {
+        if (!el) return;
+        el.style.display = "block";
+        const t = total !== undefined && total !== null ? Number(total) : NaN;
+        const s = step !== undefined && step !== null ? Number(step) : NaN;
+        if (Number.isFinite(t) && t > 0) {
+          el.max = t;
+          el.value = Number.isFinite(s) ? Math.max(0, Math.min(s, t)) : 0;
+        } else {
+          el.removeAttribute("value"); // indeterminate
+        }
+      }
+
+      function hideProgress(el) {
+        if (!el) return;
+        el.style.display = "none";
+        try {
+          el.removeAttribute("value");
+        } catch {}
       }
 
       async function fetchJson(url, init) {
@@ -493,17 +516,40 @@
       // Initial load.
       refreshCachedModels();
 
+      async function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function pollJob(base, jobId, onProgress) {
+        const url = joinUrl(base, "/v1/vision/jobs/" + encodeURIComponent(jobId));
+        for (;;) {
+          const job = await fetchJson(url, { method: "GET" });
+          if (typeof onProgress === "function") onProgress(job);
+          const state = String(job && job.state ? job.state : "");
+          if (state === "succeeded") {
+            // Consume completed jobs to free server memory.
+            return await fetchJson(url + "?consume=1", { method: "GET" });
+          }
+          if (state === "failed") {
+            throw new Error(String((job && job.error) || "Job failed"));
+          }
+          await sleep(250);
+        }
+      }
+
       $("t2iBtn").addEventListener("click", async () => {
         const btn = $("t2iBtn");
         const status = $("t2iStatus");
         const log = $("t2iLog");
         const img = $("t2iImg");
         const dl = $("t2iDownload");
+        const prog = $("t2iProgress");
 
         btn.disabled = true;
         inferenceInFlight += 1;
         updateModelControls();
         setStatus(status, "", "running…");
+        setProgress(prog, 0, $("t2iSteps").value ? Number($("t2iSteps").value) : null);
         log.textContent = "";
         img.removeAttribute("src");
         dl.href = "#";
@@ -512,7 +558,7 @@
           if (!activeModelId) throw new Error("select a model (load it into memory) first");
 
           const base = $("baseUrl").value;
-          const url = joinUrl(base, "/v1/images/generations");
+          const url = joinUrl(base, "/v1/vision/jobs/images/generations");
 
 	          const extra = parseJsonObject($("t2iExtra").value);
 	          const payload = {
@@ -527,12 +573,27 @@
 	            ...extra,
 	          };
 
-          const resp = await fetchJson(url, {
+          const start = await fetchJson(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
+          const jobId = start && start.job_id ? String(start.job_id) : "";
+          if (!jobId) throw new Error("missing job_id from server");
 
+          const done = await pollJob(base, jobId, (job) => {
+            const p = job && job.progress ? job.progress : null;
+            const step = p && p.step !== undefined ? Number(p.step) : null;
+            const total = p && p.total_steps !== undefined ? Number(p.total_steps) : null;
+            setProgress(prog, step, total);
+            if (total && total > 0) {
+              setStatus(status, "", `running… ${Math.min(Math.max(0, step || 0), total)}/${total}`);
+            } else {
+              setStatus(status, "", "running…");
+            }
+          });
+
+          const resp = done && done.result ? done.result : done;
           const item = resp && resp.data && resp.data[0];
           const b64 = item && item.b64_json;
           if (!b64) throw new Error("missing data[0].b64_json");
@@ -547,6 +608,7 @@
           setStatus(status, "err", String(e.message || e));
           log.textContent = String(e && e.stack ? e.stack : e);
         } finally {
+          hideProgress(prog);
           btn.disabled = modelOpInFlight;
           inferenceInFlight = Math.max(0, inferenceInFlight - 1);
           updateModelControls();
@@ -559,11 +621,13 @@
         const log = $("i2iLog");
         const img = $("i2iImg");
         const dl = $("i2iDownload");
+        const prog = $("i2iProgress");
 
         btn.disabled = true;
         inferenceInFlight += 1;
         updateModelControls();
         setStatus(status, "", "running…");
+        setProgress(prog, 0, $("i2iSteps").value ? Number($("i2iSteps").value) : null);
         log.textContent = "";
         img.removeAttribute("src");
         dl.href = "#";
@@ -572,7 +636,7 @@
           if (!activeModelId) throw new Error("select a model (load it into memory) first");
 
           const base = $("baseUrl").value;
-          const url = joinUrl(base, "/v1/images/edits");
+          const url = joinUrl(base, "/v1/vision/jobs/images/edits");
 
           const imageFile = $("i2iImage").files[0];
           if (!imageFile) throw new Error("select an input image");
@@ -590,7 +654,23 @@
 	          if ($("i2iSeed").value) fd.set("seed", $("i2iSeed").value);
 	          fd.set("extra_json", JSON.stringify(extra));
 
-          const resp = await fetchJson(url, { method: "POST", body: fd });
+          const start = await fetchJson(url, { method: "POST", body: fd });
+          const jobId = start && start.job_id ? String(start.job_id) : "";
+          if (!jobId) throw new Error("missing job_id from server");
+
+          const done = await pollJob(base, jobId, (job) => {
+            const p = job && job.progress ? job.progress : null;
+            const step = p && p.step !== undefined ? Number(p.step) : null;
+            const total = p && p.total_steps !== undefined ? Number(p.total_steps) : null;
+            setProgress(prog, step, total);
+            if (total && total > 0) {
+              setStatus(status, "", `running… ${Math.min(Math.max(0, step || 0), total)}/${total}`);
+            } else {
+              setStatus(status, "", "running…");
+            }
+          });
+
+          const resp = done && done.result ? done.result : done;
 
           const item = resp && resp.data && resp.data[0];
           const b64 = item && item.b64_json;
@@ -606,6 +686,7 @@
           setStatus(status, "err", String(e.message || e));
           log.textContent = String(e && e.stack ? e.stack : e);
         } finally {
+          hideProgress(prog);
           btn.disabled = modelOpInFlight;
           inferenceInFlight = Math.max(0, inferenceInFlight - 1);
           updateModelControls();

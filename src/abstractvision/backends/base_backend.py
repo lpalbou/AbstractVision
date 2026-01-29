@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Callable, Optional
 
 from ..types import (
     GeneratedAsset,
@@ -16,6 +16,24 @@ from ..types import (
 
 class VisionBackend(ABC):
     """Backend interface for generative vision tasks."""
+
+    def generate_image_with_progress(
+        self,
+        request: ImageGenerationRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        """Generate an image, optionally reporting progress (best-effort)."""
+        _ = progress_callback
+        return self.generate_image(request)
+
+    def edit_image_with_progress(
+        self,
+        request: ImageEditRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        """Edit an image, optionally reporting progress (best-effort)."""
+        _ = progress_callback
+        return self.edit_image(request)
 
     def get_capabilities(self) -> Optional[VisionBackendCapabilities]:
         """Return backend-level capability constraints (optional)."""

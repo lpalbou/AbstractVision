@@ -7,7 +7,7 @@ import tempfile
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..types import (
@@ -504,6 +504,13 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             ) from e
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+        return self.generate_image_with_progress(request, progress_callback=None)
+
+    def generate_image_with_progress(
+        self,
+        request: ImageGenerationRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
         self._validate_qwen_image_components()
         mode = self._select_mode()
         if mode == "cli":
@@ -555,6 +562,24 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             }
         )
 
+        if progress_callback is not None:
+            zero_based: Dict[str, Optional[bool]] = {"v": None}
+
+            def _pcb(*args: Any, **_kw: Any) -> bool:
+                try:
+                    step = int(args[0]) if len(args) >= 1 else 0
+                    total = int(args[1]) if len(args) >= 2 else None
+                    if zero_based["v"] is None:
+                        zero_based["v"] = (step == 0)
+                    if zero_based["v"]:
+                        step = step + 1
+                    progress_callback(step, total)
+                except Exception:
+                    pass
+                return True
+
+            kwargs["progress_callback"] = _pcb
+
         if request.width is not None:
             kwargs["width"] = int(request.width)
         if request.height is not None:
@@ -591,6 +616,13 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         )
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
+        return self.edit_image_with_progress(request, progress_callback=None)
+
+    def edit_image_with_progress(
+        self,
+        request: ImageEditRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
         self._validate_qwen_image_components()
         mode = self._select_mode()
         if mode == "cli":
@@ -652,6 +684,24 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 "negative_prompt": str(request.negative_prompt or ""),
             }
         )
+
+        if progress_callback is not None:
+            zero_based: Dict[str, Optional[bool]] = {"v": None}
+
+            def _pcb(*args: Any, **_kw: Any) -> bool:
+                try:
+                    step = int(args[0]) if len(args) >= 1 else 0
+                    total = int(args[1]) if len(args) >= 2 else None
+                    if zero_based["v"] is None:
+                        zero_based["v"] = (step == 0)
+                    if zero_based["v"]:
+                        step = step + 1
+                    progress_callback(step, total)
+                except Exception:
+                    pass
+                return True
+
+            kwargs["progress_callback"] = _pcb
 
         from PIL import Image  # pillow is a dependency of stable-diffusion-cpp-python
 

@@ -7,7 +7,7 @@ import hashlib
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..types import (
@@ -972,10 +972,30 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     def _pipe_call(self, pipe: Any, kwargs: Dict[str, Any]):
         import warnings
 
+        call_kwargs = dict(kwargs)
+        if callable(kwargs.get("__abstractvision_progress_callback")):
+            progress_cb = kwargs.get("__abstractvision_progress_callback")
+            total_steps = kwargs.get("__abstractvision_progress_total_steps")
+            try:
+                call_kwargs.pop("__abstractvision_progress_callback", None)
+                call_kwargs.pop("__abstractvision_progress_total_steps", None)
+            except Exception:
+                pass
+            try:
+                call_kwargs = self._inject_progress_kwargs(
+                    pipe=pipe,
+                    kwargs=call_kwargs,
+                    progress_callback=progress_cb,
+                    total_steps=int(total_steps) if total_steps is not None else None,
+                )
+            except Exception:
+                # Best-effort: never break inference for progress reporting.
+                pass
+
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always", RuntimeWarning)
             with _hf_offline_env(not bool(self._cfg.allow_download)):
-                out = pipe(**kwargs)
+                out = pipe(**call_kwargs)
         had_invalid_cast = any(
             issubclass(getattr(x, "category", Warning), RuntimeWarning)
             and "invalid value encountered in cast" in str(getattr(x, "message", ""))
@@ -983,7 +1003,83 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         )
         return out, had_invalid_cast
 
-    def _maybe_retry_on_dtype_mismatch(self, *, kind: str, pipe: Any, kwargs: Dict[str, Any], error: Exception) -> Optional[Any]:
+    def _pipe_progress_param_names(self, pipe: Any) -> set[str]:
+        fn = getattr(pipe, "__call__", None)
+        if not callable(fn):
+            return set()
+        try:
+            sig = inspect.signature(fn)
+        except Exception:
+            return set()
+        return {str(k) for k in sig.parameters.keys() if str(k) != "self"}
+
+    def _inject_progress_kwargs(
+        self,
+        *,
+        pipe: Any,
+        kwargs: Dict[str, Any],
+        progress_callback: Callable[[int, Optional[int]], None],
+        total_steps: Optional[int],
+    ) -> Dict[str, Any]:
+        names = self._pipe_progress_param_names(pipe)
+        if not names:
+            return kwargs
+
+        if "callback_on_step_end" in names:
+
+            def _on_step_end(*args: Any, **kw: Any) -> Any:
+                # Expected signature: (pipe, step, timestep, callback_kwargs)
+                step = None
+                cb_kwargs = None
+                try:
+                    if len(args) >= 2:
+                        step = args[1]
+                    if len(args) >= 4:
+                        cb_kwargs = args[3]
+                    if cb_kwargs is None:
+                        cb_kwargs = kw.get("callback_kwargs")
+                except Exception:
+                    pass
+                try:
+                    if step is not None:
+                        progress_callback(int(step) + 1, total_steps)
+                except Exception:
+                    pass
+                return cb_kwargs if cb_kwargs is not None else {}
+
+            kwargs["callback_on_step_end"] = _on_step_end
+            # Avoid passing large tensors through callback_kwargs unless explicitly requested.
+            if "callback_on_step_end_tensor_inputs" in names:
+                kwargs.setdefault("callback_on_step_end_tensor_inputs", [])
+            return kwargs
+
+        if "callback" in names:
+
+            def _callback(*args: Any, **_kw: Any) -> None:
+                # Expected signature: (step, timestep, latents)
+                try:
+                    if args:
+                        progress_callback(int(args[0]) + 1, total_steps)
+                except Exception:
+                    pass
+
+            kwargs["callback"] = _callback
+            if "callback_steps" in names:
+                kwargs["callback_steps"] = 1
+            return kwargs
+
+        return kwargs
+
+    def _maybe_retry_on_dtype_mismatch(
+        self,
+        *,
+        kind: str,
+        pipe: Any,
+        kwargs: Dict[str, Any],
+        error: Exception,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+        total_steps: Optional[int] = None,
+    ) -> Optional[Any]:
         if not bool(getattr(self._cfg, "auto_retry_fp32", False)):
             return None
         if not _looks_like_dtype_mismatch_error(error):
@@ -1021,13 +1117,25 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             self._call_params[kind] = _call_param_names(getattr(pipe2, "__call__", None))
 
             try:
-                out2, _had_invalid_cast2 = self._pipe_call(pipe2, kwargs)
+                call_kwargs = dict(kwargs)
+                if progress_callback is not None:
+                    call_kwargs["__abstractvision_progress_callback"] = progress_callback
+                    call_kwargs["__abstractvision_progress_total_steps"] = total_steps
+                out2, _had_invalid_cast2 = self._pipe_call(pipe2, call_kwargs)
                 return out2
             except Exception:
                 continue
         return None
 
-    def _maybe_retry_fp32_on_invalid_output(self, *, kind: str, pipe: Any, kwargs: Dict[str, Any]) -> Optional[Any]:
+    def _maybe_retry_fp32_on_invalid_output(
+        self,
+        *,
+        kind: str,
+        pipe: Any,
+        kwargs: Dict[str, Any],
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+        total_steps: Optional[int] = None,
+    ) -> Optional[Any]:
         if not bool(getattr(self._cfg, "auto_retry_fp32", False)):
             return None
         torch = _lazy_import_torch()
@@ -1056,7 +1164,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self._pipelines[kind] = pipe_fp32
         self._call_params[kind] = _call_param_names(getattr(pipe_fp32, "__call__", None))
 
-        out2, had_invalid_cast2 = self._pipe_call(pipe_fp32, kwargs)
+        call_kwargs = dict(kwargs)
+        if progress_callback is not None:
+            call_kwargs["__abstractvision_progress_callback"] = progress_callback
+            call_kwargs["__abstractvision_progress_total_steps"] = total_steps
+        out2, had_invalid_cast2 = self._pipe_call(pipe_fp32, call_kwargs)
         if had_invalid_cast2:
             raise ValueError(
                 "Diffusers produced invalid pixel values (NaNs) while decoding the image "
@@ -1067,8 +1179,16 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return out2
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+        return self.generate_image_with_progress(request, progress_callback=None)
+
+    def generate_image_with_progress(
+        self,
+        request: ImageGenerationRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
         pipe = self._get_or_load_pipeline("t2i")
         call_params = self._call_params.get("t2i")
+        total_steps = int(request.steps) if request.steps is not None else None
 
         torch_dtype = getattr(pipe, "dtype", None)
         if torch_dtype is None:
@@ -1105,9 +1225,20 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             kwargs.update(dict(request.extra))
 
         try:
-            out, had_invalid_cast = self._pipe_call(pipe, kwargs)
+            call_kwargs = dict(kwargs)
+            if progress_callback is not None:
+                call_kwargs["__abstractvision_progress_callback"] = progress_callback
+                call_kwargs["__abstractvision_progress_total_steps"] = total_steps
+            out, had_invalid_cast = self._pipe_call(pipe, call_kwargs)
         except Exception as e:
-            out2 = self._maybe_retry_on_dtype_mismatch(kind="t2i", pipe=pipe, kwargs=kwargs, error=e)
+            out2 = self._maybe_retry_on_dtype_mismatch(
+                kind="t2i",
+                pipe=pipe,
+                kwargs=kwargs,
+                error=e,
+                progress_callback=progress_callback,
+                total_steps=total_steps,
+            )
             if out2 is None:
                 raise
             out, had_invalid_cast = out2, False
@@ -1116,7 +1247,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if not isinstance(images, list) or not images:
             raise ValueError("Diffusers pipeline returned no images")
         if self._is_probably_all_black_image(images[0]):
-            out2 = self._maybe_retry_fp32_on_invalid_output(kind="t2i", pipe=pipe, kwargs=kwargs)
+            out2 = self._maybe_retry_fp32_on_invalid_output(
+                kind="t2i",
+                pipe=pipe,
+                kwargs=kwargs,
+                progress_callback=progress_callback,
+                total_steps=total_steps,
+            )
             if out2 is not None:
                 out = out2
                 retried_fp32 = True
@@ -1161,6 +1298,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         )
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
+        return self.edit_image_with_progress(request, progress_callback=None)
+
+    def edit_image_with_progress(
+        self,
+        request: ImageEditRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
         if request.mask is not None:
             pipe = self._get_or_load_pipeline("inpaint")
             call_params = self._call_params.get("inpaint")
@@ -1169,6 +1313,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             pipe = self._get_or_load_pipeline("i2i")
             call_params = self._call_params.get("i2i")
             kind = "i2i"
+
+        total_steps = int(request.steps) if request.steps is not None else None
 
         torch_dtype = getattr(pipe, "dtype", None)
         if torch_dtype is None:
@@ -1200,9 +1346,20 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             kwargs.update(dict(request.extra))
 
         try:
-            out, had_invalid_cast = self._pipe_call(pipe, kwargs)
+            call_kwargs = dict(kwargs)
+            if progress_callback is not None:
+                call_kwargs["__abstractvision_progress_callback"] = progress_callback
+                call_kwargs["__abstractvision_progress_total_steps"] = total_steps
+            out, had_invalid_cast = self._pipe_call(pipe, call_kwargs)
         except Exception as e:
-            out2 = self._maybe_retry_on_dtype_mismatch(kind=kind, pipe=pipe, kwargs=kwargs, error=e)
+            out2 = self._maybe_retry_on_dtype_mismatch(
+                kind=kind,
+                pipe=pipe,
+                kwargs=kwargs,
+                error=e,
+                progress_callback=progress_callback,
+                total_steps=total_steps,
+            )
             if out2 is None:
                 raise
             out, had_invalid_cast = out2, False
@@ -1212,7 +1369,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             raise ValueError("Diffusers pipeline returned no images")
         if self._is_probably_all_black_image(images[0]):
             kind = "inpaint" if request.mask is not None else "i2i"
-            out2 = self._maybe_retry_fp32_on_invalid_output(kind=kind, pipe=pipe, kwargs=kwargs)
+            out2 = self._maybe_retry_fp32_on_invalid_output(
+                kind=kind,
+                pipe=pipe,
+                kwargs=kwargs,
+                progress_callback=progress_callback,
+                total_steps=total_steps,
+            )
             if out2 is not None:
                 out = out2
                 retried_fp32 = True
