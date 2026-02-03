@@ -8,8 +8,10 @@ This folder is the **single source of truth** for planned and completed work in 
 - **No test-driven special casing**: implementation must be general-purpose logic, not tailored to tests.
 - **Keep the public contract stable**: preserve the integrator-facing API (`VisionManager.generate_image/edit_image/generate_angles/generate_video/image_to_video/...`).
 - **Artifact-first outputs**: generated images/videos must be representable as small JSON objects (refs), not inlined bytes, to support tool calling + workflows + third-party integrations.
-- **Dependency-light base install**: heavy ML stacks (torch/diffusers/ffmpeg bindings) must be optional extras and imported lazily.
+- **Batteries-included install, but lazy imports**: the default install includes local backends, but importing `abstractvision` should not eagerly import heavy runtime stacks unless needed (avoid model loads/weight downloads at import time; defer heavy backend imports until backend construction or first use).
 - **Prefer permissive licensing**: only adopt MIT/Apache/BSD-compatible components. If none exist, document feasibility and create a backlog item.
+
+Note: some older completed backlog items mention “heavy deps behind extras”. Treat those as historical context; current packaging is “batteries included”, but we still want lazy imports and explicit model download/load semantics.
 
 ---
 

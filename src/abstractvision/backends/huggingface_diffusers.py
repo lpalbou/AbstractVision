@@ -402,7 +402,7 @@ class HuggingFaceDiffusersBackendConfig:
     """
 
     model_id: str
-    device: str = "cpu"  # "cpu" | "cuda" | "mps" | ...
+    device: str = "cpu"  # "cpu" | "cuda" | "mps" | "auto" | ...
     torch_dtype: Optional[str] = None  # "float16" | "bfloat16" | "float32" | None
     allow_download: bool = True
     auto_retry_fp32: bool = True
@@ -423,6 +423,35 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self._fused_lora_signature: Dict[str, Optional[str]] = {}
         self._rapid_transformer_key: Optional[str] = None
         self._rapid_transformer: Any = None
+        self._resolved_device: Optional[str] = None
+
+    def _effective_device(self, torch: Any) -> str:
+        if self._resolved_device is not None:
+            return self._resolved_device
+
+        raw = str(getattr(self._cfg, "device", "") or "").strip()
+        d = raw.lower()
+        if not d or d in {"auto", "default"}:
+            cuda = getattr(torch, "cuda", None)
+            if cuda is not None and callable(getattr(cuda, "is_available", None)) and cuda.is_available():
+                self._resolved_device = "cuda"
+                return self._resolved_device
+
+            backends = getattr(torch, "backends", None)
+            mps = getattr(backends, "mps", None) if backends is not None else None
+            if mps is not None and callable(getattr(mps, "is_available", None)) and mps.is_available():
+                self._resolved_device = "mps"
+                return self._resolved_device
+
+            self._resolved_device = "cpu"
+            return self._resolved_device
+
+        # Normalize common spellings but preserve explicit device indexes (e.g. "cuda:0").
+        if d == "gpu":
+            self._resolved_device = "cuda"
+        else:
+            self._resolved_device = raw
+        return self._resolved_device
 
     def preload(self) -> None:
         # Best-effort: preload the most common pipeline.
@@ -675,12 +704,14 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 kwargs["cache_dir"] = str(self._cfg.cache_dir)
             with _hf_offline_env(not bool(self._cfg.allow_download)):
                 tr = QwenImageTransformer2DModel.from_pretrained(repo, torch_dtype=torch_dtype, **kwargs)
+            torch = _lazy_import_torch()
+            device = self._effective_device(torch)
             try:
-                tr = tr.to(device=str(self._cfg.device), dtype=torch_dtype)
+                tr = tr.to(device=str(device), dtype=torch_dtype)
             except Exception:
                 try:
                     tr = tr.to(dtype=torch_dtype)
-                    tr = tr.to(str(self._cfg.device))
+                    tr = tr.to(str(device))
                 except Exception:
                     pass
 
@@ -849,17 +880,56 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             diffusers_version,
         ) = _lazy_import_diffusers()
         torch = _lazy_import_torch()
-        _require_device_available(torch, self._cfg.device)
+        device = self._effective_device(torch)
+        _require_device_available(torch, device)
 
         self._preflight_check_model_index()
         _maybe_patch_transformers_clip_position_ids()
 
         torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype)
         if torch_dtype is None:
-            torch_dtype = _default_torch_dtype_for_device(torch, self._cfg.device)
+            torch_dtype = _default_torch_dtype_for_device(torch, device)
         common = self._pipeline_common_kwargs()
         if bool(self._cfg.low_cpu_mem_usage):
             common["low_cpu_mem_usage"] = True
+
+        # Auto-select checkpoint variants when appropriate (best-effort).
+        # Prefer fp16 on GPU backends (CUDA/MPS) to cut memory/disk use, but never on CPU.
+        auto_variant: Optional[str] = None
+        if not str(getattr(self._cfg, "variant", "") or "").strip() and str(device).strip().lower() != "cpu":
+            if torch_dtype == getattr(torch, "float16", object()):
+                auto_variant = "fp16"
+
+        def _looks_like_missing_variant_error(e: Exception, variant: str) -> bool:
+            msg = str(e or "")
+            m = msg.lower()
+            v = str(variant or "").strip().lower()
+            if not v:
+                return False
+            return (
+                (f".{v}." in m or f" {v} " in m or f"'{v}'" in m)
+                and (
+                    "no such file" in m
+                    or "does not exist" in m
+                    or "not found" in m
+                    or "is not present" in m
+                    or "couldn't find" in m
+                    or "cannot find" in m
+                )
+            )
+
+        def _from_pretrained(cls: Any) -> Any:
+            if auto_variant:
+                common2 = dict(common)
+                common2["variant"] = auto_variant
+                try:
+                    return cls.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common2)
+                except Exception as e:
+                    # If the repo doesn't provide the fp16 variant, fall back to regular weights.
+                    if _looks_like_missing_variant_error(e, auto_variant):
+                        return cls.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
+                    raise
+            return cls.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
 
         def _maybe_raise_offline_missing_model(e: Exception) -> None:
             model_id = str(self._cfg.model_id or "").strip()
@@ -885,26 +955,26 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 # Prefer AutoPipeline when available, but fall back to DiffusionPipeline for robustness.
                 if AutoPipelineForText2Image is not None:
                     try:
-                        pipe = AutoPipelineForText2Image.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
+                        pipe = _from_pretrained(AutoPipelineForText2Image)
                     except ValueError as e:
                         _maybe_raise_offline_missing_model(e)
                         pipe = None
                 if pipe is None:
                     try:
-                        pipe = DiffusionPipeline.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
+                        pipe = _from_pretrained(DiffusionPipeline)
                     except Exception as e:
                         _maybe_raise_offline_missing_model(e)
                         raise
             elif kind == "i2i":
                 if AutoPipelineForImage2Image is not None:
                     try:
-                        pipe = AutoPipelineForImage2Image.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
+                        pipe = _from_pretrained(AutoPipelineForImage2Image)
                     except ValueError as e:
                         _maybe_raise_offline_missing_model(e)
                         pipe = None
                 if pipe is None:
                     try:
-                        pipe = DiffusionPipeline.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
+                        pipe = _from_pretrained(DiffusionPipeline)
                     except Exception as e:
                         _maybe_raise_offline_missing_model(e)
                         raise ValueError(
@@ -920,14 +990,14 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                         "Install/upgrade diffusers (and compatible transformers/torch). "
                         f"(diffusers={diffusers_version})"
                     )
-                pipe = AutoPipelineForInpainting.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
+                pipe = _from_pretrained(AutoPipelineForInpainting)
             else:
                 raise ValueError(f"Unknown pipeline kind: {kind!r}")
 
         # Diffusers pipelines support `.to(<device>)` with a string.
-        pipe = pipe.to(str(self._cfg.device))
+        pipe = pipe.to(str(device))
         _maybe_cast_pipe_modules_to_dtype(pipe, dtype=torch_dtype)
-        _maybe_upcast_vae_for_mps(torch, pipe, self._cfg.device)
+        _maybe_upcast_vae_for_mps(torch, pipe, device)
         self._pipelines[kind] = pipe
         self._call_params[kind] = _call_param_names(getattr(pipe, "__call__", None))
         return pipe
@@ -947,8 +1017,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if seed is None:
             return None
         torch = _lazy_import_torch()
-        d = str(self._cfg.device or "").strip().lower()
-        gen_device = "cpu" if d == "mps" or d.startswith("mps:") else str(self._cfg.device)
+        d = str(self._effective_device(torch) or "").strip().lower()
+        gen_device = "cpu" if d == "mps" or d.startswith("mps:") else str(self._effective_device(torch))
         try:
             gen = torch.Generator(device=gen_device)
         except Exception:
@@ -1086,14 +1156,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             return None
 
         torch = _lazy_import_torch()
-        d = str(self._cfg.device or "").strip().lower()
+        device = self._effective_device(torch)
+        d = str(device or "").strip().lower()
         if not (d == "mps" or d.startswith("mps:")):
             return None
 
         current_dtype = getattr(pipe, "dtype", None)
         if current_dtype is None:
             current_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(
-                torch, self._cfg.device
+                torch, device
             )
 
         candidates: list[Any] = []
@@ -1104,15 +1175,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         for target in candidates:
             try:
-                pipe2 = pipe.to(device=str(self._cfg.device), dtype=target)
+                pipe2 = pipe.to(device=str(device), dtype=target)
             except Exception:
                 try:
                     pipe2 = pipe.to(dtype=target)
-                    pipe2 = pipe2.to(str(self._cfg.device))
+                    pipe2 = pipe2.to(str(device))
                 except Exception:
                     continue
 
-            _maybe_upcast_vae_for_mps(torch, pipe2, self._cfg.device)
+            _maybe_upcast_vae_for_mps(torch, pipe2, device)
             self._pipelines[kind] = pipe2
             self._call_params[kind] = _call_param_names(getattr(pipe2, "__call__", None))
 
@@ -1139,10 +1210,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if not bool(getattr(self._cfg, "auto_retry_fp32", False)):
             return None
         torch = _lazy_import_torch()
-        d = str(self._cfg.device or "").strip().lower()
+        device = self._effective_device(torch)
+        d = str(device or "").strip().lower()
         cfg_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype)
         if cfg_dtype is None:
-            cfg_dtype = _default_torch_dtype_for_device(torch, self._cfg.device)
+            cfg_dtype = _default_torch_dtype_for_device(torch, device)
 
         # Currently, we only auto-retry on Apple Silicon / MPS when running fp16,
         # because NaNs/black images are common for some models (e.g. Qwen Image).
@@ -1152,15 +1224,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             return None
 
         try:
-            pipe_fp32 = pipe.to(device=str(self._cfg.device), dtype=torch.float32)
+            pipe_fp32 = pipe.to(device=str(device), dtype=torch.float32)
         except Exception:
             try:
                 pipe_fp32 = pipe.to(dtype=torch.float32)
-                pipe_fp32 = pipe_fp32.to(str(self._cfg.device))
+                pipe_fp32 = pipe_fp32.to(str(device))
             except Exception:
                 return None
 
-        _maybe_upcast_vae_for_mps(torch, pipe_fp32, self._cfg.device)
+        _maybe_upcast_vae_for_mps(torch, pipe_fp32, device)
         self._pipelines[kind] = pipe_fp32
         self._call_params[kind] = _call_param_names(getattr(pipe_fp32, "__call__", None))
 
@@ -1193,7 +1265,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         torch_dtype = getattr(pipe, "dtype", None)
         if torch_dtype is None:
             torch = _lazy_import_torch()
-            torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, self._cfg.device)
+            device = self._effective_device(torch)
+            torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, device)
         rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
         lora_sig = self._apply_loras(kind="t2i", pipe=pipe, extra=request.extra)
 
@@ -1319,7 +1392,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         torch_dtype = getattr(pipe, "dtype", None)
         if torch_dtype is None:
             torch = _lazy_import_torch()
-            torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, self._cfg.device)
+            device = self._effective_device(torch)
+            torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, device)
         rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
         lora_sig = self._apply_loras(kind=kind, pipe=pipe, extra=request.extra)
 

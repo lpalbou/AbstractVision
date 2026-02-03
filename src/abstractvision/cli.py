@@ -190,7 +190,7 @@ class _ReplState:
     image_to_video_path: Optional[str] = _env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH")
     image_to_video_mode: str = _env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart") or "multipart"
 
-    diffusers_device: str = _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "cpu") or "cpu"
+    diffusers_device: str = _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "auto") or "auto"
     diffusers_torch_dtype: Optional[str] = _env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE")
     diffusers_allow_download: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", True)
     diffusers_auto_retry_fp32: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True)

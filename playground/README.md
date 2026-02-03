@@ -29,7 +29,8 @@ The image endpoints return `501` until you configure a backend (see examples bel
 
 ```bash
 pip install "abstractcore[server]"
-export ABSTRACTCORE_VISION_DEVICE=mps   # or: cpu / cuda
+# Optional: choose where Diffusers runs. Default is `auto` (prefers `cuda`/`mps` when available, else `cpu`).
+# export ABSTRACTCORE_VISION_DEVICE=auto  # or: cpu / cuda / mps
 # Optional: disable downloads (default allows downloads).
 # export ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=0
 python -m uvicorn abstractcore.server.app:app --port 8000

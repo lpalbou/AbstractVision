@@ -24,7 +24,7 @@
 
 ## Constraints
 
-- <e.g. cross-platform, minimal deps, keep `VisionManager` contract stable, heavy ML deps behind extras, MIT/Apache/BSD-only>
+- <e.g. cross-platform, keep `VisionManager` contract stable, heavy backends imported lazily (no model loads at import time), MIT/Apache/BSD-only>
 
 ---
 

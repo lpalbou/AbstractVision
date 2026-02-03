@@ -441,6 +441,113 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(asset.metadata.get("rapid_aio_repo"), "org/rapid")
         self.assertIs(fake_pipe.registered.get("transformer"), tr)
 
+    def test_auto_device_prefers_cuda_and_uses_fp16_variant(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        class _FakeCuda:
+            @staticmethod
+            def is_available():
+                return True
+
+        class _FakeMps:
+            @staticmethod
+            def is_available():
+                return True
+
+        class _FakeBackends:
+            mps = _FakeMps()
+
+        class _FakeTorch:
+            cuda = _FakeCuda()
+            backends = _FakeBackends()
+            float16 = object()
+            float32 = object()
+            bfloat16 = object()
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.return_value = fake_pipe
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ), patch("abstractvision.backends.huggingface_diffusers._lazy_import_torch", return_value=_FakeTorch):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="auto")
+            )
+            asset = backend.generate_image(ImageGenerationRequest(prompt="hello", seed=None))
+
+        self.assertEqual(asset.mime_type, "image/png")
+
+        # Pipeline load args: auto variant should try fp16.
+        _, kwargs = fake_t2i_cls.from_pretrained.call_args
+        self.assertEqual(kwargs.get("variant"), "fp16")
+
+        # Pipeline moved to cuda (preferred over mps).
+        self.assertIn("cuda", fake_pipe.to_calls)
+
+    def test_auto_fp16_variant_falls_back_when_missing(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        class _FakeCuda:
+            @staticmethod
+            def is_available():
+                return True
+
+        class _FakeBackends:
+            mps = None
+
+        class _FakeTorch:
+            cuda = _FakeCuda()
+            backends = _FakeBackends()
+            float16 = object()
+            float32 = object()
+            bfloat16 = object()
+
+        def _from_pretrained(*_args, **kwargs):
+            if kwargs.get("variant") == "fp16":
+                raise OSError("diffusion_pytorch_model.fp16.safetensors not found")
+            return fake_pipe
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.side_effect = _from_pretrained
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ), patch("abstractvision.backends.huggingface_diffusers._lazy_import_torch", return_value=_FakeTorch):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="auto")
+            )
+            asset = backend.generate_image(ImageGenerationRequest(prompt="hello", seed=None))
+
+        self.assertEqual(asset.mime_type, "image/png")
+        # First attempt with variant, then fallback without.
+        self.assertEqual(fake_t2i_cls.from_pretrained.call_count, 2)
+        first_kwargs = fake_t2i_cls.from_pretrained.call_args_list[0].kwargs
+        second_kwargs = fake_t2i_cls.from_pretrained.call_args_list[1].kwargs
+        self.assertEqual(first_kwargs.get("variant"), "fp16")
+        self.assertIsNone(second_kwargs.get("variant"))
+
 
 if __name__ == "__main__":
     unittest.main()

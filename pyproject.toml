@@ -50,6 +50,9 @@ Repository = "https://github.com/abstractcore/abstractvision"
 [project.scripts]
 abstractvision = "abstractvision.cli:main"
 
+[project.entry-points."abstractcore.capabilities_plugins"]
+abstractvision = "abstractvision.integrations.abstractcore_plugin:register"
+
 [project.optional-dependencies]
 # OpenAI-compatible HTTP backend is stdlib-only today; keep the extra for forward compatibility.
 openai-compatible = []

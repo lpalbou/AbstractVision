@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
-from .backends import VisionBackend
+from .backends.base_backend import VisionBackend
 from .artifacts import MediaStore
 from .errors import BackendNotConfiguredError, CapabilityNotSupportedError
 from .model_capabilities import VisionModelCapabilitiesRegistry
