@@ -49,6 +49,8 @@ pip install -e .
 
 Start here:
 - Getting started: `docs/getting-started.md`
+- FAQ: `docs/faq.md`
+- API reference: `docs/api.md`
 - Architecture: `docs/architecture.md`
 - Docs index: `docs/README.md`
 
@@ -154,6 +156,13 @@ from abstractvision.integrations.abstractcore import make_vision_tools
 
 tools = make_vision_tools(vision_manager=vm, model_id="zai-org/GLM-Image")
 ```
+
+## Project
+
+- Release notes: `CHANGELOG.md`
+- Contributing: `CONTRIBUTING.md`
+- Security: `SECURITY.md`
+- Acknowledgments: `ACKNOWLEDMENTS.md`
 
 ## Requirements
 

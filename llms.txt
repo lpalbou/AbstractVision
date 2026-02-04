@@ -14,12 +14,17 @@ Key reality checks for agents:
 - [README](README.md): overview, install, quickstart
 - [Docs index](docs/README.md): documentation map
 - [Getting started](docs/getting-started.md): REPL walkthroughs for Diffusers / stable-diffusion.cpp / OpenAI-compatible
+- [FAQ](docs/faq.md): common questions + troubleshooting
+- [API](docs/api.md): public Python API surface
 - [Architecture](docs/architecture.md): component overview + diagrams
 - [Backends reference](docs/reference/backends.md): backend support matrix + notes
 - [Configuration reference](docs/reference/configuration.md): CLI/REPL commands + `ABSTRACTVISION_*` env vars
 - [Capabilities registry](docs/reference/capabilities-registry.md): registry format + usage
 - [Artifacts](docs/reference/artifacts.md): artifact-ref outputs + stores
 - [AbstractCore integration](docs/reference/abstractcore-integration.md): capability plugin + tool helpers
+- [Contributing](CONTRIBUTING.md): dev setup + tests + contribution guidelines
+- [Security](SECURITY.md): responsible vulnerability reporting
+- [Acknowledgments](ACKNOWLEDMENTS.md): upstream projects
 
 ## Code entry points
 
@@ -43,5 +48,4 @@ Key reality checks for agents:
 ## Optional
 
 - [Engineering backlog](docs/backlog/README.md): internal design notes + completion reports
-- [Playground](playground/README.md): minimal web UI for AbstractCore `/v1/images/*` endpoints
-
+- [Playground](playground/README.md): minimal web UI for AbstractCore Server vision job endpoints (`/v1/vision/*`)

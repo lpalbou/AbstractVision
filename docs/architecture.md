@@ -7,6 +7,9 @@ This document describes the *current code in this repo* and links to the support
 
 See also:
 - Docs index: `docs/README.md`
+- Getting started: `docs/getting-started.md`
+- API reference: `docs/api.md`
+- FAQ: `docs/faq.md`
 - Backends: `docs/reference/backends.md`
 - Capability registry: `docs/reference/capabilities-registry.md`
 - Artifacts: `docs/reference/artifacts.md`
@@ -105,4 +108,3 @@ Current plugin behavior (evidence in `src/abstractvision/integrations/abstractco
   1) Edit `src/abstractvision/assets/vision_model_capabilities.json`
   2) Validate by running the test suite (validator is wired into the registry loader)
   3) Use `abstractvision show-model <id>` to sanity-check task/param printing (`src/abstractvision/cli.py`)
-

@@ -8,7 +8,7 @@ from .artifacts import LocalAssetStore, RuntimeArtifactStoreAdapter, is_artifact
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .vision_manager import VisionManager
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Laurent-Philippe Albou"
 __email__ = "contact@abstractcore.ai"
 

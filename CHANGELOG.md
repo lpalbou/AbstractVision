@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.1
+
+- Documentation refresh for public release:
+  - add `docs/api.md` and strengthen cross-linking between README and docs
+  - add `CONTRIBUTING.md`, `SECURITY.md`, and `ACKNOWLEDMENTS.md`
+  - clarify playground/server endpoint expectations (`/v1/vision/*`)
+
 ## 0.2.0
 
 - Add stable-diffusion.cpp (`sd-cli`) backend for local GGUF diffusion models.

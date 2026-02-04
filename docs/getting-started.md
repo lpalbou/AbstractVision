@@ -8,6 +8,9 @@ This guide helps you generate your first image using AbstractVision with differe
 
 See also:
 - Docs index: `docs/README.md`
+- FAQ: `docs/faq.md`
+- API reference: `docs/api.md`
+- Architecture: `docs/architecture.md`
 - Backends: `docs/reference/backends.md`
 - Configuration (CLI/REPL env vars): `docs/reference/configuration.md`
 - Capability registry: `docs/reference/capabilities-registry.md`

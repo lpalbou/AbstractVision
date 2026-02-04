@@ -8,6 +8,8 @@ Start here if you’re new:
 
 ## Reference
 
+- FAQ: `docs/faq.md`
+- API reference: `docs/api.md`
 - Backends: `docs/reference/backends.md`
 - Configuration (CLI/REPL env vars + flags): `docs/reference/configuration.md`
 - Capability registry (`vision_model_capabilities.json`): `docs/reference/capabilities-registry.md`
@@ -30,3 +32,11 @@ If you’re looking for “what can model X do?”, the single source of truth i
 ## Internal engineering notes
 
 `docs/backlog/` is an internal log (planned work + completion reports). It is not the normative user documentation surface.
+
+## Project
+
+- Release notes: `CHANGELOG.md`
+- Contributing: `CONTRIBUTING.md`
+- Security: `SECURITY.md`
+- License: `LICENSE`
+- Acknowledgments: `ACKNOWLEDMENTS.md`
