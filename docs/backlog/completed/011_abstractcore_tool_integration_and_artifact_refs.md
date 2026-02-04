@@ -113,7 +113,7 @@ References:
 
 ## Test plan
 
-- `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- `python -m unittest discover -s tests -p "test_*.py" -q`
 
 ---
 
@@ -122,7 +122,7 @@ References:
 ### Summary
 
 - Added an optional AbstractCore integration module:
-  - `abstractvision/src/abstractvision/integrations/abstractcore.py`
+  - `src/abstractvision/integrations/abstractcore.py`
 - Implemented `make_vision_tools(...)` which returns `@abstractcore.tool`-decorated callables:
   - `vision_text_to_image`
   - `vision_image_to_image`
@@ -144,9 +144,9 @@ Tool argument conventions (v0):
   - `reference_image_artifact` / `reference_image_b64` (optional)
 
 Unit tests:
-- `abstractvision/tests/test_abstractcore_tool_integration.py`
+- `tests/test_abstractcore_tool_integration.py`
 
 ### Validation
 
 - Tests:
-  - `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+  - `python -m unittest discover -s tests -p "test_*.py" -q`

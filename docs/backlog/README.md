@@ -1,6 +1,10 @@
 ## Backlog (how we work)
 
-This folder is the **single source of truth** for planned and completed work in AbstractVision.
+This folder is the **single source of truth** for planned and completed engineering work in AbstractVision.
+
+Note:
+- `docs/backlog/` is an internal engineering log (design notes + completion reports).
+- For current, user-facing docs and install/usage instructions, prefer `docs/README.md` and `README.md`.
 
 ### Principles
 
@@ -11,7 +15,8 @@ This folder is the **single source of truth** for planned and completed work in 
 - **Batteries-included install, but lazy imports**: the default install includes local backends, but importing `abstractvision` should not eagerly import heavy runtime stacks unless needed (avoid model loads/weight downloads at import time; defer heavy backend imports until backend construction or first use).
 - **Prefer permissive licensing**: only adopt MIT/Apache/BSD-compatible components. If none exist, document feasibility and create a backlog item.
 
-Note: some older completed backlog items mention “heavy deps behind extras”. Treat those as historical context; current packaging is “batteries included”, but we still want lazy imports and explicit model download/load semantics.
+Note: some older completed backlog items mention “heavy deps behind extras” and a “dependency-light base install”.
+Treat those as historical context; current packaging is “batteries included”, but we still want lazy imports and explicit model download/load semantics.
 
 ---
 
@@ -66,5 +71,6 @@ See `docs/backlog/template.md`.
 2. **Implement** the task.
 3. **Test** and fix issues.
 4. **Only when all tests pass**, move the task to `docs/backlog/completed/` and add the completion report at the end.
-5. **Check recurrent tasks** (see `docs/recurrent/`) before claiming completion.
-6. After completion, **bump semantic version** and add a **CHANGELOG** entry (this is a recurrent task).
+5. For releases, ensure hygiene:
+   - update `CHANGELOG.md`
+   - bump `abstractvision.__version__` in `src/abstractvision/__init__.py`

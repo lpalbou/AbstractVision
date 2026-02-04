@@ -6,7 +6,7 @@
 
 - Add stable-diffusion.cpp (`sd-cli`) backend for local GGUF diffusion models.
 - REPL: forward unknown `--flags` as backend `extra` parameters.
-- Add a tiny web playground (`abstractvision/playground/vision_playground.html`) for testing via AbstractCore `/v1/images/*`.
+- Add a tiny web playground (`playground/vision_playground.html`) for testing via AbstractCore Server vision endpoints (`/v1/vision/*`).
 
 ## 0.1.0
 

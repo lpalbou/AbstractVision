@@ -4,7 +4,15 @@ This guide helps you generate your first image using AbstractVision with differe
 
 - **Diffusers (Python)**: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image
 - **stable-diffusion.cpp**: GGUF diffusion models via pip-installable python bindings (no external `sd-cli` required) or the external `sd-cli` executable
-- **AbstractCore Server**: OpenAI-compatible `/v1/images/*` endpoints + a tiny web playground UI
+- **Playground (web)**: optional static UI for AbstractCore Server vision job endpoints (`/v1/vision/*`)
+
+See also:
+- Docs index: `docs/README.md`
+- Backends: `docs/reference/backends.md`
+- Configuration (CLI/REPL env vars): `docs/reference/configuration.md`
+- Capability registry: `docs/reference/capabilities-registry.md`
+- Artifacts: `docs/reference/artifacts.md`
+- AbstractCore integration: `docs/reference/abstractcore-integration.md`
 
 ---
 
@@ -16,11 +24,9 @@ From PyPI:
 pip install abstractvision
 ```
 
-**Important (as of January 27, 2026):** Some models require Diffusers **from GitHub `main`** because their pipeline
-classes are not yet in the latest PyPI release. In this category today:
-
-- `zai-org/GLM-Image` (`GlmImagePipeline`)
-- `black-forest-labs/FLUX.2-klein-4B` (`Flux2KleinPipeline`)
+**Note (as of January 27, 2026):** Some newer pipelines are only available on Diffusers **GitHub `main`** (i.e., the
+pipeline class is missing from the latest PyPI release). If you see errors like missing `GlmImagePipeline` or
+`Flux2KleinPipeline`, install with Diffusers `main`:
 
 If you're installing **AbstractVision from a repo checkout**, install the dev extra (this installs `diffusers@main` + compatible deps):
 
@@ -28,8 +34,13 @@ If you're installing **AbstractVision from a repo checkout**, install the dev ex
 pip install -e ".[huggingface-dev]"
 ```
 
-If you're installing **AbstractVision from PyPI** (as above), the PyPI release may not ship the `huggingface-dev` extra yet.
-In that case, install Diffusers from source directly:
+If you're installing **AbstractVision from PyPI**, you can install the extra directly:
+
+```bash
+pip install -U "abstractvision[huggingface-dev]"
+```
+
+Or install Diffusers from source directly:
 
 ```bash
 pip install -U "git+https://github.com/huggingface/diffusers@main"
@@ -48,13 +59,13 @@ Offline alternative (if you already have a local Diffusers checkout):
 pip install -U -e /path/to/diffusers
 ```
 
-Or, from a repo checkout (run in the `abstractvision/` repo root):
+Or, from a repo checkout (run in the repo root):
 
 ```bash
 pip install -e .
 ```
 
-No extras are required: AbstractVision is batteries-included (Diffusers + stable-diffusion.cpp python bindings), so a fresh environment should only need model weights.
+No extras are required for most use cases: AbstractVision is batteries-included (Diffusers + stable-diffusion.cpp python bindings), so a fresh environment should only need model weights. Use `huggingface-dev` only when you need Diffusers `main`.
 
 ---
 
@@ -133,7 +144,7 @@ Notes:
 - On Apple Silicon (MPS), AbstractVision upcasts the VAE to fp32 when using fp16 to avoid common “black image” issues.
 - Automatic fp32 retry on all-black output is enabled by default on MPS (can increase peak memory):
   - disable with `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=0`
-- In AbstractVision, `--guidance-scale` is mapped to Qwen’s `true_cfg_scale` when using Qwen pipelines (CFG). If you didn’t provide a `negative_prompt`, AbstractVision passes an empty one so CFG is actually enabled.
+- In AbstractVision, `--guidance-scale` is mapped to Qwen’s `true_cfg_scale` when using Qwen pipelines (CFG). If you set `--guidance-scale` but don’t provide a `negative_prompt`, AbstractVision passes a placeholder negative prompt (`" "`) so CFG is actually enabled.
 
 Tip: keep `guidance_scale` relatively low for some modern DiT models.
 
@@ -267,86 +278,23 @@ Then:
 
 Any extra `--flag` you pass (like `--sampling-method euler`) is forwarded to the backend as `extra`.
 - CLI mode: forwarded to `sd-cli`
-- Python bindings mode: a small subset is supported (e.g. `--sampling-method`, `--steps`, `--cfg-scale`, `--seed`, `--offload-to-cpu`, `--diffusion-fa`, `--flow-shift`)
+- Python bindings mode: keys are mapped to python binding kwargs when supported; unsupported keys are ignored (see `src/abstractvision/backends/stable_diffusion_cpp.py`)
 
 ---
 
-## 6) Web UI testing (recommended): AbstractCore Server + Playground
+## 6) Web UI testing (optional): Playground
 
-AbstractCore exposes:
+This repo includes a static, dependency-free web UI at `playground/vision_playground.html`.
 
-- `POST /v1/images/generations`
-- `POST /v1/images/edits`
+It is designed to talk to an **AbstractCore Server** instance that implements the `/v1/vision/*` endpoints used by the page
+(model list/load/unload and image generation/edit jobs). Evidence: see the fetch calls in `playground/vision_playground.html`.
 
-### 6.0 Install AbstractCore Server (required)
+For server requirements and the endpoint list, see `playground/README.md`.
 
-The web UI is served by **AbstractCore**, not AbstractVision. Install AbstractCore with its server dependencies into the **same** environment:
-
-From PyPI:
+### 6.1 Serve the playground page
 
 ```bash
-pip install "abstractcore[server]"
-```
-
-If you're installing **AbstractVision from a repo checkout**, do:
-
-```bash
-pip install "abstractcore[server]"
-pip install -e .
-```
-
-(`abstractcore[server]` installs FastAPI + Uvicorn + python-multipart (required for `/v1/images/edits`) and AbstractVision (required for `/v1/images/*`).)
-
-### 6.1 Start AbstractCore (auto backend; Stable Diffusion 1.5)
-
-By default, AbstractCore uses `ABSTRACTCORE_VISION_BACKEND=auto` (you can leave it unset). The playground sends a `model` per request, so you usually don't need to set `ABSTRACTCORE_VISION_MODEL_ID`.
-
-```bash
-pip install "abstractcore[server]"
-```
-
-Then:
-
-```bash
-# Optional: choose where Diffusers runs. Default is `auto` (prefers `cuda`/`mps` when available, else `cpu`).
-# export ABSTRACTCORE_VISION_DEVICE=auto  # or: cpu / cuda / mps
-# Optional: disable downloads (default allows downloads).
-# export ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=0
-python -m uvicorn abstractcore.server.app:app --port 8000
-```
-
-In the playground, set Model to `runwayml/stable-diffusion-v1-5`.
-
-### 6.2 Start AbstractCore with `sdcpp` (GGUF / stable-diffusion.cpp)
-
-This path supports two runtimes:
-
-- pip-only (default): no external `sd-cli` is needed (uses `stable-diffusion-cpp-python`)
-- external executable: install `sd-cli` and keep `ABSTRACTCORE_VISION_SDCPP_BIN` pointing to it
-
-```bash
-pip install "abstractcore[server]"
-export ABSTRACTCORE_VISION_SDCPP_BIN=sd-cli   # optional; only used when the executable exists
-export ABSTRACTCORE_VISION_SDCPP_DIFFUSION_MODEL=/path/to/qwen-image-2512-Q4_K_M.gguf
-export ABSTRACTCORE_VISION_SDCPP_VAE=$PWD/qwen_image_vae.safetensors
-export ABSTRACTCORE_VISION_SDCPP_LLM=/path/to/Qwen2.5-VL-7B-Instruct-*.gguf
-export ABSTRACTCORE_VISION_SDCPP_EXTRA_ARGS="--offload-to-cpu --diffusion-fa --sampling-method euler --flow-shift 3"
-python -m uvicorn abstractcore.server.app:app --port 8000
-```
-
-Tip: leave `ABSTRACTCORE_VISION_BACKEND` unset. In `auto` mode, the server routes Diffusers model ids like `runwayml/stable-diffusion-v1-5` to Diffusers, and local `.gguf` paths to stable-diffusion.cpp.
-
-If you're installing **AbstractVision from a repo checkout**, do:
-
-```bash
-pip install "abstractcore[server]"
-pip install -e .
-```
-
-### 6.3 Serve the playground page
-
-```bash
-cd abstractvision/playground
+cd playground
 python -m http.server 8080
 ```
 
@@ -354,4 +302,7 @@ Open:
 
 - `http://localhost:8080/vision_playground.html`
 
-You can now interactively tweak prompt/steps/seed and (for edits) upload an input image + mask.
+In the UI:
+- Set the API Base URL (defaults to `http://localhost:8000`) and click **Ping**
+- Select a cached model and load it
+- Generate (T2I) or upload an input image (I2I) and run edits

@@ -51,8 +51,8 @@ What’s missing for a clean end-user and third-party experience:
   - Pros: consistent UX, early actionable errors, easier third-party integration and routing.
 
 References:
-- Capability registry: `abstractvision/src/abstractvision/assets/vision_model_capabilities.json`
-- Registry loader: `abstractvision/src/abstractvision/model_capabilities.py`
+- Capability registry: `src/abstractvision/assets/vision_model_capabilities.json`
+- Registry loader: `src/abstractvision/model_capabilities.py`
 
 ---
 
@@ -107,7 +107,7 @@ References:
 
 ## Test plan
 
-- `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- `python -m unittest discover -s tests -p "test_*.py" -q`
 
 ---
 
@@ -116,8 +116,8 @@ References:
 ### Summary
 
 - Added backend-level capability reporting:
-  - `VisionBackendCapabilities` in `abstractvision/src/abstractvision/types.py`
-  - `VisionBackend.get_capabilities()` default method in `abstractvision/src/abstractvision/backends/base_backend.py`
+  - `VisionBackendCapabilities` in `src/abstractvision/types.py`
+  - `VisionBackend.get_capabilities()` default method in `src/abstractvision/backends/base_backend.py`
 - Made `VisionManager` capability-aware (best-effort):
   - optional `model_id` + `registry` on the manager
   - early model-level gating via `VisionModelCapabilitiesRegistry.require_support(...)`
@@ -136,9 +136,9 @@ Usage (v0):
   - backends can override `get_capabilities()` to declare constraints like `supports_mask=False`.
 
 Unit tests:
-- `abstractvision/tests/test_manager_capability_checks.py`
+- `tests/test_manager_capability_checks.py`
 
 ### Validation
 
 - Tests:
-  - `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+  - `python -m unittest discover -s tests -p "test_*.py" -q`

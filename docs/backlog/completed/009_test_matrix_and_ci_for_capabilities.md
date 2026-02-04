@@ -77,7 +77,7 @@ Use unit tests for schema + registry checks, and keep integration tests optional
 
 ## Test plan
 
-- `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- `python -m unittest discover -s tests -p "test_*.py" -q`
 
 ---
 
@@ -94,5 +94,5 @@ Use unit tests for schema + registry checks, and keep integration tests optional
 
 ### Validation
 
-- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
-- New tests live in `abstractvision/tests/test_capability_registry_coverage.py`.
+- Tests: `python -m unittest discover -s tests -p "test_*.py" -q`
+- New tests live in `tests/test_capability_registry_coverage.py`.

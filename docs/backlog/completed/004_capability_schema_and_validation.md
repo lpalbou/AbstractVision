@@ -107,8 +107,8 @@ We want a validator that works in CI and during development, so updates are safe
   - `requires.base_model_id` references an existing model id
 
 Implementation:
-- Validator: `abstractvision/src/abstractvision/model_capabilities.py`
-- Unit tests: `abstractvision/tests/test_capabilities_schema_validation.py`
+- Validator: `src/abstractvision/model_capabilities.py`
+- Unit tests: `tests/test_capabilities_schema_validation.py`
 
 Error format:
 - Raises `ValueError` with a structured “path” prefix, e.g.:
@@ -122,4 +122,4 @@ Notes:
 ### Validation
 
 - Tests:
-  - `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+  - `python -m unittest discover -s tests -p "test_*.py" -q`

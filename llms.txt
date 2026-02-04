@@ -1,0 +1,47 @@
+# AbstractVision
+
+> Model-agnostic generative vision API (images, optional video) with a packaged capability registry, artifact-ref outputs, and backends for OpenAI-compatible HTTP, Diffusers, and stable-diffusion.cpp.
+
+This repository’s current source of truth is the code under `src/abstractvision/`.
+
+Key reality checks for agents:
+- Built-in backends implement `text_to_image` and `image_to_image`.
+- `text_to_video` and `image_to_video` are supported only via the OpenAI-compatible backend when video endpoints are configured.
+- `multi_view_image` exists in the API but no built-in backend implements it yet.
+
+## Documentation
+
+- [README](README.md): overview, install, quickstart
+- [Docs index](docs/README.md): documentation map
+- [Getting started](docs/getting-started.md): REPL walkthroughs for Diffusers / stable-diffusion.cpp / OpenAI-compatible
+- [Architecture](docs/architecture.md): component overview + diagrams
+- [Backends reference](docs/reference/backends.md): backend support matrix + notes
+- [Configuration reference](docs/reference/configuration.md): CLI/REPL commands + `ABSTRACTVISION_*` env vars
+- [Capabilities registry](docs/reference/capabilities-registry.md): registry format + usage
+- [Artifacts](docs/reference/artifacts.md): artifact-ref outputs + stores
+- [AbstractCore integration](docs/reference/abstractcore-integration.md): capability plugin + tool helpers
+
+## Code entry points
+
+- [VisionManager](src/abstractvision/vision_manager.py): orchestrator API + gating + store logic
+- [Backend interface](src/abstractvision/backends/base_backend.py): `VisionBackend` contract
+- [Backends package](src/abstractvision/backends/__init__.py): lazy imports
+- [HTTP backend](src/abstractvision/backends/openai_compatible.py): OpenAI-compatible adapter (+ optional video)
+- [Diffusers backend](src/abstractvision/backends/huggingface_diffusers.py): local Diffusers T2I/I2I
+- [stable-diffusion.cpp backend](src/abstractvision/backends/stable_diffusion_cpp.py): GGUF via sd-cli / python bindings
+- [Capability registry loader](src/abstractvision/model_capabilities.py): loader + validator
+- [Artifacts/stores](src/abstractvision/artifacts.py): `LocalAssetStore` + runtime adapter
+- [CLI/REPL](src/abstractvision/cli.py): `abstractvision` command
+- [AbstractCore plugin](src/abstractvision/integrations/abstractcore_plugin.py): capability plugin
+- [AbstractCore tools](src/abstractvision/integrations/abstractcore.py): `make_vision_tools(...)`
+
+## Testing
+
+- [Test suite](tests/): run `python -m unittest discover -s tests -p "test_*.py" -q`
+- [Changelog](CHANGELOG.md): release notes
+
+## Optional
+
+- [Engineering backlog](docs/backlog/README.md): internal design notes + completion reports
+- [Playground](playground/README.md): minimal web UI for AbstractCore `/v1/images/*` endpoints
+

@@ -1,87 +1,108 @@
-# AbstractVision Architecture
+# AbstractVision architecture
 
-This document explains how `abstractvision` fits into the AbstractFramework ecosystem and how it integrates with `abstractcore` in both **library mode** and **framework mode**.
+AbstractVision is a model-agnostic Python layer that standardizes **generative vision outputs** behind a small API:
+text→image, image→image (and optionally video when a backend supports it).
 
-For the framework-level architecture overview, see `docs/architecture.md`.
+This document describes the *current code in this repo* and links to the supporting reference docs.
 
-## What AbstractVision is (and is not)
+See also:
+- Docs index: `docs/README.md`
+- Backends: `docs/reference/backends.md`
+- Capability registry: `docs/reference/capabilities-registry.md`
+- Artifacts: `docs/reference/artifacts.md`
+- AbstractCore integration: `docs/reference/abstractcore-integration.md`
 
-`abstractvision` is the **generative vision** library:
-- image generation/editing (T2I/I2I)
-- optionally video generation (T2V/I2V) when a backend supports it
+## Scope (and non-goals)
 
-It is **not** the owner of “LLM image/video input attachments”.
-That input-modality handling lives in `abstractcore` (media pipeline + policies).
+AbstractVision focuses on **producing** images/videos.
 
-## Integration surface: AbstractCore capability plugin
+It is not the owner of “LLM image/video input attachments” (multimodal inputs to LLMs); those concerns live in higher-level layers (e.g., AbstractCore).
 
-`abstractvision` registers an AbstractCore capability plugin entry point that exposes:
+## Key components (with evidence pointers)
 
-- `core.vision` (VisionCapability)
+- **Orchestrator**: `VisionManager` (`src/abstractvision/vision_manager.py`)
+  - Delegates execution to a backend.
+  - Optionally gates requests using the capability registry when `model_id` is set.
+  - Optionally stores outputs and returns artifact refs when `store` is set.
+- **Backend contract**: `VisionBackend` (`src/abstractvision/backends/base_backend.py`)
+  - Implementations live in `src/abstractvision/backends/`.
+- **Capability registry**: `VisionModelCapabilitiesRegistry` (`src/abstractvision/model_capabilities.py`)
+  - Loads packaged data: `src/abstractvision/assets/vision_model_capabilities.json`.
+- **Artifact outputs**: `MediaStore`, `LocalAssetStore`, `RuntimeArtifactStoreAdapter` (`src/abstractvision/artifacts.py`)
+  - Artifact ref shape helper: `is_artifact_ref()` (`src/abstractvision/artifacts.py`).
+- **CLI/REPL**: `abstractvision` entrypoint (`src/abstractvision/cli.py`)
+  - Lets you inspect the registry and manually test generation backends.
+- **AbstractCore integration**:
+  - Capability plugin: `src/abstractvision/integrations/abstractcore_plugin.py` (registered in `pyproject.toml`)
+  - Tool helpers: `src/abstractvision/integrations/abstractcore.py`
 
-This keeps `abstractcore` dependency-light while enabling deterministic vision APIs when the plugin is installed (ADR-0028).
+## High-level flow (library mode)
 
-Implementation:
-- Plugin entry: `abstractvision/src/abstractvision/integrations/abstractcore_plugin.py`
-
-At a high level:
-```text
-AbstractCore (library)  ──loads plugin──►  core.vision (capability)
-                                            │
-                                            ▼
-                                     VisionManager
-                                            │
-                                            ▼
-                                  Vision backend (HTTP/local)
+```mermaid
+flowchart LR
+  Caller[Caller<br/>(Python / CLI)] --> VM[VisionManager]
+  VM -->|request dataclass| BE[VisionBackend]
+  BE -->|GeneratedAsset| VM
+  VM -->|store set| Store[MediaStore<br/>(LocalAssetStore / Runtime adapter)]
+  Store --> Ref[Artifact ref dict]
+  VM -->|store not set| Asset[GeneratedAsset<br/>(bytes + mime)]
 ```
 
-### Backend model (v0)
-The AbstractCore plugin currently exposes an **OpenAI-compatible HTTP backend**.
+Notes (anchored in code):
+- `VisionManager` creates request dataclasses like `ImageGenerationRequest` / `ImageEditRequest` (`src/abstractvision/types.py`).
+- When `store` is set, `VisionManager._maybe_store()` calls `store.store_bytes(...)` and returns an artifact ref dict (`src/abstractvision/vision_manager.py`, `src/abstractvision/artifacts.py`).
 
-Rationale:
-- stable interop shape (OpenAI `/v1/images/*` style)
-- works well for “framework mode” where the gateway/runtime may run the backend elsewhere
+## Capability gating (model-level) vs runtime gating (backend-level)
 
-Configuration is env/config-driven (see the plugin file for exact keys).
+AbstractVision separates two kinds of “can I do this?” checks:
 
-## Library mode vs framework mode
+1) **Model-level gating** (optional): “Does model X support task Y?”
+   - Implemented by `VisionModelCapabilitiesRegistry.require_support(...)` (`src/abstractvision/model_capabilities.py`)
+   - Used by `VisionManager._require_model_support(...)` when `VisionManager.model_id` is set (`src/abstractvision/vision_manager.py`)
 
-### Library mode
-Users can use:
-- `abstractvision` directly (Python)
-- or `abstractcore` with `core.vision` available (plugin installed)
+2) **Backend-level gating** (best-effort): “Does this configured backend support task Y / mask edits?”
+   - Backends may implement `get_capabilities()` returning `VisionBackendCapabilities` (`src/abstractvision/types.py`)
+   - Enforced by `VisionManager._require_backend_support(...)` and mask checks in `VisionManager.edit_image(...)` (`src/abstractvision/vision_manager.py`)
 
-Outputs may be returned as:
-- raw bytes (e.g. PNG/WEBP/MP4)
-- or small dict payloads (when the backend returns an artifact ref shape)
+## Backend reality (what runs today)
 
-No durability guarantees exist unless the caller provides a store adapter.
+The public API includes `text_to_video`, `image_to_video`, and `multi_view_image`, but backend support is currently limited:
 
-### Framework mode (durable)
-When an `artifact_store` is provided (typically via runtime/gateway):
-- large outputs are stored durably as artifacts
-- flows and thin clients refer to them by artifact id (`{"$artifact":"..."}`)
+- Built-in backends implement **images** (`text_to_image`, `image_to_image`):
+  - OpenAI-compatible HTTP backend (`src/abstractvision/backends/openai_compatible.py`)
+  - Diffusers backend (`src/abstractvision/backends/huggingface_diffusers.py`)
+  - stable-diffusion.cpp backend (`src/abstractvision/backends/stable_diffusion_cpp.py`)
+- Video is supported **only** by the OpenAI-compatible backend, and only when `text_to_video_path` / `image_to_video_path` are configured (`src/abstractvision/backends/openai_compatible.py`).
+- No built-in backend implements `multi_view_image` yet (they raise `CapabilityNotSupportedError` in `generate_angles(...)`).
 
-See:
-- `docs/adr/0024-attachment-placeholders-and-compaction-invariants.md`
-- `docs/backlog/completed/611-abstractgateway-voice-audio-capabilities-durable-wiring-v0.md`
+For a detailed support matrix and configuration options, see `docs/reference/backends.md`.
 
-## Relationship to AbstractCore Server vision endpoints
+## AbstractCore plugin flow (framework integration)
 
-AbstractCore Server can expose OpenAI-compatible image endpoints:
-- `POST /v1/images/generations`
-- `POST /v1/images/edits`
+AbstractVision can be discovered by AbstractCore via an entry point:
+`[project.entry-points."abstractcore.capabilities_plugins"]` in `pyproject.toml`.
 
-These endpoints **delegate to AbstractVision internally** (when installed in the same environment).
+```mermaid
+flowchart LR
+  AC[AbstractCore] -->|loads entry point| Plugin[AbstractVision plugin<br/>register(...)]
+  Plugin --> Cap[VisionCapability<br/>(t2i/i2i/t2v/i2v)]
+  Cap --> VM[VisionManager]
+  VM --> BE[OpenAICompatibleVisionBackend]
+  BE --> HTTP[OpenAI-shaped HTTP<br/>/images/generations, /images/edits]
+```
 
-This is an HTTP interoperability surface for non-Python clients; it does not replace the artifact-first durability contract in runtime/gateway mode.
+Current plugin behavior (evidence in `src/abstractvision/integrations/abstractcore_plugin.py`):
+- Only the OpenAI-compatible backend is supported via the plugin (v0).
+- Configuration is read from `owner.config` keys like `vision_base_url` and falls back to `ABSTRACTVISION_*` env vars.
 
-See:
-- `abstractcore/abstractcore/server/README.md` (Image Generation section)
+## Extending AbstractVision (practical steps)
 
-## Related docs
-
-- `docs/adr/0028-capabilities-plugins-and-library-framework-modes.md`
-- `docs/guide/capability-vision.md`
-- `docs/architecture.md`
+- Add a new backend:
+  1) Implement `VisionBackend` (`src/abstractvision/backends/base_backend.py`)
+  2) Add capability reporting via `get_capabilities()` when you can (optional)
+  3) Add tests under `tests/`
+- Update the registry:
+  1) Edit `src/abstractvision/assets/vision_model_capabilities.json`
+  2) Validate by running the test suite (validator is wired into the registry loader)
+  3) Use `abstractvision show-model <id>` to sanity-check task/param printing (`src/abstractvision/cli.py`)
 

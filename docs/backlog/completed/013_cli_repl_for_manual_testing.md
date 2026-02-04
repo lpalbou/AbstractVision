@@ -63,7 +63,7 @@ We want a minimal interactive surface that third parties can also use for integr
 
 ## Implementation plan
 
-- Add `abstractvision/src/abstractvision/cli.py`:
+- Add `src/abstractvision/cli.py`:
   - argparse subcommands + REPL loop using `input()` + `shlex.split()`
   - inspect commands (models/tasks/show)
   - generation commands for T2I and I2I (video optional later)
@@ -99,13 +99,13 @@ We want a minimal interactive surface that third parties can also use for integr
 
 ### Validation
 
-- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
-- Added CLI smoke coverage in `abstractvision/tests/test_cli_smoke.py`.
+- Tests: `python -m unittest discover -s tests -p "test_*.py" -q`
+- Added CLI smoke coverage in `tests/test_cli_smoke.py`.
 
 ### How to test (interactive UI)
 
 1) Install the package (editable is fine for local dev):
-- `pip install -e abstractvision`
+- `pip install -e .`
 
 2) Start the interactive REPL:
 - `abstractvision repl`

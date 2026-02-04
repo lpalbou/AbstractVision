@@ -87,7 +87,7 @@ Use minimal examples that demonstrate capability checks and backend wiring patte
 
 ### Summary
 
-- Updated `abstractvision/README.md` to document the intended “capability-driven selection” workflow end-to-end.
+- Updated `README.md` to document the intended “capability-driven selection” workflow end-to-end.
 - Added copy-pastable examples for:
   - discovering models/tasks via `VisionModelCapabilitiesRegistry`
   - wiring an OpenAI-compatible backend + `VisionManager`
@@ -97,5 +97,5 @@ Use minimal examples that demonstrate capability checks and backend wiring patte
 
 ### Validation
 
-- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- Tests: `python -m unittest discover -s tests -p "test_*.py" -q`
 - Manual: README snippet sanity (imports + API names match the current codebase).

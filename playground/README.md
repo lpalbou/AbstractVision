@@ -1,39 +1,33 @@
 # AbstractVision Playground (Web)
 
-This is a tiny, dependency-free web UI for quickly testing AbstractCore’s OpenAI-compatible vision endpoints:
+This is a tiny, dependency-free web UI for testing an **AbstractCore Server** instance that exposes the **vision job endpoints** used by the page.
 
-- `POST /v1/images/generations`
-- `POST /v1/images/edits`
+Evidence: see the fetch calls in `playground/vision_playground.html`.
 
-## 1) Start AbstractCore Server
+## Required server endpoints
 
-From any environment where `abstractcore[server]` is installed (FastAPI + Uvicorn + multipart support):
+The page expects:
 
-```bash
-pip install "abstractcore[server]"
-```
+- `GET /v1/models` (ping)
+- `GET /v1/vision/models` (list cached models + active model)
+- `POST /v1/vision/model/load` (load a model into memory)
+- `POST /v1/vision/model/unload` (unload the active model)
+- `POST /v1/vision/jobs/images/generations` (start a text→image job)
+- `POST /v1/vision/jobs/images/edits` (start an image→image job)
+- `GET /v1/vision/jobs/{job_id}` (poll job status)
+  - on success, the page calls `GET /v1/vision/jobs/{job_id}?consume=1` to fetch-and-consume the result
 
-Make sure you're on an AbstractCore version that includes the vision endpoints (`/v1/images/*`).
+## 1) Start a compatible server
 
-If you're running from an **AbstractVision repo checkout**, do:
+Start your AbstractCore Server (or any server that implements the endpoints above) on `http://localhost:8000` (default in the UI).
 
-```bash
-pip install "abstractcore[server]"
-pip install -e .
-python -m uvicorn abstractcore.server.app:app --port 8000
-```
+This repo does not ship the server implementation; consult AbstractCore’s documentation for installation and startup.
 
-The image endpoints return `501` until you configure a backend (see examples below).
-
-### Diffusers example (Stable Diffusion 1.5)
+Quick sanity checks (should return JSON):
 
 ```bash
-pip install "abstractcore[server]"
-# Optional: choose where Diffusers runs. Default is `auto` (prefers `cuda`/`mps` when available, else `cpu`).
-# export ABSTRACTCORE_VISION_DEVICE=auto  # or: cpu / cuda / mps
-# Optional: disable downloads (default allows downloads).
-# export ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=0
-python -m uvicorn abstractcore.server.app:app --port 8000
+curl -s http://localhost:8000/v1/models | head
+curl -s http://localhost:8000/v1/vision/models | head
 ```
 
 ## 2) Serve this page
@@ -41,7 +35,7 @@ python -m uvicorn abstractcore.server.app:app --port 8000
 Browsers may block `file://` → `http://` requests; serve the page locally:
 
 ```bash
-cd abstractvision/playground
+cd playground
 python -m http.server 8080
 ```
 
@@ -49,31 +43,17 @@ Open:
 
 - `http://localhost:8080/vision_playground.html`
 
-Tip:
-- The UI lists registry models that are already present in your local caches (Hugging Face hub + LM Studio).
-- Selecting a model loads it into memory and enables an **Unload** button (this frees memory before loading another model).
+Usage notes:
+- You must **select a cached model** and load it before running inference.
+- “Extra JSON” is forwarded to the server:
+  - T2I: merged into the JSON request body
+  - I2I: sent as a string field `extra_json` in the multipart form body
 
-## 3) Configure Qwen-Image-2512 GGUF (stable-diffusion.cpp)
+## 3) stable-diffusion.cpp / GGUF notes
 
-Recommended: install Qwen Image components (diffusion model + VAE + text encoder). The stable-diffusion.cpp python bindings are installed by default with `abstractcore[server]`.
+If your server is configured to run GGUF diffusion models via stable-diffusion.cpp, you’ll typically need:
+- a diffusion model (`.gguf`)
+- a VAE (`.safetensors`) for some families (e.g. Qwen Image GGUF)
+- a text encoder/LLM (`.gguf`) for some families (e.g. Qwen Image GGUF)
 
-- pip: `pip install "abstractcore[server]"`
-- optional `sd-cli` releases (external executable): https://github.com/leejet/stable-diffusion.cpp/releases
-- Qwen Image VAE file: `split_files/vae/qwen_image_vae.safetensors` from `Comfy-Org/Qwen-Image_ComfyUI`
-
-Example env (adjust paths):
-
-```bash
-export ABSTRACTCORE_VISION_BACKEND=sdcpp
-export ABSTRACTCORE_VISION_SDCPP_BIN=sd-cli   # optional; only used when the executable exists
-export ABSTRACTCORE_VISION_SDCPP_DIFFUSION_MODEL=/Users/albou/.cache/huggingface/hub/models--unsloth--Qwen-Image-2512-GGUF/snapshots/1626d7531f84b4d2ea1cd6d2e69f41ec027dd354/qwen-image-2512-Q4_K_M.gguf
-export ABSTRACTCORE_VISION_SDCPP_VAE=/path/to/qwen_image_vae.safetensors
-export ABSTRACTCORE_VISION_SDCPP_LLM=/Users/albou/.cache/huggingface/hub/models--unsloth--Qwen2.5-VL-7B-Instruct-GGUF/snapshots/68bb8bc4b7df5289c143aaec0ab477a7d4051aab/Qwen2.5-VL-7B-Instruct-Q4_0.gguf
-export ABSTRACTCORE_VISION_SDCPP_EXTRA_ARGS="--offload-to-cpu --diffusion-fa --sampling-method euler --flow-shift 3"
-```
-
-Then run:
-
-```bash
-uvicorn abstractcore.server.app:app --port 8000
-```
+Exact configuration is server-specific; check your server’s documentation.

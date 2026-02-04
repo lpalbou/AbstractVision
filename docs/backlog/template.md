@@ -77,7 +77,8 @@ This section must be **self-contained**: capture the results of research and rea
 
 ## Test plan
 
-- `pytest -q`
+- `python -m unittest discover -s tests -p "test_*.py" -q`
+- (optional) `pytest -q` (if/when we add pytest-specific coverage)
 - <any additional manual smoke tests>
 
 ---

@@ -112,10 +112,10 @@ We also need to support multiple families of models for the same task (T2I/I2I/T
 
 ### Summary
 
-- Implemented the capability “single source of truth” at `abstractvision/src/abstractvision/assets/vision_model_capabilities.json` (seed models + tasks).
-- Added a small query registry (`VisionModelCapabilitiesRegistry`) at `abstractvision/src/abstractvision/model_capabilities.py`.
-- Added basic unit tests to prevent drift at `abstractvision/tests/test_vision_model_capabilities.py`.
+- Implemented the capability “single source of truth” at `src/abstractvision/assets/vision_model_capabilities.json` (seed models + tasks).
+- Added a small query registry (`VisionModelCapabilitiesRegistry`) at `src/abstractvision/model_capabilities.py`.
+- Added basic unit tests to prevent drift at `tests/test_vision_model_capabilities.py`.
 
 ### Validation
 
-- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- Tests: `python -m unittest discover -s tests -p "test_*.py" -q`

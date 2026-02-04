@@ -97,14 +97,14 @@ Local inference for video models is often heavy and hardware-dependent. Many dep
 ### Summary
 
 - Implemented an OpenAI-shaped HTTP backend using stdlib `urllib` (no third-party deps):
-  - `abstractvision/src/abstractvision/backends/openai_compatible.py`
+  - `src/abstractvision/backends/openai_compatible.py`
   - `OpenAICompatibleBackendConfig` (endpoints + auth + timeouts)
   - `OpenAICompatibleVisionBackend`:
     - T2I: `POST /images/generations` (JSON; prefers `b64_json`)
     - I2I: `POST /images/edits` (multipart; supports optional `mask`)
     - T2V/I2V: optional/custom endpoints (`text_to_video_path`, `image_to_video_path`)
 - Added unit tests with mocked HTTP responses (no network):
-  - `abstractvision/tests/test_openai_compatible_backend.py`
+  - `tests/test_openai_compatible_backend.py`
 
 Notes:
 - This backend returns `GeneratedAsset` bytes (by design of the backend interface). Artifact-ref storage and tagging
@@ -113,4 +113,4 @@ Notes:
 ### Validation
 
 - Tests:
-  - `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+  - `python -m unittest discover -s tests -p "test_*.py" -q`

@@ -6,6 +6,10 @@
 
 ---
 
+Update (2026-02-04):
+- The current `pyproject.toml` is “batteries included” (base install pulls local-backend deps like Torch/Diffusers).
+- Treat this backlog item as historical context for how we thought about extras; `pyproject.toml` is the current source of truth.
+
 ## Main goals
 
 - Make `abstractvision` installation and dependency behavior predictable for third parties:
@@ -92,7 +96,7 @@ Third parties adopt libraries based on install experience:
 
 ## Test plan
 
-- `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- `python -m unittest discover -s tests -p "test_*.py" -q`
 - (optional) local packaging smoke: build wheel and install into a clean venv
 
 ---
@@ -110,10 +114,10 @@ Third parties adopt libraries based on install experience:
   - console script entrypoint: `abstractvision = abstractvision.cli:main`
   - dynamic version from `abstractvision.__version__`
   - wheel/sdist inclusion for `assets/*.json`
-- Added `abstractvision/CHANGELOG.md` with an initial 0.1.0 entry.
+- Added `CHANGELOG.md` with an initial 0.1.0 entry.
 
 ### Validation
 
-- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
-- Packaging sanity: `abstractvision/pyproject.toml` parses via `tomllib`.
+- Tests: `python -m unittest discover -s tests -p "test_*.py" -q`
+- Packaging sanity: `pyproject.toml` parses via `tomllib`.
 - Editable install (src layout): `python -m pip install -e ".[huggingface]"`

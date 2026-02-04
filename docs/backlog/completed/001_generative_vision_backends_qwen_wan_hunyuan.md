@@ -108,7 +108,7 @@ Seed model references (for later backends; do not hardcode in the public contrac
 
 ## Test plan
 
-- `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- `python -m unittest discover -s tests -p "test_*.py" -q`
 
 ---
 
@@ -128,5 +128,5 @@ This keeps `abstractvision` focused on generative media outputs while integratin
 
 ### Validation
 
-- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- Tests: `python -m unittest discover -s tests -p "test_*.py" -q`
 - Manual: `abstractvision repl` (configure backend + run `/t2i` / `/i2i` to generate + open stored artifacts).

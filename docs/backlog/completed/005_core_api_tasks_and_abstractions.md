@@ -67,7 +67,7 @@ This is the “port” side of the ports/adapters architecture.
 ## Dependencies
 
 - Depends on: `docs/backlog/completed/003_hf_model_landscape_and_capability_registry.md`
-- Depends on: `docs/backlog/planned/004_capability_schema_and_validation.md`
+- Depends on: `docs/backlog/completed/004_capability_schema_and_validation.md`
 
 ---
 
@@ -97,11 +97,11 @@ This is the “port” side of the ports/adapters architecture.
 ### Summary
 
 - Implemented the minimal model-agnostic “ports” surface:
-  - `VisionManager` orchestrator at `abstractvision/src/abstractvision/vision_manager.py`
-  - request/response dataclasses at `abstractvision/src/abstractvision/types.py`
-  - backend interface at `abstractvision/src/abstractvision/backends/base_backend.py`
+  - `VisionManager` orchestrator at `src/abstractvision/vision_manager.py`
+  - request/response dataclasses at `src/abstractvision/types.py`
+  - backend interface at `src/abstractvision/backends/base_backend.py`
 - Kept the base install dependency-light (no heavy ML deps required to import and use the contract surface).
 
 ### Validation
 
-- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- Tests: `python -m unittest discover -s tests -p "test_*.py" -q`

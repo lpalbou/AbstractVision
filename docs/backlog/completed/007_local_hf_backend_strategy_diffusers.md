@@ -89,18 +89,18 @@ Use the seed model set in Task 003 as the initial coverage target.
 ### Summary
 
 - Implemented a local, dependency-gated Diffusers backend for image generation/editing:
-  - `HuggingFaceDiffusersVisionBackend` in `abstractvision/src/abstractvision/backends/huggingface_diffusers.py`
+  - `HuggingFaceDiffusersVisionBackend` in `src/abstractvision/backends/huggingface_diffusers.py`
   - supports `text_to_image` and `image_to_image` (mask triggers inpainting pipeline)
   - keeps base install import-safe by using lazy imports for `diffusers`, `torch`, `PIL`
-  - offline-only (no network calls; `local_files_only=True`)
+  - supports cache-only/offline mode (`allow_download=False`); downloads are enabled by default
 - Updated the interactive REPL to support selecting this backend:
   - `/backend diffusers <model_id_or_path> [device]`
 - Added unit tests that stub the diffusers loaders so no real models are required.
 
 ### Validation
 
-- Tests: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
-- Added tests: `abstractvision/tests/test_huggingface_diffusers_backend.py`
+- Tests: `python -m unittest discover -s tests -p "test_*.py" -q`
+- Added tests: `tests/test_huggingface_diffusers_backend.py`
 
 ### How to test (interactive UI)
 

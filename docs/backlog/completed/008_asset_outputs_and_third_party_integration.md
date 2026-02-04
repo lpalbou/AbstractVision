@@ -101,7 +101,7 @@ References:
 
 ## Test plan
 
-- `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- `python -m unittest discover -s tests -p "test_*.py" -q`
 
 ---
 
@@ -110,14 +110,14 @@ References:
 ### Summary
 
 - Implemented an artifact-ref-first output contract and storage helpers:
-  - `abstractvision/src/abstractvision/artifacts.py`:
+  - `src/abstractvision/artifacts.py`:
     - `make_media_ref()`, `is_artifact_ref()`, `compute_artifact_id()`
     - `LocalAssetStore` (standalone store under `~/.abstractvision/assets/` by default)
     - `RuntimeArtifactStoreAdapter` (duck-typed wrapper for AbstractRuntime `ArtifactStore`)
 - Updated `VisionManager` to return artifact refs when a store is configured, while keeping raw-bytes `GeneratedAsset` as the escape hatch when no store is present:
-  - `abstractvision/src/abstractvision/vision_manager.py`
+  - `src/abstractvision/vision_manager.py`
 - Exposed the integration surface in the public API:
-  - `abstractvision/src/abstractvision/__init__.py`
+  - `src/abstractvision/__init__.py`
 
 Output contract (v0):
 - Canonical reference: `{"$artifact": "<id>"}`
@@ -132,9 +132,9 @@ Tags (v0):
   - `kind=generated_media`, `modality=image|video`, `task=text_to_image|...`
 
 Unit tests:
-- `abstractvision/tests/test_artifact_outputs.py`
+- `tests/test_artifact_outputs.py`
 
 ### Validation
 
 - Tests:
-  - `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+  - `python -m unittest discover -s tests -p "test_*.py" -q`

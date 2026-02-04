@@ -111,7 +111,7 @@ AbstractVision needs a clean, minimal “local executable backend” so users ca
 
 ## Test plan
 
-- AbstractVision: `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+- AbstractVision: `python -m unittest discover -s tests -p "test_*.py" -q`
 - AbstractCore: `pytest -q abstractcore/tests/server/test_server_vision_image_endpoints.py`
 - Manual smoke:
   - Install stable-diffusion.cpp `sd-cli` and run with Qwen-Image + VAE + Qwen2.5-VL text encoder (see completion report for exact commands).
@@ -125,12 +125,12 @@ AbstractVision needs a clean, minimal “local executable backend” so users ca
 - Added a dependency-light `sd-cli` backend (`StableDiffusionCppVisionBackend`) that runs local GGUF diffusion models via `subprocess`.
 - Added REPL support for `/backend sdcpp ...` and forwarded unknown REPL flags into backend `extra` for model/runtime-specific knobs.
 - Extended AbstractCore Server `/v1/images/*` to support `ABSTRACTCORE_VISION_BACKEND=sdcpp` and added `extra_json` support for `/v1/images/edits`.
-- Added a tiny web playground (`abstractvision/playground/vision_playground.html`) for interactive manual testing.
+- Added a tiny web playground (`playground/vision_playground.html`) for interactive manual testing.
 
 ### Validation
 
 - Tests:
-  - `python -m unittest discover -s abstractvision/tests -p "test_*.py" -q`
+  - `python -m unittest discover -s tests -p "test_*.py" -q`
   - `pytest -q abstractcore/tests/server/test_server_vision_image_endpoints.py`
 
 ### How to test (manual / interactive)
@@ -192,7 +192,7 @@ uvicorn abstractcore.server.app:app --port 8000
 Serve the playground:
 
 ```bash
-cd abstractvision/playground
+cd playground
 python -m http.server 8080
 ```
 

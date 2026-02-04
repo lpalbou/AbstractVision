@@ -1,24 +1,42 @@
 # AbstractVision
 
-Model-agnostic generative vision abstractions (image + video) for the Abstract* ecosystem.
+Model-agnostic generative vision API (images, optional video) for Python and the Abstract* ecosystem.
 
-## Overview
+## What you get
 
-AbstractVision provides:
-- A stable task API (`VisionManager`) for: text→image, image→image, multi-view image, text→video, image→video
-- A single source of truth for “what models can do” (`VisionModelCapabilitiesRegistry`)
-- Artifact-first outputs (small JSON refs) for tool calling + workflows + third-party integrations
+- A stable task API: `VisionManager` (`src/abstractvision/vision_manager.py`)
+- A packaged capability registry (“what models can do”): `VisionModelCapabilitiesRegistry` backed by `src/abstractvision/assets/vision_model_capabilities.json`
+- Optional artifact-ref outputs (small JSON refs): `LocalAssetStore` / store adapters (`src/abstractvision/artifacts.py`)
+- Built-in backends (`src/abstractvision/backends/`):
+  - OpenAI-compatible HTTP (`openai_compatible.py`)
+  - Local Diffusers (`huggingface_diffusers.py`)
+  - Local stable-diffusion.cpp / GGUF (`stable_diffusion_cpp.py`)
+- CLI/REPL for manual testing: `abstractvision ...` (`src/abstractvision/cli.py`)
 
-The project’s responsibility is to:
-- define a clean, stable task API (t2i, i2i, t2v, i2v, multi-view)
-- describe what models can do via a single source of truth (`vision_model_capabilities.json`)
+## Status (current backend support)
 
-The user’s responsibility is to choose which model(s) to use (including any license/compliance considerations).
+- Built-in backends implement: `text_to_image` and `image_to_image`.
+- Video (`text_to_video`, `image_to_video`) is supported only via the OpenAI-compatible backend **when** endpoints are configured.
+- `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
+
+Details: `docs/reference/backends.md`.
 
 ## Installation
 
 ```bash
 pip install abstractvision
+```
+
+Install optional integrations:
+
+```bash
+pip install "abstractvision[abstractcore]"
+```
+
+Some newer model pipelines may require Diffusers from GitHub `main` (see `docs/getting-started.md`):
+
+```bash
+pip install -U "abstractvision[huggingface-dev]"
 ```
 
 For local dev (from a repo checkout):
@@ -29,7 +47,10 @@ pip install -e .
 
 ## Usage
 
-See `docs/getting-started.md` for step-by-step local generation with Diffusers, GGUF (stable-diffusion.cpp), and the web playground.
+Start here:
+- Getting started: `docs/getting-started.md`
+- Architecture: `docs/architecture.md`
+- Docs index: `docs/README.md`
 
 ### Capability-driven model selection
 
@@ -45,8 +66,8 @@ print(reg.models_for_task("text_to_image"))
 
 ### Backend wiring + generation (artifact outputs)
 
-The default install includes local generation backends (Diffusers + stable-diffusion.cpp python bindings) and an
-OpenAI-compatible HTTP backend.
+The default install is “batteries included” (Torch + Diffusers + stable-diffusion.cpp python bindings), but heavy
+modules are imported lazily (see `src/abstractvision/backends/__init__.py`).
 
 ```python
 from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry, is_artifact_ref
@@ -96,7 +117,14 @@ Inside the REPL:
 /t2i "a watercolor painting of a lighthouse" --open
 ```
 
-The CLI/REPL can also be configured via env vars like `ABSTRACTVISION_BASE_URL`, `ABSTRACTVISION_API_KEY`, `ABSTRACTVISION_MODEL_ID`, and `ABSTRACTVISION_STORE_DIR`.
+The CLI/REPL can also be configured via `ABSTRACTVISION_*` env vars; see `docs/reference/configuration.md`.
+
+One-shot commands (OpenAI-compatible HTTP backend only):
+
+```bash
+abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"
+abstractvision i2i --base-url http://localhost:1234/v1 --image ./input.png "make it watercolor"
+```
 
 #### Local GGUF via stable-diffusion.cpp
 
@@ -115,7 +143,7 @@ In the REPL:
 /t2i "a watercolor painting of a lighthouse" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
 ```
 
-Extra flags are forwarded via `request.extra`. In CLI mode they are forwarded to `sd-cli`; in python bindings mode a small subset is supported.
+Extra flags are forwarded via `request.extra`. In CLI mode they are forwarded to `sd-cli`; in python bindings mode, keys are mapped to python binding kwargs when supported and unsupported keys are ignored.
 
 ### AbstractCore tool integration (artifact refs)
 
