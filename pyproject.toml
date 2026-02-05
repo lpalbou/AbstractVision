@@ -83,10 +83,12 @@ local = [
   "Pillow>=9.0",
 ]
 
-# Diffusers "main" is required for some newer pipelines (e.g. GLM-Image, FLUX.2-klein-4B) that are not yet available
-# in the latest PyPI release. Runtime remains offline-only; this is purely an install-time choice.
+# NOTE: PyPI rejects VCS/direct URL dependencies in package metadata.
+# If you need Diffusers "main" for unreleased pipelines, install it explicitly *after*:
+#   pip install "abstractvision[huggingface-dev]"
+#   pip install "diffusers @ git+https://github.com/huggingface/diffusers@main"
 huggingface-dev = [
-  "diffusers @ git+https://github.com/huggingface/diffusers@main",
+  "diffusers>=0.36.0",
   "torch>=2.0",
   "transformers>=5.0",
   "accelerate>=0.0",
