@@ -2,7 +2,7 @@
 
 AbstractVision stands on the shoulders of excellent open-source projects and communities.
 
-## Direct dependencies (runtime)
+## Runtime dependencies (declared)
 
 - **Hugging Face Diffusers** (local pipeline runtime; used by the Diffusers backend): `src/abstractvision/backends/huggingface_diffusers.py` (declared in `pyproject.toml`)
 - **PyTorch** (tensor runtime for local inference; used via Diffusers): `src/abstractvision/backends/huggingface_diffusers.py` (declared in `pyproject.toml`)
@@ -14,8 +14,11 @@ AbstractVision stands on the shoulders of excellent open-source projects and com
 - **einops** (tensor ops used by some modern architectures): declared in `pyproject.toml`
 - **PEFT** (LoRA adapter support used by Diffusers): declared in `pyproject.toml`
 - **Pillow** (image I/O utilities used by local backends): `src/abstractvision/backends/huggingface_diffusers.py`, `src/abstractvision/backends/stable_diffusion_cpp.py` (declared in `pyproject.toml`)
-- **stable-diffusion.cpp** (upstream GGUF runtime used by the stable-diffusion.cpp backend): `src/abstractvision/backends/stable_diffusion_cpp.py`
-- **stable-diffusion-cpp-python** (pip-installable python bindings used when `sd-cli` is not available): `src/abstractvision/backends/stable_diffusion_cpp.py` (declared in `pyproject.toml`)
+- **stable-diffusion-cpp-python** (python bindings used when `sd-cli` is not available): `src/abstractvision/backends/stable_diffusion_cpp.py` (declared in `pyproject.toml`)
+
+## Upstream projects
+
+- **stable-diffusion.cpp** (upstream project that provides `sd-cli` and the core GGUF runtime wrapped by the bindings): `src/abstractvision/backends/stable_diffusion_cpp.py`
 
 ## Optional integrations
 
