@@ -1,16 +1,16 @@
 # API reference
 
-This document describes the **public, stable** Python API surface of `abstractvision` and points to the implementation.
+This document describes the **public** Python API surface of `abstractvision` (0.x / Alpha) and points to the implementation.
 
 See also:
-- Getting started (end-to-end examples): `docs/getting-started.md`
-- Architecture (how the pieces fit): `docs/architecture.md`
-- Backends reference (support matrix): `docs/reference/backends.md`
-- FAQ (common questions): `docs/faq.md`
+- Getting started (end-to-end examples): [docs/getting-started.md](getting-started.md)
+- Architecture (how the pieces fit): [docs/architecture.md](architecture.md)
+- Backends reference (support matrix): [docs/reference/backends.md](reference/backends.md)
+- FAQ (common questions): [docs/faq.md](faq.md)
 
 ## Public exports
 
-The package exports the following symbols from `abstractvision` (see `src/abstractvision/__init__.py`):
+The package exports the following symbols from `abstractvision` (see [`../src/abstractvision/__init__.py`](../src/abstractvision/__init__.py)):
 
 - `VisionManager`
 - `VisionModelCapabilitiesRegistry`
@@ -22,7 +22,7 @@ The package exports the following symbols from `abstractvision` (see `src/abstra
 
 ### Tasks
 
-`VisionManager` exposes one method per task (implementation: `src/abstractvision/vision_manager.py`):
+`VisionManager` exposes one method per task (implementation: [`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py)):
 
 - `generate_image(...)` → `text_to_image`
 - `edit_image(...)` → `image_to_image`
@@ -30,31 +30,33 @@ The package exports the following symbols from `abstractvision` (see `src/abstra
 - `image_to_video(...)` → `image_to_video` (backend-dependent)
 - `generate_angles(...)` → `multi_view_image` (API exists; no built-in backend implements it yet)
 
-Task names are also used by the capability registry (`src/abstractvision/assets/vision_model_capabilities.json`).
+Task names are also used by the capability registry ([`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json)).
 
 ### Backends
 
-Backends are execution engines that implement the `VisionBackend` interface (`src/abstractvision/backends/base_backend.py`).
+Backends are execution engines that implement the `VisionBackend` interface ([`../src/abstractvision/backends/base_backend.py`](../src/abstractvision/backends/base_backend.py)).
 
-Built-in backends live in `src/abstractvision/backends/`:
+Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/):
 - `OpenAICompatibleVisionBackend` (HTTP)
 - `HuggingFaceDiffusersVisionBackend` (local Diffusers)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
+
+Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 
 ### Outputs: bytes vs artifact refs
 
 `VisionManager` returns:
 
-- `GeneratedAsset` (bytes) when no store is configured (`src/abstractvision/types.py`)
+- `GeneratedAsset` (bytes) when no store is configured ([`../src/abstractvision/types.py`](../src/abstractvision/types.py))
 - an artifact ref `dict` when `VisionManager.store` is configured (via `MediaStore.store_bytes(...)`)
 
-Artifact helpers and stores are defined in `src/abstractvision/artifacts.py`.
+Artifact helpers and stores are defined in [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py).
 
 ## VisionManager (orchestrator)
 
 `VisionManager` is intentionally thin: it validates/gates best-effort and delegates to the configured backend.
 
-Signature (see `src/abstractvision/vision_manager.py`):
+Signature (see [`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py)):
 - `backend`: a `VisionBackend` implementation (required to run anything)
 - `store`: optional `MediaStore` to enable artifact-ref outputs
 - `model_id`: optional capability-gating model id (must exist in the registry)
@@ -98,7 +100,7 @@ Note: for cache-only/offline mode, set `allow_download=False`.
 
 ## Passing advanced backend parameters (`extra`)
 
-Request dataclasses include an `extra: dict` field (`src/abstractvision/types.py`). Use it to pass backend-specific parameters in a controlled way:
+Request dataclasses include an `extra: dict` field ([`../src/abstractvision/types.py`](../src/abstractvision/types.py)). Use it to pass backend-specific parameters in a controlled way:
 
 ```python
 asset_or_ref = vm.generate_image(
@@ -113,11 +115,11 @@ asset_or_ref = vm.generate_image(
 )
 ```
 
-Backends may ignore unknown keys; consult the backend implementation and `docs/reference/backends.md`.
+Backends may ignore unknown keys; consult the backend implementation and [docs/reference/backends.md](reference/backends.md).
 
 ## Capability registry (what models can do)
 
-The packaged registry is loaded by `VisionModelCapabilitiesRegistry` (`src/abstractvision/model_capabilities.py`).
+The packaged registry is loaded by `VisionModelCapabilitiesRegistry` ([`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
 
 ```python
 from abstractvision import VisionModelCapabilitiesRegistry
@@ -130,24 +132,24 @@ reg.require_support("Qwen/Qwen-Image-2512", "text_to_image")
 ```
 
 Optional gating:
-- If you construct `VisionManager(model_id=..., registry=...)`, the manager will fail fast on unsupported tasks before calling a backend (`src/abstractvision/vision_manager.py`).
+- If you construct `VisionManager(model_id=..., registry=...)`, the manager will fail fast on unsupported tasks before calling a backend ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py)).
 
 Important: the registry is *not* a guarantee that your configured backend can execute a task at runtime.
-Use `docs/reference/backends.md` for backend support.
+Use [docs/reference/backends.md](reference/backends.md) for backend support.
 
 ## Artifacts and stores
 
-Artifact helpers and store implementations live in `src/abstractvision/artifacts.py`:
+Artifact helpers and store implementations live in [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py):
 
 - `LocalAssetStore` (standalone local files, default `~/.abstractvision/assets`)
 - `RuntimeArtifactStoreAdapter` (duck-typed adapter for an external artifact store)
 - `is_artifact_ref(...)` / `make_media_ref(...)`
 
-See: `docs/reference/artifacts.md`.
+See: [docs/reference/artifacts.md](reference/artifacts.md).
 
 ## Errors you may want to handle
 
-Common exceptions (defined in `src/abstractvision/errors.py`):
+Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstractvision/errors.py)):
 
 - `BackendNotConfiguredError` (calling `VisionManager` without a backend)
 - `CapabilityNotSupportedError` (task isn’t supported by the model registry or backend)

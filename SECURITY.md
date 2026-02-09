@@ -18,6 +18,8 @@ Include as much of the following as you can:
 - Any relevant logs, stack traces, or configuration
 - Suggested mitigation (if you have one)
 
+If you believe the issue is in an upstream dependency (e.g. Torch/Diffusers), it can still be helpful to notify us so we can assess impact and coordinate messaging for AbstractVision users.
+
 ## What to expect
 
 We aim to:
@@ -31,3 +33,4 @@ If a coordinated disclosure timeline is needed, please include your preferred ti
 
 This policy applies to vulnerabilities in this repository’s code and packaging.
 
+For non-security bugs and feature requests, please use the normal issue tracker.

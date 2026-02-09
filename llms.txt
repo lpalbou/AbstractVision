@@ -1,49 +1,71 @@
 # AbstractVision
 
-> Model-agnostic generative vision API (images, optional video) with a packaged capability registry, artifact-ref outputs, and backends for OpenAI-compatible HTTP, Diffusers, and stable-diffusion.cpp.
+> Model-agnostic generative vision API (images, optional video) with a capability registry, artifact-ref outputs, and backends for OpenAI-compatible HTTP, Diffusers, and stable-diffusion.cpp.
 
-This repository’s current source of truth is the code under `src/abstractvision/`.
+This repository’s current source of truth is the code under `src/abstractvision/` (docs in `docs/`).
 
-Key reality checks for agents:
+Format note: this file follows the `/llms.txt` Markdown spec (H1 + optional summary/details + H2 “file list” sections; the `## Optional` section can be skipped when you need a shorter context). Spec: https://llmstxt.org/index.md#format
+
+Maintenance tips:
+- Keep link descriptions concise and unambiguous; avoid unexplained jargon.
+- Regenerate `llms-full.txt` after doc/packaging changes: `python scripts/generate_llms_full.py`.
+
+Agent quickstart (choose the path that matches your goal):
+- **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
+- **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
+- **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
+
+Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image` and `image_to_image`.
 - `text_to_video` and `image_to_video` are supported only via the OpenAI-compatible backend when video endpoints are configured.
 - `multi_view_image` exists in the API but no built-in backend implements it yet.
 
 ## Documentation
 
-- [README](README.md): overview, install, quickstart
-- [Docs index](docs/README.md): documentation map
-- [Getting started](docs/getting-started.md): REPL walkthroughs for Diffusers / stable-diffusion.cpp / OpenAI-compatible
-- [FAQ](docs/faq.md): common questions + troubleshooting
-- [API](docs/api.md): public Python API surface
-- [Architecture](docs/architecture.md): component overview + diagrams
-- [Backends reference](docs/reference/backends.md): backend support matrix + notes
-- [Configuration reference](docs/reference/configuration.md): CLI/REPL commands + `ABSTRACTVISION_*` env vars
-- [Capabilities registry](docs/reference/capabilities-registry.md): registry format + usage
-- [Artifacts](docs/reference/artifacts.md): artifact-ref outputs + stores
-- [AbstractCore integration](docs/reference/abstractcore-integration.md): capability plugin + tool helpers
-- [Contributing](CONTRIBUTING.md): dev setup + tests + contribution guidelines
-- [Security](SECURITY.md): responsible vulnerability reporting
-- [Acknowledgments](ACKNOWLEDMENTS.md): upstream projects
+- [llms-full.txt](llms-full.txt): single-file bundle of the core docs (for agent ingestion)
+- [README.md](README.md): overview, install, quickstart
+- [docs/README.md](docs/README.md): docs index (map)
+- [docs/getting-started.md](docs/getting-started.md): first image (OpenAI-compatible HTTP / Diffusers / sdcpp) + Playground
+- [docs/api.md](docs/api.md): public Python API surface
+- [docs/architecture.md](docs/architecture.md): how components fit together (with diagrams)
+- [docs/faq.md](docs/faq.md): common questions + troubleshooting
+- [docs/reference/backends.md](docs/reference/backends.md): backend support matrix + config notes
+- [docs/reference/configuration.md](docs/reference/configuration.md): CLI/REPL commands + `ABSTRACTVISION_*` env vars
+- [docs/reference/capabilities-registry.md](docs/reference/capabilities-registry.md): capability registry format + usage
+- [docs/reference/artifacts.md](docs/reference/artifacts.md): artifact refs + stores
+- [docs/reference/abstractcore-integration.md](docs/reference/abstractcore-integration.md): AbstractCore plugin + tool helpers
+- [CONTRIBUTING.md](CONTRIBUTING.md): dev setup + tests + contribution guidelines
+- [SECURITY.md](SECURITY.md): responsible vulnerability reporting
+- [ACKNOWLEDMENTS.md](ACKNOWLEDMENTS.md): upstream libraries/projects
+
+## AbstractFramework ecosystem
+
+- [AbstractFramework](https://github.com/lpalbou/AbstractFramework): ecosystem hub (how components fit together)
+- [AbstractCore](https://github.com/lpalbou/abstractcore): orchestration + tool calling (AbstractVision integrates via plugin/tools)
+- [AbstractRuntime](https://github.com/lpalbou/abstractruntime): runtime services (artifact store integration via adapter)
 
 ## Code entry points
 
-- [VisionManager](src/abstractvision/vision_manager.py): orchestrator API + gating + store logic
-- [Backend interface](src/abstractvision/backends/base_backend.py): `VisionBackend` contract
-- [Backends package](src/abstractvision/backends/__init__.py): lazy imports
-- [HTTP backend](src/abstractvision/backends/openai_compatible.py): OpenAI-compatible adapter (+ optional video)
-- [Diffusers backend](src/abstractvision/backends/huggingface_diffusers.py): local Diffusers T2I/I2I
-- [stable-diffusion.cpp backend](src/abstractvision/backends/stable_diffusion_cpp.py): GGUF via sd-cli / python bindings
-- [Capability registry loader](src/abstractvision/model_capabilities.py): loader + validator
-- [Artifacts/stores](src/abstractvision/artifacts.py): `LocalAssetStore` + runtime adapter
-- [CLI/REPL](src/abstractvision/cli.py): `abstractvision` command
-- [AbstractCore plugin](src/abstractvision/integrations/abstractcore_plugin.py): capability plugin
-- [AbstractCore tools](src/abstractvision/integrations/abstractcore.py): `make_vision_tools(...)`
+- [src/abstractvision/vision_manager.py](src/abstractvision/vision_manager.py): `VisionManager` orchestrator API
+- [src/abstractvision/types.py](src/abstractvision/types.py): request/response dataclasses (`ImageGenerationRequest`, `GeneratedAsset`, …)
+- [src/abstractvision/errors.py](src/abstractvision/errors.py): error types (`CapabilityNotSupportedError`, …)
+- [src/abstractvision/backends/base_backend.py](src/abstractvision/backends/base_backend.py): `VisionBackend` contract
+- [src/abstractvision/backends/__init__.py](src/abstractvision/backends/__init__.py): lazy imports (keeps `import abstractvision` import-light)
+- [src/abstractvision/backends/openai_compatible.py](src/abstractvision/backends/openai_compatible.py): OpenAI-compatible HTTP backend (+ optional video)
+- [src/abstractvision/backends/huggingface_diffusers.py](src/abstractvision/backends/huggingface_diffusers.py): local Diffusers backend (T2I/I2I)
+- [src/abstractvision/backends/stable_diffusion_cpp.py](src/abstractvision/backends/stable_diffusion_cpp.py): stable-diffusion.cpp backend (GGUF via `sd-cli` or python bindings)
+- [src/abstractvision/model_capabilities.py](src/abstractvision/model_capabilities.py): capability registry loader + validator
+- [src/abstractvision/artifacts.py](src/abstractvision/artifacts.py): artifact refs + stores (`LocalAssetStore`, `RuntimeArtifactStoreAdapter`)
+- [src/abstractvision/cli.py](src/abstractvision/cli.py): CLI/REPL (`abstractvision`)
+- [src/abstractvision/integrations/abstractcore_plugin.py](src/abstractvision/integrations/abstractcore_plugin.py): AbstractCore capability plugin entry point
+- [src/abstractvision/integrations/abstractcore.py](src/abstractvision/integrations/abstractcore.py): AbstractCore tool helpers (`make_vision_tools`)
 
 ## Testing
 
 - [Test suite](tests/): run `python -m unittest discover -s tests -p "test_*.py" -q`
 - [Changelog](CHANGELOG.md): release notes
+- [pyproject.toml](pyproject.toml): dependencies/extras + entry points
+- [scripts/generate_llms_full.py](scripts/generate_llms_full.py): regenerate `llms-full.txt`
 
 ## Optional
 

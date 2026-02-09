@@ -1,0 +1,1763 @@
+# AbstractVision — llms-full
+
+> Single-file, agent-oriented context bundle generated from this repository’s docs and metadata.
+
+How to use:
+- If you only need a map of where to look, use `llms.txt`.
+- If you need an all-in-one context bundle (for offline models or constrained retrieval), use this file.
+
+Notes:
+- This is a **convention** (many projects publish an `llms-full.txt`). It is not part of the core `llms.txt` spec.
+- Relative links inside each file section are authored for that file’s original location. Use the `FILE: …` marker to interpret link paths.
+- If you change docs or packaging metadata, regenerate this file by running:
+  - `python scripts/generate_llms_full.py`
+
+Included files:
+- `llms.txt`
+- `README.md`
+- `docs/README.md`
+- `docs/getting-started.md`
+- `docs/api.md`
+- `docs/architecture.md`
+- `docs/faq.md`
+- `docs/reference/backends.md`
+- `docs/reference/configuration.md`
+- `docs/reference/capabilities-registry.md`
+- `docs/reference/artifacts.md`
+- `docs/reference/abstractcore-integration.md`
+- `CONTRIBUTING.md`
+- `SECURITY.md`
+- `ACKNOWLEDMENTS.md`
+- `CHANGELOG.md`
+- `pyproject.toml`
+
+--- 8< --- FILE: llms.txt --- 8< ---
+# AbstractVision
+
+> Model-agnostic generative vision API (images, optional video) with a capability registry, artifact-ref outputs, and backends for OpenAI-compatible HTTP, Diffusers, and stable-diffusion.cpp.
+
+This repository’s current source of truth is the code under `src/abstractvision/` (docs in `docs/`).
+
+Format note: this file follows the `/llms.txt` Markdown spec (H1 + optional summary/details + H2 “file list” sections; the `## Optional` section can be skipped when you need a shorter context). Spec: https://llmstxt.org/index.md#format
+
+Maintenance tips:
+- Keep link descriptions concise and unambiguous; avoid unexplained jargon.
+- Regenerate `llms-full.txt` after doc/packaging changes: `python scripts/generate_llms_full.py`.
+
+Agent quickstart (choose the path that matches your goal):
+- **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
+- **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
+- **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
+
+Reality checks (current shipped behavior, anchored in code):
+- Built-in backends implement `text_to_image` and `image_to_image`.
+- `text_to_video` and `image_to_video` are supported only via the OpenAI-compatible backend when video endpoints are configured.
+- `multi_view_image` exists in the API but no built-in backend implements it yet.
+
+## Documentation
+
+- [llms-full.txt](llms-full.txt): single-file bundle of the core docs (for agent ingestion)
+- [README.md](README.md): overview, install, quickstart
+- [docs/README.md](docs/README.md): docs index (map)
+- [docs/getting-started.md](docs/getting-started.md): first image (OpenAI-compatible HTTP / Diffusers / sdcpp) + Playground
+- [docs/api.md](docs/api.md): public Python API surface
+- [docs/architecture.md](docs/architecture.md): how components fit together (with diagrams)
+- [docs/faq.md](docs/faq.md): common questions + troubleshooting
+- [docs/reference/backends.md](docs/reference/backends.md): backend support matrix + config notes
+- [docs/reference/configuration.md](docs/reference/configuration.md): CLI/REPL commands + `ABSTRACTVISION_*` env vars
+- [docs/reference/capabilities-registry.md](docs/reference/capabilities-registry.md): capability registry format + usage
+- [docs/reference/artifacts.md](docs/reference/artifacts.md): artifact refs + stores
+- [docs/reference/abstractcore-integration.md](docs/reference/abstractcore-integration.md): AbstractCore plugin + tool helpers
+- [CONTRIBUTING.md](CONTRIBUTING.md): dev setup + tests + contribution guidelines
+- [SECURITY.md](SECURITY.md): responsible vulnerability reporting
+- [ACKNOWLEDMENTS.md](ACKNOWLEDMENTS.md): upstream libraries/projects
+
+## AbstractFramework ecosystem
+
+- [AbstractFramework](https://github.com/lpalbou/AbstractFramework): ecosystem hub (how components fit together)
+- [AbstractCore](https://github.com/lpalbou/abstractcore): orchestration + tool calling (AbstractVision integrates via plugin/tools)
+- [AbstractRuntime](https://github.com/lpalbou/abstractruntime): runtime services (artifact store integration via adapter)
+
+## Code entry points
+
+- [src/abstractvision/vision_manager.py](src/abstractvision/vision_manager.py): `VisionManager` orchestrator API
+- [src/abstractvision/types.py](src/abstractvision/types.py): request/response dataclasses (`ImageGenerationRequest`, `GeneratedAsset`, …)
+- [src/abstractvision/errors.py](src/abstractvision/errors.py): error types (`CapabilityNotSupportedError`, …)
+- [src/abstractvision/backends/base_backend.py](src/abstractvision/backends/base_backend.py): `VisionBackend` contract
+- [src/abstractvision/backends/__init__.py](src/abstractvision/backends/__init__.py): lazy imports (keeps `import abstractvision` import-light)
+- [src/abstractvision/backends/openai_compatible.py](src/abstractvision/backends/openai_compatible.py): OpenAI-compatible HTTP backend (+ optional video)
+- [src/abstractvision/backends/huggingface_diffusers.py](src/abstractvision/backends/huggingface_diffusers.py): local Diffusers backend (T2I/I2I)
+- [src/abstractvision/backends/stable_diffusion_cpp.py](src/abstractvision/backends/stable_diffusion_cpp.py): stable-diffusion.cpp backend (GGUF via `sd-cli` or python bindings)
+- [src/abstractvision/model_capabilities.py](src/abstractvision/model_capabilities.py): capability registry loader + validator
+- [src/abstractvision/artifacts.py](src/abstractvision/artifacts.py): artifact refs + stores (`LocalAssetStore`, `RuntimeArtifactStoreAdapter`)
+- [src/abstractvision/cli.py](src/abstractvision/cli.py): CLI/REPL (`abstractvision`)
+- [src/abstractvision/integrations/abstractcore_plugin.py](src/abstractvision/integrations/abstractcore_plugin.py): AbstractCore capability plugin entry point
+- [src/abstractvision/integrations/abstractcore.py](src/abstractvision/integrations/abstractcore.py): AbstractCore tool helpers (`make_vision_tools`)
+
+## Testing
+
+- [Test suite](tests/): run `python -m unittest discover -s tests -p "test_*.py" -q`
+- [Changelog](CHANGELOG.md): release notes
+- [pyproject.toml](pyproject.toml): dependencies/extras + entry points
+- [scripts/generate_llms_full.py](scripts/generate_llms_full.py): regenerate `llms-full.txt`
+
+## Optional
+
+- [Engineering backlog](docs/backlog/README.md): internal design notes + completion reports
+- [Playground](playground/README.md): minimal web UI for AbstractCore Server vision job endpoints (`/v1/vision/*`)
+--- >8 --- END FILE: llms.txt --- >8 ---
+
+--- 8< --- FILE: README.md --- 8< ---
+# AbstractVision
+
+Model-agnostic generative vision API (images, optional video) for Python and the Abstract* ecosystem.
+
+## What you get
+
+- A small orchestration API: [`VisionManager`](src/abstractvision/vision_manager.py)
+- A packaged capability registry (“what models can do”): [`VisionModelCapabilitiesRegistry`](src/abstractvision/model_capabilities.py) backed by [`vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json)
+- Optional artifact-ref outputs (small JSON refs): [`LocalAssetStore`](src/abstractvision/artifacts.py) and [`RuntimeArtifactStoreAdapter`](src/abstractvision/artifacts.py)
+- Built-in backends (execution engines): [`src/abstractvision/backends/`](src/abstractvision/backends/)
+  - OpenAI-compatible HTTP: [`openai_compatible.py`](src/abstractvision/backends/openai_compatible.py)
+  - Local Diffusers: [`huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py)
+  - Local stable-diffusion.cpp / GGUF: [`stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
+- CLI/REPL for manual testing: [`abstractvision`](src/abstractvision/cli.py)
+- Optional static Playground UI (server-backed): [`playground/vision_playground.html`](playground/vision_playground.html) (docs: [`playground/README.md`](playground/README.md))
+
+## How it fits together (diagram)
+
+```mermaid
+flowchart LR
+  Caller[Python / CLI / AbstractCore] --> VM[VisionManager]
+  VM --> BE[VisionBackend]
+  BE --> VM
+  VM -->|optional| Store[MediaStore]
+  Store --> Ref[Artifact ref dict]
+  VM -->|no store| Asset[GeneratedAsset (bytes + mime)]
+```
+
+## Status (current backend support)
+
+- Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
+- Built-in backends implement: `text_to_image` and `image_to_image`.
+- Video (`text_to_video`, `image_to_video`) is supported only via the OpenAI-compatible backend **when** endpoints are configured.
+- `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
+
+Details: [`docs/reference/backends.md`](docs/reference/backends.md).
+
+## Installation
+
+```bash
+pip install abstractvision
+```
+
+Install optional integrations:
+
+```bash
+pip install "abstractvision[abstractcore]"
+```
+
+If you hit “missing pipeline class” errors for newer model families, see [`docs/getting-started.md`](docs/getting-started.md). In practice you usually need Diffusers from source (`main`):
+
+```bash
+pip install -U "abstractvision[huggingface-dev]"
+pip install -U "git+https://github.com/huggingface/diffusers@main"
+```
+
+For local dev (from a repo checkout):
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+Start here:
+- Getting started: [`docs/getting-started.md`](docs/getting-started.md)
+- FAQ: [`docs/faq.md`](docs/faq.md)
+- API reference: [`docs/api.md`](docs/api.md)
+- Architecture: [`docs/architecture.md`](docs/architecture.md)
+- Docs index: [`docs/README.md`](docs/README.md)
+
+### Capability-driven model selection
+
+```python
+from abstractvision import VisionModelCapabilitiesRegistry
+
+reg = VisionModelCapabilitiesRegistry()
+assert reg.supports("Qwen/Qwen-Image-2512", "text_to_image")
+
+print(reg.list_tasks())
+print(reg.models_for_task("text_to_image"))
+```
+
+### Backend wiring + generation (artifact outputs)
+
+The default install is “batteries included” (Torch + Diffusers + stable-diffusion.cpp python bindings), but heavy
+modules are imported lazily (see [`src/abstractvision/backends/__init__.py`](src/abstractvision/backends/__init__.py)).
+
+```python
+from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry, is_artifact_ref
+from abstractvision.backends import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+
+reg = VisionModelCapabilitiesRegistry()
+
+backend = OpenAICompatibleVisionBackend(
+    config=OpenAICompatibleBackendConfig(
+        base_url="http://localhost:1234/v1",
+        api_key="YOUR_KEY",      # optional for local servers
+        model_id="REMOTE_MODEL", # optional (server-dependent)
+    )
+)
+
+vm = VisionManager(
+    backend=backend,
+    store=LocalAssetStore(),         # enables artifact-ref outputs
+    model_id="zai-org/GLM-Image",    # optional: capability gating
+    registry=reg,                   # optional: reuse loaded registry
+)
+
+out = vm.generate_image("a cinematic photo of a red fox in snow")
+assert is_artifact_ref(out)
+print(out)  # {"$artifact": "...", "content_type": "...", ...}
+
+png_bytes = vm.store.load_bytes(out["$artifact"])  # type: ignore[union-attr]
+```
+
+### Interactive testing (CLI / REPL)
+
+```bash
+abstractvision models
+abstractvision tasks
+abstractvision show-model zai-org/GLM-Image
+
+abstractvision repl
+```
+
+Inside the REPL:
+
+```text
+/backend openai http://localhost:1234/v1
+/cap-model zai-org/GLM-Image
+/set width 1024
+/set height 1024
+/t2i "a watercolor painting of a lighthouse" --open
+```
+
+The CLI/REPL can also be configured via `ABSTRACTVISION_*` env vars; see [`docs/reference/configuration.md`](docs/reference/configuration.md).
+
+One-shot commands (OpenAI-compatible HTTP backend only):
+
+```bash
+abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"
+abstractvision i2i --base-url http://localhost:1234/v1 --image ./input.png "make it watercolor"
+```
+
+#### Local GGUF via stable-diffusion.cpp
+
+If you want to run GGUF diffusion models locally (e.g. Qwen Image), use the stable-diffusion.cpp backend (`sdcpp`).
+
+Recommended (pip-only; no external binary download): `pip install abstractvision` already includes the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`).
+
+Alternative (external executable):
+
+- Install `sd-cli`: <https://github.com/leejet/stable-diffusion.cpp/releases>
+
+In the REPL:
+
+```text
+/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf /path/to/qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf
+/t2i "a watercolor painting of a lighthouse" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
+```
+
+Extra flags are forwarded via `request.extra`. In CLI mode they are forwarded to `sd-cli`; in python bindings mode, keys are mapped to python binding kwargs when supported and unsupported keys are ignored.
+
+### AbstractCore tool integration (artifact refs)
+
+If you’re using AbstractCore tool calling, AbstractVision can expose vision tasks as tools:
+
+```python
+from abstractvision.integrations.abstractcore import make_vision_tools
+
+tools = make_vision_tools(vision_manager=vm, model_id="zai-org/GLM-Image")
+```
+
+## AbstractFramework ecosystem
+
+AbstractVision is part of the **AbstractFramework** ecosystem and is designed to compose with:
+
+- **AbstractFramework** (project hub): <https://github.com/lpalbou/AbstractFramework>
+- **AbstractCore** (orchestration + tool calling): <https://github.com/lpalbou/abstractcore>
+- **AbstractRuntime** (runtime services, including artifact storage): <https://github.com/lpalbou/abstractruntime>
+
+In practice:
+- AbstractVision standardizes *generative vision outputs* (image/video) behind `VisionManager`.
+- AbstractCore can discover and use AbstractVision via the capability plugin (`src/abstractvision/integrations/abstractcore_plugin.py`) or you can expose vision tasks as tools (`src/abstractvision/integrations/abstractcore.py`).
+- Artifact refs returned by AbstractVision are designed to travel across processes; `RuntimeArtifactStoreAdapter` bridges to an AbstractRuntime-style artifact store (`src/abstractvision/artifacts.py`).
+
+## Project
+
+- Release notes: [`CHANGELOG.md`](CHANGELOG.md)
+- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security: [`SECURITY.md`](SECURITY.md)
+- Acknowledgments: [`ACKNOWLEDMENTS.md`](ACKNOWLEDMENTS.md)
+
+## Requirements
+
+- Python >= 3.8
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Author
+
+Laurent-Philippe Albou
+
+## Contact
+
+contact@abstractcore.ai
+--- >8 --- END FILE: README.md --- >8 ---
+
+--- 8< --- FILE: docs/README.md --- 8< ---
+# AbstractVision documentation
+
+This folder contains the user-facing documentation for `abstractvision`.
+
+## Start here (new users)
+
+1) [Project overview + quickstart](../README.md)  
+2) [Getting started](getting-started.md) (first image; Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP, Playground)  
+3) [Architecture](architecture.md) (how the pieces fit together)
+
+## Quick reference
+
+- [FAQ](faq.md)
+- [API reference](api.md)
+- [Backends](reference/backends.md)
+- [Configuration (CLI/REPL env vars + flags)](reference/configuration.md)
+- [Capability registry (`vision_model_capabilities.json`)](reference/capabilities-registry.md)
+- [Artifacts (artifact refs + stores)](reference/artifacts.md)
+- [AbstractCore integration (capability plugin + tools)](reference/abstractcore-integration.md)
+
+## AbstractFramework ecosystem
+
+AbstractVision is part of the **AbstractFramework** ecosystem and is designed to compose with:
+
+- **AbstractFramework** (project hub): <https://github.com/lpalbou/AbstractFramework>
+- **AbstractCore** (orchestration + tool calling): <https://github.com/lpalbou/abstractcore>
+- **AbstractRuntime** (runtime services, including artifact storage): <https://github.com/lpalbou/abstractruntime>
+
+## Current implementation status (as shipped)
+
+Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) exposes:
+  - `generate_image` (`text_to_image`), `edit_image` (`image_to_image`)
+  - `generate_video` (`text_to_video`), `image_to_video` (`image_to_video`) (backend-dependent)
+  - `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
+- Built-in backends implement:
+  - **Images**: Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
+  - **Video**: OpenAI-compatible HTTP only, and only when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
+
+If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
+[`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) (loaded by `VisionModelCapabilitiesRegistry` in [`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
+
+## Internal engineering notes
+
+[`docs/backlog/`](backlog/) is an internal log (planned work + completion reports). It is not the normative user documentation surface.
+
+## Project
+
+- Release notes: [`CHANGELOG.md`](../CHANGELOG.md)
+- Contributing: [`CONTRIBUTING.md`](../CONTRIBUTING.md)
+- Security: [`SECURITY.md`](../SECURITY.md)
+- License: [`LICENSE`](../LICENSE)
+- Acknowledgments: [`ACKNOWLEDMENTS.md`](../ACKNOWLEDMENTS.md)
+--- >8 --- END FILE: docs/README.md --- >8 ---
+
+--- 8< --- FILE: docs/getting-started.md --- 8< ---
+# Getting Started
+
+This guide helps you generate your first image using AbstractVision with the built-in backends:
+
+- **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
+- **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)
+- **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via pip-installable python bindings (no external `sd-cli` required) or the external `sd-cli` executable
+- **Playground (web, optional)**: static UI for AbstractCore Server vision job endpoints (`/v1/vision/*`)
+
+See also:
+- Docs index: [docs/README.md](README.md)
+- FAQ: [docs/faq.md](faq.md)
+- API reference: [docs/api.md](api.md)
+- Architecture: [docs/architecture.md](architecture.md)
+- Backends: [docs/reference/backends.md](reference/backends.md)
+- Configuration (CLI/REPL env vars): [docs/reference/configuration.md](reference/configuration.md)
+- Capability registry: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
+- Artifacts: [docs/reference/artifacts.md](reference/artifacts.md)
+- AbstractCore integration: [docs/reference/abstractcore-integration.md](reference/abstractcore-integration.md)
+
+---
+
+## 0) Install
+
+From PyPI:
+
+```bash
+pip install abstractvision
+```
+
+AbstractVision’s base install is **batteries included** (Torch + Diffusers + stable-diffusion.cpp bindings). Heavy modules are imported lazily, but the dependencies are still installed (see `pyproject.toml`).
+
+If you see “missing pipeline class” errors for newer model families, install the `huggingface-dev` extra (to get compatible dependencies) and then install Diffusers from source (`main`).
+
+If you're installing **AbstractVision from a repo checkout**, install the dev extra (compatible deps; does not include Diffusers `main`):
+
+```bash
+pip install -e ".[huggingface-dev]"
+```
+
+If you're installing **AbstractVision from PyPI**, you can install the extra directly:
+
+```bash
+pip install -U "abstractvision[huggingface-dev]"
+```
+
+Or install Diffusers from source directly:
+
+```bash
+pip install -U "git+https://github.com/huggingface/diffusers@main"
+```
+
+Sanity check:
+
+```bash
+python -c "import diffusers; print(diffusers.__version__)"
+python -c "import diffusers; print('GlmImagePipeline', hasattr(diffusers, 'GlmImagePipeline')); print('Flux2KleinPipeline', hasattr(diffusers, 'Flux2KleinPipeline'))"
+```
+
+Offline alternative (if you already have a local Diffusers checkout):
+
+```bash
+pip install -U -e /path/to/diffusers
+```
+
+Or, from a repo checkout (run in the repo root):
+
+```bash
+pip install -e .
+```
+
+No extras are required for most use cases: AbstractVision is batteries-included (Diffusers + stable-diffusion.cpp python bindings), so a fresh environment should only need model weights. Use `huggingface-dev` only when you need Diffusers `main`.
+
+---
+
+## 1) First image (OpenAI-compatible HTTP)
+
+Use this path if you already have a server that exposes OpenAI-shaped image endpoints (e.g. a local model server).
+
+One-shot (stores output via `LocalAssetStore` and prints an artifact ref + file path):
+
+```bash
+abstractvision t2i --base-url http://localhost:1234/v1 "a cinematic photo of a red fox in snow" --open
+```
+
+Interactive REPL:
+
+```bash
+abstractvision repl
+```
+
+```text
+/backend openai http://localhost:1234/v1
+/t2i "a watercolor painting of a lighthouse" --width 768 --height 768 --steps 20 --open
+```
+
+If your server also supports video endpoints, configure them via `ABSTRACTVISION_TEXT_TO_VIDEO_PATH` / `ABSTRACTVISION_IMAGE_TO_VIDEO_PATH` (see [docs/reference/configuration.md](reference/configuration.md)).
+
+---
+
+## 2) First image (Diffusers)
+
+By default, AbstractVision allows downloading models into your Hugging Face cache.
+To force cache-only/offline mode, set:
+
+```bash
+export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0
+```
+
+```bash
+export ABSTRACTVISION_BACKEND=diffusers
+export ABSTRACTVISION_DIFFUSERS_DEVICE=mps
+# mps = macOS Apple Silicon; use cuda/cpu on other machines
+# Optional: override dtype (auto defaults to float16 on MPS for broad compatibility).
+# - `float16` is usually the best speed/compatibility tradeoff on Apple Silicon
+# - `bfloat16` can work for some models, but can trigger dtype-mismatch errors in some pipelines
+# - `float32` is the most stable, but can require much more memory
+# export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=bfloat16
+# export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float16
+# export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32
+```
+
+Quick sanity check (macOS):
+
+```bash
+python -c "import torch; print('mps', torch.backends.mps.is_available(), 'cuda', torch.cuda.is_available())"
+```
+
+Start the REPL:
+
+```bash
+abstractvision repl
+```
+
+Then:
+
+```text
+/backend diffusers runwayml/stable-diffusion-v1-5 mps
+/set guidance_scale 7
+/set seed 42
+/t2i "a cinematic photo of a red fox in snow" --open
+```
+
+Change settings by changing `/set …` values, or pass flags per request:
+
+```text
+/t2i "a watercolor painting of a lighthouse" --width 768 --height 768 --steps 30 --seed 123 --guidance-scale 6.5 --open
+```
+
+---
+
+## 3) Qwen Image (Diffusers)
+
+Qwen Image models in the registry:
+
+- `Qwen/Qwen-Image` (older)
+- `Qwen/Qwen-Image-2512` (newer)
+
+Use the same Diffusers flow:
+
+```text
+/backend diffusers Qwen/Qwen-Image-2512 mps float16
+/t2i "a poster with the word 'ABSTRACT' rendered perfectly in bold typography" --width 512 --height 512 --steps 10 --guidance-scale 2.5 --open
+```
+
+Notes:
+- Qwen Image models are **large**.
+- For best results, prefer the model card’s recommended sizes (e.g. 1328x1328 for 1:1). For quick tests, 512x512 is fine.
+- On Apple Silicon (MPS), start with fp16 (default; best compatibility):
+  - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float16` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps float16`)
+- If you get NaNs/black images, try fp32 (this can require **very** large peak memory during load):
+  - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32` (or in the REPL: `/backend diffusers Qwen/Qwen-Image-2512 mps float32`)
+- On Apple Silicon (MPS), AbstractVision upcasts the VAE to fp32 when using fp16 to avoid common “black image” issues.
+- Automatic fp32 retry on all-black output is enabled by default on MPS (can increase peak memory):
+  - disable with `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=0`
+- In AbstractVision, `--guidance-scale` is mapped to Qwen’s `true_cfg_scale` when using Qwen pipelines (CFG). If you set `--guidance-scale` but don’t provide a `negative_prompt`, AbstractVision passes a placeholder negative prompt (`" "`) so CFG is actually enabled.
+
+Tip: keep `guidance_scale` relatively low for some modern DiT models.
+
+---
+
+## 3.1) LoRA + Rapid-AIO (Diffusers)
+
+AbstractVision can apply LoRA adapters (Diffusers adapter system) and optionally swap in a distilled “Rapid-AIO”
+transformer for faster Qwen Image Edit inference.
+
+These features can download from Hugging Face by default (same as model downloads). Use cache-only mode if needed:
+
+```bash
+export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0
+```
+
+LoRA example (REPL; note: `loras_json` is forwarded via `request.extra`):
+
+```text
+/backend diffusers Qwen/Qwen-Image-Edit-2511 mps float16
+/t2i "a cinematic photo of a red fox in snow" --steps 8 --guidance-scale 1 --loras_json '[{"source":"lightx2v/Qwen-Image-Edit-2511-Lightning","scale":1.0}]' --open
+```
+
+Rapid-AIO example (distilled transformer override; Qwen Image Edit):
+
+```text
+/backend diffusers Qwen/Qwen-Image-Edit-2511 mps float16
+/t2i "a cinematic photo of a red fox in snow" --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
+```
+
+---
+
+## 4) FLUX 2 (Diffusers)
+
+FLUX 2 models in the registry:
+
+- `black-forest-labs/FLUX.2-klein-4B` (Apache-2.0, not gated)
+- `black-forest-labs/FLUX.2-dev` (non-commercial license, gated on Hugging Face)
+
+Sanity check:
+
+```bash
+python -c "import diffusers; print(diffusers.__version__)"
+```
+
+Notes:
+- `FLUX.2-dev` uses Diffusers `Flux2Pipeline` and works on released Diffusers (0.36+).
+- `FLUX.2-klein-4B` uses `Flux2KleinPipeline`, which is not available in the released Diffusers (0.36.0). It currently
+  requires installing Diffusers from source (or use the AbstractVision dev extra):
+  - `pip install -U "abstractvision[huggingface-dev]"`
+  - `pip install -U "git+https://github.com/huggingface/diffusers@main"`
+
+Recommended offline-friendly example (`FLUX.2-klein-4B`, not gated):
+
+```text
+/backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
+/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 10 --guidance-scale 1.0 --seed 0 --open
+```
+
+Example (`FLUX.2-dev`, gated; you must pre-download it into your HF cache first):
+
+```text
+/backend diffusers black-forest-labs/FLUX.2-dev mps
+/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
+```
+
+If you use gated models (like `FLUX.2-dev`), you typically must accept the model’s terms on Hugging Face and set `HF_TOKEN` in your environment.
+
+---
+
+## 5) Stable Diffusion 3.5 (Diffusers, gated)
+
+SD3.5 models (all gated on Hugging Face):
+
+- `stabilityai/stable-diffusion-3.5-large-turbo`
+- `stabilityai/stable-diffusion-3.5-large`
+- `stabilityai/stable-diffusion-3.5-medium`
+
+1) Accept the model terms on Hugging Face (in your browser).  
+2) Export a token:
+
+```bash
+export HF_TOKEN=...   # your Hugging Face access token
+```
+
+Then in the REPL:
+
+```text
+/backend diffusers stabilityai/stable-diffusion-3.5-large-turbo mps
+/t2i "a modern product photo of a watch, studio lighting" --width 1024 --height 1024 --steps 6 --guidance-scale 4 --seed 42 --open
+```
+
+Turbo models are usually best with low step counts (e.g. ~4–8).
+
+---
+
+## 6) Qwen-Image GGUF (stable-diffusion.cpp)
+
+If you downloaded a GGUF diffusion model (like `unsloth/Qwen-Image-2512-GGUF:qwen-image-2512-Q4_K_M.gguf`), Diffusers cannot load it. Use the stable-diffusion.cpp backend instead (either via pip-installed python bindings or `sd-cli`).
+
+### 6.1 Install stable-diffusion.cpp runtime
+
+By default, `pip install abstractvision` includes the pip-installable stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`).
+
+Alternative (external executable):
+
+- Download `sd-cli` from: <https://github.com/leejet/stable-diffusion.cpp/releases>
+- Ensure `sd-cli` is in your `PATH` (or pass a full path as the last arg to `/backend sdcpp …`).
+
+### 6.2 Download the required Qwen Image VAE
+
+```bash
+curl -L -o ./qwen_image_vae.safetensors \\
+  https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
+```
+
+### 6.3 Run the REPL with `sdcpp` backend
+
+```bash
+abstractvision repl
+```
+
+Then:
+
+```text
+/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf ./qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf
+/set width 1024
+/set height 1024
+/t2i "a cinematic photo of a red fox in snow" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
+```
+
+Any extra `--flag` you pass (like `--sampling-method euler`) is forwarded to the backend as `extra`.
+- CLI mode: forwarded to `sd-cli`
+- Python bindings mode: keys are mapped to python binding kwargs when supported; unsupported keys are ignored (see [`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
+
+---
+
+## 7) Web UI testing (optional): Playground
+
+This repo includes a static, dependency-free web UI at `playground/vision_playground.html`.
+
+It is designed to talk to an **AbstractCore Server** instance that implements the `/v1/vision/*` endpoints used by the page
+(model list/load/unload and image generation/edit jobs). Evidence: see the fetch calls in `playground/vision_playground.html`.
+
+For server requirements and the endpoint list, see `playground/README.md`.
+
+### 7.1 Serve the playground page
+
+```bash
+cd playground
+python -m http.server 8080
+```
+
+Open:
+
+- `http://localhost:8080/vision_playground.html`
+
+In the UI:
+- Set the API Base URL (defaults to `http://localhost:8000`) and click **Ping**
+- Select a cached model and load it
+- Generate (T2I) or upload an input image (I2I) and run edits
+--- >8 --- END FILE: docs/getting-started.md --- >8 ---
+
+--- 8< --- FILE: docs/api.md --- 8< ---
+# API reference
+
+This document describes the **public** Python API surface of `abstractvision` (0.x / Alpha) and points to the implementation.
+
+See also:
+- Getting started (end-to-end examples): [docs/getting-started.md](getting-started.md)
+- Architecture (how the pieces fit): [docs/architecture.md](architecture.md)
+- Backends reference (support matrix): [docs/reference/backends.md](reference/backends.md)
+- FAQ (common questions): [docs/faq.md](faq.md)
+
+## Public exports
+
+The package exports the following symbols from `abstractvision` (see [`../src/abstractvision/__init__.py`](../src/abstractvision/__init__.py)):
+
+- `VisionManager`
+- `VisionModelCapabilitiesRegistry`
+- `LocalAssetStore`
+- `RuntimeArtifactStoreAdapter`
+- `is_artifact_ref`
+
+## Core concepts
+
+### Tasks
+
+`VisionManager` exposes one method per task (implementation: [`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py)):
+
+- `generate_image(...)` → `text_to_image`
+- `edit_image(...)` → `image_to_image`
+- `generate_video(...)` → `text_to_video` (backend-dependent)
+- `image_to_video(...)` → `image_to_video` (backend-dependent)
+- `generate_angles(...)` → `multi_view_image` (API exists; no built-in backend implements it yet)
+
+Task names are also used by the capability registry ([`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json)).
+
+### Backends
+
+Backends are execution engines that implement the `VisionBackend` interface ([`../src/abstractvision/backends/base_backend.py`](../src/abstractvision/backends/base_backend.py)).
+
+Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/):
+- `OpenAICompatibleVisionBackend` (HTTP)
+- `HuggingFaceDiffusersVisionBackend` (local Diffusers)
+- `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
+
+Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
+
+### Outputs: bytes vs artifact refs
+
+`VisionManager` returns:
+
+- `GeneratedAsset` (bytes) when no store is configured ([`../src/abstractvision/types.py`](../src/abstractvision/types.py))
+- an artifact ref `dict` when `VisionManager.store` is configured (via `MediaStore.store_bytes(...)`)
+
+Artifact helpers and stores are defined in [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py).
+
+## VisionManager (orchestrator)
+
+`VisionManager` is intentionally thin: it validates/gates best-effort and delegates to the configured backend.
+
+Signature (see [`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py)):
+- `backend`: a `VisionBackend` implementation (required to run anything)
+- `store`: optional `MediaStore` to enable artifact-ref outputs
+- `model_id`: optional capability-gating model id (must exist in the registry)
+- `registry`: optional `VisionModelCapabilitiesRegistry` instance (reused when gating is enabled)
+
+### Minimal example (OpenAI-compatible backend + artifact refs)
+
+```python
+from abstractvision import LocalAssetStore, VisionManager, is_artifact_ref
+from abstractvision.backends import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+
+backend = OpenAICompatibleVisionBackend(
+    config=OpenAICompatibleBackendConfig(base_url="http://localhost:1234/v1")
+)
+store = LocalAssetStore()
+vm = VisionManager(backend=backend, store=store)
+
+ref = vm.generate_image("a studio photo of an espresso machine", width=768, height=768, steps=20)
+assert is_artifact_ref(ref)
+png_bytes = store.load_bytes(ref["$artifact"])
+```
+
+### Local example (Diffusers backend)
+
+```python
+from abstractvision import VisionManager
+from abstractvision.backends import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+backend = HuggingFaceDiffusersVisionBackend(
+    config=HuggingFaceDiffusersBackendConfig(
+        model_id="runwayml/stable-diffusion-v1-5",
+        device="auto",
+        allow_download=True,
+    )
+)
+vm = VisionManager(backend=backend)
+asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, height=512, steps=10)
+```
+
+Note: for cache-only/offline mode, set `allow_download=False`.
+
+## Passing advanced backend parameters (`extra`)
+
+Request dataclasses include an `extra: dict` field ([`../src/abstractvision/types.py`](../src/abstractvision/types.py)). Use it to pass backend-specific parameters in a controlled way:
+
+```python
+asset_or_ref = vm.generate_image(
+    "a product photo of a matte black espresso machine",
+    steps=8,
+    guidance_scale=1.0,
+    extra={
+        # Example keys used by some Diffusers flows:
+        "loras_json": [{"source": "lightx2v/Qwen-Image-Edit-2511-Lightning", "scale": 1.0}],
+        "rapid_aio_repo": "linoyts/Qwen-Image-Edit-Rapid-AIO",
+    },
+)
+```
+
+Backends may ignore unknown keys; consult the backend implementation and [docs/reference/backends.md](reference/backends.md).
+
+## Capability registry (what models can do)
+
+The packaged registry is loaded by `VisionModelCapabilitiesRegistry` ([`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
+
+```python
+from abstractvision import VisionModelCapabilitiesRegistry
+
+reg = VisionModelCapabilitiesRegistry()
+print(reg.list_tasks())
+print(reg.models_for_task("text_to_image"))
+
+reg.require_support("Qwen/Qwen-Image-2512", "text_to_image")
+```
+
+Optional gating:
+- If you construct `VisionManager(model_id=..., registry=...)`, the manager will fail fast on unsupported tasks before calling a backend ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py)).
+
+Important: the registry is *not* a guarantee that your configured backend can execute a task at runtime.
+Use [docs/reference/backends.md](reference/backends.md) for backend support.
+
+## Artifacts and stores
+
+Artifact helpers and store implementations live in [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py):
+
+- `LocalAssetStore` (standalone local files, default `~/.abstractvision/assets`)
+- `RuntimeArtifactStoreAdapter` (duck-typed adapter for an external artifact store)
+- `is_artifact_ref(...)` / `make_media_ref(...)`
+
+See: [docs/reference/artifacts.md](reference/artifacts.md).
+
+## Errors you may want to handle
+
+Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstractvision/errors.py)):
+
+- `BackendNotConfiguredError` (calling `VisionManager` without a backend)
+- `CapabilityNotSupportedError` (task isn’t supported by the model registry or backend)
+- `UnknownModelError` (model id isn’t present in the registry)
+- `OptionalDependencyMissingError` (backend dependency is missing, e.g. Diffusers/Torch)
+--- >8 --- END FILE: docs/api.md --- >8 ---
+
+--- 8< --- FILE: docs/architecture.md --- 8< ---
+# AbstractVision architecture
+
+AbstractVision is a model-agnostic Python layer that standardizes **generative vision outputs** behind a small API:
+text→image, image→image (and optionally video when a backend supports it).
+
+This document describes the *current code in this repo* and links to the supporting reference docs.
+
+See also:
+- Docs index: [docs/README.md](README.md)
+- Getting started: [docs/getting-started.md](getting-started.md)
+- API reference: [docs/api.md](api.md)
+- FAQ: [docs/faq.md](faq.md)
+- Backends: [docs/reference/backends.md](reference/backends.md)
+- Capability registry: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
+- Artifacts: [docs/reference/artifacts.md](reference/artifacts.md)
+- AbstractCore integration: [docs/reference/abstractcore-integration.md](reference/abstractcore-integration.md)
+
+## AbstractFramework ecosystem (positioning)
+
+AbstractVision is one component in the **AbstractFramework** ecosystem:
+
+- **AbstractFramework** (project hub): <https://github.com/lpalbou/AbstractFramework>
+- **AbstractCore** (orchestration + tool calling): <https://github.com/lpalbou/abstractcore>
+- **AbstractRuntime** (runtime services, including artifact storage): <https://github.com/lpalbou/abstractruntime>
+
+Where AbstractVision fits:
+- AbstractVision focuses on *producing* images/videos (generators).
+- AbstractCore focuses on orchestration, tool calling, and higher-level workflows (it can discover AbstractVision via the plugin entry point in `pyproject.toml` and `src/abstractvision/integrations/abstractcore_plugin.py`).
+- AbstractRuntime provides runtime services and an artifact store interface; `RuntimeArtifactStoreAdapter` bridges AbstractVision to an AbstractRuntime-style artifact store (`src/abstractvision/artifacts.py`).
+
+## Scope (and non-goals)
+
+AbstractVision focuses on **producing** images/videos.
+
+It is not the owner of “LLM image/video input attachments” (multimodal inputs to LLMs); those concerns live in higher-level layers (e.g., AbstractCore).
+
+## Key components (with evidence pointers)
+
+- **Orchestrator**: [`VisionManager`](../src/abstractvision/vision_manager.py)
+  - Delegates execution to a backend.
+  - Optionally gates requests using the capability registry when `model_id` is set.
+  - Optionally stores outputs and returns artifact refs when `store` is set.
+- **Backend contract**: [`VisionBackend`](../src/abstractvision/backends/base_backend.py)
+  - Implementations live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/).
+- **Capability registry**: [`VisionModelCapabilitiesRegistry`](../src/abstractvision/model_capabilities.py)
+  - Loads packaged data: [`vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json).
+- **Artifact outputs**: [`MediaStore`](../src/abstractvision/artifacts.py), [`LocalAssetStore`](../src/abstractvision/artifacts.py), [`RuntimeArtifactStoreAdapter`](../src/abstractvision/artifacts.py)
+  - Artifact ref helper: `is_artifact_ref()` (see [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py)).
+- **CLI/REPL**: `abstractvision` entrypoint ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py))
+  - Lets you inspect the registry and manually test generation backends.
+- **AbstractCore integration**:
+  - Capability plugin: [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py) (registered in `pyproject.toml`)
+  - Tool helpers: [`../src/abstractvision/integrations/abstractcore.py`](../src/abstractvision/integrations/abstractcore.py)
+
+## High-level flow (library mode)
+
+```mermaid
+flowchart LR
+  Caller[Caller<br/>(Python / CLI)] --> VM[VisionManager]
+  VM -->|request dataclass| BE[VisionBackend]
+  BE -->|GeneratedAsset| VM
+  VM -->|store set| Store[MediaStore<br/>(LocalAssetStore / Runtime adapter)]
+  Store --> Ref[Artifact ref dict]
+  VM -->|store not set| Asset[GeneratedAsset<br/>(bytes + mime)]
+```
+
+Notes (anchored in code):
+- `VisionManager` creates request dataclasses like `ImageGenerationRequest` / `ImageEditRequest` ([`../src/abstractvision/types.py`](../src/abstractvision/types.py)).
+- When `store` is set, `VisionManager._maybe_store()` calls `store.store_bytes(...)` and returns an artifact ref dict ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py), [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py)).
+
+## Capability gating (model-level) vs runtime gating (backend-level)
+
+AbstractVision separates two kinds of “can I do this?” checks:
+
+1) **Model-level gating** (optional): “Does model X support task Y?”
+   - Implemented by `VisionModelCapabilitiesRegistry.require_support(...)` ([`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py))
+   - Used by `VisionManager._require_model_support(...)` when `VisionManager.model_id` is set ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py))
+
+2) **Backend-level gating** (best-effort): “Does this configured backend support task Y / mask edits?”
+   - Backends may implement `get_capabilities()` returning `VisionBackendCapabilities` ([`../src/abstractvision/types.py`](../src/abstractvision/types.py))
+   - Enforced by `VisionManager._require_backend_support(...)` and mask checks in `VisionManager.edit_image(...)` ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py))
+
+## Backend reality (what runs today)
+
+The public API includes `text_to_video`, `image_to_video`, and `multi_view_image`, but backend support is currently limited:
+
+- Built-in backends implement **images** (`text_to_image`, `image_to_image`):
+  - OpenAI-compatible HTTP backend ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
+  - Diffusers backend ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
+  - stable-diffusion.cpp backend ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
+- Video is supported **only** by the OpenAI-compatible backend, and only when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).
+- No built-in backend implements `multi_view_image` yet (they raise `CapabilityNotSupportedError` in `generate_angles(...)`).
+
+For a detailed support matrix and configuration options, see [docs/reference/backends.md](reference/backends.md).
+
+## AbstractCore plugin flow (framework integration)
+
+AbstractVision can be discovered by AbstractCore via an entry point:
+`[project.entry-points."abstractcore.capabilities_plugins"]` in [`../pyproject.toml`](../pyproject.toml).
+
+```mermaid
+flowchart LR
+  AC[AbstractCore] -->|loads entry point| Plugin[AbstractVision plugin<br/>register(...)]
+  Plugin --> Cap[VisionCapability<br/>(t2i/i2i/t2v/i2v)]
+  Cap --> VM[VisionManager]
+  VM --> BE[OpenAICompatibleVisionBackend]
+  BE --> HTTP[OpenAI-shaped HTTP<br/>/images/generations, /images/edits]
+```
+
+Current plugin behavior (evidence in [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py)):
+- Only the OpenAI-compatible backend is supported via the plugin (v0).
+- Configuration is read from `owner.config` keys like `vision_base_url` and falls back to `ABSTRACTVISION_*` env vars.
+
+## Extending AbstractVision (practical steps)
+
+- Add a new backend:
+  1) Implement `VisionBackend` ([`../src/abstractvision/backends/base_backend.py`](../src/abstractvision/backends/base_backend.py))
+  2) Add capability reporting via `get_capabilities()` when you can (optional)
+  3) Add tests under [`../tests/`](../tests/)
+- Update the registry:
+  1) Edit [`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json)
+  2) Validate by running the test suite (validator is wired into the registry loader)
+  3) Use `abstractvision show-model <id>` to sanity-check task/param printing ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py))
+--- >8 --- END FILE: docs/architecture.md --- >8 ---
+
+--- 8< --- FILE: docs/faq.md --- 8< ---
+# FAQ
+
+See also:
+- Getting started: [docs/getting-started.md](getting-started.md)
+- API reference: [docs/api.md](api.md)
+- Architecture: [docs/architecture.md](architecture.md)
+- Backends: [docs/reference/backends.md](reference/backends.md)
+- Configuration: [docs/reference/configuration.md](reference/configuration.md)
+
+## What is AbstractVision?
+
+AbstractVision is a small, model-agnostic API for **generative vision outputs** (images, optional video) with:
+- a small orchestrator ([`VisionManager`](../src/abstractvision/vision_manager.py))
+- pluggable execution engines (“backends”) in [`../src/abstractvision/backends/`](../src/abstractvision/backends/)
+- a packaged capability registry ([`vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json))
+- optional artifact-ref outputs via stores ([`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py))
+
+## How does AbstractVision fit into AbstractFramework?
+
+AbstractVision is part of the **AbstractFramework** ecosystem:
+
+- **AbstractFramework** (project hub): <https://github.com/lpalbou/AbstractFramework>
+- **AbstractCore** (orchestration + tool calling): <https://github.com/lpalbou/abstractcore>
+- **AbstractRuntime** (runtime services, including artifact storage): <https://github.com/lpalbou/abstractruntime>
+
+Where AbstractVision fits:
+- It standardizes *generative vision outputs* behind `VisionManager` (library mode).
+- AbstractCore can discover and use AbstractVision via the capability plugin (see [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py) and the entry point in [`../pyproject.toml`](../pyproject.toml)).
+- Artifact refs are designed to cross process boundaries; `RuntimeArtifactStoreAdapter` bridges to an AbstractRuntime-style artifact store (see [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py)).
+
+## What does AbstractVision support today?
+
+- Built-in backends implement **images**: `text_to_image` and `image_to_image`.
+- Video (`text_to_video`, `image_to_video`) works only via the OpenAI-compatible backend **when** video endpoints are configured.
+- `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
+
+Details: [docs/reference/backends.md](reference/backends.md).
+
+## Which backend should I use?
+
+- **OpenAI-compatible HTTP** ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).
+- **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps).
+- **stable-diffusion.cpp (local GGUF)** ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py)): run GGUF diffusion models via `sd-cli` or `stable-diffusion-cpp-python`.
+
+## Does `abstractvision t2i` run locally?
+
+`abstractvision t2i` / `abstractvision i2i` are one-shot helpers for the **OpenAI-compatible HTTP backend** ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+
+For local generation, use `abstractvision repl` with `/backend diffusers ...` or `/backend sdcpp ...`.
+
+## Where do generated outputs go?
+
+It depends on whether you configured a store:
+
+- **CLI/REPL**: stores outputs in a local store by default (`LocalAssetStore`), under `~/.abstractvision/assets` unless `ABSTRACTVISION_STORE_DIR` is set ([`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py), [`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+- **Python**:
+  - if `VisionManager.store` is set, methods return an artifact ref dict (stored via `store.store_bytes(...)`)
+  - otherwise they return a `GeneratedAsset` containing bytes ([`../src/abstractvision/types.py`](../src/abstractvision/types.py))
+
+## What is an “artifact ref”?
+
+An artifact ref is a small JSON dict that points to a stored blob. Minimal shape:
+
+```json
+{"$artifact":"<id>"}
+```
+
+Helpers: `is_artifact_ref()` / `make_media_ref()` in [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py).
+
+## How do I run Diffusers in offline / cache-only mode?
+
+- REPL/CLI: set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+- Python: set `HuggingFaceDiffusersBackendConfig(allow_download=False, ...)` ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)).
+
+## Why do I get “missing pipeline class” errors (e.g. `GlmImagePipeline`)?
+
+Some newer pipelines may only exist on Diffusers GitHub `main`. Install:
+
+- `pip install -U "abstractvision[huggingface-dev]"` (compatible dependency versions)
+- `pip install -U "git+https://github.com/huggingface/diffusers@main"` (Diffusers `main`)
+
+See: [docs/getting-started.md](getting-started.md).
+
+## macOS (MPS): why do I get black images / dtype errors?
+
+The Diffusers backend includes MPS-specific mitigations (e.g. VAE upcast and optional fp32 retry) in [`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py).
+
+Common fixes:
+- set `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32` (more stable, higher memory)
+- disable retry if memory is tight: `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=0`
+- consider using the stable-diffusion.cpp backend for GGUF diffusion models ([docs/getting-started.md](getting-started.md))
+
+## How do I pass advanced flags / parameters?
+
+AbstractVision exposes an `extra` dict on requests ([`../src/abstractvision/types.py`](../src/abstractvision/types.py)), and the REPL forwards unknown `--flags` into `request.extra` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+
+Examples:
+- Diffusers backend: accepts extra keys like `loras_json` and `rapid_aio_repo` (used by Qwen Image Edit flows; see [docs/getting-started.md](getting-started.md) and [`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)).
+- stable-diffusion.cpp backend:
+  - CLI mode forwards flags to `sd-cli`
+  - python-binding mode maps supported keys to binding kwargs and ignores unsupported keys ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
+
+## What does the capability registry mean (and what does it not mean)?
+
+The registry answers “what a model *claims* to support” (task keys/params) and can be used for **optional gating**:
+
+- `VisionModelCapabilitiesRegistry.supports(...)` / `.require_support(...)` ([`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py))
+- `VisionManager(model_id=...)` uses it to fail fast before calling a backend ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py))
+
+It does **not** guarantee your configured backend can execute the task; backend support is a separate constraint ([docs/reference/backends.md](reference/backends.md)).
+
+## I only need the HTTP backend. Do I have to install Torch/Diffusers?
+
+Today, the base install is “batteries included” (see [`../pyproject.toml`](../pyproject.toml)). Heavy modules are imported lazily ([`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)), but the dependencies are still installed.
+
+If you need a smaller “HTTP-only” install footprint, please open an issue with your target environment and constraints.
+
+## How do I integrate with AbstractCore?
+
+Two options (details in [docs/reference/abstractcore-integration.md](reference/abstractcore-integration.md)):
+
+- **Capability plugin**: [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py) (plugin currently supports only the OpenAI-compatible backend).
+- **Tool helpers**: `make_vision_tools(...)` in [`../src/abstractvision/integrations/abstractcore.py`](../src/abstractvision/integrations/abstractcore.py) (requires `VisionManager.store` for artifact-ref outputs).
+
+## How do I run tests?
+
+From the repo root:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -q
+```
+--- >8 --- END FILE: docs/faq.md --- >8 ---
+
+--- 8< --- FILE: docs/reference/backends.md --- 8< ---
+# Backends (execution engines)
+
+AbstractVision executes tasks via a `VisionBackend` adapter ([`../../src/abstractvision/backends/base_backend.py`](../../src/abstractvision/backends/base_backend.py)).
+`VisionManager` is intentionally thin and delegates to the configured backend ([`../../src/abstractvision/vision_manager.py`](../../src/abstractvision/vision_manager.py)).
+
+See also:
+- Getting started (REPL examples): [docs/getting-started.md](../getting-started.md)
+- Configuration (env vars / CLI flags): [docs/reference/configuration.md](configuration.md)
+
+## Support matrix (built-in backends)
+
+| Backend | Implementation | Tasks implemented | Notes |
+|---|---|---|---|
+| OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
+| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Heavy deps (Torch/Diffusers). Supports cache-only/offline mode. |
+| stable-diffusion.cpp (local GGUF) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses `sd-cli` if present, else `stable-diffusion-cpp-python`. Qwen Image GGUF needs VAE + LLM components. |
+
+Notes:
+- `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
+
+## OpenAI-compatible HTTP backend
+
+**When to use**
+- You already run a service that exposes OpenAI-shaped endpoints (local or remote).
+- You want to keep inference out-of-process.
+
+**Core config**
+- `base_url` (required): points to a `/v1`-style root, e.g. `http://localhost:1234/v1`
+- `api_key` (optional): sent as `Authorization: Bearer ...`
+- `model_id` (optional): forwarded as `model` in requests
+
+Code pointers:
+- Config: `OpenAICompatibleBackendConfig` ([`../../src/abstractvision/backends/openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py))
+- Backend: `OpenAICompatibleVisionBackend` ([`../../src/abstractvision/backends/openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py))
+
+**Video endpoints (optional)**
+`OpenAICompatibleVisionBackend` only enables:
+- `text_to_video` if `text_to_video_path` is set
+- `image_to_video` if `image_to_video_path` is set
+
+## Diffusers backend (local)
+
+**When to use**
+- You want local inference for Diffusers pipelines (Stable Diffusion, Qwen Image, FLUX, GLM-Image, …).
+
+Code pointers:
+- Config: `HuggingFaceDiffusersBackendConfig` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
+- Backend: `HuggingFaceDiffusersVisionBackend` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
+
+**Offline / cache-only mode**
+The backend supports cache-only mode by setting `allow_download=False` (see config/env in [docs/reference/configuration.md](configuration.md)).
+
+## stable-diffusion.cpp backend (local GGUF)
+
+**When to use**
+- You want to run GGUF diffusion models locally (e.g. Qwen Image GGUF).
+
+Runtime modes (auto-selected):
+- **CLI mode** via `sd-cli` (stable-diffusion.cpp executable) when available in `PATH`
+- **Python mode** via `stable-diffusion-cpp-python` when `sd-cli` is not available
+
+Code pointers:
+- Config: `StableDiffusionCppBackendConfig` ([`../../src/abstractvision/backends/stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py))
+- Backend: `StableDiffusionCppVisionBackend` ([`../../src/abstractvision/backends/stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py))
+--- >8 --- END FILE: docs/reference/backends.md --- >8 ---
+
+--- 8< --- FILE: docs/reference/configuration.md --- 8< ---
+# Configuration (CLI / REPL)
+
+AbstractVision configuration is intentionally simple:
+
+- In Python, you configure backends by instantiating backend config objects (see [docs/reference/backends.md](backends.md)).
+- The CLI/REPL reads `ABSTRACTVISION_*` environment variables to set defaults ([`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)).
+
+See also:
+- Getting started (examples): [docs/getting-started.md](../getting-started.md)
+- Backends: [docs/reference/backends.md](backends.md)
+
+## CLI commands (overview)
+
+Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py):
+
+- `abstractvision models` — list known registry model ids
+- `abstractvision tasks` — list known tasks
+- `abstractvision show-model <id>` — print a model’s tasks + params
+- `abstractvision repl` — interactive testing (supports `openai`, `diffusers`, `sdcpp`)
+- `abstractvision t2i ...` / `abstractvision i2i ...` — one-shot commands using the **OpenAI-compatible HTTP backend**
+
+Note:
+- `abstractvision t2i` / `abstractvision i2i` always use the OpenAI-compatible backend (they do not switch based on `ABSTRACTVISION_BACKEND`).
+- Use `abstractvision repl` for local backends (`diffusers`, `sdcpp`).
+
+## REPL backend selection
+
+Inside `abstractvision repl`:
+
+- `/backend openai <base_url> [api_key] [model_id]`
+- `/backend diffusers <model_id_or_path> [device] [torch_dtype]`
+- `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`
+
+Run `/help` in the REPL to see the full command list (generated by `_repl_help()` in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)).
+
+## Environment variables
+
+All env vars below are read by the CLI/REPL state object (`_ReplState` in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)).
+
+### Common
+
+- `ABSTRACTVISION_BACKEND` — REPL default backend: `openai` (default), `diffusers`, or `sdcpp`
+- `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
+- `ABSTRACTVISION_TIMEOUT_S` — HTTP timeout for OpenAI-compatible backend (default: `300`)
+- `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
+
+### OpenAI-compatible HTTP backend
+
+- `ABSTRACTVISION_BASE_URL` — required for `openai` backend
+- `ABSTRACTVISION_API_KEY` — optional bearer token
+- `ABSTRACTVISION_MODEL_ID` — optional remote model id/name
+- `ABSTRACTVISION_IMAGES_GENERATIONS_PATH` — default: `/images/generations`
+- `ABSTRACTVISION_IMAGES_EDITS_PATH` — default: `/images/edits`
+- `ABSTRACTVISION_TEXT_TO_VIDEO_PATH` — optional (enables `text_to_video`)
+- `ABSTRACTVISION_IMAGE_TO_VIDEO_PATH` — optional (enables `image_to_video`)
+- `ABSTRACTVISION_IMAGE_TO_VIDEO_MODE` — `multipart` (default) or `json_b64`
+
+### Diffusers backend
+
+- `ABSTRACTVISION_DIFFUSERS_DEVICE` — `auto` (default), `cpu`, `cuda`, `mps`, …
+- `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE` — optional (`float16`, `bfloat16`, `float32`)
+- `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD` — `1` (default) or `0` for cache-only/offline mode
+- `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32` — `1` (default) or `0` (MPS-only fallback behavior)
+
+### stable-diffusion.cpp backend
+
+- `ABSTRACTVISION_SDCPP_BIN` — `sd-cli` path/name (default: `sd-cli`)
+- `ABSTRACTVISION_SDCPP_MODEL` — optional full-model path (alternative to component mode)
+- `ABSTRACTVISION_SDCPP_DIFFUSION_MODEL` — GGUF diffusion model path
+- `ABSTRACTVISION_SDCPP_VAE` — VAE safetensors path (required for Qwen Image GGUF)
+- `ABSTRACTVISION_SDCPP_LLM` — text encoder GGUF path (required for Qwen Image GGUF)
+- `ABSTRACTVISION_SDCPP_LLM_VISION` — optional vision encoder GGUF path
+- `ABSTRACTVISION_SDCPP_EXTRA_ARGS` — extra `sd-cli` flags (string, split like a shell)
+--- >8 --- END FILE: docs/reference/configuration.md --- >8 ---
+
+--- 8< --- FILE: docs/reference/capabilities-registry.md --- 8< ---
+# Capability registry (`vision_model_capabilities.json`)
+
+AbstractVision keeps a single packaged “source of truth” for what models can do:
+
+- Asset: [`../../src/abstractvision/assets/vision_model_capabilities.json`](../../src/abstractvision/assets/vision_model_capabilities.json)
+- Loader + validator: `VisionModelCapabilitiesRegistry` / `validate_capabilities_json()` in [`../../src/abstractvision/model_capabilities.py`](../../src/abstractvision/model_capabilities.py)
+
+See also:
+- CLI/REPL inspection commands: [docs/reference/configuration.md](configuration.md)
+- Backends (execution reality): [docs/reference/backends.md](backends.md)
+
+## What the registry is used for
+
+- **Discovery**: list known task keys and model ids.
+- **Optional safety gating**:
+  - `VisionManager(model_id=..., registry=...)` will fail fast if the model doesn’t support a task ([`../../src/abstractvision/vision_manager.py`](../../src/abstractvision/vision_manager.py)).
+  - The CLI/REPL can enforce gating via `--capabilities-model-id` (CLI) or `/cap-model` (REPL).
+
+Important:
+- The registry describes **model capability intent**.
+- Your configured backend still needs to implement the task at runtime (see backend support matrix in [docs/reference/backends.md](backends.md)).
+
+## Minimal Python usage
+
+```python
+from abstractvision import VisionModelCapabilitiesRegistry
+
+reg = VisionModelCapabilitiesRegistry()
+print(reg.schema_version())
+print(reg.list_tasks())
+
+assert reg.supports("Qwen/Qwen-Image-2512", "text_to_image")
+print(reg.models_for_task("text_to_image"))
+```
+
+## JSON shape (high level)
+
+The validator enforces a “soft schema”:
+
+- Top-level keys:
+  - `schema_version`
+  - `tasks` (keyed by task name; includes human descriptions)
+  - `models` (keyed by model id)
+- Each model entry includes:
+  - `provider` (string)
+  - `license` (string; informational)
+  - `tasks` (map of task name → task spec)
+- Each task spec includes:
+  - `inputs`, `outputs` (lists of strings)
+  - `params` (object where each param has `required: bool`, plus additive fields)
+  - optional `requires` for dependencies like `base_model_id`
+--- >8 --- END FILE: docs/reference/capabilities-registry.md --- >8 ---
+
+--- 8< --- FILE: docs/reference/artifacts.md --- 8< ---
+# Artifacts (artifact refs + stores)
+
+AbstractVision supports “artifact-first” outputs: return a small JSON dict that points to a stored blob instead of inlining bytes.
+
+Code pointers:
+- Store interface + helpers: [`../../src/abstractvision/artifacts.py`](../../src/abstractvision/artifacts.py)
+- Orchestration logic: `VisionManager._maybe_store()` in [`../../src/abstractvision/vision_manager.py`](../../src/abstractvision/vision_manager.py)
+
+See also:
+- Getting started (REPL stores outputs by default): [docs/getting-started.md](../getting-started.md)
+
+## Output shapes
+
+`VisionManager` returns:
+
+- **Without a store**: `GeneratedAsset` ([`../../src/abstractvision/types.py`](../../src/abstractvision/types.py))
+  - contains bytes (`data`), `mime_type`, and best-effort metadata
+- **With a store**: an artifact ref dict (via `MediaStore.store_bytes(...)`)
+  - minimum shape: `{"$artifact": "<id>"}` (`is_artifact_ref()` checks this)
+  - common fields: `content_type`, `sha256`, `filename`, `size_bytes`, `metadata`
+
+## LocalAssetStore (standalone mode)
+
+`LocalAssetStore` stores files under `~/.abstractvision/assets` by default ([`../../src/abstractvision/artifacts.py`](../../src/abstractvision/artifacts.py)):
+
+- Blob: `~/.abstractvision/assets/<artifact_id>.<ext>`
+- Metadata: `~/.abstractvision/assets/<artifact_id>.meta.json`
+
+Minimal usage:
+
+```python
+from abstractvision import LocalAssetStore, VisionManager
+from abstractvision.backends import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+
+store = LocalAssetStore()
+backend = OpenAICompatibleVisionBackend(config=OpenAICompatibleBackendConfig(base_url="http://localhost:1234/v1"))
+vm = VisionManager(backend=backend, store=store)
+
+ref = vm.generate_image("a watercolor painting of a lighthouse")
+blob = store.load_bytes(ref["$artifact"])  # type: ignore[index]
+```
+
+## RuntimeArtifactStoreAdapter (framework mode)
+
+`RuntimeArtifactStoreAdapter` is a duck-typed adapter for an external artifact store (designed for AbstractRuntime),
+so AbstractVision can depend on an artifact store **without** a hard dependency ([`../../src/abstractvision/artifacts.py`](../../src/abstractvision/artifacts.py)).
+
+Related:
+- AbstractRuntime: <https://github.com/lpalbou/abstractruntime>
+--- >8 --- END FILE: docs/reference/artifacts.md --- >8 ---
+
+--- 8< --- FILE: docs/reference/abstractcore-integration.md --- 8< ---
+# AbstractCore integration
+
+AbstractVision offers two integration surfaces for AbstractCore:
+
+1) **Capability plugin** (so `abstractcore` can discover a vision backend)
+2) **Tool helpers** (so you can expose vision tasks as tools with artifact-ref outputs)
+
+Code pointers:
+- Plugin: [`../../src/abstractvision/integrations/abstractcore_plugin.py`](../../src/abstractvision/integrations/abstractcore_plugin.py)
+- Tools: [`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)
+- Entry point registration: [`../../pyproject.toml`](../../pyproject.toml) (`[project.entry-points."abstractcore.capabilities_plugins"]`)
+
+See also:
+- Artifacts: [docs/reference/artifacts.md](artifacts.md)
+- Backends: [docs/reference/backends.md](backends.md)
+
+## 1) Capability plugin (AbstractCore → VisionCapability)
+
+The plugin registers a backend id:
+
+- `abstractvision:openai-compatible` (see `_AbstractVisionCapability.backend_id` in [`../../src/abstractvision/integrations/abstractcore_plugin.py`](../../src/abstractvision/integrations/abstractcore_plugin.py))
+
+Current behavior (v0):
+- Only the **OpenAI-compatible HTTP backend** is supported via the plugin.
+- The plugin reads AbstractCore owner config keys when present, and falls back to `ABSTRACTVISION_*` env vars.
+
+Key config keys (owner.config):
+- `vision_base_url` (required)
+- `vision_api_key` (optional)
+- `vision_model_id` (optional)
+- `vision_timeout_s` (optional)
+- Optional video endpoint keys:
+  - `vision_text_to_video_path`
+  - `vision_image_to_video_path`
+  - `vision_image_to_video_mode`
+
+## 2) Tool helpers (`make_vision_tools`)
+
+`make_vision_tools(...)` builds AbstractCore `@tool` callables for:
+- text→image
+- image→image
+- multi-view image
+- text→video
+- image→video
+
+Important:
+- Tool outputs are designed to be **artifact refs**, so `VisionManager.store` must be set ([`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)).
+- This module requires AbstractCore to be installed (install extra: `pip install "abstractvision[abstractcore]"`).
+
+Tip (framework mode):
+- If your runtime provides an artifact store (e.g. AbstractRuntime), use `RuntimeArtifactStoreAdapter` so tool outputs can be stored and referenced across processes (see [docs/reference/artifacts.md](artifacts.md)).
+--- >8 --- END FILE: docs/reference/abstractcore-integration.md --- >8 ---
+
+--- 8< --- FILE: CONTRIBUTING.md --- 8< ---
+# Contributing to AbstractVision
+
+Thanks for taking the time to contribute. This repository aims to stay small, stable-by-design, and easy to integrate.
+
+AbstractVision is part of the **AbstractFramework** ecosystem:
+- AbstractFramework: <https://github.com/lpalbou/AbstractFramework>
+- AbstractCore: <https://github.com/lpalbou/abstractcore>
+- AbstractRuntime: <https://github.com/lpalbou/abstractruntime>
+
+## Ground rules
+
+- Keep the public API stable (`VisionManager` in [`src/abstractvision/vision_manager.py`](src/abstractvision/vision_manager.py)).
+- Prefer additive changes (new fields, new models, new backends) over breaking changes.
+- Don’t commit model weights, large binaries, or cache artifacts.
+- Make docs and examples match the code (the repo is intended to be “readme-first”).
+- Keep imports lazy for heavy stacks (see [`src/abstractvision/backends/__init__.py`](src/abstractvision/backends/__init__.py)).
+
+## Development setup
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e .
+```
+
+Optional (if you work on AbstractCore integration locally):
+
+```bash
+python -m pip install -e ".[abstractcore]"
+```
+
+## Run tests
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -q
+```
+
+## Common contribution types
+
+### 1) Improve documentation
+
+Core entrypoints:
+- [`README.md`](README.md)
+- [`docs/getting-started.md`](docs/getting-started.md)
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/api.md`](docs/api.md)
+- [`docs/faq.md`](docs/faq.md)
+
+Doc hygiene checklist:
+- Commands are copy/pastable.
+- Links resolve (relative links are preferred).
+- Claims about support status match the current code (see [`docs/reference/backends.md`](docs/reference/backends.md)).
+- Major claims are anchored in evidence (link to the relevant `src/` implementation).
+- Prefer diagrams in Mermaid when they improve clarity ([`docs/architecture.md`](docs/architecture.md) is the canonical place).
+
+### 2) Add or update models in the capability registry
+
+Source of truth:
+- `src/abstractvision/assets/vision_model_capabilities.json`
+
+Validator + loader:
+- `src/abstractvision/model_capabilities.py`
+
+Checklist:
+- Add/update the model entry in the JSON.
+- Run the unit tests (they validate schema + coverage).
+- Sanity check CLI output:
+  - `abstractvision show-model <model_id>`
+
+### 3) Add a new backend
+
+Backend interface:
+- `src/abstractvision/backends/base_backend.py`
+
+Where backends live:
+- `src/abstractvision/backends/`
+
+Checklist:
+- Implement the `VisionBackend` methods (raise `CapabilityNotSupportedError` for unsupported tasks).
+- Keep imports lazy (avoid importing Torch/Diffusers at module import time unless unavoidable).
+- Add/extend tests under `tests/`.
+- Document the backend in `docs/reference/backends.md` and, if user-facing, add a short section in `docs/getting-started.md`.
+
+## Submitting a change
+
+Please include:
+- A short explanation of the change and why it’s needed.
+- Test results (`python -m unittest ...`).
+- Any doc updates required to keep the repository truthful.
+
+## Questions / discussions
+
+If you’re unsure about scope or design, open an issue with a minimal proposal and a concrete example (inputs/outputs).
+--- >8 --- END FILE: CONTRIBUTING.md --- >8 ---
+
+--- 8< --- FILE: SECURITY.md --- 8< ---
+# Security policy
+
+We take security issues seriously and appreciate responsible disclosure.
+
+## Reporting a vulnerability
+
+Please **do not** open a public GitHub issue for security reports.
+
+Instead, report privately by email:
+
+- `contact@abstractcore.ai`
+
+Include as much of the following as you can:
+
+- A clear description of the issue and its impact
+- Reproduction steps (or a minimal PoC)
+- Affected versions / commit hash (if known)
+- Any relevant logs, stack traces, or configuration
+- Suggested mitigation (if you have one)
+
+If you believe the issue is in an upstream dependency (e.g. Torch/Diffusers), it can still be helpful to notify us so we can assess impact and coordinate messaging for AbstractVision users.
+
+## What to expect
+
+We aim to:
+
+- Acknowledge receipt within **3 business days**
+- Provide a status update within **7 business days**
+
+If a coordinated disclosure timeline is needed, please include your preferred timeline in the report.
+
+## Scope
+
+This policy applies to vulnerabilities in this repository’s code and packaging.
+
+For non-security bugs and feature requests, please use the normal issue tracker.
+--- >8 --- END FILE: SECURITY.md --- >8 ---
+
+--- 8< --- FILE: ACKNOWLEDMENTS.md --- 8< ---
+# Acknowledgments
+
+AbstractVision stands on the shoulders of excellent open-source projects and communities.
+
+## Runtime dependencies (declared)
+
+- **Hugging Face Diffusers** (local pipeline runtime; used by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
+- **PyTorch** (tensor runtime for local inference; used via Diffusers): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
+- **Hugging Face Transformers** (tokenizers/encoders used by some diffusion pipelines; imported by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
+- **Accelerate** (installed for ecosystem compatibility; used transitively by some pipelines): declared in `pyproject.toml`
+- **Safetensors** (model weight format support; used by Diffusers/Transformers): declared in `pyproject.toml`
+- **SentencePiece** (T5/tokenizer support for some model families): declared in `pyproject.toml`
+- **protobuf** (runtime dependency for some tokenizers/pipelines): declared in `pyproject.toml`
+- **einops** (tensor ops used by some modern architectures): declared in `pyproject.toml`
+- **PEFT** (LoRA adapter support used by Diffusers): declared in `pyproject.toml`
+- **Pillow** (image I/O utilities used by local backends): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py), [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in `pyproject.toml`)
+- **stable-diffusion-cpp-python** (python bindings used when `sd-cli` is not available): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in `pyproject.toml`)
+
+## Runtime dependencies (transitive but central)
+
+- **huggingface_hub** (model and adapter downloads; used by Diffusers/Transformers pipelines)
+
+## Upstream projects
+
+- **stable-diffusion.cpp** (upstream project that provides `sd-cli` and the core GGUF runtime wrapped by the bindings): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
+
+## Optional integrations
+
+- **AbstractCore** (tool integration helpers + capability plugin): [`src/abstractvision/integrations/`](src/abstractvision/integrations/) (optional dependency in [`pyproject.toml`](pyproject.toml))
+
+## Packaging
+
+- **setuptools** and **wheel** (build system): [`pyproject.toml`](pyproject.toml)
+
+## Community and contributors
+
+Thanks to everyone who reports issues, suggests improvements, and contributes fixes or documentation updates.
+--- >8 --- END FILE: ACKNOWLEDMENTS.md --- >8 ---
+
+--- 8< --- FILE: CHANGELOG.md --- 8< ---
+# Changelog
+
+## Unreleased
+
+## 0.2.1
+
+- Documentation refresh for public release:
+  - add `docs/api.md` and strengthen cross-linking between README and docs
+  - add `CONTRIBUTING.md`, `SECURITY.md`, and `ACKNOWLEDMENTS.md`
+  - clarify playground/server endpoint expectations (`/v1/vision/*`)
+
+## 0.2.0
+
+- Add stable-diffusion.cpp (`sd-cli`) backend for local GGUF diffusion models.
+- REPL: forward unknown `--flags` as backend `extra` parameters.
+- Add a tiny web playground (`playground/vision_playground.html`) for testing via AbstractCore Server vision endpoints (`/v1/vision/*`).
+
+## 0.1.0
+
+- Initial MVP: capability registry + schema validation.
+- Artifact-first outputs via `LocalAssetStore` and runtime adapter.
+- OpenAI-compatible HTTP backend for image generation/editing (optional video endpoints via config).
+- Local Diffusers backend for images (opt-in deps).
+- AbstractCore tool integration (`make_vision_tools`) with artifact refs.
+- CLI/REPL for interactive manual testing.
+--- >8 --- END FILE: CHANGELOG.md --- >8 ---
+
+--- 8< --- FILE: pyproject.toml --- 8< ---
+```toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abstractvision"
+dynamic = ["version"]
+description = "Model-agnostic generative vision abstractions (image/video) for the Abstract ecosystem"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Laurent-Philippe Albou", email = "contact@abstractcore.ai"}]
+requires-python = ">=3.8"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Multimedia",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# Batteries-included by default: users should only need to download model weights.
+# NOTE: This is intentionally heavy (torch + diffusers + stable-diffusion.cpp bindings).
+dependencies = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  # Needed by T5 tokenizers used in SD3/FLUX and some other diffusion pipelines.
+  "sentencepiece>=0.1.99",
+  # Some HF tokenizers/pipelines require protobuf at runtime.
+  "protobuf>=3.20.0",
+  # Used by some modern diffusion architectures.
+  "einops>=0.7.0",
+  # LoRA adapter support in Diffusers.
+  "peft>=0.10.0",
+  "Pillow>=9.0",
+  "stable-diffusion-cpp-python>=0.4.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/lpalbou/abstractvision"
+Repository = "https://github.com/lpalbou/abstractvision"
+
+[project.scripts]
+abstractvision = "abstractvision.cli:main"
+
+[project.entry-points."abstractcore.capabilities_plugins"]
+abstractvision = "abstractvision.integrations.abstractcore_plugin:register"
+
+[project.optional-dependencies]
+# OpenAI-compatible HTTP backend is stdlib-only today; keep the extra for forward compatibility.
+openai-compatible = []
+
+# Local generation via stable-diffusion.cpp python bindings (pip-installable).
+sdcpp = [
+  "stable-diffusion-cpp-python>=0.4.2",
+]
+
+# Local generation via Diffusers (heavy deps; opt-in).
+huggingface = [
+  "diffusers>=0.36.0",
+  "torch>=2.0",
+  "transformers>=4.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "Pillow>=9.0",
+]
+
+# Convenience: installs both local backends (Diffusers + stable-diffusion.cpp python bindings).
+local = [
+  "stable-diffusion-cpp-python>=0.4.2",
+  "diffusers>=0.36.0",
+  "torch>=2.0",
+  "transformers>=4.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "Pillow>=9.0",
+]
+
+# NOTE: PyPI rejects VCS/direct URL dependencies in package metadata.
+# If you need Diffusers "main" for unreleased pipelines, install it explicitly *after*:
+#   pip install "abstractvision[huggingface-dev]"
+#   pip install "diffusers @ git+https://github.com/huggingface/diffusers@main"
+huggingface-dev = [
+  "diffusers>=0.36.0",
+  "torch>=2.0",
+  "transformers>=5.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "Pillow>=9.0",
+]
+
+# Tool integration module (optional import). Kept optional to avoid circular deps with AbstractCore.
+abstractcore = ["abstractcore>=2.0.0"]
+
+[tool.setuptools]
+packages = [
+  "abstractvision",
+  "abstractvision.backends",
+  "abstractvision.integrations",
+]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.dynamic]
+version = {attr = "abstractvision.__version__"}
+
+[tool.setuptools.package-data]
+abstractvision = ["assets/*.json"]
+```
+--- >8 --- END FILE: pyproject.toml --- >8 ---

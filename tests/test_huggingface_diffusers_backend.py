@@ -428,10 +428,16 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         fake_i2i_cls = MagicMock()
         fake_inpaint_cls = MagicMock()
 
+        fake_qwen_tr_cls = MagicMock()
+        fake_qwen_tr_cls.from_pretrained.side_effect = _from_pretrained
+
         with patch(
             "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
             return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
-        ), patch("diffusers.models.QwenImageTransformer2DModel.from_pretrained", side_effect=_from_pretrained):
+        ), patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_qwen_image_transformer_2d_model",
+            return_value=fake_qwen_tr_cls,
+        ):
             backend = HuggingFaceDiffusersVisionBackend(
                 config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu", torch_dtype="float32")
             )

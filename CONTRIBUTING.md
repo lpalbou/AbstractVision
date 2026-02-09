@@ -1,13 +1,19 @@
 # Contributing to AbstractVision
 
-Thanks for taking the time to contribute. This repository aims to stay small, stable, and easy to integrate.
+Thanks for taking the time to contribute. This repository aims to stay small, stable-by-design, and easy to integrate.
+
+AbstractVision is part of the **AbstractFramework** ecosystem:
+- AbstractFramework: <https://github.com/lpalbou/AbstractFramework>
+- AbstractCore: <https://github.com/lpalbou/abstractcore>
+- AbstractRuntime: <https://github.com/lpalbou/abstractruntime>
 
 ## Ground rules
 
-- Keep the public API stable (`VisionManager` in `src/abstractvision/vision_manager.py`).
+- Keep the public API stable (`VisionManager` in [`src/abstractvision/vision_manager.py`](src/abstractvision/vision_manager.py)).
 - Prefer additive changes (new fields, new models, new backends) over breaking changes.
 - Don’t commit model weights, large binaries, or cache artifacts.
 - Make docs and examples match the code (the repo is intended to be “readme-first”).
+- Keep imports lazy for heavy stacks (see [`src/abstractvision/backends/__init__.py`](src/abstractvision/backends/__init__.py)).
 
 ## Development setup
 
@@ -16,6 +22,12 @@ python -m venv .venv
 . .venv/bin/activate
 python -m pip install -U pip
 python -m pip install -e .
+```
+
+Optional (if you work on AbstractCore integration locally):
+
+```bash
+python -m pip install -e ".[abstractcore]"
 ```
 
 ## Run tests
@@ -29,16 +41,18 @@ python -m unittest discover -s tests -p "test_*.py" -q
 ### 1) Improve documentation
 
 Core entrypoints:
-- `README.md`
-- `docs/getting-started.md`
-- `docs/architecture.md`
-- `docs/api.md`
-- `docs/faq.md`
+- [`README.md`](README.md)
+- [`docs/getting-started.md`](docs/getting-started.md)
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/api.md`](docs/api.md)
+- [`docs/faq.md`](docs/faq.md)
 
 Doc hygiene checklist:
 - Commands are copy/pastable.
 - Links resolve (relative links are preferred).
-- Claims about support status match the current code (see `docs/reference/backends.md`).
+- Claims about support status match the current code (see [`docs/reference/backends.md`](docs/reference/backends.md)).
+- Major claims are anchored in evidence (link to the relevant `src/` implementation).
+- Prefer diagrams in Mermaid when they improve clarity ([`docs/architecture.md`](docs/architecture.md) is the canonical place).
 
 ### 2) Add or update models in the capability registry
 
@@ -78,4 +92,3 @@ Please include:
 ## Questions / discussions
 
 If you’re unsure about scope or design, open an issue with a minimal proposal and a concrete example (inputs/outputs).
-

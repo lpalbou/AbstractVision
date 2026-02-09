@@ -100,6 +100,17 @@ def _lazy_import_pil():
     return Image
 
 
+def _lazy_import_qwen_image_transformer_2d_model():
+    try:
+        from diffusers.models import QwenImageTransformer2DModel  # type: ignore
+    except Exception:
+        raise ValueError(
+            "Rapid-AIO transformer override requires diffusers.models.QwenImageTransformer2DModel, "
+            "which is not available in this diffusers build."
+        )
+    return QwenImageTransformer2DModel
+
+
 _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED = False
 
 
@@ -692,13 +703,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if key == self._rapid_transformer_key and self._rapid_transformer is not None:
             tr = self._rapid_transformer
         else:
-            try:
-                from diffusers.models import QwenImageTransformer2DModel  # type: ignore
-            except Exception:
-                raise ValueError(
-                    "Rapid-AIO transformer override requires diffusers.models.QwenImageTransformer2DModel, "
-                    "which is not available in this diffusers build."
-                )
+            QwenImageTransformer2DModel = _lazy_import_qwen_image_transformer_2d_model()
             kwargs: Dict[str, Any] = {"subfolder": subfolder, "local_files_only": not bool(self._cfg.allow_download)}
             if self._cfg.cache_dir:
                 kwargs["cache_dir"] = str(self._cfg.cache_dir)

@@ -6,19 +6,19 @@ AbstractVision offers two integration surfaces for AbstractCore:
 2) **Tool helpers** (so you can expose vision tasks as tools with artifact-ref outputs)
 
 Code pointers:
-- Plugin: `src/abstractvision/integrations/abstractcore_plugin.py`
-- Tools: `src/abstractvision/integrations/abstractcore.py`
-- Entry point registration: `pyproject.toml` (`[project.entry-points.\"abstractcore.capabilities_plugins\"]`)
+- Plugin: [`../../src/abstractvision/integrations/abstractcore_plugin.py`](../../src/abstractvision/integrations/abstractcore_plugin.py)
+- Tools: [`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)
+- Entry point registration: [`../../pyproject.toml`](../../pyproject.toml) (`[project.entry-points."abstractcore.capabilities_plugins"]`)
 
 See also:
-- Artifacts: `docs/reference/artifacts.md`
-- Backends: `docs/reference/backends.md`
+- Artifacts: [docs/reference/artifacts.md](artifacts.md)
+- Backends: [docs/reference/backends.md](backends.md)
 
 ## 1) Capability plugin (AbstractCore → VisionCapability)
 
 The plugin registers a backend id:
 
-- `abstractvision:openai-compatible` (see `_AbstractVisionCapability.backend_id` in `src/abstractvision/integrations/abstractcore_plugin.py`)
+- `abstractvision:openai-compatible` (see `_AbstractVisionCapability.backend_id` in [`../../src/abstractvision/integrations/abstractcore_plugin.py`](../../src/abstractvision/integrations/abstractcore_plugin.py))
 
 Current behavior (v0):
 - Only the **OpenAI-compatible HTTP backend** is supported via the plugin.
@@ -44,6 +44,8 @@ Key config keys (owner.config):
 - image→video
 
 Important:
-- Tool outputs are designed to be **artifact refs**, so `VisionManager.store` must be set (`src/abstractvision/integrations/abstractcore.py`).
+- Tool outputs are designed to be **artifact refs**, so `VisionManager.store` must be set ([`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)).
 - This module requires AbstractCore to be installed (install extra: `pip install "abstractvision[abstractcore]"`).
 
+Tip (framework mode):
+- If your runtime provides an artifact store (e.g. AbstractRuntime), use `RuntimeArtifactStoreAdapter` so tool outputs can be stored and referenced across processes (see [docs/reference/artifacts.md](artifacts.md)).

@@ -2,23 +2,23 @@
 
 AbstractVision keeps a single packaged “source of truth” for what models can do:
 
-- Asset: `src/abstractvision/assets/vision_model_capabilities.json`
-- Loader + validator: `VisionModelCapabilitiesRegistry` / `validate_capabilities_json()` in `src/abstractvision/model_capabilities.py`
+- Asset: [`../../src/abstractvision/assets/vision_model_capabilities.json`](../../src/abstractvision/assets/vision_model_capabilities.json)
+- Loader + validator: `VisionModelCapabilitiesRegistry` / `validate_capabilities_json()` in [`../../src/abstractvision/model_capabilities.py`](../../src/abstractvision/model_capabilities.py)
 
 See also:
-- CLI/REPL inspection commands: `docs/reference/configuration.md`
-- Backends (execution reality): `docs/reference/backends.md`
+- CLI/REPL inspection commands: [docs/reference/configuration.md](configuration.md)
+- Backends (execution reality): [docs/reference/backends.md](backends.md)
 
 ## What the registry is used for
 
 - **Discovery**: list known task keys and model ids.
 - **Optional safety gating**:
-  - `VisionManager(model_id=..., registry=...)` will fail fast if the model doesn’t support a task (`src/abstractvision/vision_manager.py`).
+  - `VisionManager(model_id=..., registry=...)` will fail fast if the model doesn’t support a task ([`../../src/abstractvision/vision_manager.py`](../../src/abstractvision/vision_manager.py)).
   - The CLI/REPL can enforce gating via `--capabilities-model-id` (CLI) or `/cap-model` (REPL).
 
 Important:
 - The registry describes **model capability intent**.
-- Your configured backend still needs to implement the task at runtime (see backend support matrix in `docs/reference/backends.md`).
+- Your configured backend still needs to implement the task at runtime (see backend support matrix in [docs/reference/backends.md](backends.md)).
 
 ## Minimal Python usage
 
@@ -49,4 +49,3 @@ The validator enforces a “soft schema”:
   - `inputs`, `outputs` (lists of strings)
   - `params` (object where each param has `required: bool`, plus additive fields)
   - optional `requires` for dependencies like `base_model_id`
-
