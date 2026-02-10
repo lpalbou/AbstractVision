@@ -73,6 +73,42 @@ No extras are required for most use cases: AbstractVision is batteries-included 
 
 ---
 
+## Recommended default models (VRAM guide)
+
+If you run **locally** (Diffusers backend) and want a reliable starting point, here are practical model picks from the packaged capability registry (`src/abstractvision/assets/vision_model_capabilities.json`).
+
+Notes:
+- VRAM needs vary with resolution, dtype, and pipeline implementation. Treat this as a starting point.
+- Some models are **gated** on Hugging Face and require accepting terms + setting `HF_TOKEN`.
+- If you want a non-gated modern image model, try `black-forest-labs/FLUX.2-klein-4B` (but it currently requires installing Diffusers from source; see the FLUX section below).
+
+| GPU VRAM | Recommended model id | Why | Install / quickstart |
+|---:|---|---|---|
+| ≤ 16 GB | `runwayml/stable-diffusion-v1-5` | Small, stable, and widely compatible (Windows/Linux CUDA, macOS MPS) | `pip install abstractvision` then run the REPL using the snippet below |
+| 32 GB | `stabilityai/stable-diffusion-3.5-large-turbo` | High-quality still images with low step counts (gated) | Accept model terms on HF, set `HF_TOKEN`, then use the SD3.5 section below |
+| 64 GB | `Qwen/Qwen-Image-2512` | Strong prompt following and text rendering (large model) | Same as Diffusers setup; if pipeline import fails, use Diffusers `main` (see install section above) |
+| 128 GB | `black-forest-labs/FLUX.2-dev` | Very high quality (very large; non-commercial license; gated) | Accept model terms on HF, set `HF_TOKEN`, then use the FLUX section below |
+
+Recommended default (local, cross-platform) — Stable Diffusion 1.5:
+
+```bash
+pip install abstractvision
+export ABSTRACTVISION_BACKEND=diffusers
+export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
+export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
+abstractvision repl
+```
+
+Then type a prompt (plain text runs `/t2i`), or use `/t2i "..." --open`.
+
+Jump to detailed recipes:
+- Stable Diffusion 1.5: section **2) First image (Diffusers)**
+- Qwen Image: section **3) Qwen Image (Diffusers)**
+- FLUX 2: section **4) FLUX 2 (Diffusers)**
+- SD3.5: section **5) Stable Diffusion 3.5 (Diffusers, gated)**
+
+---
+
 ## 1) First image (OpenAI-compatible HTTP)
 
 Use this path if you already have a server that exposes OpenAI-shaped image endpoints (e.g. a local model server).
@@ -109,8 +145,8 @@ export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0
 
 ```bash
 export ABSTRACTVISION_BACKEND=diffusers
-export ABSTRACTVISION_DIFFUSERS_DEVICE=mps
-# mps = macOS Apple Silicon; use cuda/cpu on other machines
+export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
+# auto prefers cuda, then mps, then cpu. You can also set cuda/mps/cpu explicitly.
 # Optional: override dtype (auto defaults to float16 on MPS for broad compatibility).
 # - `float16` is usually the best speed/compatibility tradeoff on Apple Silicon
 # - `bfloat16` can work for some models, but can trigger dtype-mismatch errors in some pipelines
@@ -120,11 +156,13 @@ export ABSTRACTVISION_DIFFUSERS_DEVICE=mps
 # export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32
 ```
 
-Quick sanity check (macOS):
+Quick sanity check (device):
 
 ```bash
 python -c "import torch; print('mps', torch.backends.mps.is_available(), 'cuda', torch.cuda.is_available())"
 ```
+
+If you have an NVIDIA GPU but `cuda` is `False`, you likely installed a CPU-only PyTorch build. Follow the PyTorch install guide to install a CUDA-enabled wheel, then re-run the sanity check: <https://pytorch.org/get-started/locally/>.
 
 Start the REPL:
 
@@ -135,7 +173,7 @@ abstractvision repl
 Then:
 
 ```text
-/backend diffusers runwayml/stable-diffusion-v1-5 mps
+/backend diffusers runwayml/stable-diffusion-v1-5 auto
 /set guidance_scale 7
 /set seed 42
 /t2i "a cinematic photo of a red fox in snow" --open

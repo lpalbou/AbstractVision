@@ -42,13 +42,16 @@ All env vars below are read by the CLI/REPL state object (`_ReplState` in [`../.
 - `ABSTRACTVISION_BACKEND` — REPL default backend: `openai` (default), `diffusers`, or `sdcpp`
 - `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
 - `ABSTRACTVISION_TIMEOUT_S` — HTTP timeout for OpenAI-compatible backend (default: `300`)
+- `ABSTRACTVISION_MODEL_ID` — model id for the current backend in the REPL:
+  - `openai`: sent as `model` in HTTP requests (optional; server-dependent)
+  - `diffusers`: Diffusers model id or local path (required when `ABSTRACTVISION_BACKEND=diffusers`)
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
 
 ### OpenAI-compatible HTTP backend
 
 - `ABSTRACTVISION_BASE_URL` — required for `openai` backend
 - `ABSTRACTVISION_API_KEY` — optional bearer token
-- `ABSTRACTVISION_MODEL_ID` — optional remote model id/name
+- `ABSTRACTVISION_MODEL_ID` — optional remote model id/name (see also “Common”)
 - `ABSTRACTVISION_IMAGES_GENERATIONS_PATH` — default: `/images/generations`
 - `ABSTRACTVISION_IMAGES_EDITS_PATH` — default: `/images/edits`
 - `ABSTRACTVISION_TEXT_TO_VIDEO_PATH` — optional (enables `text_to_video`)

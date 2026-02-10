@@ -4,7 +4,7 @@
 
 This repository’s current source of truth is the code under `src/abstractvision/` (docs in `docs/`).
 
-Format note: this file follows the `/llms.txt` Markdown spec (H1 + optional summary/details + H2 “file list” sections; the `## Optional` section can be skipped when you need a shorter context). Spec: https://llmstxt.org/index.md#format
+Format note: this file follows the `llms.txt` Markdown spec (H1 + optional summary/details + H2 “file list” sections; the `## Optional` section can be skipped when you need a shorter context). Spec: https://llmstxt.org/#format
 
 Maintenance tips:
 - Keep link descriptions concise and unambiguous; avoid unexplained jargon.
@@ -14,6 +14,7 @@ Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
+- **Need a sensible local default model**: use `runwayml/stable-diffusion-v1-5` (Diffusers backend). Setup is documented in `README.md` and `docs/getting-started.md`.
 
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image` and `image_to_image`.
@@ -36,7 +37,7 @@ Reality checks (current shipped behavior, anchored in code):
 - [docs/reference/abstractcore-integration.md](docs/reference/abstractcore-integration.md): AbstractCore plugin + tool helpers
 - [CONTRIBUTING.md](CONTRIBUTING.md): dev setup + tests + contribution guidelines
 - [SECURITY.md](SECURITY.md): responsible vulnerability reporting
-- [ACKNOWLEDMENTS.md](ACKNOWLEDMENTS.md): upstream libraries/projects
+- [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md): upstream libraries/projects
 
 ## AbstractFramework ecosystem
 

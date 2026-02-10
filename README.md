@@ -41,13 +41,15 @@ Details: [`docs/reference/backends.md`](docs/reference/backends.md).
 pip install abstractvision
 ```
 
+Note (CUDA): on Windows/Linux, `pip install abstractvision` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
+
 Install optional integrations:
 
 ```bash
 pip install "abstractvision[abstractcore]"
 ```
 
-If you hit “missing pipeline class” errors for newer model families, see [`docs/getting-started.md`](docs/getting-started.md). In practice you usually need Diffusers from source (`main`):
+If you hit “missing pipeline class” errors for newer model families, see [`docs/getting-started.md`](docs/getting-started.md). In that case you may need Diffusers from source (`main`):
 
 ```bash
 pip install -U "abstractvision[huggingface-dev]"
@@ -68,6 +70,22 @@ Start here:
 - API reference: [`docs/api.md`](docs/api.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Docs index: [`docs/README.md`](docs/README.md)
+
+### Recommended default model (local / cross-platform)
+
+AbstractVision does not hardcode a default model in the library API; you choose a backend + model id.
+
+For a cross-platform local starter model (typically fits on GPUs around **≤16GB VRAM** and also works on CPU), start with:
+`runwayml/stable-diffusion-v1-5` (Diffusers backend).
+
+```bash
+export ABSTRACTVISION_BACKEND=diffusers
+export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
+export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
+abstractvision repl
+```
+
+More recommendations by VRAM: [`docs/getting-started.md`](docs/getting-started.md).
 
 ### Capability-driven model selection
 
@@ -190,7 +208,8 @@ In practice:
 - Release notes: [`CHANGELOG.md`](CHANGELOG.md)
 - Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Security: [`SECURITY.md`](SECURITY.md)
-- Acknowledgments: [`ACKNOWLEDMENTS.md`](ACKNOWLEDMENTS.md)
+- Acknowledgments: [`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md)
+- Agent docs: [`llms.txt`](llms.txt) and [`llms-full.txt`](llms-full.txt)
 
 ## Requirements
 

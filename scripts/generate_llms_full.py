@@ -31,7 +31,7 @@ BUNDLE: list[BundleItem] = [
     BundleItem("docs/reference/abstractcore-integration.md"),
     BundleItem("CONTRIBUTING.md"),
     BundleItem("SECURITY.md"),
-    BundleItem("ACKNOWLEDMENTS.md"),
+    BundleItem("ACKNOWLEDGMENTS.md"),
     BundleItem("CHANGELOG.md"),
     BundleItem("pyproject.toml", fenced_lang="toml"),
 ]

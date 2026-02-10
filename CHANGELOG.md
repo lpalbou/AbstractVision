@@ -6,7 +6,8 @@
 
 - Documentation refresh for public release:
   - add `docs/api.md` and strengthen cross-linking between README and docs
-  - add `CONTRIBUTING.md`, `SECURITY.md`, and `ACKNOWLEDMENTS.md`
+  - add `CONTRIBUTING.md`, `SECURITY.md`, and `ACKNOWLEDGMENTS.md`
+  - add `llms.txt` and generated `llms-full.txt` for agent-oriented context
   - clarify playground/server endpoint expectations (`/v1/vision/*`)
 
 ## 0.2.0

@@ -42,6 +42,23 @@ Details: [docs/reference/backends.md](reference/backends.md).
 - **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps).
 - **stable-diffusion.cpp (local GGUF)** ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py)): run GGUF diffusion models via `sd-cli` or `stable-diffusion-cpp-python`.
 
+## What model should I start with (local)?
+
+If you’re running locally via the Diffusers backend and want a reliable starting point, we recommend:
+
+- **Default / ≤16GB VRAM (cross-platform)**: `runwayml/stable-diffusion-v1-5`
+
+Quickstart:
+
+```bash
+export ABSTRACTVISION_BACKEND=diffusers
+export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
+export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
+abstractvision repl
+```
+
+More model recommendations (by VRAM tier) are in [docs/getting-started.md](getting-started.md).
+
 ## Does `abstractvision t2i` run locally?
 
 `abstractvision t2i` / `abstractvision i2i` are one-shot helpers for the **OpenAI-compatible HTTP backend** ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
@@ -89,6 +106,19 @@ Common fixes:
 - set `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32` (more stable, higher memory)
 - disable retry if memory is tight: `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=0`
 - consider using the stable-diffusion.cpp backend for GGUF diffusion models ([docs/getting-started.md](getting-started.md))
+
+## Windows/Linux (CUDA): why is `torch.cuda.is_available()` false?
+
+On Windows/Linux, `pip install torch` (and packages that depend on `torch`) may install a CPU-only PyTorch build by default.
+
+If you have an NVIDIA GPU and want CUDA acceleration:
+
+1) Install a CUDA-enabled PyTorch wheel using the official selector: <https://pytorch.org/get-started/locally/>  
+2) Verify:
+
+```bash
+python -c "import torch; print('cuda', torch.cuda.is_available())"
+```
 
 ## How do I pass advanced flags / parameters?
 

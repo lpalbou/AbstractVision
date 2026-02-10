@@ -17,6 +17,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 - [Capability registry (`vision_model_capabilities.json`)](reference/capabilities-registry.md)
 - [Artifacts (artifact refs + stores)](reference/artifacts.md)
 - [AbstractCore integration (capability plugin + tools)](reference/abstractcore-integration.md)
+- Agent-oriented docs: [`../llms.txt`](../llms.txt) and [`../llms-full.txt`](../llms-full.txt)
 
 ## AbstractFramework ecosystem
 
@@ -29,12 +30,13 @@ AbstractVision is part of the **AbstractFramework** ecosystem and is designed to
 ## Current implementation status (as shipped)
 
 Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) exposes:
-  - `generate_image` (`text_to_image`), `edit_image` (`image_to_image`)
-  - `generate_video` (`text_to_video`), `image_to_video` (`image_to_video`) (backend-dependent)
-  - `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
-- Built-in backends implement:
-  - **Images**: Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-  - **Video**: OpenAI-compatible HTTP only, and only when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
+- `generate_image` (`text_to_image`), `edit_image` (`image_to_image`)
+- `generate_video` (`text_to_video`), `image_to_video` (`image_to_video`) (backend-dependent)
+- `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
+
+Built-in backends implement:
+- **Images**: Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
+- **Video**: OpenAI-compatible HTTP only, and only when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
 If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
 [`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) (loaded by `VisionModelCapabilitiesRegistry` in [`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
@@ -49,4 +51,4 @@ If you’re looking for “what can model X do?”, the single source of truth i
 - Contributing: [`CONTRIBUTING.md`](../CONTRIBUTING.md)
 - Security: [`SECURITY.md`](../SECURITY.md)
 - License: [`LICENSE`](../LICENSE)
-- Acknowledgments: [`ACKNOWLEDMENTS.md`](../ACKNOWLEDMENTS.md)
+- Acknowledgments: [`ACKNOWLEDGMENTS.md`](../ACKNOWLEDGMENTS.md)

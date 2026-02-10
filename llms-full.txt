@@ -27,7 +27,7 @@ Included files:
 - `docs/reference/abstractcore-integration.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
-- `ACKNOWLEDMENTS.md`
+- `ACKNOWLEDGMENTS.md`
 - `CHANGELOG.md`
 - `pyproject.toml`
 
@@ -38,7 +38,7 @@ Included files:
 
 This repository’s current source of truth is the code under `src/abstractvision/` (docs in `docs/`).
 
-Format note: this file follows the `/llms.txt` Markdown spec (H1 + optional summary/details + H2 “file list” sections; the `## Optional` section can be skipped when you need a shorter context). Spec: https://llmstxt.org/index.md#format
+Format note: this file follows the `llms.txt` Markdown spec (H1 + optional summary/details + H2 “file list” sections; the `## Optional` section can be skipped when you need a shorter context). Spec: https://llmstxt.org/#format
 
 Maintenance tips:
 - Keep link descriptions concise and unambiguous; avoid unexplained jargon.
@@ -48,6 +48,7 @@ Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
+- **Need a sensible local default model**: use `runwayml/stable-diffusion-v1-5` (Diffusers backend). Setup is documented in `README.md` and `docs/getting-started.md`.
 
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image` and `image_to_image`.
@@ -70,7 +71,7 @@ Reality checks (current shipped behavior, anchored in code):
 - [docs/reference/abstractcore-integration.md](docs/reference/abstractcore-integration.md): AbstractCore plugin + tool helpers
 - [CONTRIBUTING.md](CONTRIBUTING.md): dev setup + tests + contribution guidelines
 - [SECURITY.md](SECURITY.md): responsible vulnerability reporting
-- [ACKNOWLEDMENTS.md](ACKNOWLEDMENTS.md): upstream libraries/projects
+- [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md): upstream libraries/projects
 
 ## AbstractFramework ecosystem
 
@@ -151,13 +152,15 @@ Details: [`docs/reference/backends.md`](docs/reference/backends.md).
 pip install abstractvision
 ```
 
+Note (CUDA): on Windows/Linux, `pip install abstractvision` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
+
 Install optional integrations:
 
 ```bash
 pip install "abstractvision[abstractcore]"
 ```
 
-If you hit “missing pipeline class” errors for newer model families, see [`docs/getting-started.md`](docs/getting-started.md). In practice you usually need Diffusers from source (`main`):
+If you hit “missing pipeline class” errors for newer model families, see [`docs/getting-started.md`](docs/getting-started.md). In that case you may need Diffusers from source (`main`):
 
 ```bash
 pip install -U "abstractvision[huggingface-dev]"
@@ -178,6 +181,22 @@ Start here:
 - API reference: [`docs/api.md`](docs/api.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Docs index: [`docs/README.md`](docs/README.md)
+
+### Recommended default model (local / cross-platform)
+
+AbstractVision does not hardcode a default model in the library API; you choose a backend + model id.
+
+For a cross-platform local starter model (typically fits on GPUs around **≤16GB VRAM** and also works on CPU), start with:
+`runwayml/stable-diffusion-v1-5` (Diffusers backend).
+
+```bash
+export ABSTRACTVISION_BACKEND=diffusers
+export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
+export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
+abstractvision repl
+```
+
+More recommendations by VRAM: [`docs/getting-started.md`](docs/getting-started.md).
 
 ### Capability-driven model selection
 
@@ -300,7 +319,8 @@ In practice:
 - Release notes: [`CHANGELOG.md`](CHANGELOG.md)
 - Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Security: [`SECURITY.md`](SECURITY.md)
-- Acknowledgments: [`ACKNOWLEDMENTS.md`](ACKNOWLEDMENTS.md)
+- Acknowledgments: [`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md)
+- Agent docs: [`llms.txt`](llms.txt) and [`llms-full.txt`](llms-full.txt)
 
 ## Requirements
 
@@ -339,6 +359,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 - [Capability registry (`vision_model_capabilities.json`)](reference/capabilities-registry.md)
 - [Artifacts (artifact refs + stores)](reference/artifacts.md)
 - [AbstractCore integration (capability plugin + tools)](reference/abstractcore-integration.md)
+- Agent-oriented docs: [`../llms.txt`](../llms.txt) and [`../llms-full.txt`](../llms-full.txt)
 
 ## AbstractFramework ecosystem
 
@@ -351,12 +372,13 @@ AbstractVision is part of the **AbstractFramework** ecosystem and is designed to
 ## Current implementation status (as shipped)
 
 Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) exposes:
-  - `generate_image` (`text_to_image`), `edit_image` (`image_to_image`)
-  - `generate_video` (`text_to_video`), `image_to_video` (`image_to_video`) (backend-dependent)
-  - `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
-- Built-in backends implement:
-  - **Images**: Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-  - **Video**: OpenAI-compatible HTTP only, and only when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
+- `generate_image` (`text_to_image`), `edit_image` (`image_to_image`)
+- `generate_video` (`text_to_video`), `image_to_video` (`image_to_video`) (backend-dependent)
+- `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
+
+Built-in backends implement:
+- **Images**: Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
+- **Video**: OpenAI-compatible HTTP only, and only when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
 If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
 [`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) (loaded by `VisionModelCapabilitiesRegistry` in [`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
@@ -371,7 +393,7 @@ If you’re looking for “what can model X do?”, the single source of truth i
 - Contributing: [`CONTRIBUTING.md`](../CONTRIBUTING.md)
 - Security: [`SECURITY.md`](../SECURITY.md)
 - License: [`LICENSE`](../LICENSE)
-- Acknowledgments: [`ACKNOWLEDMENTS.md`](../ACKNOWLEDMENTS.md)
+- Acknowledgments: [`ACKNOWLEDGMENTS.md`](../ACKNOWLEDGMENTS.md)
 --- >8 --- END FILE: docs/README.md --- >8 ---
 
 --- 8< --- FILE: docs/getting-started.md --- 8< ---
@@ -450,6 +472,42 @@ No extras are required for most use cases: AbstractVision is batteries-included 
 
 ---
 
+## Recommended default models (VRAM guide)
+
+If you run **locally** (Diffusers backend) and want a reliable starting point, here are practical model picks from the packaged capability registry (`src/abstractvision/assets/vision_model_capabilities.json`).
+
+Notes:
+- VRAM needs vary with resolution, dtype, and pipeline implementation. Treat this as a starting point.
+- Some models are **gated** on Hugging Face and require accepting terms + setting `HF_TOKEN`.
+- If you want a non-gated modern image model, try `black-forest-labs/FLUX.2-klein-4B` (but it currently requires installing Diffusers from source; see the FLUX section below).
+
+| GPU VRAM | Recommended model id | Why | Install / quickstart |
+|---:|---|---|---|
+| ≤ 16 GB | `runwayml/stable-diffusion-v1-5` | Small, stable, and widely compatible (Windows/Linux CUDA, macOS MPS) | `pip install abstractvision` then run the REPL using the snippet below |
+| 32 GB | `stabilityai/stable-diffusion-3.5-large-turbo` | High-quality still images with low step counts (gated) | Accept model terms on HF, set `HF_TOKEN`, then use the SD3.5 section below |
+| 64 GB | `Qwen/Qwen-Image-2512` | Strong prompt following and text rendering (large model) | Same as Diffusers setup; if pipeline import fails, use Diffusers `main` (see install section above) |
+| 128 GB | `black-forest-labs/FLUX.2-dev` | Very high quality (very large; non-commercial license; gated) | Accept model terms on HF, set `HF_TOKEN`, then use the FLUX section below |
+
+Recommended default (local, cross-platform) — Stable Diffusion 1.5:
+
+```bash
+pip install abstractvision
+export ABSTRACTVISION_BACKEND=diffusers
+export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
+export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
+abstractvision repl
+```
+
+Then type a prompt (plain text runs `/t2i`), or use `/t2i "..." --open`.
+
+Jump to detailed recipes:
+- Stable Diffusion 1.5: section **2) First image (Diffusers)**
+- Qwen Image: section **3) Qwen Image (Diffusers)**
+- FLUX 2: section **4) FLUX 2 (Diffusers)**
+- SD3.5: section **5) Stable Diffusion 3.5 (Diffusers, gated)**
+
+---
+
 ## 1) First image (OpenAI-compatible HTTP)
 
 Use this path if you already have a server that exposes OpenAI-shaped image endpoints (e.g. a local model server).
@@ -486,8 +544,8 @@ export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0
 
 ```bash
 export ABSTRACTVISION_BACKEND=diffusers
-export ABSTRACTVISION_DIFFUSERS_DEVICE=mps
-# mps = macOS Apple Silicon; use cuda/cpu on other machines
+export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
+# auto prefers cuda, then mps, then cpu. You can also set cuda/mps/cpu explicitly.
 # Optional: override dtype (auto defaults to float16 on MPS for broad compatibility).
 # - `float16` is usually the best speed/compatibility tradeoff on Apple Silicon
 # - `bfloat16` can work for some models, but can trigger dtype-mismatch errors in some pipelines
@@ -497,11 +555,13 @@ export ABSTRACTVISION_DIFFUSERS_DEVICE=mps
 # export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32
 ```
 
-Quick sanity check (macOS):
+Quick sanity check (device):
 
 ```bash
 python -c "import torch; print('mps', torch.backends.mps.is_available(), 'cuda', torch.cuda.is_available())"
 ```
+
+If you have an NVIDIA GPU but `cuda` is `False`, you likely installed a CPU-only PyTorch build. Follow the PyTorch install guide to install a CUDA-enabled wheel, then re-run the sanity check: <https://pytorch.org/get-started/locally/>.
 
 Start the REPL:
 
@@ -512,7 +572,7 @@ abstractvision repl
 Then:
 
 ```text
-/backend diffusers runwayml/stable-diffusion-v1-5 mps
+/backend diffusers runwayml/stable-diffusion-v1-5 auto
 /set guidance_scale 7
 /set seed 42
 /t2i "a cinematic photo of a red fox in snow" --open
@@ -1045,6 +1105,23 @@ Details: [docs/reference/backends.md](reference/backends.md).
 - **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps).
 - **stable-diffusion.cpp (local GGUF)** ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py)): run GGUF diffusion models via `sd-cli` or `stable-diffusion-cpp-python`.
 
+## What model should I start with (local)?
+
+If you’re running locally via the Diffusers backend and want a reliable starting point, we recommend:
+
+- **Default / ≤16GB VRAM (cross-platform)**: `runwayml/stable-diffusion-v1-5`
+
+Quickstart:
+
+```bash
+export ABSTRACTVISION_BACKEND=diffusers
+export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
+export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
+abstractvision repl
+```
+
+More model recommendations (by VRAM tier) are in [docs/getting-started.md](getting-started.md).
+
 ## Does `abstractvision t2i` run locally?
 
 `abstractvision t2i` / `abstractvision i2i` are one-shot helpers for the **OpenAI-compatible HTTP backend** ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
@@ -1092,6 +1169,19 @@ Common fixes:
 - set `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32` (more stable, higher memory)
 - disable retry if memory is tight: `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=0`
 - consider using the stable-diffusion.cpp backend for GGUF diffusion models ([docs/getting-started.md](getting-started.md))
+
+## Windows/Linux (CUDA): why is `torch.cuda.is_available()` false?
+
+On Windows/Linux, `pip install torch` (and packages that depend on `torch`) may install a CPU-only PyTorch build by default.
+
+If you have an NVIDIA GPU and want CUDA acceleration:
+
+1) Install a CUDA-enabled PyTorch wheel using the official selector: <https://pytorch.org/get-started/locally/>  
+2) Verify:
+
+```bash
+python -c "import torch; print('cuda', torch.cuda.is_available())"
+```
 
 ## How do I pass advanced flags / parameters?
 
@@ -1246,13 +1336,16 @@ All env vars below are read by the CLI/REPL state object (`_ReplState` in [`../.
 - `ABSTRACTVISION_BACKEND` — REPL default backend: `openai` (default), `diffusers`, or `sdcpp`
 - `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
 - `ABSTRACTVISION_TIMEOUT_S` — HTTP timeout for OpenAI-compatible backend (default: `300`)
+- `ABSTRACTVISION_MODEL_ID` — model id for the current backend in the REPL:
+  - `openai`: sent as `model` in HTTP requests (optional; server-dependent)
+  - `diffusers`: Diffusers model id or local path (required when `ABSTRACTVISION_BACKEND=diffusers`)
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
 
 ### OpenAI-compatible HTTP backend
 
 - `ABSTRACTVISION_BASE_URL` — required for `openai` backend
 - `ABSTRACTVISION_API_KEY` — optional bearer token
-- `ABSTRACTVISION_MODEL_ID` — optional remote model id/name
+- `ABSTRACTVISION_MODEL_ID` — optional remote model id/name (see also “Common”)
 - `ABSTRACTVISION_IMAGES_GENERATIONS_PATH` — default: `/images/generations`
 - `ABSTRACTVISION_IMAGES_EDITS_PATH` — default: `/images/edits`
 - `ABSTRACTVISION_TEXT_TO_VIDEO_PATH` — optional (enables `text_to_video`)
@@ -1573,7 +1666,7 @@ This policy applies to vulnerabilities in this repository’s code and packaging
 For non-security bugs and feature requests, please use the normal issue tracker.
 --- >8 --- END FILE: SECURITY.md --- >8 ---
 
---- 8< --- FILE: ACKNOWLEDMENTS.md --- 8< ---
+--- 8< --- FILE: ACKNOWLEDGMENTS.md --- 8< ---
 # Acknowledgments
 
 AbstractVision stands on the shoulders of excellent open-source projects and communities.
@@ -1611,7 +1704,7 @@ AbstractVision stands on the shoulders of excellent open-source projects and com
 ## Community and contributors
 
 Thanks to everyone who reports issues, suggests improvements, and contributes fixes or documentation updates.
---- >8 --- END FILE: ACKNOWLEDMENTS.md --- >8 ---
+--- >8 --- END FILE: ACKNOWLEDGMENTS.md --- >8 ---
 
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
@@ -1622,7 +1715,8 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 - Documentation refresh for public release:
   - add `docs/api.md` and strengthen cross-linking between README and docs
-  - add `CONTRIBUTING.md`, `SECURITY.md`, and `ACKNOWLEDMENTS.md`
+  - add `CONTRIBUTING.md`, `SECURITY.md`, and `ACKNOWLEDGMENTS.md`
+  - add `llms.txt` and generated `llms-full.txt` for agent-oriented context
   - clarify playground/server endpoint expectations (`/v1/vision/*`)
 
 ## 0.2.0
