@@ -14,7 +14,7 @@ Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
-- **Need a sensible local default model**: use `runwayml/stable-diffusion-v1-5` (Diffusers backend). Setup is documented in `README.md` and `docs/getting-started.md`.
+- **Need a sensible local default model**: the REPL defaults to cache-only `runwayml/stable-diffusion-v1-5` (Diffusers backend). Pre-download it or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
 
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image` and `image_to_image`.
@@ -35,6 +35,7 @@ Reality checks (current shipped behavior, anchored in code):
 - [docs/reference/capabilities-registry.md](docs/reference/capabilities-registry.md): capability registry format + usage
 - [docs/reference/artifacts.md](docs/reference/artifacts.md): artifact refs + stores
 - [docs/reference/abstractcore-integration.md](docs/reference/abstractcore-integration.md): AbstractCore plugin + tool helpers
+- [playground/README.md](playground/README.md): self-contained local web UI/API served by `abstractvision playground`
 - [CONTRIBUTING.md](CONTRIBUTING.md): dev setup + tests + contribution guidelines
 - [SECURITY.md](SECURITY.md): responsible vulnerability reporting
 - [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md): upstream libraries/projects
@@ -58,6 +59,8 @@ Reality checks (current shipped behavior, anchored in code):
 - [src/abstractvision/model_capabilities.py](src/abstractvision/model_capabilities.py): capability registry loader + validator
 - [src/abstractvision/artifacts.py](src/abstractvision/artifacts.py): artifact refs + stores (`LocalAssetStore`, `RuntimeArtifactStoreAdapter`)
 - [src/abstractvision/cli.py](src/abstractvision/cli.py): CLI/REPL (`abstractvision`)
+- [src/abstractvision/playground_server.py](src/abstractvision/playground_server.py): self-contained playground server and `/v1/vision/*` jobs
+- [src/abstractvision/playground/vision_playground.html](src/abstractvision/playground/vision_playground.html): packaged playground UI asset
 - [src/abstractvision/integrations/abstractcore_plugin.py](src/abstractvision/integrations/abstractcore_plugin.py): AbstractCore capability plugin entry point
 - [src/abstractvision/integrations/abstractcore.py](src/abstractvision/integrations/abstractcore.py): AbstractCore tool helpers (`make_vision_tools`)
 
@@ -71,4 +74,3 @@ Reality checks (current shipped behavior, anchored in code):
 ## Optional
 
 - [Engineering backlog](docs/backlog/README.md): internal design notes + completion reports
-- [Playground](playground/README.md): minimal web UI for AbstractCore Server vision job endpoints (`/v1/vision/*`)

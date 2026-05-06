@@ -17,6 +17,7 @@ See also:
 
 Notes:
 - `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
+- Backends may also expose best-effort `get_capabilities()`, `preload()`, `unload()`, `generate_image_with_progress(...)`, and `edit_image_with_progress(...)` hooks via the shared `VisionBackend` contract.
 
 ## OpenAI-compatible HTTP backend
 
@@ -28,6 +29,10 @@ Notes:
 - `base_url` (required): points to a `/v1`-style root, e.g. `http://localhost:1234/v1`
 - `api_key` (optional): sent as `Authorization: Bearer ...`
 - `model_id` (optional): forwarded as `model` in requests
+
+Request shape:
+- Unknown/local endpoints receive local extension fields when provided, including `steps`, `seed`, `guidance_scale`, `negative_prompt`, `width`, and `height`.
+- Real OpenAI-looking endpoints and known OpenAI image models use the narrower OpenAI request shape; GPT image models do not receive unsupported local-only fields such as `steps`, `seed`, or `guidance_scale`.
 
 Code pointers:
 - Config: `OpenAICompatibleBackendConfig` ([`../../src/abstractvision/backends/openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py))
@@ -54,6 +59,12 @@ The Python backend and REPL are cache-only by default (`allow_download=False`). 
 or set `allow_download=True` / `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` when runtime downloads are desired (see
 config/env in [docs/reference/configuration.md](configuration.md)).
 
+Config fields:
+- `model_id`, `device`, `torch_dtype`
+- `allow_download`, `auto_retry_fp32`
+- `cache_dir`, `revision`, `variant`
+- `use_safetensors`, `low_cpu_mem_usage`
+
 ## stable-diffusion.cpp backend (local GGUF/checkpoints)
 
 **When to use**
@@ -68,6 +79,7 @@ Notes:
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means **CPU-only**, so FLUX/Qwen-class models can be extremely slow.
 - REPL selection supports both `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]` and
   `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`.
+- Python code and AbstractCore plugin configuration can also pass component paths such as `clip_l`, `clip_g`, `t5xxl`, `llm_vision`, plus `extra_args`, `timeout_s`, and `cwd`.
 
 Code pointers:
 - Config: `StableDiffusionCppBackendConfig` ([`../../src/abstractvision/backends/stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py))

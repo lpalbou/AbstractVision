@@ -27,8 +27,10 @@ python -m pip install -e .
 Optional (if you work on AbstractCore integration locally):
 
 ```bash
-python -m pip install -e ".[abstractcore]"
+python -m pip install abstractcore
 ```
+
+The `abstractvision[abstractcore]` extra is only a compatibility marker. AbstractCore is intentionally supplied by the host application, not installed by AbstractVision.
 
 ## Run tests
 

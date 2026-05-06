@@ -103,13 +103,16 @@ flowchart LR
   AC[AbstractCore] -->|loads entry point| Plugin[AbstractVision plugin<br/>register(...)]
   Plugin --> Cap[VisionCapability<br/>(t2i/i2i/t2v/i2v)]
   Cap --> VM[VisionManager]
-  VM --> BE[OpenAICompatibleVisionBackend]
-  BE --> HTTP[OpenAI-shaped HTTP<br/>/images/generations, /images/edits]
+  VM --> BE{Configured backend}
+  BE --> HTTP[OpenAI-compatible HTTP<br/>OpenAI or local /v1 server]
+  BE --> HF[Local Diffusers]
+  BE --> SDCPP[Local stable-diffusion.cpp]
 ```
 
 Current plugin behavior (evidence in [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py)):
-- Only the OpenAI-compatible backend is supported via the plugin (v0).
-- Configuration is read from `owner.config` keys like `vision_base_url` and falls back to `ABSTRACTVISION_*` env vars.
+- Default: OpenAI-compatible HTTP, preserving the legacy backend id `abstractvision:openai-compatible`.
+- Local Diffusers and stable-diffusion.cpp are supported when `vision_backend` / `ABSTRACTVISION_BACKEND` selects `diffusers` or `sdcpp`.
+- Configuration is read from `owner.config` keys like `vision_base_url`, `vision_model_id`, `vision_backend`, and backend-specific keys, then falls back to `ABSTRACTVISION_*` env vars.
 
 ## Extending AbstractVision (practical steps)
 

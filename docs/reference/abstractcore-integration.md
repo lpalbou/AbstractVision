@@ -27,16 +27,22 @@ Current behavior:
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 
 Key config keys (owner.config):
+- `vision_backend_instance` / `vision_backend_factory` (advanced injection hooks; bypass env-driven backend creation)
 - `vision_backend` (`openai`, `diffusers`, or `sdcpp`; default `openai`)
 - `vision_model_id` (Diffusers/OpenAI-compatible model id; default `runwayml/stable-diffusion-v1-5` for Diffusers)
-- `vision_device` / `vision_torch_dtype` / `vision_allow_download` (Diffusers)
+- `vision_device` / `vision_torch_dtype` / `vision_allow_download` / `vision_auto_retry_fp32` (Diffusers)
 - `vision_base_url` / `vision_api_key` (OpenAI-compatible)
 - `vision_sdcpp_model` / `vision_sdcpp_diffusion_model` / `vision_sdcpp_bin` (stable-diffusion.cpp)
+- `vision_sdcpp_vae` / `vision_sdcpp_llm` / `vision_sdcpp_llm_vision` / `vision_sdcpp_clip_l` / `vision_sdcpp_clip_g` / `vision_sdcpp_t5xxl` / `vision_sdcpp_extra_args` (stable-diffusion.cpp component mode)
 - `vision_timeout_s` (optional)
 - Optional video endpoint keys:
   - `vision_text_to_video_path`
   - `vision_image_to_video_path`
   - `vision_image_to_video_mode`
+
+Env-only aliases:
+- `ABSTRACTVISION_DIFFUSERS_MODEL_ID` is accepted for the Diffusers plugin backend before falling back to `ABSTRACTVISION_MODEL_ID`.
+- `ABSTRACTVISION_SDCPP_CLIP_L`, `ABSTRACTVISION_SDCPP_CLIP_G`, and `ABSTRACTVISION_SDCPP_T5XXL` are accepted for stable-diffusion.cpp component mode.
 
 Examples:
 

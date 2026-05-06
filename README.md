@@ -52,6 +52,17 @@ local execution path. stable-diffusion.cpp python bindings are optional; install
 `abstractvision[sdcpp]` only when you want the pip binding fallback instead of an
 external `sd-cli` executable.
 
+Optional extras:
+
+| Extra | Use |
+|---|---|
+| `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
+| `abstractvision[local]` | Compatibility convenience for both local backend dependency sets, including `sdcpp`. |
+| `abstractvision[huggingface]` | Compatibility extra for callers that still request the historical Diffusers extra. |
+| `abstractvision[huggingface-dev]` | Looser dependency pins for newer/unreleased Diffusers pipelines; install Diffusers `main` separately if needed. |
+| `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
+| `abstractvision[test]`, `abstractvision[docs]`, `abstractvision[dev]` | Contributor/test/docs tooling. |
+
 Note (CUDA): on Windows/Linux, `pip install abstractvision` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
 
 AbstractCore is not installed by AbstractVision. When an AbstractCore application

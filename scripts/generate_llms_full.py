@@ -29,6 +29,7 @@ BUNDLE: list[BundleItem] = [
     BundleItem("docs/reference/capabilities-registry.md"),
     BundleItem("docs/reference/artifacts.md"),
     BundleItem("docs/reference/abstractcore-integration.md"),
+    BundleItem("playground/README.md"),
     BundleItem("CONTRIBUTING.md"),
     BundleItem("SECURITY.md"),
     BundleItem("ACKNOWLEDGMENTS.md"),

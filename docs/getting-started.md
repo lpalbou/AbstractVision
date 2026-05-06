@@ -32,7 +32,7 @@ AbstractVision’s base install includes Torch + Diffusers because that is the d
 
 If you see “missing pipeline class” errors for newer model families, install the `huggingface-dev` extra (to get compatible dependencies) and then install Diffusers from source (`main`).
 
-If you're installing **AbstractVision from a repo checkout**, install the dev extra (compatible deps; does not include Diffusers `main`):
+If you're installing **AbstractVision from a repo checkout**, install the `huggingface-dev` extra (compatible deps; does not include Diffusers `main`):
 
 ```bash
 pip install -e ".[huggingface-dev]"
@@ -70,6 +70,18 @@ pip install -e .
 ```
 
 No extras are required for the default Diffusers path, so a fresh environment should only need model weights. Use `huggingface-dev` only when you need Diffusers `main`, and use `sdcpp` only when you want the optional stable-diffusion.cpp python binding fallback.
+
+Optional extras:
+
+| Extra | Use |
+|---|---|
+| `openai-compatible` | Empty compatibility marker; the HTTP backend is stdlib-only today. |
+| `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
+| `huggingface` | Compatibility extra for the historical Diffusers backend dependency set. |
+| `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
+| `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
+| `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
+| `test`, `docs`, `dev` | Contributor tooling for tests, docs, packaging, formatting, and release checks. |
 
 Optional (recommended): pre-download heavyweight model sets (so first-run doesn’t do surprise multi‑GB downloads):
 
@@ -241,6 +253,8 @@ Use `cuda float16` on NVIDIA, or `auto` if you want AbstractVision/Torch to pick
 
 Use this path if you already have a server that exposes OpenAI-shaped image endpoints (e.g. a local model server).
 
+For unknown or local OpenAI-compatible servers, AbstractVision forwards local extension fields such as `steps`, `seed`, `guidance_scale`, `width`, and `height`. For the real OpenAI API and known GPT image models, it suppresses unsupported local-only fields and sends the narrower OpenAI request shape.
+
 One-shot (stores output via `LocalAssetStore` and prints an artifact ref + file path):
 
 ```bash
@@ -337,7 +351,7 @@ python -c "import diffusers; print(diffusers.__version__)"
 Notes:
 - `FLUX.2-dev` uses Diffusers `Flux2Pipeline` and works on released Diffusers (0.36+).
 - `FLUX.2-klein-4B` and `FLUX.2-klein-9B` use `Flux2KleinPipeline`, which is not available in the released Diffusers (0.36.0). It currently
-  requires installing Diffusers from source (or use the AbstractVision dev extra):
+  requires installing Diffusers from source (with the `huggingface-dev` extra for compatible dependency pins):
   - `pip install -U "abstractvision[huggingface-dev]"`
   - `pip install -U "git+https://github.com/huggingface/diffusers@main"`
 
@@ -434,7 +448,7 @@ AbstractVision falls back to `stable-diffusion-cpp-python` when that package is 
 ### 6.3 Download the required Qwen Image VAE
 
 ```bash
-curl -L -o ./qwen_image_vae.safetensors \\
+curl -L -o ./qwen_image_vae.safetensors \
   https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
 ```
 

@@ -17,6 +17,7 @@ The package exports the following symbols from `abstractvision` (see [`../src/ab
 - `LocalAssetStore`
 - `RuntimeArtifactStoreAdapter`
 - `is_artifact_ref`
+- `__version__`
 
 ## Core concepts
 
