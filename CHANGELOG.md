@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.4 - 2026-05-06
+
+- Playground: add a self-contained `abstractvision playground` command that serves both the web UI and `/v1/vision/*` API locally, so playground testing no longer depends on an AbstractCore server.
+- Playground: package the HTML asset in the wheel, default the UI to the serving origin, and avoid stale persisted API URLs that could keep calling an older AbstractCore endpoint.
+- Playground model loading: accept raw Hugging Face ids such as `runwayml/stable-diffusion-v1-5` directly, while still accepting explicit backend prefixes like `diffusers/...`, `sdcpp/...`, and `openai-compatible/...`.
+- Packaging/CI: keep AbstractCore out of AbstractVision dependency metadata and test workflows; AbstractCore remains an optional host integration loaded lazily when present.
+- Docs/tests: refresh playground docs around the self-contained local server and add coverage for cached model listing, raw model loading, playground jobs, and tool integration without installing AbstractCore.
+
 ## 0.2.3 - 2026-05-06
 
 - AbstractCore plugin: support local Diffusers and stable-diffusion.cpp backends through `llm.vision`, not only OpenAI-compatible HTTP. The default plugin path now matches the REPL default: local Diffusers with `runwayml/stable-diffusion-v1-5`, cache-only unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.

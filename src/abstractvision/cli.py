@@ -768,6 +768,13 @@ def _cmd_repl(_: argparse.Namespace) -> int:
             print(f"Error: {e}")
 
 
+def _cmd_playground(args: argparse.Namespace) -> int:
+    from .playground_server import PlaygroundServerConfig, run_playground_server
+
+    cfg = PlaygroundServerConfig(host=str(args.host), port=int(args.port))
+    return run_playground_server(cfg)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="abstractvision", description="AbstractVision CLI (capabilities + generation).")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -781,6 +788,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     repl = sub.add_parser("repl", help="Interactive REPL for testing capabilities and generation.")
     repl.set_defaults(_fn=_cmd_repl)
+
+    playground = sub.add_parser(
+        "playground",
+        aliases=["serve"],
+        help="Run the self-contained local web playground and API server.",
+    )
+    playground.add_argument("--host", default="127.0.0.1", help="Host/interface to bind (default: 127.0.0.1).")
+    playground.add_argument("--port", type=int, default=8091, help="Port to bind (default: 8091).")
+    playground.set_defaults(_fn=_cmd_playground)
 
     def _add_backend_flags(ap: argparse.ArgumentParser) -> None:
         ap.add_argument("--base-url", default=_env("ABSTRACTVISION_BASE_URL"), help="OpenAI-compatible base URL (e.g. http://localhost:1234/v1).")

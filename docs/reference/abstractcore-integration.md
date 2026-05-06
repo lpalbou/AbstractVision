@@ -16,9 +16,9 @@ See also:
 
 ## 1) Capability plugin (AbstractCore → VisionCapability)
 
-The plugin registers a backend id:
+The plugin registers a legacy-compatible backend id:
 
-- `abstractvision:openai-compatible` (see `_AbstractVisionCapability.backend_id` in [`../../src/abstractvision/integrations/abstractcore_plugin.py`](../../src/abstractvision/integrations/abstractcore_plugin.py))
+- `abstractvision:openai-compatible` (see `_AbstractVisionCapability.backend_id` in [`../../src/abstractvision/integrations/abstractcore_plugin.py`](../../src/abstractvision/integrations/abstractcore_plugin.py)). The id is retained for compatibility; the implementation now supports local and HTTP backends.
 
 Current behavior:
 - Default: local Diffusers with `runwayml/stable-diffusion-v1-5`, cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
@@ -72,7 +72,7 @@ export ABSTRACTVISION_MODEL_ID=server/default
 
 Important:
 - Tool outputs are designed to be **artifact refs**, so `VisionManager.store` must be set ([`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)).
-- This module requires AbstractCore to be installed (install extra: `pip install "abstractvision[abstractcore]"`).
+- This module requires AbstractCore to be installed by the host application. AbstractVision does not install AbstractCore as a dependency.
 
 Tip (framework mode):
 - If your runtime provides an artifact store (e.g. AbstractRuntime), use `RuntimeArtifactStoreAdapter` so tool outputs can be stored and referenced across processes (see [docs/reference/artifacts.md](artifacts.md)).

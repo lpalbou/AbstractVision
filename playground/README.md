@@ -1,12 +1,12 @@
 # AbstractVision Playground (Web)
 
-This is a tiny, dependency-free web UI for testing an **AbstractCore Server** instance that exposes the **vision job endpoints** used by the page.
+This is a tiny web UI for testing AbstractVision locally. It is powered by the
+self-contained `abstractvision playground` command; it does **not** require an
+AbstractCore server.
 
-Evidence: see the fetch calls in `playground/vision_playground.html`.
+## Required API endpoints
 
-## Required server endpoints
-
-The page expects:
+The page calls:
 
 - `GET /v1/models` (ping)
 - `GET /v1/vision/models` (list cached models + active model)
@@ -17,34 +17,36 @@ The page expects:
 - `GET /v1/vision/jobs/{job_id}` (poll job status)
   - on success, the page calls `GET /v1/vision/jobs/{job_id}?consume=1` to fetch-and-consume the result
 
-## 1) Start a compatible server
+## 1) Start the local playground server
 
-Start your AbstractCore Server (or any server that implements the endpoints above) on `http://localhost:8000` (default in the UI).
+From an AbstractVision checkout:
 
-This repo does not ship the server implementation; consult AbstractCore’s documentation for installation and startup.
+```bash
+PYTHONPATH=src python -m abstractvision playground --port 8091
+```
+
+Or, when installed:
+
+```bash
+abstractvision playground --port 8091
+```
 
 Quick sanity checks (should return JSON):
 
 ```bash
-curl -s http://localhost:8000/v1/models | head
-curl -s http://localhost:8000/v1/vision/models | head
+curl -s http://127.0.0.1:8091/v1/models | head
+curl -s http://127.0.0.1:8091/v1/vision/models | head
 ```
 
-## 2) Serve this page
-
-Browsers may block `file://` → `http://` requests; serve the page locally:
-
-```bash
-cd playground
-python -m http.server 8080
-```
+## 2) Open the page
 
 Open:
 
-- `http://localhost:8080/vision_playground.html`
+- `http://127.0.0.1:8091/vision_playground.html`
 
 Usage notes:
 - You must **select a cached model** and load it before running inference.
+- Raw Hugging Face model ids such as `runwayml/stable-diffusion-v1-5` load directly; no `diffusers/` provider prefix is required.
 - For first tests, prefer a small cached model such as Stable Diffusion 1.5 before loading larger Qwen/FLUX models.
 - “Extra JSON” is forwarded to the server:
   - T2I: merged into the JSON request body
@@ -57,4 +59,4 @@ If your server is configured to run GGUF diffusion models via stable-diffusion.c
 - a VAE (`.safetensors`) for some families (e.g. Qwen Image GGUF)
 - a text encoder/LLM (`.gguf`) for some families (e.g. Qwen Image GGUF)
 
-Exact configuration is server-specific; check your server’s documentation.
+Exact configuration is backend-specific; check AbstractVision’s backend docs.

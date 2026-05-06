@@ -1,28 +1,32 @@
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # Ensure `src/` layout is importable when running tests without installing the package.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
-# In this workspace, AbstractCore lives in a sibling repo folder (`../abstractcore/`).
-# Add it explicitly to avoid importing the namespace package at workspace root.
-AF_ROOT = REPO_ROOT.parent
-ABSTRACTCORE_REPO = AF_ROOT / "abstractcore"
-if ABSTRACTCORE_REPO.exists():
-    sys.path.insert(0, str(ABSTRACTCORE_REPO))
+
+def _fake_abstractcore_module():
+    module = types.ModuleType("abstractcore")
+
+    def tool(**definition_kwargs):
+        def decorate(fn):
+            fn._tool_definition = types.SimpleNamespace(**definition_kwargs)
+            return fn
+
+        return decorate
+
+    module.tool = tool
+    return module
 
 
 class TestAbstractCoreToolIntegration(unittest.TestCase):
     def test_make_vision_tools_and_execute_supported_calls(self):
-        try:
-            from abstractcore import tool as _tool  # noqa: F401
-        except Exception:
-            self.skipTest("abstractcore is not importable; skipping tool integration tests")
-
         from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry
         from abstractvision.backends import VisionBackend
         from abstractvision.integrations.abstractcore import make_vision_tools
@@ -55,12 +59,15 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
                 raise NotImplementedError
 
         reg = VisionModelCapabilitiesRegistry()
-        model_id = "zai-org/GLM-Image"  # supports text_to_image + image_to_image in the seed registry
+        model_id = (
+            "zai-org/GLM-Image"  # supports text_to_image + image_to_image in the seed registry
+        )
 
         with tempfile.TemporaryDirectory() as td:
             store = LocalAssetStore(td)
             vm = VisionManager(backend=FakeBackend(), store=store)
-            tools = make_vision_tools(vision_manager=vm, model_id=model_id, registry=reg)
+            with patch.dict(sys.modules, {"abstractcore": _fake_abstractcore_module()}):
+                tools = make_vision_tools(vision_manager=vm, model_id=model_id, registry=reg)
 
             by_name = {t._tool_definition.name: t for t in tools if hasattr(t, "_tool_definition")}
             self.assertIn("vision_text_to_image", by_name)
@@ -78,11 +85,6 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
             self.assertEqual(out2.get("content_type"), "image/png")
 
     def test_unsupported_task_raises(self):
-        try:
-            from abstractcore import tool as _tool  # noqa: F401
-        except Exception:
-            self.skipTest("abstractcore is not importable; skipping tool integration tests")
-
         from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry
         from abstractvision.backends import VisionBackend
         from abstractvision.errors import CapabilityNotSupportedError
@@ -100,7 +102,9 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
                 raise NotImplementedError
 
             def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
-                return GeneratedAsset(media_type="video", data=b"v", mime_type="video/mp4", metadata={})
+                return GeneratedAsset(
+                    media_type="video", data=b"v", mime_type="video/mp4", metadata={}
+                )
 
             def image_to_video(self, request):  # pragma: no cover
                 raise NotImplementedError
@@ -110,12 +114,20 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             vm = VisionManager(backend=FakeBackend(), store=LocalAssetStore(td))
-            tools = make_vision_tools(vision_manager=vm, model_id=model_id, registry=reg)
+            with patch.dict(sys.modules, {"abstractcore": _fake_abstractcore_module()}):
+                tools = make_vision_tools(vision_manager=vm, model_id=model_id, registry=reg)
             t2v = next(t for t in tools if t._tool_definition.name == "vision_text_to_video")
             with self.assertRaises(CapabilityNotSupportedError):
                 t2v(prompt="make a video")
 
+    def test_tool_integration_reports_missing_abstractcore_without_package_dependency(self):
+        from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.integrations.abstractcore import _require_abstractcore_tool
+
+        with patch.dict(sys.modules, {"abstractcore": None}):
+            with self.assertRaises(OptionalDependencyMissingError):
+                _require_abstractcore_tool()
+
 
 if __name__ == "__main__":
     unittest.main()
-

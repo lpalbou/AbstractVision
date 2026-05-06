@@ -5,7 +5,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
-- **Playground (web, optional)**: static UI for AbstractCore Server vision job endpoints (`/v1/vision/*`)
+- **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
 See also:
 - Docs index: [docs/README.md](README.md)
@@ -481,25 +481,22 @@ Diffusion path or klein-4B first when you are testing a fresh machine.
 
 ## 7) Web UI testing (optional): Playground
 
-This repo includes a static, dependency-free web UI at `playground/vision_playground.html`.
+This repo includes a self-contained web UI and local API server. It is owned by
+AbstractVision and does not require AbstractCore.
 
-It is designed to talk to an **AbstractCore Server** instance that implements the `/v1/vision/*` endpoints used by the page
-(model list/load/unload and image generation/edit jobs). Evidence: see the fetch calls in `playground/vision_playground.html`.
-
-For server requirements and the endpoint list, see `playground/README.md`.
-
-### 7.1 Serve the playground page
+### 7.1 Start the playground
 
 ```bash
-cd playground
-python -m http.server 8080
+abstractvision playground --port 8091
 ```
 
 Open:
 
-- `http://localhost:8080/vision_playground.html`
+- `http://127.0.0.1:8091/vision_playground.html`
 
 In the UI:
-- Set the API Base URL (defaults to `http://localhost:8000`) and click **Ping**
+- The API Base URL defaults to the same process that serves the page
 - Select a cached model and load it
 - Generate (T2I) or upload an input image (I2I) and run edits
+
+For the endpoint list, see `playground/README.md`.

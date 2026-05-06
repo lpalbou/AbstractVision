@@ -18,7 +18,7 @@ Model-agnostic generative vision API (images, optional video) for Python and the
   - Local Diffusers: [`huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py)
   - Local stable-diffusion.cpp / GGUF: [`stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
 - CLI/REPL for manual testing: [`abstractvision`](src/abstractvision/cli.py)
-- Optional static Playground UI (server-backed): [`playground/vision_playground.html`](playground/vision_playground.html) (docs: [`playground/README.md`](playground/README.md))
+- Self-contained local Playground UI/API: [`playground/vision_playground.html`](playground/vision_playground.html) (docs: [`playground/README.md`](playground/README.md))
 
 ## How it fits together (diagram)
 
@@ -49,11 +49,9 @@ pip install abstractvision
 
 Note (CUDA): on Windows/Linux, `pip install abstractvision` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
 
-Install optional integrations:
-
-```bash
-pip install "abstractvision[abstractcore]"
-```
+AbstractCore is not installed by AbstractVision. When an AbstractCore application
+has AbstractVision installed in the same environment, AbstractCore can discover
+the plugin entry point and use the integration modules lazily.
 
 If you hit “missing pipeline class” errors for newer model families, see [`docs/getting-started.md`](docs/getting-started.md). In that case you may need Diffusers from source (`main`):
 
@@ -182,6 +180,16 @@ OpenAI-compatible server example:
 
 The CLI/REPL can also be configured via `ABSTRACTVISION_*` env vars; see [`docs/reference/configuration.md`](docs/reference/configuration.md).
 
+### Local web playground
+
+The playground is owned by AbstractVision and runs without AbstractCore:
+
+```bash
+abstractvision playground --port 8091
+```
+
+Open `http://127.0.0.1:8091/vision_playground.html`, select a cached model, then load it. The page and the API are served by the same process.
+
 One-shot commands (OpenAI-compatible HTTP backend only):
 
 ```bash
@@ -227,6 +235,8 @@ from abstractvision.integrations.abstractcore import make_vision_tools
 
 tools = make_vision_tools(vision_manager=vm, model_id="zai-org/GLM-Image")
 ```
+
+Install `abstractcore` in the host application environment when you use these helpers; it is not pulled in by AbstractVision.
 
 ## AbstractFramework ecosystem
 

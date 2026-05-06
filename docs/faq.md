@@ -153,8 +153,10 @@ If you need a smaller “HTTP-only” install footprint, please open an issue wi
 
 Two options (details in [docs/reference/abstractcore-integration.md](reference/abstractcore-integration.md)):
 
-- **Capability plugin**: [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py) (plugin currently supports only the OpenAI-compatible backend).
-- **Tool helpers**: `make_vision_tools(...)` in [`../src/abstractvision/integrations/abstractcore.py`](../src/abstractvision/integrations/abstractcore.py) (requires `VisionManager.store` for artifact-ref outputs).
+- **Capability plugin**: [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py) supports Diffusers, stable-diffusion.cpp, and OpenAI-compatible backends through env/config.
+- **Tool helpers**: `make_vision_tools(...)` in [`../src/abstractvision/integrations/abstractcore.py`](../src/abstractvision/integrations/abstractcore.py) requires `VisionManager.store` for artifact-ref outputs.
+
+AbstractCore is the host package; AbstractVision does not install it as a dependency.
 
 ## How do I run tests?
 

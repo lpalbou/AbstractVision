@@ -97,8 +97,9 @@ huggingface-dev = [
   "Pillow>=9.0",
 ]
 
-# Tool integration module (optional import). Kept optional to avoid circular deps with AbstractCore.
-abstractcore = ["abstractcore>=2.0.0"]
+# Compatibility extra only. AbstractVision is loaded by AbstractCore as a plugin,
+# so it deliberately does not install AbstractCore as a dependency.
+abstractcore = []
 
 # Test dependencies used by local contributors. CI installs the package with
 # `--no-deps` and then adds only these light test-time dependencies.
@@ -106,7 +107,6 @@ test = [
   "pytest>=7.0.0",
   "Pillow>=9.0",
   "torch>=2.0,<3.0.0",
-  "abstractcore>=2.0.0,<3.0.0",
 ]
 
 # Documentation dependencies.
@@ -120,7 +120,6 @@ dev = [
   "pytest>=7.0.0",
   "Pillow>=9.0",
   "torch>=2.0,<3.0.0",
-  "abstractcore>=2.0.0,<3.0.0",
   "mkdocs>=1.5.0",
   "mkdocs-material>=9.0.0",
   "build>=1.0.0",
@@ -136,6 +135,7 @@ packages = [
   "abstractvision.assets",
   "abstractvision.backends",
   "abstractvision.integrations",
+  "abstractvision.playground",
 ]
 
 [tool.setuptools.package-dir]
@@ -145,7 +145,7 @@ packages = [
 version = {attr = "abstractvision.__version__"}
 
 [tool.setuptools.package-data]
-abstractvision = ["assets/*.json"]
+abstractvision = ["assets/*.json", "playground/*.html"]
 
 [tool.black]
 line-length = 100
