@@ -705,16 +705,21 @@
 - stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure a model path.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.</p>
 <p>Key config keys (owner.config):
+- <code>vision_backend_instance</code> / <code>vision_backend_factory</code> (advanced injection hooks; bypass env-driven backend creation)
 - <code>vision_backend</code> (<code>openai</code>, <code>diffusers</code>, or <code>sdcpp</code>; default <code>openai</code>)
 - <code>vision_model_id</code> (Diffusers/OpenAI-compatible model id; default <code>runwayml/stable-diffusion-v1-5</code> for Diffusers)
-- <code>vision_device</code> / <code>vision_torch_dtype</code> / <code>vision_allow_download</code> (Diffusers)
+- <code>vision_device</code> / <code>vision_torch_dtype</code> / <code>vision_allow_download</code> / <code>vision_auto_retry_fp32</code> (Diffusers)
 - <code>vision_base_url</code> / <code>vision_api_key</code> (OpenAI-compatible)
 - <code>vision_sdcpp_model</code> / <code>vision_sdcpp_diffusion_model</code> / <code>vision_sdcpp_bin</code> (stable-diffusion.cpp)
+- <code>vision_sdcpp_vae</code> / <code>vision_sdcpp_llm</code> / <code>vision_sdcpp_llm_vision</code> / <code>vision_sdcpp_clip_l</code> / <code>vision_sdcpp_clip_g</code> / <code>vision_sdcpp_t5xxl</code> / <code>vision_sdcpp_extra_args</code> (stable-diffusion.cpp component mode)
 - <code>vision_timeout_s</code> (optional)
 - Optional video endpoint keys:
   - <code>vision_text_to_video_path</code>
   - <code>vision_image_to_video_path</code>
   - <code>vision_image_to_video_mode</code></p>
+<p>Env-only aliases:
+- <code>ABSTRACTVISION_DIFFUSERS_MODEL_ID</code> is accepted for the Diffusers plugin backend before falling back to <code>ABSTRACTVISION_MODEL_ID</code>.
+- <code>ABSTRACTVISION_SDCPP_CLIP_L</code>, <code>ABSTRACTVISION_SDCPP_CLIP_G</code>, and <code>ABSTRACTVISION_SDCPP_T5XXL</code> are accepted for stable-diffusion.cpp component mode.</p>
 <p>Examples:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Local Diffusers. Pre-download weights first, or explicitly allow runtime downloads.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers

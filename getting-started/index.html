@@ -1174,7 +1174,7 @@
 </code></pre></div>
 <p>AbstractVision’s base install includes Torch + Diffusers because that is the default local backend. Heavy modules are imported lazily, but the dependencies are still installed (see <code>pyproject.toml</code>). The stable-diffusion.cpp python bindings are optional via <code>abstractvision[sdcpp]</code> or <code>abstractvision[local]</code> because they can require a native build on some platforms.</p>
 <p>If you see “missing pipeline class” errors for newer model families, install the <code>huggingface-dev</code> extra (to get compatible dependencies) and then install Diffusers from source (<code>main</code>).</p>
-<p>If you're installing <strong>AbstractVision from a repo checkout</strong>, install the dev extra (compatible deps; does not include Diffusers <code>main</code>):</p>
+<p>If you're installing <strong>AbstractVision from a repo checkout</strong>, install the <code>huggingface-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[huggingface-dev]&quot;</span>
 </code></pre></div>
 <p>If you're installing <strong>AbstractVision from PyPI</strong>, you can install the extra directly:</p>
@@ -1194,6 +1194,45 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </code></pre></div>
 <p>No extras are required for the default Diffusers path, so a fresh environment should only need model weights. Use <code>huggingface-dev</code> only when you need Diffusers <code>main</code>, and use <code>sdcpp</code> only when you want the optional stable-diffusion.cpp python binding fallback.</p>
+<p>Optional extras:</p>
+<table>
+<thead>
+<tr>
+<th>Extra</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openai-compatible</code></td>
+<td>Empty compatibility marker; the HTTP backend is stdlib-only today.</td>
+</tr>
+<tr>
+<td><code>sdcpp</code></td>
+<td>Installs <code>stable-diffusion-cpp-python</code> for the stable-diffusion.cpp pip binding fallback.</td>
+</tr>
+<tr>
+<td><code>huggingface</code></td>
+<td>Compatibility extra for the historical Diffusers backend dependency set.</td>
+</tr>
+<tr>
+<td><code>local</code></td>
+<td>Convenience extra for both local backend dependency sets, including <code>sdcpp</code>.</td>
+</tr>
+<tr>
+<td><code>huggingface-dev</code></td>
+<td>Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers <code>main</code> separately when a pipeline is not in the latest release.</td>
+</tr>
+<tr>
+<td><code>abstractcore</code></td>
+<td>Empty compatibility marker; install AbstractCore in the host application environment.</td>
+</tr>
+<tr>
+<td><code>test</code>, <code>docs</code>, <code>dev</code></td>
+<td>Contributor tooling for tests, docs, packaging, formatting, and release checks.</td>
+</tr>
+</tbody>
+</table>
 <p>Optional (recommended): pre-download heavyweight model sets (so first-run doesn’t do surprise multi‑GB downloads):</p>
 <div class="highlight"><pre><span></span><code>python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </span>--list
 python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </span>--plan<span class="w"> </span>--set<span class="w"> </span>sd15_diffusers
@@ -1352,6 +1391,7 @@ pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </s
 <hr />
 <h2 id="21-openai-compatible-http">2.1) OpenAI-compatible HTTP<a class="headerlink" href="#21-openai-compatible-http" title="Permanent link">&para;</a></h2>
 <p>Use this path if you already have a server that exposes OpenAI-shaped image endpoints (e.g. a local model server).</p>
+<p>For unknown or local OpenAI-compatible servers, AbstractVision forwards local extension fields such as <code>steps</code>, <code>seed</code>, <code>guidance_scale</code>, <code>width</code>, and <code>height</code>. For the real OpenAI API and known GPT image models, it suppresses unsupported local-only fields and sends the narrower OpenAI request shape.</p>
 <p>One-shot (stores output via <code>LocalAssetStore</code> and prints an artifact ref + file path):</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:1234/v1<span class="w"> </span><span class="s2">&quot;a watercolor painting of a lighthouse&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">512</span><span class="w"> </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--open
 </code></pre></div>
@@ -1415,7 +1455,7 @@ Rapid-AIO weights separately before using repo ids here. If you intentionally wa
 <p>Notes:
 - <code>FLUX.2-dev</code> uses Diffusers <code>Flux2Pipeline</code> and works on released Diffusers (0.36+).
 - <code>FLUX.2-klein-4B</code> and <code>FLUX.2-klein-9B</code> use <code>Flux2KleinPipeline</code>, which is not available in the released Diffusers (0.36.0). It currently
-  requires installing Diffusers from source (or use the AbstractVision dev extra):
+  requires installing Diffusers from source (with the <code>huggingface-dev</code> extra for compatible dependency pins):
   - <code>pip install -U "abstractvision[huggingface-dev]"</code>
   - <code>pip install -U "git+https://github.com/huggingface/diffusers@main"</code></p>
 <p>Recommended first FLUX example (<code>FLUX.2-klein-4B</code>, not gated):</p>
@@ -1474,7 +1514,7 @@ install <code>sd-cli</code> and re-run in CLI mode.</p>
 <p>If <code>sd-cli</code> is already in your <code>PATH</code>, you can omit the final <code>/path/to/sd-cli</code> argument. If it is not available,
 AbstractVision falls back to <code>stable-diffusion-cpp-python</code> when that package is installed, for example through <code>pip install "abstractvision[sdcpp]"</code>.</p>
 <h3 id="63-download-the-required-qwen-image-vae">6.3 Download the required Qwen Image VAE<a class="headerlink" href="#63-download-the-required-qwen-image-vae" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-L<span class="w"> </span>-o<span class="w"> </span>./qwen_image_vae.safetensors<span class="w"> </span><span class="se">\\</span>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-L<span class="w"> </span>-o<span class="w"> </span>./qwen_image_vae.safetensors<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
 </code></pre></div>
 <h3 id="64-run-qwen-image-with-sdcpp-component-mode">6.4 Run Qwen Image with <code>sdcpp</code> component mode<a class="headerlink" href="#64-run-qwen-image-with-sdcpp-component-mode" title="Permanent link">&para;</a></h3>

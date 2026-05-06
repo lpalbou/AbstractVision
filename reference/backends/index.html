@@ -767,7 +767,8 @@
 </tbody>
 </table>
 <p>Notes:
-- <code>multi_view_image</code> (<code>VisionManager.generate_angles</code>) is part of the public API, but <strong>no built-in backend implements it yet</strong> (all raise <code>CapabilityNotSupportedError</code> today).</p>
+- <code>multi_view_image</code> (<code>VisionManager.generate_angles</code>) is part of the public API, but <strong>no built-in backend implements it yet</strong> (all raise <code>CapabilityNotSupportedError</code> today).
+- Backends may also expose best-effort <code>get_capabilities()</code>, <code>preload()</code>, <code>unload()</code>, <code>generate_image_with_progress(...)</code>, and <code>edit_image_with_progress(...)</code> hooks via the shared <code>VisionBackend</code> contract.</p>
 <h2 id="openai-compatible-http-backend">OpenAI-compatible HTTP backend<a class="headerlink" href="#openai-compatible-http-backend" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
 - You already run a service that exposes OpenAI-shaped endpoints (local or remote).
@@ -776,6 +777,9 @@
 - <code>base_url</code> (required): points to a <code>/v1</code>-style root, e.g. <code>http://localhost:1234/v1</code>
 - <code>api_key</code> (optional): sent as <code>Authorization: Bearer ...</code>
 - <code>model_id</code> (optional): forwarded as <code>model</code> in requests</p>
+<p>Request shape:
+- Unknown/local endpoints receive local extension fields when provided, including <code>steps</code>, <code>seed</code>, <code>guidance_scale</code>, <code>negative_prompt</code>, <code>width</code>, and <code>height</code>.
+- Real OpenAI-looking endpoints and known OpenAI image models use the narrower OpenAI request shape; GPT image models do not receive unsupported local-only fields such as <code>steps</code>, <code>seed</code>, or <code>guidance_scale</code>.</p>
 <p>Code pointers:
 - Config: <code>OpenAICompatibleBackendConfig</code> (<a href="../../src/abstractvision/backends/openai_compatible.py"><code>../../src/abstractvision/backends/openai_compatible.py</code></a>)
 - Backend: <code>OpenAICompatibleVisionBackend</code> (<a href="../../src/abstractvision/backends/openai_compatible.py"><code>../../src/abstractvision/backends/openai_compatible.py</code></a>)</p>
@@ -795,6 +799,11 @@
 The Python backend and REPL are cache-only by default (<code>allow_download=False</code>). Pre-download model weights separately,
 or set <code>allow_download=True</code> / <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> when runtime downloads are desired (see
 config/env in <a href="../configuration/">docs/reference/configuration.md</a>).</p>
+<p>Config fields:
+- <code>model_id</code>, <code>device</code>, <code>torch_dtype</code>
+- <code>allow_download</code>, <code>auto_retry_fp32</code>
+- <code>cache_dir</code>, <code>revision</code>, <code>variant</code>
+- <code>use_safetensors</code>, <code>low_cpu_mem_usage</code></p>
 <h2 id="stable-diffusioncpp-backend-local-ggufcheckpoints">stable-diffusion.cpp backend (local GGUF/checkpoints)<a class="headerlink" href="#stable-diffusioncpp-backend-local-ggufcheckpoints" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
 - You want to run single-file Stable Diffusion checkpoints/GGUF or component-based GGUF diffusion models locally.</p>
@@ -805,7 +814,8 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 - If you care about <strong>GPU acceleration</strong> (macOS <strong>Metal</strong>, NVIDIA <strong>CUDA</strong>, etc.), prefer <strong>CLI mode</strong> via <code>sd-cli</code>.
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means <strong>CPU-only</strong>, so FLUX/Qwen-class models can be extremely slow.
 - REPL selection supports both <code>/backend sdcpp &lt;model.gguf|model.safetensors&gt; [sd_cli_path]</code> and
-  <code>/backend sdcpp &lt;diffusion_model.gguf&gt; &lt;vae.safetensors&gt; &lt;llm.gguf&gt; [sd_cli_path]</code>.</p>
+  <code>/backend sdcpp &lt;diffusion_model.gguf&gt; &lt;vae.safetensors&gt; &lt;llm.gguf&gt; [sd_cli_path]</code>.
+- Python code and AbstractCore plugin configuration can also pass component paths such as <code>clip_l</code>, <code>clip_g</code>, <code>t5xxl</code>, <code>llm_vision</code>, plus <code>extra_args</code>, <code>timeout_s</code>, and <code>cwd</code>.</p>
 <p>Code pointers:
 - Config: <code>StableDiffusionCppBackendConfig</code> (<a href="../../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)
 - Backend: <code>StableDiffusionCppVisionBackend</code> (<a href="../../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)</p>
