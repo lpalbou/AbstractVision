@@ -2081,6 +2081,12 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 ## Unreleased
 
+## 0.2.6 - 2026-05-06
+
+- Docs: refresh install extras, AbstractCore integration, playground ownership, OpenAI-compatible request-shape notes, and backend/config references so the public docs match the current code.
+- Agent docs: update `llms.txt`, include playground endpoint docs in the generated `llms-full.txt` bundle, and regenerate the AI-ready documentation from current sources.
+- Contributing: clarify that `abstractvision[abstractcore]` is a compatibility marker and that AbstractCore is supplied by the host application.
+
 ## 0.2.5 - 2026-05-06
 
 - Packaging: keep the default Diffusers backend installable while moving `stable-diffusion-cpp-python` out of the base dependency set and into the explicit `sdcpp`/`local` extras. This keeps AbstractCore plugin installs from failing on platforms where stable-diffusion.cpp bindings need a local native build.
