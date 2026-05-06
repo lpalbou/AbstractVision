@@ -1121,8 +1121,8 @@ abstractvision<span class="w"> </span>repl
 </ul>
 <p>It does <strong>not</strong> guarantee your configured backend can execute the task; backend support is a separate constraint (<a href="../reference/backends/">docs/reference/backends.md</a>).</p>
 <h2 id="i-only-need-the-http-backend-do-i-have-to-install-torchdiffusers">I only need the HTTP backend. Do I have to install Torch/Diffusers?<a class="headerlink" href="#i-only-need-the-http-backend-do-i-have-to-install-torchdiffusers" title="Permanent link">&para;</a></h2>
-<p>Today, the base install is “batteries included” (see <a href="../pyproject.toml"><code>../pyproject.toml</code></a>). Heavy modules are imported lazily (<a href="../src/abstractvision/backends/__init__.py"><code>../src/abstractvision/backends/__init__.py</code></a>), but the dependencies are still installed.</p>
-<p>If you need a smaller “HTTP-only” install footprint, please open an issue with your target environment and constraints.</p>
+<p>Today, the base install includes Torch/Diffusers because the local Diffusers backend is the default path (see <a href="../pyproject.toml"><code>../pyproject.toml</code></a>). Heavy modules are imported lazily (<a href="../src/abstractvision/backends/__init__.py"><code>../src/abstractvision/backends/__init__.py</code></a>), but the dependencies are still installed.</p>
+<p>The stable-diffusion.cpp python bindings are not part of the base install; use <code>abstractvision[sdcpp]</code> or an external <code>sd-cli</code> only when you need that backend. If you need a smaller “HTTP-only” install footprint, please open an issue with your target environment and constraints.</p>
 <h2 id="how-do-i-integrate-with-abstractcore">How do I integrate with AbstractCore?<a class="headerlink" href="#how-do-i-integrate-with-abstractcore" title="Permanent link">&para;</a></h2>
 <p>Two options (details in <a href="../reference/abstractcore-integration/">docs/reference/abstractcore-integration.md</a>):</p>
 <ul>

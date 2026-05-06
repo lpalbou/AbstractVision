@@ -700,12 +700,12 @@
 <li><code>abstractvision:openai-compatible</code> (see <code>_AbstractVisionCapability.backend_id</code> in <a href="../../src/abstractvision/integrations/abstractcore_plugin.py"><code>../../src/abstractvision/integrations/abstractcore_plugin.py</code></a>). The id is retained for compatibility; the implementation now supports local and HTTP backends.</li>
 </ul>
 <p>Current behavior:
-- Default: local Diffusers with <code>runwayml/stable-diffusion-v1-5</code>, cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set.
-- OpenAI-compatible HTTP: set <code>ABSTRACTVISION_BACKEND=openai</code> and <code>ABSTRACTVISION_BASE_URL</code>.
+- Default: OpenAI-compatible HTTP. Set <code>ABSTRACTVISION_BASE_URL</code> to OpenAI or a local compatible <code>/v1</code> server.
+- Local Diffusers: set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set.
 - stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure a model path.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.</p>
 <p>Key config keys (owner.config):
-- <code>vision_backend</code> (<code>diffusers</code>, <code>openai</code>, or <code>sdcpp</code>; default <code>diffusers</code>)
+- <code>vision_backend</code> (<code>openai</code>, <code>diffusers</code>, or <code>sdcpp</code>; default <code>openai</code>)
 - <code>vision_model_id</code> (Diffusers/OpenAI-compatible model id; default <code>runwayml/stable-diffusion-v1-5</code> for Diffusers)
 - <code>vision_device</code> / <code>vision_torch_dtype</code> / <code>vision_allow_download</code> (Diffusers)
 - <code>vision_base_url</code> / <code>vision_api_key</code> (OpenAI-compatible)
@@ -716,7 +716,7 @@
   - <code>vision_image_to_video_path</code>
   - <code>vision_image_to_video_mode</code></p>
 <p>Examples:</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Local Diffusers default. Pre-download weights first, or explicitly allow runtime downloads.</span>
+<div class="highlight"><pre><span></span><code><span class="c1"># Local Diffusers. Pre-download weights first, or explicitly allow runtime downloads.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_DIFFUSERS_DEVICE</span><span class="o">=</span>auto
@@ -726,8 +726,12 @@
 <span class="n">llm</span> <span class="o">=</span> <span class="n">create_llm</span><span class="p">(</span><span class="s2">&quot;openai&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">)</span>
 <span class="n">png_bytes</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2i</span><span class="p">(</span><span class="s2">&quot;a red square&quot;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><span class="c1"># OpenAI-compatible HTTP backend, for example through AbstractCore Server.</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>openai
+<div class="highlight"><pre><span></span><code><span class="c1"># OpenAI API.</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BASE_URL</span><span class="o">=</span>https://api.openai.com/v1
+<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_API_KEY</span><span class="o">=</span>...
+<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>gpt-image-1.5
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># Local OpenAI-compatible HTTP server, for example AbstractCore Server.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BASE_URL</span><span class="o">=</span>http://localhost:8000/v1
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>server/default
 </code></pre></div>

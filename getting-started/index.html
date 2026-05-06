@@ -1172,7 +1172,7 @@
 <p>From PyPI:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>abstractvision
 </code></pre></div>
-<p>AbstractVision’s base install is <strong>batteries included</strong> (Torch + Diffusers + stable-diffusion.cpp bindings). Heavy modules are imported lazily, but the dependencies are still installed (see <code>pyproject.toml</code>).</p>
+<p>AbstractVision’s base install includes Torch + Diffusers because that is the default local backend. Heavy modules are imported lazily, but the dependencies are still installed (see <code>pyproject.toml</code>). The stable-diffusion.cpp python bindings are optional via <code>abstractvision[sdcpp]</code> or <code>abstractvision[local]</code> because they can require a native build on some platforms.</p>
 <p>If you see “missing pipeline class” errors for newer model families, install the <code>huggingface-dev</code> extra (to get compatible dependencies) and then install Diffusers from source (<code>main</code>).</p>
 <p>If you're installing <strong>AbstractVision from a repo checkout</strong>, install the dev extra (compatible deps; does not include Diffusers <code>main</code>):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[huggingface-dev]&quot;</span>
@@ -1193,7 +1193,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 <p>Or, from a repo checkout (run in the repo root):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </code></pre></div>
-<p>No extras are required for most use cases: AbstractVision is batteries-included (Diffusers + stable-diffusion.cpp python bindings), so a fresh environment should only need model weights. Use <code>huggingface-dev</code> only when you need Diffusers <code>main</code>.</p>
+<p>No extras are required for the default Diffusers path, so a fresh environment should only need model weights. Use <code>huggingface-dev</code> only when you need Diffusers <code>main</code>, and use <code>sdcpp</code> only when you want the optional stable-diffusion.cpp python binding fallback.</p>
 <p>Optional (recommended): pre-download heavyweight model sets (so first-run doesn’t do surprise multi‑GB downloads):</p>
 <div class="highlight"><pre><span></span><code>python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </span>--list
 python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </span>--plan<span class="w"> </span>--set<span class="w"> </span>sd15_diffusers
@@ -1452,8 +1452,10 @@ Rapid-AIO weights separately before using repo ids here. If you intentionally wa
 <h2 id="6-gguf-diffusion-models-stable-diffusioncpp">6) GGUF diffusion models (stable-diffusion.cpp)<a class="headerlink" href="#6-gguf-diffusion-models-stable-diffusioncpp" title="Permanent link">&para;</a></h2>
 <p>If you downloaded a GGUF diffusion model (like Qwen Image GGUF or FLUX.2 GGUF), Diffusers cannot load it. Use the stable-diffusion.cpp backend instead (either via pip-installed python bindings or <code>sd-cli</code>).</p>
 <h3 id="61-install-stable-diffusioncpp-runtime">6.1 Install stable-diffusion.cpp runtime<a class="headerlink" href="#61-install-stable-diffusioncpp-runtime" title="Permanent link">&para;</a></h3>
-<p>By default, <code>pip install abstractvision</code> includes the pip-installable stable-diffusion.cpp python bindings (<code>stable-diffusion-cpp-python</code>).
-This is the simplest path, but it may run <strong>CPU-only</strong> depending on how the wheel was built.</p>
+<p>The base <code>pip install abstractvision</code> path does not install stable-diffusion.cpp python bindings. Use one of these explicit runtime choices:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[sdcpp]&quot;</span>
+</code></pre></div>
+<p>This pip binding path is convenient, but it may require a native build or run <strong>CPU-only</strong> depending on how the wheel was built.</p>
 <p>Alternative (external executable):</p>
 <ul>
 <li>Download <code>sd-cli</code> from: <a href="https://github.com/leejet/stable-diffusion.cpp/releases">https://github.com/leejet/stable-diffusion.cpp/releases</a></li>
@@ -1470,7 +1472,7 @@ install <code>sd-cli</code> and re-run in CLI mode.</p>
 /t2i &quot;a watercolor painting of a lighthouse&quot; --width 512 --height 512 --steps 10 --open
 </code></pre></div>
 <p>If <code>sd-cli</code> is already in your <code>PATH</code>, you can omit the final <code>/path/to/sd-cli</code> argument. If it is not available,
-AbstractVision falls back to <code>stable-diffusion-cpp-python</code> when that package is installed.</p>
+AbstractVision falls back to <code>stable-diffusion-cpp-python</code> when that package is installed, for example through <code>pip install "abstractvision[sdcpp]"</code>.</p>
 <h3 id="63-download-the-required-qwen-image-vae">6.3 Download the required Qwen Image VAE<a class="headerlink" href="#63-download-the-required-qwen-image-vae" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-L<span class="w"> </span>-o<span class="w"> </span>./qwen_image_vae.safetensors<span class="w"> </span><span class="se">\\</span>
 <span class="w">  </span>https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors

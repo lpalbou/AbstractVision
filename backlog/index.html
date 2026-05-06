@@ -671,11 +671,11 @@
 <li><strong>No test-driven special casing</strong>: implementation must be general-purpose logic, not tailored to tests.</li>
 <li><strong>Keep the public contract stable</strong>: preserve the integrator-facing API (<code>VisionManager.generate_image/edit_image/generate_angles/generate_video/image_to_video/...</code>).</li>
 <li><strong>Artifact-first outputs</strong>: generated images/videos must be representable as small JSON objects (refs), not inlined bytes, to support tool calling + workflows + third-party integrations.</li>
-<li><strong>Batteries-included install, but lazy imports</strong>: the default install includes local backends, but importing <code>abstractvision</code> should not eagerly import heavy runtime stacks unless needed (avoid model loads/weight downloads at import time; defer heavy backend imports until backend construction or first use).</li>
+<li><strong>Default Diffusers install, but lazy imports</strong>: the default install includes the Diffusers local backend, while stable-diffusion.cpp python bindings remain opt-in through <code>abstractvision[sdcpp]</code>/<code>abstractvision[local]</code>. Importing <code>abstractvision</code> should not eagerly import heavy runtime stacks unless needed (avoid model loads/weight downloads at import time; defer heavy backend imports until backend construction or first use).</li>
 <li><strong>Prefer permissive licensing</strong>: only adopt MIT/Apache/BSD-compatible components. If none exist, document feasibility and create a backlog item.</li>
 </ul>
 <p>Note: some older completed backlog items mention “heavy deps behind extras” and a “dependency-light base install”.
-Treat those as historical context; current packaging is “batteries included”, but we still want lazy imports and explicit model download/load semantics.</p>
+Treat those as historical context; current packaging includes the default Diffusers path, but <code>sdcpp</code> remains explicit and we still want lazy imports and explicit model download/load semantics.</p>
 <hr />
 <h2 id="folder-layout">Folder layout<a class="headerlink" href="#folder-layout" title="Permanent link">&para;</a></h2>
 <ul>
