@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.2.2 - 2026-05-06
+
+- Release automation: add GitHub Actions CI/release workflows, issue templates, pre-commit config, MkDocs config, PyPI trusted publishing, GitHub Releases, and release-time docs deployment to `gh-pages`.
+- Packaging: support Python 3.9-3.13, modernize license metadata, include package data explicitly, and add test/docs/dev extras.
+- Defaults: make the REPL default to local Diffusers with `runwayml/stable-diffusion-v1-5`, `ABSTRACTVISION_DIFFUSERS_DEVICE=auto`, and cache-only/offline runtime downloads disabled by default.
+- Diffusers backend: keep `allow_download=False` as the default, force Hugging Face offline/cache-only env during loads/calls, disable implicit HF token use offline, and load from cached snapshot paths when present.
+- Diffusers backend: ignore unknown REPL `extra` flags that the pipeline `__call__` does not accept, avoiding `unexpected keyword argument` crashes.
+- Diffusers backend: add better fp16 variant fallback behavior, MPS dtype/invalid-output retry handling, LoRA/Rapid-AIO offline handling, and clearer missing-local-model errors.
+- Capability registry: add `black-forest-labs/FLUX.2-klein-9B` and normalize FLUX license id to `flux-non-commercial-license`.
+- Docs: refresh quickstarts around Stable Diffusion 1.5 first, add clearer macOS Metal/NVIDIA CUDA/CPU guidance, expand stable-diffusion.cpp notes, and point users to cache-only local workflows.
+- Tooling: add `scripts/download_model_sets.py` for explicit heavyweight model downloads (Stable Diffusion 1.5, FLUX 2 GGUF/Diffusers, and Qwen Image snapshots).
+- Cleanup: remove the misspelled duplicate `ACKNOWLEDMENTS.md`.
+
 ## 0.2.1
 
 - Documentation refresh for public release:

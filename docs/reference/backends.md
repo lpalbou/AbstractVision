@@ -13,7 +13,7 @@ See also:
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Heavy deps (Torch/Diffusers). Supports cache-only/offline mode. |
-| stable-diffusion.cpp (local GGUF) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses `sd-cli` if present, else `stable-diffusion-cpp-python`. Qwen Image GGUF needs VAE + LLM components. |
+| stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses `sd-cli` if present, else `stable-diffusion-cpp-python`. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components. |
 
 Notes:
 - `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
@@ -41,23 +41,33 @@ Code pointers:
 ## Diffusers backend (local)
 
 **When to use**
-- You want local inference for Diffusers pipelines (Stable Diffusion, Qwen Image, FLUX, GLM-Image, …).
+- You want local inference for Diffusers pipelines.
+- Start with `runwayml/stable-diffusion-v1-5` for the lowest-risk local test.
+- Move to `black-forest-labs/FLUX.2-klein-4B` after that if you want a newer non-gated model and can install Diffusers `main`.
 
 Code pointers:
 - Config: `HuggingFaceDiffusersBackendConfig` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
 - Backend: `HuggingFaceDiffusersVisionBackend` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
 
 **Offline / cache-only mode**
-The backend supports cache-only mode by setting `allow_download=False` (see config/env in [docs/reference/configuration.md](configuration.md)).
+The Python backend and REPL are cache-only by default (`allow_download=False`). Pre-download model weights separately,
+or set `allow_download=True` / `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` when runtime downloads are desired (see
+config/env in [docs/reference/configuration.md](configuration.md)).
 
-## stable-diffusion.cpp backend (local GGUF)
+## stable-diffusion.cpp backend (local GGUF/checkpoints)
 
 **When to use**
-- You want to run GGUF diffusion models locally (e.g. Qwen Image GGUF).
+- You want to run single-file Stable Diffusion checkpoints/GGUF or component-based GGUF diffusion models locally.
 
 Runtime modes (auto-selected):
 - **CLI mode** via `sd-cli` (stable-diffusion.cpp executable) when available in `PATH`
 - **Python mode** via `stable-diffusion-cpp-python` when `sd-cli` is not available
+
+Notes:
+- If you care about **GPU acceleration** (macOS **Metal**, NVIDIA **CUDA**, etc.), prefer **CLI mode** via `sd-cli`.
+- Python bindings run whatever backend the installed wheel was built with. On macOS, that often means **CPU-only**, so FLUX/Qwen-class models can be extremely slow.
+- REPL selection supports both `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]` and
+  `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`.
 
 Code pointers:
 - Config: `StableDiffusionCppBackendConfig` ([`../../src/abstractvision/backends/stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py))

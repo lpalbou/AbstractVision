@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -218,7 +219,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         # Pipeline load args.
         self.assertTrue(fake_t2i_cls.from_pretrained.called)
         _, kwargs = fake_t2i_cls.from_pretrained.call_args
-        self.assertEqual(kwargs.get("local_files_only"), False)
+        self.assertEqual(kwargs.get("local_files_only"), True)
         self.assertEqual(kwargs.get("use_safetensors"), True)
 
         # Pipeline call kwargs.
@@ -277,6 +278,54 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
                 os.environ["TRANSFORMERS_OFFLINE"] = old_tx
             if old_df is not None:
                 os.environ["DIFFUSERS_OFFLINE"] = old_df
+
+    def test_offline_mode_uses_cached_snapshot_path_and_disables_implicit_token(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        with tempfile.TemporaryDirectory() as td:
+            hf_home = Path(td)
+            repo_dir = hf_home / "hub" / "models--runwayml--stable-diffusion-v1-5"
+            snap_dir = repo_dir / "snapshots" / "abc123"
+            snap_dir.mkdir(parents=True)
+            (repo_dir / "refs").mkdir(parents=True)
+            (repo_dir / "refs" / "main").write_text("abc123", encoding="utf-8")
+
+            def _from_pretrained(model_arg, **_kwargs):
+                self.assertEqual(str(model_arg), str(snap_dir))
+                self.assertTrue(_kwargs.get("local_files_only"))
+                self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
+                self.assertEqual(os.environ.get("TRANSFORMERS_OFFLINE"), "1")
+                self.assertEqual(os.environ.get("DIFFUSERS_OFFLINE"), "1")
+                self.assertEqual(os.environ.get("HF_HUB_DISABLE_IMPLICIT_TOKEN"), "1")
+                return fake_pipe
+
+            fake_diffusion_pipeline_cls = MagicMock()
+            fake_t2i_cls = MagicMock()
+            fake_t2i_cls.from_pretrained.side_effect = _from_pretrained
+            fake_i2i_cls = MagicMock()
+            fake_inpaint_cls = MagicMock()
+
+            with patch.dict("os.environ", {"HF_HOME": str(hf_home)}, clear=False), patch(
+                "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+                return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+            ):
+                backend = HuggingFaceDiffusersVisionBackend(
+                    config=HuggingFaceDiffusersBackendConfig(
+                        model_id="runwayml/stable-diffusion-v1-5",
+                        device="cpu",
+                    )
+                )
+                asset = backend.generate_image(ImageGenerationRequest(prompt="hello"))
+
+        self.assertEqual(asset.mime_type, "image/png")
+        self.assertTrue(fake_t2i_cls.from_pretrained.called)
 
     def test_generate_image_does_not_auto_retry_on_invalid_cast_warning(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -364,7 +413,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         # Ensure LoRA loading sees offline env vars.
         def _load_lora_weights(source: str, adapter_name: str = None, **kwargs):
-            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "0")
+            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
             fake_pipe.lora_loads.append({"source": source, "adapter_name": adapter_name, "kwargs": dict(kwargs)})
 
         fake_pipe.load_lora_weights = _load_lora_weights
@@ -418,8 +467,8 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         tr = _FakeTransformer()
 
         def _from_pretrained(*_args, **_kwargs):
-            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "0")
-            self.assertFalse(_kwargs.get("local_files_only"))
+            self.assertEqual(os.environ.get("HF_HUB_OFFLINE"), "1")
+            self.assertTrue(_kwargs.get("local_files_only"))
             return tr
 
         fake_diffusion_pipeline_cls = MagicMock()

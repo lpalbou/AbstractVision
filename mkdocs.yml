@@ -1,0 +1,46 @@
+site_name: AbstractVision
+site_description: Model-agnostic generative vision abstractions for image and video workflows.
+site_url: https://lpalbou.github.io/abstractvision/
+repo_url: https://github.com/lpalbou/abstractvision
+repo_name: lpalbou/abstractvision
+
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
+
+plugins:
+  - search
+
+validation:
+  nav:
+    omitted_files: ignore
+  links:
+    not_found: ignore
+    unrecognized_links: ignore
+
+nav:
+  - Home: README.md
+  - Getting Started: getting-started.md
+  - API Overview: api.md
+  - Architecture: architecture.md
+  - FAQ: faq.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - Backends: reference/backends.md
+      - Artifacts: reference/artifacts.md
+      - Capabilities Registry: reference/capabilities-registry.md
+      - AbstractCore Integration: reference/abstractcore-integration.md

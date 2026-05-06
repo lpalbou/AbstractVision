@@ -89,14 +89,14 @@ backend = HuggingFaceDiffusersVisionBackend(
     config=HuggingFaceDiffusersBackendConfig(
         model_id="runwayml/stable-diffusion-v1-5",
         device="auto",
-        allow_download=True,
+        allow_download=False,
     )
 )
 vm = VisionManager(backend=backend)
 asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, height=512, steps=10)
 ```
 
-Note: for cache-only/offline mode, set `allow_download=False`.
+Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 ## Passing advanced backend parameters (`extra`)
 
@@ -128,7 +128,7 @@ reg = VisionModelCapabilitiesRegistry()
 print(reg.list_tasks())
 print(reg.models_for_task("text_to_image"))
 
-reg.require_support("Qwen/Qwen-Image-2512", "text_to_image")
+reg.require_support("runwayml/stable-diffusion-v1-5", "text_to_image")
 ```
 
 Optional gating:

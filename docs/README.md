@@ -5,7 +5,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 ## Start here (new users)
 
 1) [Project overview + quickstart](../README.md)  
-2) [Getting started](getting-started.md) (first image; Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP, Playground)  
+2) [Getting started](getting-started.md) (first image with Stable Diffusion 1.5; then klein-4B, GGUF, OpenAI-compatible HTTP, Playground)
 3) [Architecture](architecture.md) (how the pieces fit together)
 
 ## Quick reference

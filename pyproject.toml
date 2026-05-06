@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,19 +7,20 @@ name = "abstractvision"
 dynamic = ["version"]
 description = "Model-agnostic generative vision abstractions (image/video) for the Abstract ecosystem"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{name = "Laurent-Philippe Albou", email = "contact@abstractcore.ai"}]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Multimedia",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -99,9 +100,40 @@ huggingface-dev = [
 # Tool integration module (optional import). Kept optional to avoid circular deps with AbstractCore.
 abstractcore = ["abstractcore>=2.0.0"]
 
+# Test dependencies used by local contributors. CI installs the package with
+# `--no-deps` and then adds only these light test-time dependencies.
+test = [
+  "pytest>=7.0.0",
+  "Pillow>=9.0",
+  "torch>=2.0,<3.0.0",
+  "abstractcore>=2.0.0,<3.0.0",
+]
+
+# Documentation dependencies.
+docs = [
+  "mkdocs>=1.5.0",
+  "mkdocs-material>=9.0.0",
+]
+
+# Complete local development environment.
+dev = [
+  "pytest>=7.0.0",
+  "Pillow>=9.0",
+  "torch>=2.0,<3.0.0",
+  "abstractcore>=2.0.0,<3.0.0",
+  "mkdocs>=1.5.0",
+  "mkdocs-material>=9.0.0",
+  "build>=1.0.0",
+  "twine>=4.0.0",
+  "ruff>=0.5.7",
+  "black>=23.0.0",
+  "pre-commit>=3.0.0",
+]
+
 [tool.setuptools]
 packages = [
   "abstractvision",
+  "abstractvision.assets",
   "abstractvision.backends",
   "abstractvision.integrations",
 ]
@@ -114,3 +146,58 @@ version = {attr = "abstractvision.__version__"}
 
 [tool.setuptools.package-data]
 abstractvision = ["assets/*.json"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 100
+known_first_party = ["abstractvision"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "W",
+  "F",
+  "I",
+  "B",
+  "C4",
+  "UP",
+]
+ignore = [
+  "E501",
+  "B008",
+  "B904",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**/*" = ["B011"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra --tb=short --strict-markers --strict-config --disable-warnings -p no:cacheprovider"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+python_classes = ["Test*"]

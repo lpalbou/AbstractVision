@@ -23,7 +23,7 @@ flowchart LR
   BE --> VM
   VM -->|optional| Store[MediaStore]
   Store --> Ref[Artifact ref dict]
-  VM -->|no store| Asset[GeneratedAsset (bytes + mime)]
+  VM -->|no store| Asset["GeneratedAsset (bytes + mime)"]
 ```
 
 ## Status (current backend support)
@@ -73,16 +73,21 @@ Start here:
 
 ### Recommended default model (local / cross-platform)
 
-AbstractVision does not hardcode a default model in the library API; you choose a backend + model id.
-
-For a cross-platform local starter model (typically fits on GPUs around **≤16GB VRAM** and also works on CPU), start with:
-`runwayml/stable-diffusion-v1-5` (Diffusers backend).
+The REPL defaults to a cache-only Diffusers setup using `runwayml/stable-diffusion-v1-5` on `auto` device.
+Pre-download the model outside the REPL, then start generating:
 
 ```bash
+huggingface-cli download runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
 abstractvision repl
+```
+
+For a fresh cache, you can also permit the REPL to download missing files:
+
+```bash
+ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 abstractvision repl
 ```
 
 More recommendations by VRAM: [`docs/getting-started.md`](docs/getting-started.md).
@@ -93,7 +98,7 @@ More recommendations by VRAM: [`docs/getting-started.md`](docs/getting-started.m
 from abstractvision import VisionModelCapabilitiesRegistry
 
 reg = VisionModelCapabilitiesRegistry()
-assert reg.supports("Qwen/Qwen-Image-2512", "text_to_image")
+assert reg.supports("runwayml/stable-diffusion-v1-5", "text_to_image")
 
 print(reg.list_tasks())
 print(reg.models_for_task("text_to_image"))
@@ -137,7 +142,7 @@ png_bytes = vm.store.load_bytes(out["$artifact"])  # type: ignore[union-attr]
 ```bash
 abstractvision models
 abstractvision tasks
-abstractvision show-model zai-org/GLM-Image
+abstractvision show-model runwayml/stable-diffusion-v1-5
 
 abstractvision repl
 ```
@@ -145,11 +150,22 @@ abstractvision repl
 Inside the REPL:
 
 ```text
+/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
+```
+
+For a newer but still relatively small local model, try `black-forest-labs/FLUX.2-klein-4B` after installing Diffusers
+from source (see [`docs/getting-started.md`](docs/getting-started.md)):
+
+```text
+/backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
+/t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
+```
+
+OpenAI-compatible server example:
+
+```text
 /backend openai http://localhost:1234/v1
-/cap-model zai-org/GLM-Image
-/set width 1024
-/set height 1024
-/t2i "a watercolor painting of a lighthouse" --open
+/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
 ```
 
 The CLI/REPL can also be configured via `ABSTRACTVISION_*` env vars; see [`docs/reference/configuration.md`](docs/reference/configuration.md).
@@ -163,9 +179,12 @@ abstractvision i2i --base-url http://localhost:1234/v1 --image ./input.png "make
 
 #### Local GGUF via stable-diffusion.cpp
 
-If you want to run GGUF diffusion models locally (e.g. Qwen Image), use the stable-diffusion.cpp backend (`sdcpp`).
+If you want to run GGUF diffusion models locally, use the stable-diffusion.cpp backend (`sdcpp`). Start with a
+single-file Stable Diffusion model when possible; Qwen Image and FLUX GGUF component sets are heavier.
 
-Recommended (pip-only; no external binary download): `pip install abstractvision` already includes the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`).
+Recommended:
+- **macOS (Apple Silicon / Metal)**: install `sd-cli` (stable-diffusion.cpp executable) from releases and use CLI mode for Metal acceleration.
+- Otherwise (pip-only convenience): `pip install abstractvision` already includes the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`), but this may run CPU-only depending on the wheel build.
 
 Alternative (external executable):
 
@@ -174,8 +193,15 @@ Alternative (external executable):
 In the REPL:
 
 ```text
-/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf /path/to/qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf
-/t2i "a watercolor painting of a lighthouse" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
+/backend sdcpp /path/to/sd-v1-5.gguf /path/to/sd-cli
+/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
+```
+
+FLUX.2-klein-4B GGUF component example:
+
+```text
+/backend sdcpp /path/to/flux-2-klein-4b-Q8_0.gguf /path/to/flux2_ae.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+/t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
 ```
 
 Extra flags are forwarded via `request.extra`. In CLI mode they are forwarded to `sd-cli`; in python bindings mode, keys are mapped to python binding kwargs when supported and unsupported keys are ignored.
@@ -213,7 +239,7 @@ In practice:
 
 ## Requirements
 
-- Python >= 3.8
+- Python >= 3.9
 
 ## License
 

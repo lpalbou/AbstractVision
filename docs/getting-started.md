@@ -4,7 +4,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)
-- **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via pip-installable python bindings (no external `sd-cli` required) or the external `sd-cli` executable
+- **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: static UI for AbstractCore Server vision job endpoints (`/v1/vision/*`)
 
 See also:
@@ -71,6 +71,49 @@ pip install -e .
 
 No extras are required for most use cases: AbstractVision is batteries-included (Diffusers + stable-diffusion.cpp python bindings), so a fresh environment should only need model weights. Use `huggingface-dev` only when you need Diffusers `main`.
 
+Optional (recommended): pre-download heavyweight model sets (so first-run doesn’t do surprise multi‑GB downloads):
+
+```bash
+python scripts/download_model_sets.py --list
+python scripts/download_model_sets.py --plan --set sd15_diffusers
+python scripts/download_model_sets.py --plan --set flux2_klein_4b_gguf
+python scripts/download_model_sets.py --set sd15_diffusers
+```
+
+### 0.1 Hardware quickstart (macOS Metal vs NVIDIA CUDA vs CPU)
+
+AbstractVision can run “locally” via two main routes:
+
+- **Diffusers backend**: uses Torch device selection (`cuda` / `mps` / `cpu`).
+- **stable-diffusion.cpp backend (`sdcpp`)**: runs GGUF diffusion models using:
+  - `sd-cli` (**recommended** when you want GPU backends like **Metal** or **CUDA**)
+  - or `stable-diffusion-cpp-python` (convenient, but often **CPU-only**, especially on macOS)
+
+#### macOS (Apple Silicon, Metal)
+
+- **Diffusers**: start with Stable Diffusion 1.5, then move up:
+  - `/backend diffusers runwayml/stable-diffusion-v1-5 mps float16`
+  - `/backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16` (requires Diffusers `main` today)
+- **GGUF (`sdcpp`)**: install `sd-cli` from stable-diffusion.cpp releases and use **CLI mode** for Metal speed:
+  - Download: <https://github.com/leejet/stable-diffusion.cpp/releases>
+  - Pick the Darwin arm64 zip (example asset name: `sd-…-bin-Darwin-macOS-…-arm64.zip`)
+  - If macOS blocks execution, clear quarantine: `xattr -dr com.apple.quarantine /path/to/sd-cli`
+  - In the REPL, pass the full path as the last arg to `/backend sdcpp …` (see section **6)**).
+
+If you see `Using CPU backend` in logs, you’re on CPU (it will work, but can be extremely slow for large models).
+
+#### NVIDIA (CUDA)
+
+- Install a CUDA-enabled PyTorch wheel first (see <https://pytorch.org/get-started/locally/>).
+- Use Diffusers with `cuda` + `float16`:
+  - `/backend diffusers runwayml/stable-diffusion-v1-5 cuda float16`
+- For GGUF (`sdcpp`) on NVIDIA, use an `sd-cli` build compiled with CUDA (stable-diffusion.cpp releases provide multiple assets depending on tag).
+
+#### CPU-only
+
+- Expect slow inference. Prefer smaller models and lower resolutions/steps.
+- `sdcpp` via python bindings is the simplest “no external binary” option, but it will use whatever backend the wheel was compiled with (often CPU).
+
 ---
 
 ## Recommended default models (VRAM guide)
@@ -85,14 +128,22 @@ Notes:
 | GPU VRAM | Recommended model id | Why | Install / quickstart |
 |---:|---|---|---|
 | ≤ 16 GB | `runwayml/stable-diffusion-v1-5` | Small, stable, and widely compatible (Windows/Linux CUDA, macOS MPS) | `pip install abstractvision` then run the REPL using the snippet below |
+| 24-32 GB | `black-forest-labs/FLUX.2-klein-4B` | Newer non-gated model, much smaller than FLUX.2-dev | Install Diffusers `main`, then use the FLUX.2 klein section below |
 | 32 GB | `stabilityai/stable-diffusion-3.5-large-turbo` | High-quality still images with low step counts (gated) | Accept model terms on HF, set `HF_TOKEN`, then use the SD3.5 section below |
 | 64 GB | `Qwen/Qwen-Image-2512` | Strong prompt following and text rendering (large model) | Same as Diffusers setup; if pipeline import fails, use Diffusers `main` (see install section above) |
 | 128 GB | `black-forest-labs/FLUX.2-dev` | Very high quality (very large; non-commercial license; gated) | Accept model terms on HF, set `HF_TOKEN`, then use the FLUX section below |
+
+macOS Metal (Apple Silicon) quick picks:
+
+- If you want **local quantized FLUX.2** on Metal: prefer **stable-diffusion.cpp** (GGUF) via the `sdcpp` backend (see section **6)**).
+- If you want a fast local FLUX.2 for iteration: `black-forest-labs/FLUX.2-klein-4B` (or GGUF equivalents) is usually the most practical starting point.
+- If you want strong prompt following + text rendering: `Qwen/Qwen-Image-2512` (Diffusers on `mps`, start with `float16`).
 
 Recommended default (local, cross-platform) — Stable Diffusion 1.5:
 
 ```bash
 pip install abstractvision
+huggingface-cli download runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -102,49 +153,27 @@ abstractvision repl
 Then type a prompt (plain text runs `/t2i`), or use `/t2i "..." --open`.
 
 Jump to detailed recipes:
-- Stable Diffusion 1.5: section **2) First image (Diffusers)**
+- Stable Diffusion 1.5: section **1) First local image (Diffusers)**
+- FLUX.2-klein-4B: section **2) Next small model (FLUX.2-klein-4B)**
+- OpenAI-compatible HTTP: section **2.1) OpenAI-compatible HTTP**
 - Qwen Image: section **3) Qwen Image (Diffusers)**
-- FLUX 2: section **4) FLUX 2 (Diffusers)**
+- FLUX 2 details: section **4) FLUX 2 (Diffusers)**
 - SD3.5: section **5) Stable Diffusion 3.5 (Diffusers, gated)**
 
 ---
 
-## 1) First image (OpenAI-compatible HTTP)
+## 1) First local image (Diffusers)
 
-Use this path if you already have a server that exposes OpenAI-shaped image endpoints (e.g. a local model server).
-
-One-shot (stores output via `LocalAssetStore` and prints an artifact ref + file path):
+The REPL is cache-only by default, so it will not download model weights. Download the model separately first:
 
 ```bash
-abstractvision t2i --base-url http://localhost:1234/v1 "a cinematic photo of a red fox in snow" --open
-```
-
-Interactive REPL:
-
-```bash
-abstractvision repl
-```
-
-```text
-/backend openai http://localhost:1234/v1
-/t2i "a watercolor painting of a lighthouse" --width 768 --height 768 --steps 20 --open
-```
-
-If your server also supports video endpoints, configure them via `ABSTRACTVISION_TEXT_TO_VIDEO_PATH` / `ABSTRACTVISION_IMAGE_TO_VIDEO_PATH` (see [docs/reference/configuration.md](reference/configuration.md)).
-
----
-
-## 2) First image (Diffusers)
-
-By default, AbstractVision allows downloading models into your Hugging Face cache.
-To force cache-only/offline mode, set:
-
-```bash
-export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0
+huggingface-cli download runwayml/stable-diffusion-v1-5
 ```
 
 ```bash
+# Optional overrides; these are already the REPL defaults.
 export ABSTRACTVISION_BACKEND=diffusers
+export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
 # auto prefers cuda, then mps, then cpu. You can also set cuda/mps/cpu explicitly.
 # Optional: override dtype (auto defaults to float16 on MPS for broad compatibility).
@@ -170,20 +199,66 @@ Start the REPL:
 abstractvision repl
 ```
 
-Then:
+The REPL defaults to `diffusers` + `runwayml/stable-diffusion-v1-5`:
 
 ```text
-/backend diffusers runwayml/stable-diffusion-v1-5 auto
 /set guidance_scale 7
 /set seed 42
-/t2i "a cinematic photo of a red fox in snow" --open
+/t2i "a cinematic photo of a red fox in snow" --width 512 --height 512 --steps 10 --open
 ```
 
 Change settings by changing `/set …` values, or pass flags per request:
 
 ```text
-/t2i "a watercolor painting of a lighthouse" --width 768 --height 768 --steps 30 --seed 123 --guidance-scale 6.5 --open
+/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 20 --seed 123 --guidance-scale 6.5 --open
 ```
+
+---
+
+## 2) Next small model (FLUX.2-klein-4B)
+
+After Stable Diffusion 1.5 works, `black-forest-labs/FLUX.2-klein-4B` is the next recommended local test. It is
+non-gated and much smaller than FLUX.2-dev, but it currently needs Diffusers from source because released Diffusers
+may not include `Flux2KleinPipeline`.
+
+```bash
+pip install -U "abstractvision[huggingface-dev]"
+pip install -U "git+https://github.com/huggingface/diffusers@main"
+```
+
+Quick REPL test:
+
+```text
+/backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
+/t2i "a product photo of a matte black espresso machine" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --open
+```
+
+Use `cuda float16` on NVIDIA, or `auto` if you want AbstractVision/Torch to pick the device.
+
+---
+
+## 2.1) OpenAI-compatible HTTP
+
+Use this path if you already have a server that exposes OpenAI-shaped image endpoints (e.g. a local model server).
+
+One-shot (stores output via `LocalAssetStore` and prints an artifact ref + file path):
+
+```bash
+abstractvision t2i --base-url http://localhost:1234/v1 "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
+```
+
+Interactive REPL:
+
+```bash
+abstractvision repl
+```
+
+```text
+/backend openai http://localhost:1234/v1
+/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
+```
+
+If your server also supports video endpoints, configure them via `ABSTRACTVISION_TEXT_TO_VIDEO_PATH` / `ABSTRACTVISION_IMAGE_TO_VIDEO_PATH` (see [docs/reference/configuration.md](reference/configuration.md)).
 
 ---
 
@@ -222,10 +297,11 @@ Tip: keep `guidance_scale` relatively low for some modern DiT models.
 AbstractVision can apply LoRA adapters (Diffusers adapter system) and optionally swap in a distilled “Rapid-AIO”
 transformer for faster Qwen Image Edit inference.
 
-These features can download from Hugging Face by default (same as model downloads). Use cache-only mode if needed:
+These features follow the Diffusers download setting. The REPL is cache-only by default, so pre-download adapters or
+Rapid-AIO weights separately before using repo ids here. If you intentionally want runtime downloads, set:
 
 ```bash
-export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0
+export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1
 ```
 
 LoRA example (REPL; note: `loras_json` is forwarded via `request.extra`):
@@ -249,6 +325,7 @@ Rapid-AIO example (distilled transformer override; Qwen Image Edit):
 FLUX 2 models in the registry:
 
 - `black-forest-labs/FLUX.2-klein-4B` (Apache-2.0, not gated)
+- `black-forest-labs/FLUX.2-klein-9B` (non-commercial license, gated on Hugging Face)
 - `black-forest-labs/FLUX.2-dev` (non-commercial license, gated on Hugging Face)
 
 Sanity check:
@@ -259,16 +336,23 @@ python -c "import diffusers; print(diffusers.__version__)"
 
 Notes:
 - `FLUX.2-dev` uses Diffusers `Flux2Pipeline` and works on released Diffusers (0.36+).
-- `FLUX.2-klein-4B` uses `Flux2KleinPipeline`, which is not available in the released Diffusers (0.36.0). It currently
+- `FLUX.2-klein-4B` and `FLUX.2-klein-9B` use `Flux2KleinPipeline`, which is not available in the released Diffusers (0.36.0). It currently
   requires installing Diffusers from source (or use the AbstractVision dev extra):
   - `pip install -U "abstractvision[huggingface-dev]"`
   - `pip install -U "git+https://github.com/huggingface/diffusers@main"`
 
-Recommended offline-friendly example (`FLUX.2-klein-4B`, not gated):
+Recommended first FLUX example (`FLUX.2-klein-4B`, not gated):
 
 ```text
 /backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
-/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 10 --guidance-scale 1.0 --seed 0 --open
+/t2i "a product photo of a matte black espresso machine" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
+```
+
+Example (`FLUX.2-klein-9B`, gated; requires Diffusers `main` and HF access):
+
+```text
+/backend diffusers black-forest-labs/FLUX.2-klein-9B mps float16
+/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
 ```
 
 Example (`FLUX.2-dev`, gated; you must pre-download it into your HF cache first):
@@ -308,27 +392,48 @@ Turbo models are usually best with low step counts (e.g. ~4–8).
 
 ---
 
-## 6) Qwen-Image GGUF (stable-diffusion.cpp)
+## 6) GGUF diffusion models (stable-diffusion.cpp)
 
-If you downloaded a GGUF diffusion model (like `unsloth/Qwen-Image-2512-GGUF:qwen-image-2512-Q4_K_M.gguf`), Diffusers cannot load it. Use the stable-diffusion.cpp backend instead (either via pip-installed python bindings or `sd-cli`).
+If you downloaded a GGUF diffusion model (like Qwen Image GGUF or FLUX.2 GGUF), Diffusers cannot load it. Use the stable-diffusion.cpp backend instead (either via pip-installed python bindings or `sd-cli`).
 
 ### 6.1 Install stable-diffusion.cpp runtime
 
 By default, `pip install abstractvision` includes the pip-installable stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`).
+This is the simplest path, but it may run **CPU-only** depending on how the wheel was built.
 
 Alternative (external executable):
 
 - Download `sd-cli` from: <https://github.com/leejet/stable-diffusion.cpp/releases>
 - Ensure `sd-cli` is in your `PATH` (or pass a full path as the last arg to `/backend sdcpp …`).
 
-### 6.2 Download the required Qwen Image VAE
+On macOS (Apple Silicon), **`sd-cli` is the recommended path** to get **Metal** acceleration. If you see `Using CPU backend`,
+install `sd-cli` and re-run in CLI mode.
+
+### 6.2 Single-file Stable Diffusion model
+
+This is the lowest-friction `sdcpp` shape: one model file plus an optional `sd-cli` path. Use it for Stable Diffusion
+1.x/2.x/SDXL checkpoints or GGUF conversions that stable-diffusion.cpp can load as `--model`.
+
+```bash
+abstractvision repl
+```
+
+```text
+/backend sdcpp /path/to/sd-v1-5.gguf /path/to/sd-cli
+/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
+```
+
+If `sd-cli` is already in your `PATH`, you can omit the final `/path/to/sd-cli` argument. If it is not available,
+AbstractVision falls back to `stable-diffusion-cpp-python` when that package is installed.
+
+### 6.3 Download the required Qwen Image VAE
 
 ```bash
 curl -L -o ./qwen_image_vae.safetensors \\
   https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
 ```
 
-### 6.3 Run the REPL with `sdcpp` backend
+### 6.4 Run Qwen Image with `sdcpp` component mode
 
 ```bash
 abstractvision repl
@@ -337,7 +442,7 @@ abstractvision repl
 Then:
 
 ```text
-/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf ./qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf
+/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf ./qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf /path/to/sd-cli
 /set width 1024
 /set height 1024
 /t2i "a cinematic photo of a red fox in snow" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
@@ -346,6 +451,31 @@ Then:
 Any extra `--flag` you pass (like `--sampling-method euler`) is forwarded to the backend as `extra`.
 - CLI mode: forwarded to `sd-cli`
 - Python bindings mode: keys are mapped to python binding kwargs when supported; unsupported keys are ignored (see [`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
+- Diffusers backend: only forwards kwargs that the pipeline `__call__` accepts; unknown keys are ignored (see [`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
+
+### 6.5 FLUX.2-klein-4B (GGUF) example
+
+Stable-diffusion.cpp supports FLUX.2-klein-4B GGUF when you provide:
+
+- a GGUF diffusion model (e.g. `flux-2-klein-4b-Q8_0.gguf`)
+- the FLUX.2 VAE (safetensors)
+- an LLM text encoder (GGUF), e.g. `Qwen3-4B-Q4_K_M.gguf`
+
+You can download the matching set with:
+
+```bash
+python scripts/download_model_sets.py --set flux2_klein_4b_gguf
+```
+
+Example (REPL):
+
+```text
+/backend sdcpp /path/to/flux-2-klein-4b-Q8_0.gguf /path/to/flux2_ae.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+/t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
+```
+
+FLUX.2-dev and Qwen Image GGUF are still documented here as heavier follow-ups, but try the single-file Stable
+Diffusion path or klein-4B first when you are testing a fresh machine.
 
 ---
 

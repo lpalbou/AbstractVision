@@ -6,7 +6,7 @@ import os
 import shlex
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -21,6 +21,13 @@ from .backends import (
 )
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .vision_manager import VisionManager
+
+
+DEFAULT_REPL_BACKEND = "diffusers"
+DEFAULT_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
+DEFAULT_DIFFUSERS_DEVICE = "auto"
+DEFAULT_T2I_WIDTH = 512
+DEFAULT_T2I_HEIGHT = 512
 
 
 def _env(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -176,32 +183,40 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
 
 @dataclass
 class _ReplState:
-    backend_kind: str = _env("ABSTRACTVISION_BACKEND", "openai") or "openai"
-    base_url: Optional[str] = _env("ABSTRACTVISION_BASE_URL")
-    api_key: Optional[str] = _env("ABSTRACTVISION_API_KEY")
-    model_id: Optional[str] = _env("ABSTRACTVISION_MODEL_ID")
-    capabilities_model_id: Optional[str] = _env("ABSTRACTVISION_CAPABILITIES_MODEL_ID")
-    store_dir: Optional[str] = _env("ABSTRACTVISION_STORE_DIR")
-    timeout_s: float = float(_env("ABSTRACTVISION_TIMEOUT_S", "300") or "300")
+    backend_kind: str = field(
+        default_factory=lambda: _env("ABSTRACTVISION_BACKEND", DEFAULT_REPL_BACKEND) or DEFAULT_REPL_BACKEND
+    )
+    base_url: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_BASE_URL"))
+    api_key: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_API_KEY"))
+    model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_ID"))
+    capabilities_model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_CAPABILITIES_MODEL_ID"))
+    store_dir: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_STORE_DIR"))
+    timeout_s: float = field(default_factory=lambda: float(_env("ABSTRACTVISION_TIMEOUT_S", "300") or "300"))
 
-    images_generations_path: str = _env("ABSTRACTVISION_IMAGES_GENERATIONS_PATH", "/images/generations") or "/images/generations"
-    images_edits_path: str = _env("ABSTRACTVISION_IMAGES_EDITS_PATH", "/images/edits") or "/images/edits"
-    text_to_video_path: Optional[str] = _env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH")
-    image_to_video_path: Optional[str] = _env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH")
-    image_to_video_mode: str = _env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart") or "multipart"
+    images_generations_path: str = field(
+        default_factory=lambda: _env("ABSTRACTVISION_IMAGES_GENERATIONS_PATH", "/images/generations") or "/images/generations"
+    )
+    images_edits_path: str = field(
+        default_factory=lambda: _env("ABSTRACTVISION_IMAGES_EDITS_PATH", "/images/edits") or "/images/edits"
+    )
+    text_to_video_path: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH"))
+    image_to_video_path: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH"))
+    image_to_video_mode: str = field(default_factory=lambda: _env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart") or "multipart")
 
-    diffusers_device: str = _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "auto") or "auto"
-    diffusers_torch_dtype: Optional[str] = _env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE")
-    diffusers_allow_download: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", True)
-    diffusers_auto_retry_fp32: bool = _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True)
+    diffusers_device: str = field(
+        default_factory=lambda: _env("ABSTRACTVISION_DIFFUSERS_DEVICE", DEFAULT_DIFFUSERS_DEVICE) or DEFAULT_DIFFUSERS_DEVICE
+    )
+    diffusers_torch_dtype: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE"))
+    diffusers_allow_download: bool = field(default_factory=lambda: _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False))
+    diffusers_auto_retry_fp32: bool = field(default_factory=lambda: _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True))
 
-    sdcpp_bin: str = _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli"
-    sdcpp_model: Optional[str] = _env("ABSTRACTVISION_SDCPP_MODEL")
-    sdcpp_diffusion_model: Optional[str] = _env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL")
-    sdcpp_vae: Optional[str] = _env("ABSTRACTVISION_SDCPP_VAE")
-    sdcpp_llm: Optional[str] = _env("ABSTRACTVISION_SDCPP_LLM")
-    sdcpp_llm_vision: Optional[str] = _env("ABSTRACTVISION_SDCPP_LLM_VISION")
-    sdcpp_extra_args: Optional[str] = _env("ABSTRACTVISION_SDCPP_EXTRA_ARGS")
+    sdcpp_bin: str = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli")
+    sdcpp_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_MODEL"))
+    sdcpp_diffusion_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"))
+    sdcpp_vae: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_VAE"))
+    sdcpp_llm: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_LLM"))
+    sdcpp_llm_vision: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_LLM_VISION"))
+    sdcpp_extra_args: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_EXTRA_ARGS"))
 
     defaults: Dict[str, Any] = None
     _cached_backend_key: Optional[Tuple[Any, ...]] = None
@@ -210,9 +225,18 @@ class _ReplState:
     _cached_store: Optional[LocalAssetStore] = None
 
     def __post_init__(self) -> None:
+        if self.model_id is None and str(self.backend_kind or "").strip().lower() == "diffusers":
+            self.model_id = DEFAULT_DIFFUSERS_MODEL_ID
         if self.defaults is None:
             self.defaults = {
-                "t2i": {"width": 512, "height": 512, "steps": 10, "guidance_scale": None, "seed": None, "negative_prompt": None},
+                "t2i": {
+                    "width": DEFAULT_T2I_WIDTH,
+                    "height": DEFAULT_T2I_HEIGHT,
+                    "steps": 10,
+                    "guidance_scale": None,
+                    "seed": None,
+                    "negative_prompt": None,
+                },
                 "i2i": {"steps": 10, "guidance_scale": None, "seed": None, "negative_prompt": None},
             }
 
@@ -220,27 +244,46 @@ class _ReplState:
 def _repl_help() -> str:
     return (
         "Commands:\n"
-        "  /help                     Show this help\n"
-        "  /exit                     Quit (aliases: /quit, /q)\n"
-        "  /models                   List known capability model ids\n"
-        "  /tasks                    List known task keys\n"
-        "  /show-model <id>          Show a model's tasks + params\n"
-        "  /config                   Show current backend/store config\n"
+        "  /help                       Show this help\n"
+        "  /exit                       Quit (aliases: /quit, /q)\n"
+        "  /models                     List known capability model ids\n"
+        "  /tasks                      List known task keys\n"
+        "  /show-model <id>            Show a model's tasks + params\n"
+        "  /config                     Show current backend/store config\n"
+        "\n"
+        "Backends:\n"
         "  /backend openai <base_url> [api_key] [model_id]\n"
         "  /backend diffusers <model_id_or_path> [device] [torch_dtype]\n"
-        "                           (downloads enabled by default; set ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0 for cache-only)\n"
+        "      default model: runwayml/stable-diffusion-v1-5\n"
+        "      cache-only by default; set ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 to permit downloads\n"
+        "  /backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]\n"
         "  /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]\n"
-        "                           (Qwen Image: requires diffusion-model + vae + llm)\n"
-        "  /cap-model <id|off>       Set capability-gating model id (from registry) or 'off'\n"
-        "  /store <dir|default>      Set local store dir\n"
-        "  /set <k> <v>              Set default param (k like width/height/steps/seed/guidance_scale/negative_prompt)\n"
-        "  /unset <k>                Unset default param\n"
-        "  /defaults                 Show current defaults\n"
-        "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative ...] [--open]\n"
-        "                           (extra flags are forwarded via request.extra)\n"
-        "  /i2i --image path <prompt...> [--mask path --steps N --seed N --guidance-scale F --negative ...] [--open]\n"
-        "                           (extra flags are forwarded via request.extra)\n"
-        "  /open <artifact_id>       Open a locally stored artifact (LocalAssetStore only)\n"
+        "      single-model mode is best for small Stable Diffusion checkpoints; component mode is for Qwen/FLUX GGUF\n"
+        "\n"
+        "Defaults and output:\n"
+        "  /cap-model <id|off>         Set capability-gating model id (from registry) or 'off'\n"
+        "  /store <dir|default>        Set local store dir\n"
+        "  /set <k> <v>                Set a default param (width, height, steps, seed, guidance_scale, negative_prompt)\n"
+        "  /unset <k>                  Unset a default param\n"
+        "  /defaults                   Show current defaults\n"
+        "  /open <artifact_id>         Open a locally stored artifact (LocalAssetStore only)\n"
+        "\n"
+        "Generation:\n"
+        "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
+        "  /i2i --image path <prompt...> [--mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
+        "      extra flags are forwarded through request.extra\n"
+        "\n"
+        "Quick examples:\n"
+        "  # Default local Diffusers path: Stable Diffusion 1.5\n"
+        "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
+        "\n"
+        "  # Modern small FLUX path: FLUX.2-klein-4B (requires Diffusers main today)\n"
+        "  /backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16\n"
+        "  /t2i \"a product photo of a matte black espresso machine\" --steps 4 --guidance-scale 1.0 --open\n"
+        "\n"
+        "  # stable-diffusion.cpp single-model path, preferably with an sd-cli binary for GPU acceleration\n"
+        "  /backend sdcpp /path/to/sd-v1-5.gguf /path/to/sd-cli\n"
+        "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
         "\n"
         "Tip: typing plain text runs /t2i with that prompt.\n"
     )
@@ -335,7 +378,7 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
         state._cached_store = store
         state._cached_store_dir = state.store_dir
 
-    backend_kind = str(state.backend_kind or "").strip().lower() or "openai"
+    backend_kind = str(state.backend_kind or "").strip().lower() or DEFAULT_REPL_BACKEND
     backend_key: Tuple[Any, ...]
     if backend_kind == "openai":
         base_url = str(state.base_url or "").strip()
@@ -517,6 +560,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     print(
                         "Usage: /backend openai <base_url> [api_key] [model_id]  OR  "
                         "/backend diffusers <model_id_or_path> [device] [torch_dtype]  OR  "
+                        "/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]  OR  "
                         "/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]"
                     )
                     continue
@@ -528,7 +572,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     state.backend_kind = "openai"
                     state.base_url = args[1]
                     state.api_key = args[2] if len(args) >= 3 else state.api_key
-                    state.model_id = args[3] if len(args) >= 4 else state.model_id
+                    state.model_id = args[3] if len(args) >= 4 else None
                     print("ok")
                     continue
                 if kind == "diffusers":
@@ -548,14 +592,27 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     print("ok")
                     continue
                 if kind == "sdcpp":
-                    if len(args) < 4:
-                        print("Usage: /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]")
+                    if len(args) < 2:
+                        print(
+                            "Usage: /backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]  OR  "
+                            "/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]"
+                        )
                         continue
                     state.backend_kind = "sdcpp"
-                    state.sdcpp_diffusion_model = args[1]
-                    state.sdcpp_vae = args[2]
-                    state.sdcpp_llm = args[3]
-                    state.sdcpp_bin = args[4] if len(args) >= 5 else state.sdcpp_bin
+                    state.model_id = None
+                    if len(args) <= 3:
+                        state.sdcpp_model = args[1]
+                        state.sdcpp_diffusion_model = None
+                        state.sdcpp_vae = None
+                        state.sdcpp_llm = None
+                        state.sdcpp_llm_vision = None
+                        state.sdcpp_bin = args[2] if len(args) == 3 else state.sdcpp_bin
+                    else:
+                        state.sdcpp_model = None
+                        state.sdcpp_diffusion_model = args[1]
+                        state.sdcpp_vae = args[2]
+                        state.sdcpp_llm = args[3]
+                        state.sdcpp_bin = args[4] if len(args) >= 5 else state.sdcpp_bin
                     print("ok")
                     continue
                 print("Unknown backend kind. Use: openai | diffusers | sdcpp")

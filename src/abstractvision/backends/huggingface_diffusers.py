@@ -195,7 +195,7 @@ def _hf_offline_env(enabled: bool):
     """Control Hugging Face offline mode within a scope.
 
     When `enabled=True`, we force offline mode (no network calls).
-    When `enabled=False`, we force online mode (overrides e.g. HF_HUB_OFFLINE=1 in the user's shell).
+    When `enabled=False`, we permit online mode for explicitly enabled downloads.
     """
 
     # These are respected by huggingface_hub / transformers / diffusers.
@@ -204,9 +204,12 @@ def _hf_offline_env(enabled: bool):
         "HF_HUB_OFFLINE": "1" if enabled else "0",
         "TRANSFORMERS_OFFLINE": "1" if enabled else "0",
         "DIFFUSERS_OFFLINE": "1" if enabled else "0",
-        # Avoid any telemetry even in edge cases.
+        # Avoid telemetry in both offline and explicitly-online scopes.
         "HF_HUB_DISABLE_TELEMETRY": "1",
     }
+    if enabled:
+        # In cache-only mode, avoid implicit token lookup/use as well as network calls.
+        vars_to_set["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
     old = {k: os.environ.get(k) for k in vars_to_set.keys()}
     try:
         for k, v in vars_to_set.items():
@@ -297,6 +300,49 @@ def _looks_like_dtype_mismatch_error(e: Exception) -> bool:
         or ("input type" in m and "bias type" in m and "should be the same" in m)
         or ("expected scalar type" in m and "but found" in m)
     )
+
+
+_INTERNAL_EXTRA_KEYS = {
+    # LoRA plumbing: parsed and applied by AbstractVision, should not reach Diffusers pipelines.
+    "loras",
+    "loras_json",
+    "lora",
+    "lora_json",
+    # Rapid-AIO transformer override: parsed and applied by AbstractVision.
+    "rapid_aio_repo",
+    "rapid_aio_subfolder",
+    "rapid_aio",
+}
+
+
+def _forward_extra_kwargs(extra: Any, *, call_params: Optional[set[str]]) -> Dict[str, Any]:
+    """Filter `request.extra` before forwarding to a Diffusers pipeline.
+
+    The REPL forwards unknown `--flags` via `request.extra`. Many Diffusers pipelines have a strict
+    `__call__` signature (no `**kwargs`), so passing unknown keys raises:
+      TypeError: <Pipeline>.__call__() got an unexpected keyword argument ...
+
+    Strategy:
+    - Always drop AbstractVision-internal keys (LoRA / Rapid-AIO controls).
+    - If we have a concrete parameter set for the pipeline call (no `**kwargs`), drop unknown keys.
+    - If the pipeline supports `**kwargs` (call_params is None), keep keys (best-effort).
+    """
+
+    if not isinstance(extra, dict) or not extra:
+        return {}
+
+    out: Dict[str, Any] = {}
+    for k, v in extra.items():
+        if k is None or v is None:
+            continue
+        key = str(k).strip()
+        if not key or key in _INTERNAL_EXTRA_KEYS or key.startswith("__abstractvision_"):
+            continue
+        out[key] = v
+
+    if call_params is not None:
+        out = {k: v for k, v in out.items() if k in call_params}
+    return out
 
 
 def _maybe_upcast_vae_for_mps(torch: Any, pipe: Any, device: str) -> None:
@@ -408,14 +454,14 @@ class HuggingFaceDiffusersBackendConfig:
     """Config for a local Diffusers backend.
 
     Notes:
-    - Downloads are enabled by default so a fresh environment can work after a `pip install`.
-    - To force offline mode (no network calls / cache-only), set `allow_download=False`.
+    - Downloads are disabled by default; the runtime is cache-only/offline unless explicitly configured.
+    - Pre-download model artifacts separately, or set `allow_download=True` when you want Diffusers to fetch them.
     """
 
     model_id: str
     device: str = "cpu"  # "cpu" | "cuda" | "mps" | "auto" | ...
     torch_dtype: Optional[str] = None  # "float16" | "bfloat16" | "float32" | None
-    allow_download: bool = True
+    allow_download: bool = False
     auto_retry_fp32: bool = True
     cache_dir: Optional[str] = None
     revision: Optional[str] = None
@@ -682,7 +728,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         generic: if a pipeline has a `.transformer` module and diffusers provides a compatible transformer
         class, we can hot-swap it.
 
-        Downloads are enabled by default; set allow_download=False for cache-only/offline mode.
+        Downloads are disabled by default; set allow_download=True only when this override should be fetched online.
         """
 
         if not isinstance(extra, dict) or not extra:
@@ -900,41 +946,29 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         # Auto-select checkpoint variants when appropriate (best-effort).
         # Prefer fp16 on GPU backends (CUDA/MPS) to cut memory/disk use, but never on CPU.
+        #
+        # Important: many repos do NOT ship an fp16 variant, so we must fall back cleanly.
         auto_variant: Optional[str] = None
         if not str(getattr(self._cfg, "variant", "") or "").strip() and str(device).strip().lower() != "cpu":
             if torch_dtype == getattr(torch, "float16", object()):
                 auto_variant = "fp16"
 
-        def _looks_like_missing_variant_error(e: Exception, variant: str) -> bool:
-            msg = str(e or "")
-            m = msg.lower()
-            v = str(variant or "").strip().lower()
-            if not v:
-                return False
-            return (
-                (f".{v}." in m or f" {v} " in m or f"'{v}'" in m)
-                and (
-                    "no such file" in m
-                    or "does not exist" in m
-                    or "not found" in m
-                    or "is not present" in m
-                    or "couldn't find" in m
-                    or "cannot find" in m
-                )
-            )
+        load_model_id = str(self._cfg.model_id)
+        if not bool(self._cfg.allow_download):
+            snap = self._resolve_snapshot_dir()
+            if snap is not None:
+                load_model_id = str(snap)
 
         def _from_pretrained(cls: Any) -> Any:
             if auto_variant:
                 common2 = dict(common)
                 common2["variant"] = auto_variant
                 try:
-                    return cls.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common2)
-                except Exception as e:
-                    # If the repo doesn't provide the fp16 variant, fall back to regular weights.
-                    if _looks_like_missing_variant_error(e, auto_variant):
-                        return cls.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
-                    raise
-            return cls.from_pretrained(self._cfg.model_id, torch_dtype=torch_dtype, **common)
+                    return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **common2)
+                except Exception:
+                    # If the repo doesn't provide the fp16 variant (common), fall back to regular weights.
+                    return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **common)
+            return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **common)
 
         def _maybe_raise_offline_missing_model(e: Exception) -> None:
             model_id = str(self._cfg.model_id or "").strip()
@@ -949,8 +983,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 return
             raise ValueError(
                 f"Model {model_id!r} is not available locally and downloads are disabled. "
-                "Either pre-download it (e.g. via `huggingface-cli download ...`) or enable downloads "
-                "(set allow_download=True; for AbstractCore Server: set ABSTRACTCORE_VISION_ALLOW_DOWNLOAD=1). "
+                "Pre-download it outside the REPL (for example with `huggingface-cli download ...`) or explicitly "
+                "enable runtime downloads (set allow_download=True in Python or ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1). "
                 "If the model is gated, accept its terms on Hugging Face and set `HF_TOKEN` before downloading."
             ) from e
 
@@ -1299,8 +1333,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if gen is not None:
             kwargs["generator"] = gen
 
-        if isinstance(request.extra, dict) and request.extra:
-            kwargs.update(dict(request.extra))
+        kwargs.update(_forward_extra_kwargs(request.extra, call_params=call_params))
 
         try:
             call_kwargs = dict(kwargs)
@@ -1421,8 +1454,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if gen is not None:
             kwargs["generator"] = gen
 
-        if isinstance(request.extra, dict) and request.extra:
-            kwargs.update(dict(request.extra))
+        kwargs.update(_forward_extra_kwargs(request.extra, call_params=call_params))
 
         try:
             call_kwargs = dict(kwargs)

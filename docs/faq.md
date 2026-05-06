@@ -51,6 +51,7 @@ If you’re running locally via the Diffusers backend and want a reliable starti
 Quickstart:
 
 ```bash
+huggingface-cli download runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -58,6 +59,9 @@ abstractvision repl
 ```
 
 More model recommendations (by VRAM tier) are in [docs/getting-started.md](getting-started.md).
+
+After that works, `black-forest-labs/FLUX.2-klein-4B` is the recommended next local test for a newer non-gated model
+(it currently requires Diffusers from source).
 
 ## Does `abstractvision t2i` run locally?
 
@@ -84,10 +88,10 @@ An artifact ref is a small JSON dict that points to a stored blob. Minimal shape
 
 Helpers: `is_artifact_ref()` / `make_media_ref()` in [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py).
 
-## How do I run Diffusers in offline / cache-only mode?
+## How do I allow or block Diffusers downloads?
 
-- REPL/CLI: set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=0` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
-- Python: set `HuggingFaceDiffusersBackendConfig(allow_download=False, ...)` ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)).
+- REPL: cache-only is the default. Pre-download models separately, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` when you intentionally want runtime downloads ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+- Python: `HuggingFaceDiffusersBackendConfig` defaults to `allow_download=False`; set `allow_download=True` only when you want runtime downloads ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)).
 
 ## Why do I get “missing pipeline class” errors (e.g. `GlmImagePipeline`)?
 

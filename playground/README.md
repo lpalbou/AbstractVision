@@ -45,6 +45,7 @@ Open:
 
 Usage notes:
 - You must **select a cached model** and load it before running inference.
+- For first tests, prefer a small cached model such as Stable Diffusion 1.5 before loading larger Qwen/FLUX models.
 - “Extra JSON” is forwarded to the server:
   - T2I: merged into the JSON request body
   - I2I: sent as a string field `extra_json` in the multipart form body

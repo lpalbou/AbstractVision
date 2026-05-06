@@ -29,7 +29,7 @@ reg = VisionModelCapabilitiesRegistry()
 print(reg.schema_version())
 print(reg.list_tasks())
 
-assert reg.supports("Qwen/Qwen-Image-2512", "text_to_image")
+assert reg.supports("runwayml/stable-diffusion-v1-5", "text_to_image")
 print(reg.models_for_task("text_to_image"))
 ```
 
