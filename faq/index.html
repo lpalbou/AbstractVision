@@ -1,0 +1,1198 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Model-agnostic generative vision abstractions for image and video workflows.">
+      
+      
+      
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/faq/">
+      
+      
+        <link rel="prev" href="../architecture/">
+      
+      
+        <link rel="next" href="../reference/configuration/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>FAQ - AbstractVision</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#faq" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AbstractVision
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              FAQ
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AbstractVision
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-abstractvision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is AbstractVision?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-does-abstractvision-fit-into-abstractframework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does AbstractVision fit into AbstractFramework?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-does-abstractvision-support-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does AbstractVision support today?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#which-backend-should-i-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which backend should I use?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-model-should-i-start-with-local" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What model should I start with (local)?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#does-abstractvision-t2i-run-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does abstractvision t2i run locally?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-do-generated-outputs-go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where do generated outputs go?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-an-artifact-ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is an “artifact ref”?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-do-i-allow-or-block-diffusers-downloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I allow or block Diffusers downloads?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-do-i-get-missing-pipeline-class-errors-eg-glmimagepipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why do I get “missing pipeline class” errors (e.g. GlmImagePipeline)?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#macos-mps-why-do-i-get-black-images-dtype-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS (MPS): why do I get black images / dtype errors?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windowslinux-cuda-why-is-torchcudais_available-false" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows/Linux (CUDA): why is torch.cuda.is_available() false?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-do-i-pass-advanced-flags-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I pass advanced flags / parameters?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does the capability registry mean (and what does it not mean)?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#i-only-need-the-http-backend-do-i-have-to-install-torchdiffusers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I only need the HTTP backend. Do I have to install Torch/Diffusers?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-do-i-integrate-with-abstractcore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I integrate with AbstractCore?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-do-i-run-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I run tests?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Artifacts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/capabilities-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/abstractcore-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AbstractCore Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-abstractvision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is AbstractVision?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-does-abstractvision-fit-into-abstractframework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does AbstractVision fit into AbstractFramework?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-does-abstractvision-support-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does AbstractVision support today?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#which-backend-should-i-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which backend should I use?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-model-should-i-start-with-local" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What model should I start with (local)?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#does-abstractvision-t2i-run-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does abstractvision t2i run locally?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-do-generated-outputs-go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where do generated outputs go?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-an-artifact-ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is an “artifact ref”?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-do-i-allow-or-block-diffusers-downloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I allow or block Diffusers downloads?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-do-i-get-missing-pipeline-class-errors-eg-glmimagepipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why do I get “missing pipeline class” errors (e.g. GlmImagePipeline)?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#macos-mps-why-do-i-get-black-images-dtype-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS (MPS): why do I get black images / dtype errors?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windowslinux-cuda-why-is-torchcudais_available-false" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows/Linux (CUDA): why is torch.cuda.is_available() false?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-do-i-pass-advanced-flags-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I pass advanced flags / parameters?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does the capability registry mean (and what does it not mean)?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#i-only-need-the-http-backend-do-i-have-to-install-torchdiffusers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I only need the HTTP backend. Do I have to install Torch/Diffusers?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-do-i-integrate-with-abstractcore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I integrate with AbstractCore?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-do-i-run-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I run tests?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="faq">FAQ<a class="headerlink" href="#faq" title="Permanent link">&para;</a></h1>
+<p>See also:
+- Getting started: <a href="../getting-started/">docs/getting-started.md</a>
+- API reference: <a href="../api/">docs/api.md</a>
+- Architecture: <a href="../architecture/">docs/architecture.md</a>
+- Backends: <a href="../reference/backends/">docs/reference/backends.md</a>
+- Configuration: <a href="../reference/configuration/">docs/reference/configuration.md</a></p>
+<h2 id="what-is-abstractvision">What is AbstractVision?<a class="headerlink" href="#what-is-abstractvision" title="Permanent link">&para;</a></h2>
+<p>AbstractVision is a small, model-agnostic API for <strong>generative vision outputs</strong> (images, optional video) with:
+- a small orchestrator (<a href="../src/abstractvision/vision_manager.py"><code>VisionManager</code></a>)
+- pluggable execution engines (“backends”) in <a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>
+- a packaged capability registry (<a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>vision_model_capabilities.json</code></a>)
+- optional artifact-ref outputs via stores (<a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>)</p>
+<h2 id="how-does-abstractvision-fit-into-abstractframework">How does AbstractVision fit into AbstractFramework?<a class="headerlink" href="#how-does-abstractvision-fit-into-abstractframework" title="Permanent link">&para;</a></h2>
+<p>AbstractVision is part of the <strong>AbstractFramework</strong> ecosystem:</p>
+<ul>
+<li><strong>AbstractFramework</strong> (project hub): <a href="https://github.com/lpalbou/AbstractFramework">https://github.com/lpalbou/AbstractFramework</a></li>
+<li><strong>AbstractCore</strong> (orchestration + tool calling): <a href="https://github.com/lpalbou/abstractcore">https://github.com/lpalbou/abstractcore</a></li>
+<li><strong>AbstractRuntime</strong> (runtime services, including artifact storage): <a href="https://github.com/lpalbou/abstractruntime">https://github.com/lpalbou/abstractruntime</a></li>
+</ul>
+<p>Where AbstractVision fits:
+- It standardizes <em>generative vision outputs</em> behind <code>VisionManager</code> (library mode).
+- AbstractCore can discover and use AbstractVision via the capability plugin (see <a href="../src/abstractvision/integrations/abstractcore_plugin.py"><code>../src/abstractvision/integrations/abstractcore_plugin.py</code></a> and the entry point in <a href="../pyproject.toml"><code>../pyproject.toml</code></a>).
+- Artifact refs are designed to cross process boundaries; <code>RuntimeArtifactStoreAdapter</code> bridges to an AbstractRuntime-style artifact store (see <a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>).</p>
+<h2 id="what-does-abstractvision-support-today">What does AbstractVision support today?<a class="headerlink" href="#what-does-abstractvision-support-today" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Built-in backends implement <strong>images</strong>: <code>text_to_image</code> and <code>image_to_image</code>.</li>
+<li>Video (<code>text_to_video</code>, <code>image_to_video</code>) works only via the OpenAI-compatible backend <strong>when</strong> video endpoints are configured.</li>
+<li><code>multi_view_image</code> exists in the public API (<code>VisionManager.generate_angles</code>) but no built-in backend implements it yet (they raise <code>CapabilityNotSupportedError</code>).</li>
+</ul>
+<p>Details: <a href="../reference/backends/">docs/reference/backends.md</a>.</p>
+<h2 id="which-backend-should-i-use">Which backend should I use?<a class="headerlink" href="#which-backend-should-i-use" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>OpenAI-compatible HTTP</strong> (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).</li>
+<li><strong>Diffusers (local)</strong> (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>): run Diffusers pipelines locally (heavy deps).</li>
+<li><strong>stable-diffusion.cpp (local GGUF)</strong> (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>): run GGUF diffusion models via <code>sd-cli</code> or <code>stable-diffusion-cpp-python</code>.</li>
+</ul>
+<h2 id="what-model-should-i-start-with-local">What model should I start with (local)?<a class="headerlink" href="#what-model-should-i-start-with-local" title="Permanent link">&para;</a></h2>
+<p>If you’re running locally via the Diffusers backend and want a reliable starting point, we recommend:</p>
+<ul>
+<li><strong>Default / ≤16GB VRAM (cross-platform)</strong>: <code>runwayml/stable-diffusion-v1-5</code></li>
+</ul>
+<p>Quickstart:</p>
+<div class="highlight"><pre><span></span><code>huggingface-cli<span class="w"> </span>download<span class="w"> </span>runwayml/stable-diffusion-v1-5
+<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
+<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
+<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_DIFFUSERS_DEVICE</span><span class="o">=</span>auto
+abstractvision<span class="w"> </span>repl
+</code></pre></div>
+<p>More model recommendations (by VRAM tier) are in <a href="../getting-started/">docs/getting-started.md</a>.</p>
+<p>After that works, <code>black-forest-labs/FLUX.2-klein-4B</code> is the recommended next local test for a newer non-gated model
+(it currently requires Diffusers from source).</p>
+<h2 id="does-abstractvision-t2i-run-locally">Does <code>abstractvision t2i</code> run locally?<a class="headerlink" href="#does-abstractvision-t2i-run-locally" title="Permanent link">&para;</a></h2>
+<p><code>abstractvision t2i</code> / <code>abstractvision i2i</code> are one-shot helpers for the <strong>OpenAI-compatible HTTP backend</strong> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
+<p>For local generation, use <code>abstractvision repl</code> with <code>/backend diffusers ...</code> or <code>/backend sdcpp ...</code>.</p>
+<h2 id="where-do-generated-outputs-go">Where do generated outputs go?<a class="headerlink" href="#where-do-generated-outputs-go" title="Permanent link">&para;</a></h2>
+<p>It depends on whether you configured a store:</p>
+<ul>
+<li><strong>CLI/REPL</strong>: stores outputs in a local store by default (<code>LocalAssetStore</code>), under <code>~/.abstractvision/assets</code> unless <code>ABSTRACTVISION_STORE_DIR</code> is set (<a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>, <a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</li>
+<li><strong>Python</strong>:</li>
+<li>if <code>VisionManager.store</code> is set, methods return an artifact ref dict (stored via <code>store.store_bytes(...)</code>)</li>
+<li>otherwise they return a <code>GeneratedAsset</code> containing bytes (<a href="../src/abstractvision/types.py"><code>../src/abstractvision/types.py</code></a>)</li>
+</ul>
+<h2 id="what-is-an-artifact-ref">What is an “artifact ref”?<a class="headerlink" href="#what-is-an-artifact-ref" title="Permanent link">&para;</a></h2>
+<p>An artifact ref is a small JSON dict that points to a stored blob. Minimal shape:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;$artifact&quot;</span><span class="p">:</span><span class="s2">&quot;&lt;id&gt;&quot;</span><span class="p">}</span>
+</code></pre></div>
+<p>Helpers: <code>is_artifact_ref()</code> / <code>make_media_ref()</code> in <a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>.</p>
+<h2 id="how-do-i-allow-or-block-diffusers-downloads">How do I allow or block Diffusers downloads?<a class="headerlink" href="#how-do-i-allow-or-block-diffusers-downloads" title="Permanent link">&para;</a></h2>
+<ul>
+<li>REPL: cache-only is the default. Pre-download models separately, or set <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> when you intentionally want runtime downloads (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</li>
+<li>Python: <code>HuggingFaceDiffusersBackendConfig</code> defaults to <code>allow_download=False</code>; set <code>allow_download=True</code> only when you want runtime downloads (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>).</li>
+</ul>
+<h2 id="why-do-i-get-missing-pipeline-class-errors-eg-glmimagepipeline">Why do I get “missing pipeline class” errors (e.g. <code>GlmImagePipeline</code>)?<a class="headerlink" href="#why-do-i-get-missing-pipeline-class-errors-eg-glmimagepipeline" title="Permanent link">&para;</a></h2>
+<p>Some newer pipelines may only exist on Diffusers GitHub <code>main</code>. Install:</p>
+<ul>
+<li><code>pip install -U "abstractvision[huggingface-dev]"</code> (compatible dependency versions)</li>
+<li><code>pip install -U "git+https://github.com/huggingface/diffusers@main"</code> (Diffusers <code>main</code>)</li>
+</ul>
+<p>See: <a href="../getting-started/">docs/getting-started.md</a>.</p>
+<h2 id="macos-mps-why-do-i-get-black-images-dtype-errors">macOS (MPS): why do I get black images / dtype errors?<a class="headerlink" href="#macos-mps-why-do-i-get-black-images-dtype-errors" title="Permanent link">&para;</a></h2>
+<p>The Diffusers backend includes MPS-specific mitigations (e.g. VAE upcast and optional fp32 retry) in <a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>.</p>
+<p>Common fixes:
+- set <code>ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32</code> (more stable, higher memory)
+- disable retry if memory is tight: <code>ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32=0</code>
+- consider using the stable-diffusion.cpp backend for GGUF diffusion models (<a href="../getting-started/">docs/getting-started.md</a>)</p>
+<h2 id="windowslinux-cuda-why-is-torchcudais_available-false">Windows/Linux (CUDA): why is <code>torch.cuda.is_available()</code> false?<a class="headerlink" href="#windowslinux-cuda-why-is-torchcudais_available-false" title="Permanent link">&para;</a></h2>
+<p>On Windows/Linux, <code>pip install torch</code> (and packages that depend on <code>torch</code>) may install a CPU-only PyTorch build by default.</p>
+<p>If you have an NVIDIA GPU and want CUDA acceleration:</p>
+<p>1) Install a CUDA-enabled PyTorch wheel using the official selector: <a href="https://pytorch.org/get-started/locally/">https://pytorch.org/get-started/locally/</a><br />
+2) Verify:</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import torch; print(&#39;cuda&#39;, torch.cuda.is_available())&quot;</span>
+</code></pre></div>
+<h2 id="how-do-i-pass-advanced-flags-parameters">How do I pass advanced flags / parameters?<a class="headerlink" href="#how-do-i-pass-advanced-flags-parameters" title="Permanent link">&para;</a></h2>
+<p>AbstractVision exposes an <code>extra</code> dict on requests (<a href="../src/abstractvision/types.py"><code>../src/abstractvision/types.py</code></a>), and the REPL forwards unknown <code>--flags</code> into <code>request.extra</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
+<p>Examples:
+- Diffusers backend: accepts extra keys like <code>loras_json</code> and <code>rapid_aio_repo</code> (used by Qwen Image Edit flows; see <a href="../getting-started/">docs/getting-started.md</a> and <a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>).
+- stable-diffusion.cpp backend:
+  - CLI mode forwards flags to <code>sd-cli</code>
+  - python-binding mode maps supported keys to binding kwargs and ignores unsupported keys (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)</p>
+<h2 id="what-does-the-capability-registry-mean-and-what-does-it-not-mean">What does the capability registry mean (and what does it not mean)?<a class="headerlink" href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" title="Permanent link">&para;</a></h2>
+<p>The registry answers “what a model <em>claims</em> to support” (task keys/params) and can be used for <strong>optional gating</strong>:</p>
+<ul>
+<li><code>VisionModelCapabilitiesRegistry.supports(...)</code> / <code>.require_support(...)</code> (<a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>)</li>
+<li><code>VisionManager(model_id=...)</code> uses it to fail fast before calling a backend (<a href="../src/abstractvision/vision_manager.py"><code>../src/abstractvision/vision_manager.py</code></a>)</li>
+</ul>
+<p>It does <strong>not</strong> guarantee your configured backend can execute the task; backend support is a separate constraint (<a href="../reference/backends/">docs/reference/backends.md</a>).</p>
+<h2 id="i-only-need-the-http-backend-do-i-have-to-install-torchdiffusers">I only need the HTTP backend. Do I have to install Torch/Diffusers?<a class="headerlink" href="#i-only-need-the-http-backend-do-i-have-to-install-torchdiffusers" title="Permanent link">&para;</a></h2>
+<p>Today, the base install is “batteries included” (see <a href="../pyproject.toml"><code>../pyproject.toml</code></a>). Heavy modules are imported lazily (<a href="../src/abstractvision/backends/__init__.py"><code>../src/abstractvision/backends/__init__.py</code></a>), but the dependencies are still installed.</p>
+<p>If you need a smaller “HTTP-only” install footprint, please open an issue with your target environment and constraints.</p>
+<h2 id="how-do-i-integrate-with-abstractcore">How do I integrate with AbstractCore?<a class="headerlink" href="#how-do-i-integrate-with-abstractcore" title="Permanent link">&para;</a></h2>
+<p>Two options (details in <a href="../reference/abstractcore-integration/">docs/reference/abstractcore-integration.md</a>):</p>
+<ul>
+<li><strong>Capability plugin</strong>: <a href="../src/abstractvision/integrations/abstractcore_plugin.py"><code>../src/abstractvision/integrations/abstractcore_plugin.py</code></a> (plugin currently supports only the OpenAI-compatible backend).</li>
+<li><strong>Tool helpers</strong>: <code>make_vision_tools(...)</code> in <a href="../src/abstractvision/integrations/abstractcore.py"><code>../src/abstractvision/integrations/abstractcore.py</code></a> (requires <code>VisionManager.store</code> for artifact-ref outputs).</li>
+</ul>
+<h2 id="how-do-i-run-tests">How do I run tests?<a class="headerlink" href="#how-do-i-run-tests" title="Permanent link">&para;</a></h2>
+<p>From the repo root:</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>discover<span class="w"> </span>-s<span class="w"> </span>tests<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;test_*.py&quot;</span><span class="w"> </span>-q
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
