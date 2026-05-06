@@ -56,6 +56,25 @@ def _first_data_item(resp: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
+def _model_family(model_id: Optional[str]) -> Optional[str]:
+    model = str(model_id or "").strip().lower()
+    if model.startswith("gpt-image-"):
+        return "gpt-image"
+    if model.startswith("dall-e-"):
+        return "dall-e"
+    return None
+
+
+def _looks_like_openai_api(base_url: str) -> bool:
+    return "api.openai.com" in str(base_url or "").lower()
+
+
+def _size_value(width: Optional[int], height: Optional[int]) -> Optional[str]:
+    if width is None or height is None:
+        return None
+    return f"{int(width)}x{int(height)}"
+
+
 def _multipart_form(
     *,
     fields: Dict[str, str],
@@ -137,7 +156,12 @@ class OpenAICompatibleVisionBackend(VisionBackend):
     def _post_json(self, *, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         url = _join_url(self._cfg.base_url, path)
         body = json.dumps(payload).encode("utf-8")
-        req = Request(url=url, data=body, method="POST", headers=self._headers(content_type="application/json"))
+        req = Request(
+            url=url,
+            data=body,
+            method="POST",
+            headers=self._headers(content_type="application/json"),
+        )
         with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
             raw = resp.read()
         data = json.loads(raw.decode("utf-8"))
@@ -145,7 +169,9 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             raise ValueError("Invalid response: expected JSON object")
         return data
 
-    def _post_multipart(self, *, path: str, fields: Dict[str, str], files: Dict[str, Tuple[str, bytes, str]]) -> Dict[str, Any]:
+    def _post_multipart(
+        self, *, path: str, fields: Dict[str, str], files: Dict[str, Tuple[str, bytes, str]]
+    ) -> Dict[str, Any]:
         url = _join_url(self._cfg.base_url, path)
         body, boundary = _multipart_form(fields=fields, files=files)
         ctype = f"multipart/form-data; boundary={boundary}"
@@ -163,7 +189,9 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             content = _decode_b64(str(item.get("b64_json") or ""))
             mime = _sniff_mime_type(content, fallback_mime)
             media_type = "video" if mime.startswith("video/") else "image"
-            return GeneratedAsset(media_type=media_type, data=content, mime_type=mime, metadata={"source": "b64_json"})
+            return GeneratedAsset(
+                media_type=media_type, data=content, mime_type=mime, metadata={"source": "b64_json"}
+            )
         if "url" in item and isinstance(item.get("url"), str):
             # Best-effort: download bytes.
             u = str(item.get("url"))
@@ -173,55 +201,74 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 ct = resp2.headers.get("Content-Type") or fallback_mime
             mime = _sniff_mime_type(content, str(ct))
             media_type = "video" if mime.startswith("video/") else "image"
-            return GeneratedAsset(media_type=media_type, data=content, mime_type=mime, metadata={"source": "url", "url": u})
+            return GeneratedAsset(
+                media_type=media_type,
+                data=content,
+                mime_type=mime,
+                metadata={"source": "url", "url": u},
+            )
         raise ValueError("Invalid response: missing data[0].b64_json or data[0].url")
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+        family = _model_family(self._cfg.model_id)
+        openai_api = _looks_like_openai_api(self._cfg.base_url) or family is not None
         payload: Dict[str, Any] = {
             "prompt": request.prompt,
-            "response_format": "b64_json",
             "n": 1,
         }
         if self._cfg.model_id:
             payload["model"] = self._cfg.model_id
-        if request.negative_prompt is not None:
+
+        # Real OpenAI image models have a narrower schema than many local
+        # OpenAI-compatible servers. Keep local-compatible fields for unknown
+        # models, but avoid sending unsupported fields to known OpenAI models.
+        if family != "gpt-image":
+            payload["response_format"] = "b64_json"
+        if request.negative_prompt is not None and not openai_api:
             payload["negative_prompt"] = request.negative_prompt
-        if request.width is not None and request.height is not None:
-            payload["size"] = f"{int(request.width)}x{int(request.height)}"
+        size = _size_value(request.width, request.height)
+        if size:
+            payload["size"] = size
+        if size and not openai_api:
             payload["width"] = int(request.width)
             payload["height"] = int(request.height)
-        if request.seed is not None:
+        if request.seed is not None and not openai_api:
             payload["seed"] = int(request.seed)
-        if request.steps is not None:
+        if request.steps is not None and not openai_api:
             payload["steps"] = int(request.steps)
-        if request.guidance_scale is not None:
+        if request.guidance_scale is not None and not openai_api:
             payload["guidance_scale"] = float(request.guidance_scale)
         if isinstance(request.extra, dict) and request.extra:
             payload.update(dict(request.extra))
+        if family == "gpt-image":
+            payload.pop("response_format", None)
 
         resp = self._post_json(path=self._cfg.image_generations_path, payload=payload)
         return self._parse_media(resp, fallback_mime="image/png")
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
+        family = _model_family(self._cfg.model_id)
+        openai_api = _looks_like_openai_api(self._cfg.base_url) or family is not None
         # OpenAI-style image edits use multipart form data.
         fields: Dict[str, str] = {"prompt": request.prompt}
         if self._cfg.model_id:
             fields["model"] = self._cfg.model_id
-        if request.negative_prompt is not None:
+        if request.negative_prompt is not None and not openai_api:
             fields["negative_prompt"] = request.negative_prompt
 
+        image_field = "image[]" if family == "gpt-image" else "image"
         files: Dict[str, Tuple[str, bytes, str]] = {
-            "image": ("image.png", bytes(request.image), "image/png"),
+            image_field: ("image.png", bytes(request.image), "image/png")
         }
         if request.mask is not None:
             files["mask"] = ("mask.png", bytes(request.mask), "image/png")
 
         # Best-effort extra fields.
-        if request.seed is not None:
+        if request.seed is not None and not openai_api:
             fields["seed"] = str(int(request.seed))
-        if request.steps is not None:
+        if request.steps is not None and not openai_api:
             fields["steps"] = str(int(request.steps))
-        if request.guidance_scale is not None:
+        if request.guidance_scale is not None and not openai_api:
             fields["guidance_scale"] = str(float(request.guidance_scale))
         if isinstance(request.extra, dict) and request.extra:
             for k, v in request.extra.items():
@@ -233,7 +280,9 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         return self._parse_media(resp, fallback_mime="image/png")
 
     def generate_angles(self, request) -> list[GeneratedAsset]:
-        raise CapabilityNotSupportedError("OpenAICompatibleVisionBackend does not implement multi-view generation.")
+        raise CapabilityNotSupportedError(
+            "OpenAICompatibleVisionBackend does not implement multi-view generation."
+        )
 
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
         if not self._cfg.text_to_video_path:
@@ -267,7 +316,9 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             raise CapabilityNotSupportedError("image_to_video is not configured for this backend.")
 
         if str(self._cfg.image_to_video_mode) == "json_b64":
-            payload: Dict[str, Any] = {"image_b64": base64.b64encode(bytes(request.image)).decode("ascii")}
+            payload: Dict[str, Any] = {
+                "image_b64": base64.b64encode(bytes(request.image)).decode("ascii")
+            }
             if self._cfg.model_id:
                 payload["model"] = self._cfg.model_id
             if request.prompt is not None:
@@ -321,5 +372,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 fields[str(k)] = str(v)
 
         files = {"image": ("image.png", bytes(request.image), "image/png")}
-        resp = self._post_multipart(path=str(self._cfg.image_to_video_path), fields=fields, files=files)
+        resp = self._post_multipart(
+            path=str(self._cfg.image_to_video_path), fields=fields, files=files
+        )
         return self._parse_media(resp, fallback_mime="video/mp4")

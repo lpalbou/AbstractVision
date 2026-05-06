@@ -24,8 +24,9 @@ classifiers = [
   "Topic :: Multimedia",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-# Batteries-included by default: users should only need to download model weights.
-# NOTE: This is intentionally heavy (torch + diffusers + stable-diffusion.cpp bindings).
+# Diffusers is included by default because it is the local default backend.
+# stable-diffusion.cpp bindings stay opt-in: they are useful, but wheel/build
+# support is platform-sensitive and should not block the base install.
 dependencies = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
@@ -41,7 +42,6 @@ dependencies = [
   # LoRA adapter support in Diffusers.
   "peft>=0.10.0",
   "Pillow>=9.0",
-  "stable-diffusion-cpp-python>=0.4.2",
 ]
 
 [project.urls]
@@ -63,7 +63,7 @@ sdcpp = [
   "stable-diffusion-cpp-python>=0.4.2",
 ]
 
-# Local generation via Diffusers (heavy deps; opt-in).
+# Compatibility extra for callers that still request the historical Diffusers extra.
 huggingface = [
   "diffusers>=0.36.0",
   "torch>=2.0",

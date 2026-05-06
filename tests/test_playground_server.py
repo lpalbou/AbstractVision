@@ -104,6 +104,56 @@ class TestPlaygroundServer(unittest.TestCase):
         self.assertIn("b64_json", snap["result"]["data"][0])
         self.assertEqual(snap["progress"]["step"], 1)
 
+    def test_generation_job_uses_backend_snapshot_if_active_model_changes(self):
+        import abstractvision.playground_server as playground_server
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+        from abstractvision.types import GeneratedAsset
+
+        class FakeBackend:
+            def __init__(self, name):
+                self.name = name
+                self.unloaded = False
+
+            def generate_image_with_progress(self, request, progress_callback=None):
+                return GeneratedAsset(
+                    media_type="image",
+                    data=(b"\x89PNG\r\n\x1a\n" + self.name.encode("ascii")),
+                    mime_type="image/png",
+                    metadata={"backend": self.name},
+                )
+
+            def unload(self):
+                self.unloaded = True
+
+        targets = []
+
+        class DeferredThread:
+            def __init__(self, *, target, name, daemon):
+                self.target = target
+
+            def start(self):
+                targets.append(self.target)
+
+        first = FakeBackend("first")
+        second = FakeBackend("second")
+        state = PlaygroundState(PlaygroundServerConfig(default_model_id=""))
+        state._active_backend = first
+        state._active_backend_kind = "diffusers"
+        state._active_model_id = "first-model"
+
+        with patch.object(playground_server.threading, "Thread", DeferredThread):
+            job = state.start_image_generation_job({"prompt": "hello", "steps": 1})
+
+        state._active_backend = second
+        state._active_backend_kind = "openai"
+        state._active_model_id = "second-model"
+        targets[0]()
+        snap = state.get_job(job["job_id"])
+
+        self.assertEqual(snap["state"], "succeeded")
+        self.assertEqual(snap["result"]["data"][0]["metadata"]["backend"], "first")
+        self.assertFalse(first.unloaded)
+
     def test_cli_has_playground_command(self):
         from abstractvision.cli import build_parser
 

@@ -47,6 +47,11 @@ Details: [`docs/reference/backends.md`](docs/reference/backends.md).
 pip install abstractvision
 ```
 
+The base install includes the local Diffusers backend because it is the default
+local execution path. stable-diffusion.cpp python bindings are optional; install
+`abstractvision[sdcpp]` only when you want the pip binding fallback instead of an
+external `sd-cli` executable.
+
 Note (CUDA): on Windows/Linux, `pip install abstractvision` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
 
 AbstractCore is not installed by AbstractVision. When an AbstractCore application
@@ -110,8 +115,10 @@ print(reg.models_for_task("text_to_image"))
 
 ### Backend wiring + generation (artifact outputs)
 
-The default install is “batteries included” (Torch + Diffusers + stable-diffusion.cpp python bindings), but heavy
-modules are imported lazily (see [`src/abstractvision/backends/__init__.py`](src/abstractvision/backends/__init__.py)).
+The default install includes Torch + Diffusers for the default local backend, but
+heavy modules are imported lazily (see [`src/abstractvision/backends/__init__.py`](src/abstractvision/backends/__init__.py)).
+Install `abstractvision[sdcpp]` only if you want the optional stable-diffusion.cpp
+python binding fallback.
 
 ```python
 from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry, is_artifact_ref
@@ -142,10 +149,13 @@ png_bytes = vm.store.load_bytes(out["$artifact"])  # type: ignore[union-attr]
 ```
 
 When installed next to AbstractCore, AbstractVision is also discovered as a
-`llm.vision` capability plugin. The plugin defaults to the same local Diffusers
-Stable Diffusion 1.5 setup as the REPL; set `ABSTRACTVISION_BACKEND=openai`
-and `ABSTRACTVISION_BASE_URL` when you want the plugin to call an
-OpenAI-compatible image endpoint instead.
+`llm.vision` capability plugin. The plugin defaults to the OpenAI-compatible
+HTTP backend for compatibility with existing AbstractCore deployments; set
+`ABSTRACTVISION_BASE_URL` for OpenAI or a local compatible `/v1` server, and set
+`ABSTRACTVISION_MODEL_ID` when the server requires an explicit image model (for
+example `gpt-image-1.5` for OpenAI). Set `ABSTRACTVISION_BACKEND=diffusers` or
+`ABSTRACTVISION_BACKEND=sdcpp` when you want AbstractCore to launch local
+AbstractVision generation directly.
 
 ### Interactive testing (CLI / REPL)
 
@@ -204,7 +214,7 @@ single-file Stable Diffusion model when possible; Qwen Image and FLUX GGUF compo
 
 Recommended:
 - **macOS (Apple Silicon / Metal)**: install `sd-cli` (stable-diffusion.cpp executable) from releases and use CLI mode for Metal acceleration.
-- Otherwise (pip-only convenience): `pip install abstractvision` already includes the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`), but this may run CPU-only depending on the wheel build.
+- Otherwise (pip-only convenience): `pip install "abstractvision[sdcpp]"` installs the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`), but this may run CPU-only depending on the wheel build.
 
 Alternative (external executable):
 

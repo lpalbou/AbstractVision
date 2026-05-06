@@ -21,13 +21,13 @@ The plugin registers a legacy-compatible backend id:
 - `abstractvision:openai-compatible` (see `_AbstractVisionCapability.backend_id` in [`../../src/abstractvision/integrations/abstractcore_plugin.py`](../../src/abstractvision/integrations/abstractcore_plugin.py)). The id is retained for compatibility; the implementation now supports local and HTTP backends.
 
 Current behavior:
-- Default: local Diffusers with `runwayml/stable-diffusion-v1-5`, cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
-- OpenAI-compatible HTTP: set `ABSTRACTVISION_BACKEND=openai` and `ABSTRACTVISION_BASE_URL`.
+- Default: OpenAI-compatible HTTP. Set `ABSTRACTVISION_BASE_URL` to OpenAI or a local compatible `/v1` server.
+- Local Diffusers: set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
 - stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 
 Key config keys (owner.config):
-- `vision_backend` (`diffusers`, `openai`, or `sdcpp`; default `diffusers`)
+- `vision_backend` (`openai`, `diffusers`, or `sdcpp`; default `openai`)
 - `vision_model_id` (Diffusers/OpenAI-compatible model id; default `runwayml/stable-diffusion-v1-5` for Diffusers)
 - `vision_device` / `vision_torch_dtype` / `vision_allow_download` (Diffusers)
 - `vision_base_url` / `vision_api_key` (OpenAI-compatible)
@@ -41,7 +41,7 @@ Key config keys (owner.config):
 Examples:
 
 ```bash
-# Local Diffusers default. Pre-download weights first, or explicitly allow runtime downloads.
+# Local Diffusers. Pre-download weights first, or explicitly allow runtime downloads.
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -55,8 +55,14 @@ png_bytes = llm.vision.t2i("a red square", width=512, height=512, steps=20)
 ```
 
 ```bash
-# OpenAI-compatible HTTP backend, for example through AbstractCore Server.
-export ABSTRACTVISION_BACKEND=openai
+# OpenAI API.
+export ABSTRACTVISION_BASE_URL=https://api.openai.com/v1
+export ABSTRACTVISION_API_KEY=...
+export ABSTRACTVISION_MODEL_ID=gpt-image-1.5
+```
+
+```bash
+# Local OpenAI-compatible HTTP server, for example AbstractCore Server.
 export ABSTRACTVISION_BASE_URL=http://localhost:8000/v1
 export ABSTRACTVISION_MODEL_ID=server/default
 ```

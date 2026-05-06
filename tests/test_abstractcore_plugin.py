@@ -1,7 +1,13 @@
 import importlib
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+
+# Ensure `src/` layout is importable when running tests without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = REPO_ROOT / "src"
+sys.path.insert(0, str(SRC_DIR))
 
 
 class TestAbstractCorePlugin(unittest.TestCase):
@@ -30,7 +36,43 @@ class TestAbstractCorePlugin(unittest.TestCase):
         self.assertTrue(callable(calls.get("factory")))
         self.assertIsInstance(calls.get("config_hint"), str)
 
-    def test_abstractcore_plugin_defaults_to_local_diffusers(self):
+    def test_abstractcore_plugin_defaults_to_openai_compatible(self):
+        import abstractvision.backends.openai_compatible as openai_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {
+                "vision_base_url": "https://api.openai.com/v1",
+                "vision_model_id": "gpt-image-1.5",
+            }
+
+        with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", {}, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i("a red square", width=1024, height=1024)
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        cfg = seen["config"]
+        self.assertEqual(cfg.base_url, "https://api.openai.com/v1")
+        self.assertEqual(cfg.model_id, "gpt-image-1.5")
+        self.assertEqual(seen["request"].width, 1024)
+        self.assertEqual(seen["request"].height, 1024)
+
+    def test_abstractcore_plugin_can_select_local_diffusers(self):
         import abstractvision.backends.huggingface_diffusers as hf_backend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset
@@ -49,7 +91,7 @@ class TestAbstractCorePlugin(unittest.TestCase):
                 )
 
         class _DummyOwner:
-            config = {}
+            config = {"vision_backend": "diffusers"}
 
         with patch.object(hf_backend, "HuggingFaceDiffusersVisionBackend", _FakeBackend):
             with patch.dict("os.environ", {}, clear=True):
@@ -64,12 +106,49 @@ class TestAbstractCorePlugin(unittest.TestCase):
         self.assertEqual(seen["request"].width, 64)
         self.assertEqual(seen["request"].height, 64)
 
-    def test_abstractcore_plugin_openai_backend_still_requires_base_url(self):
+    def test_abstractcore_plugin_can_select_local_sdcpp(self):
+        import abstractvision.backends.stable_diffusion_cpp as sdcpp_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {
+                "vision_backend": "sdcpp",
+                "vision_sdcpp_model": "/models/sd-v1-5.gguf",
+                "vision_sdcpp_bin": "/opt/sd-cli",
+            }
+
+        with patch.object(sdcpp_backend, "StableDiffusionCppVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", {}, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i("a red square", width=64, height=64)
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        cfg = seen["config"]
+        self.assertEqual(cfg.model, "/models/sd-v1-5.gguf")
+        self.assertEqual(cfg.sd_cli_path, "/opt/sd-cli")
+        self.assertEqual(seen["request"].width, 64)
+        self.assertEqual(seen["request"].height, 64)
+
+    def test_abstractcore_plugin_default_openai_backend_requires_base_url(self):
         from abstractvision.errors import AbstractVisionError
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
 
         class _DummyOwner:
-            config = {"vision_backend": "openai"}
+            config = {}
 
         with patch.dict("os.environ", {}, clear=True):
             cap = _AbstractVisionCapability(_DummyOwner())
@@ -99,6 +178,7 @@ class TestAbstractCorePlugin(unittest.TestCase):
                     supported_tasks=[
                         "text_to_image",
                         "image_to_image",
+                        "multi_view_image",
                         "text_to_video",
                         "image_to_video",
                     ]
@@ -154,6 +234,10 @@ class TestAbstractCorePlugin(unittest.TestCase):
         out_bytes = cap.t2i("hello")
         self.assertIsInstance(out_bytes, (bytes, bytearray))
         self.assertTrue(out_bytes.startswith(b"\x89PNG"))
+
+        out_angles = cap.multi_view_image("hello")
+        self.assertEqual(len(out_angles), 1)
+        self.assertTrue(out_angles[0].startswith(b"\x89PNG"))
 
         # Artifact mode: use a tiny in-memory store with an AbstractRuntime-like interface.
         class _Meta:

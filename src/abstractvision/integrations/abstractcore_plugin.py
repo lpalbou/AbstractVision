@@ -100,10 +100,12 @@ class _AbstractVisionCapability:
             pass
 
         # Prefer AbstractCore config keys when present; fall back to AbstractVision env vars.
+        # Keep the legacy/default AbstractCore plugin behavior OpenAI-compatible.
+        # Local backends remain explicit via vision_backend/ABSTRACTVISION_BACKEND.
         backend_kind = (
             _owner_cfg(self._owner, "vision_backend")
-            or _env("ABSTRACTVISION_BACKEND", "diffusers")
-            or "diffusers"
+            or _env("ABSTRACTVISION_BACKEND", "openai")
+            or "openai"
         ).lower()
         if backend_kind in {"openai_compatible", "openai-compatible", "proxy"}:
             backend_kind = "openai"
@@ -282,6 +284,17 @@ class _AbstractVisionCapability:
             return out
         return bytes(getattr(out, "data", b""))
 
+    def multi_view_image(self, prompt: str, **kwargs: Any):
+        store = kwargs.pop("artifact_store", None)
+        vm = self._make_manager(artifact_store=store)
+        out = vm.generate_angles(str(prompt), **kwargs)
+        if isinstance(out, list) and all(isinstance(x, dict) for x in out):
+            return out
+        return [bytes(getattr(asset, "data", b"")) for asset in out]
+
+    def generate_angles(self, prompt: str, **kwargs: Any):
+        return self.multi_view_image(prompt, **kwargs)
+
     def t2v(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
         vm = self._make_manager(artifact_store=store)
@@ -310,9 +323,9 @@ def register(registry: Any) -> None:
         return _AbstractVisionCapability(owner)
 
     config_hint = (
-        "Use the default local Diffusers backend with ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5 "
-        "(cache-only unless ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1), or set ABSTRACTVISION_BACKEND=openai "
-        "plus ABSTRACTVISION_BASE_URL to point to an OpenAI-compatible /v1 endpoint."
+        "Default: OpenAI-compatible HTTP. Set ABSTRACTVISION_BASE_URL to a /v1 endpoint "
+        "(OpenAI or a local compatible server). Set ABSTRACTVISION_BACKEND=diffusers or sdcpp "
+        "to run local AbstractVision backends through AbstractCore."
     )
 
     registry.register_vision_backend(

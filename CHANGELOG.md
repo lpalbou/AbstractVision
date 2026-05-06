@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.5 - 2026-05-06
+
+- Packaging: keep the default Diffusers backend installable while moving `stable-diffusion-cpp-python` out of the base dependency set and into the explicit `sdcpp`/`local` extras. This keeps AbstractCore plugin installs from failing on platforms where stable-diffusion.cpp bindings need a local native build.
+- AbstractCore plugin: restore the OpenAI-compatible HTTP backend as the default while keeping local `diffusers` and `sdcpp` backends explicit through config/env.
+- OpenAI-compatible backend: shape requests correctly for real OpenAI GPT image models while preserving local OpenAI-compatible extensions for unknown model ids.
+- Playground: capture the active backend at job submission time so background jobs do not accidentally run on a newly selected model.
+- Docs/tests: clarify the default install shape, document when to install `abstractvision[sdcpp]`, and add metadata/OpenAI/playground coverage so these paths do not regress.
+
 ## 0.2.4 - 2026-05-06
 
 - Playground: add a self-contained `abstractvision playground` command that serves both the web UI and `/v1/vision/*` API locally, so playground testing no longer depends on an AbstractCore server.

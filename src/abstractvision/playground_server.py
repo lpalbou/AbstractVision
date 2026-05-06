@@ -351,6 +351,8 @@ class PlaygroundState:
         self._active_backend_kind: Optional[str] = None
         self._active_model_id: Optional[str] = None
         self._active_loaded_at: Optional[float] = None
+        self._backend_refcounts: Dict[int, int] = {}
+        self._retired_backends: Dict[int, Any] = {}
         self._jobs_lock = threading.RLock()
         self._jobs: Dict[str, _Job] = {}
 
@@ -443,30 +445,29 @@ class PlaygroundState:
         return {"models": models, "active": self.active_snapshot()}
 
     def unload_active(self) -> Dict[str, Any]:
+        unload_after_lock: Optional[Any] = None
         with self._active_lock:
             backend = self._active_backend
             self._active_backend = None
             self._active_backend_kind = None
             self._active_model_id = None
             self._active_loaded_at = None
-        if backend is not None:
-            unload = getattr(backend, "unload", None)
-            if callable(unload):
-                unload()
+            unload_after_lock = self._retire_backend_locked(backend)
+        self._unload_backend(unload_after_lock)
         return {"ok": True, "active": None}
 
     def load_model(self, requested_model_id: str) -> Dict[str, Any]:
         backend_kind, backend_model_id = normalize_model_id_for_backend(requested_model_id)
 
         backend = self._build_backend(backend_kind, backend_model_id)
+        unload_after_lock: Optional[Any] = None
         with self._active_lock:
             old = self._active_backend
             self._active_backend = None
             self._active_backend_kind = None
             self._active_model_id = None
             self._active_loaded_at = None
-            if old is not None and callable(getattr(old, "unload", None)):
-                old.unload()
+            unload_after_lock = self._retire_backend_locked(old)
 
             preload = getattr(backend, "preload", None)
             if callable(preload):
@@ -476,7 +477,46 @@ class PlaygroundState:
             self._active_backend_kind = backend_kind
             self._active_model_id = requested_model_id
             self._active_loaded_at = time.time()
-            return {"ok": True, "active": self.active_snapshot()}
+            out = {"ok": True, "active": self.active_snapshot()}
+        self._unload_backend(unload_after_lock)
+        return out
+
+    def _unload_backend(self, backend: Optional[Any]) -> None:
+        if backend is None:
+            return
+        unload = getattr(backend, "unload", None)
+        if callable(unload):
+            unload()
+
+    def _retire_backend_locked(self, backend: Optional[Any]) -> Optional[Any]:
+        if backend is None:
+            return None
+        key = id(backend)
+        if self._backend_refcounts.get(key, 0) > 0:
+            self._retired_backends[key] = backend
+            return None
+        self._retired_backends.pop(key, None)
+        return backend
+
+    def _acquire_active_backend_snapshot(self) -> Tuple[Any, str, Optional[str]]:
+        with self._active_lock:
+            backend, model_id = self._active_backend_or_raise()
+            key = id(backend)
+            self._backend_refcounts[key] = self._backend_refcounts.get(key, 0) + 1
+            return backend, model_id, self._active_backend_kind
+
+    def _release_backend_snapshot(self, backend: Any) -> None:
+        unload_after_lock: Optional[Any] = None
+        with self._active_lock:
+            key = id(backend)
+            count = self._backend_refcounts.get(key, 0) - 1
+            if count > 0:
+                self._backend_refcounts[key] = count
+                return
+            self._backend_refcounts.pop(key, None)
+            if self._active_backend is not backend:
+                unload_after_lock = self._retired_backends.pop(key, None)
+        self._unload_backend(unload_after_lock)
 
     def _build_backend(self, backend_kind: str, backend_model_id: Optional[str]) -> Any:
         if backend_kind == "diffusers":
@@ -581,14 +621,16 @@ class PlaygroundState:
             extra=_request_kwargs(payload, known=known),
         )
         response_format = str(payload.get("response_format") or "b64_json")
+        backend, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
 
         def run(progress_callback: Callable[[int, Optional[int]], None]) -> Dict[str, Any]:
-            with self._active_lock:
-                backend, _model_id = self._active_backend_or_raise()
+            try:
                 asset = backend.generate_image_with_progress(
                     request, progress_callback=progress_callback
                 )
-            return _asset_to_image_response(asset, response_format=response_format)
+                return _asset_to_image_response(asset, response_format=response_format)
+            finally:
+                self._release_backend_snapshot(backend)
 
         return self._start_job(run, total_steps=request.steps)
 
@@ -617,14 +659,16 @@ class PlaygroundState:
             seed=_to_int(fields.get("seed")),
             extra=extra,
         )
+        backend, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
 
         def run(progress_callback: Callable[[int, Optional[int]], None]) -> Dict[str, Any]:
-            with self._active_lock:
-                backend, _model_id = self._active_backend_or_raise()
+            try:
                 asset = backend.edit_image_with_progress(
                     request, progress_callback=progress_callback
                 )
-            return _asset_to_image_response(asset, response_format="b64_json")
+                return _asset_to_image_response(asset, response_format="b64_json")
+            finally:
+                self._release_backend_snapshot(backend)
 
         return self._start_job(run, total_steps=request.steps)
 

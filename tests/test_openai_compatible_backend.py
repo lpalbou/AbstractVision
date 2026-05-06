@@ -28,7 +28,10 @@ class _FakeHTTPResponse:
 
 class TestOpenAICompatibleVisionBackend(unittest.TestCase):
     def test_generate_image_b64_json(self):
-        from abstractvision.backends.openai_compatible import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
         from abstractvision.types import ImageGenerationRequest
 
         png = b"\x89PNG\r\n\x1a\n" + b"abc"
@@ -41,7 +44,9 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
             self.assertEqual(body.get("prompt"), "hello")
             return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
 
-        cfg = OpenAICompatibleBackendConfig(base_url="http://localhost:1234/v1", api_key="k", model_id="m")
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="http://localhost:1234/v1", api_key="k", model_id="m"
+        )
         backend = OpenAICompatibleVisionBackend(config=cfg)
 
         with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
@@ -50,8 +55,60 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual(out.mime_type, "image/png")
         self.assertEqual(out.data, png)
 
+    def test_generate_image_shapes_real_openai_gpt_image_payload(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest
+
+        png = b"\x89PNG\r\n\x1a\n" + b"abc"
+        resp = {"data": [{"b64_json": base64.b64encode(png).decode("ascii")}]}
+        seen = {}
+
+        def fake_urlopen(req, timeout=0):
+            body = json.loads(req.data.decode("utf-8"))
+            seen.update(body)
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="https://api.openai.com/v1",
+            api_key="k",
+            model_id="gpt-image-1.5",
+        )
+        backend = OpenAICompatibleVisionBackend(config=cfg)
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            out = backend.generate_image(
+                ImageGenerationRequest(
+                    prompt="hello",
+                    negative_prompt="no",
+                    width=1024,
+                    height=1024,
+                    steps=5,
+                    guidance_scale=2.0,
+                    seed=123,
+                    extra={"quality": "low"},
+                )
+            )
+
+        self.assertEqual(out.mime_type, "image/png")
+        self.assertEqual(seen.get("model"), "gpt-image-1.5")
+        self.assertEqual(seen.get("size"), "1024x1024")
+        self.assertEqual(seen.get("quality"), "low")
+        self.assertNotIn("response_format", seen)
+        self.assertNotIn("negative_prompt", seen)
+        self.assertNotIn("width", seen)
+        self.assertNotIn("height", seen)
+        self.assertNotIn("steps", seen)
+        self.assertNotIn("guidance_scale", seen)
+        self.assertNotIn("seed", seen)
+
     def test_edit_image_multipart_contains_prompt_and_image(self):
-        from abstractvision.backends.openai_compatible import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
         from abstractvision.types import ImageEditRequest
 
         png = b"\x89PNG\r\n\x1a\n" + b"out"
@@ -65,7 +122,9 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
             self.assertIn(b"input-bytes", body)
             return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
 
-        cfg = OpenAICompatibleBackendConfig(base_url="http://localhost:1234/v1", api_key=None, model_id=None)
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="http://localhost:1234/v1", api_key=None, model_id=None
+        )
         backend = OpenAICompatibleVisionBackend(config=cfg)
 
         with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
@@ -74,8 +133,41 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual(out.mime_type, "image/png")
         self.assertEqual(out.data, png)
 
+    def test_edit_image_uses_openai_gpt_image_array_field(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import ImageEditRequest
+
+        png = b"\x89PNG\r\n\x1a\n" + b"out"
+        resp = {"data": [{"b64_json": base64.b64encode(png).decode("ascii")}]}
+
+        def fake_urlopen(req, timeout=0):
+            body = bytes(req.data or b"")
+            self.assertIn(b'name="image[]"', body)
+            self.assertNotIn(b'name="image"; filename=', body)
+            self.assertNotIn(b'name="negative_prompt"', body)
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="https://api.openai.com/v1",
+            api_key="k",
+            model_id="gpt-image-1.5",
+        )
+        backend = OpenAICompatibleVisionBackend(config=cfg)
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            out = backend.edit_image(
+                ImageEditRequest(prompt="edit it", image=b"input-bytes", negative_prompt="no")
+            )
+        self.assertEqual(out.mime_type, "image/png")
+
     def test_video_endpoints_are_opt_in(self):
-        from abstractvision.backends.openai_compatible import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
         from abstractvision.errors import CapabilityNotSupportedError
         from abstractvision.types import VideoGenerationRequest
 
@@ -87,4 +179,3 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -28,7 +28,7 @@ From PyPI:
 pip install abstractvision
 ```
 
-AbstractVision’s base install is **batteries included** (Torch + Diffusers + stable-diffusion.cpp bindings). Heavy modules are imported lazily, but the dependencies are still installed (see `pyproject.toml`).
+AbstractVision’s base install includes Torch + Diffusers because that is the default local backend. Heavy modules are imported lazily, but the dependencies are still installed (see `pyproject.toml`). The stable-diffusion.cpp python bindings are optional via `abstractvision[sdcpp]` or `abstractvision[local]` because they can require a native build on some platforms.
 
 If you see “missing pipeline class” errors for newer model families, install the `huggingface-dev` extra (to get compatible dependencies) and then install Diffusers from source (`main`).
 
@@ -69,7 +69,7 @@ Or, from a repo checkout (run in the repo root):
 pip install -e .
 ```
 
-No extras are required for most use cases: AbstractVision is batteries-included (Diffusers + stable-diffusion.cpp python bindings), so a fresh environment should only need model weights. Use `huggingface-dev` only when you need Diffusers `main`.
+No extras are required for the default Diffusers path, so a fresh environment should only need model weights. Use `huggingface-dev` only when you need Diffusers `main`, and use `sdcpp` only when you want the optional stable-diffusion.cpp python binding fallback.
 
 Optional (recommended): pre-download heavyweight model sets (so first-run doesn’t do surprise multi‑GB downloads):
 
@@ -398,8 +398,13 @@ If you downloaded a GGUF diffusion model (like Qwen Image GGUF or FLUX.2 GGUF), 
 
 ### 6.1 Install stable-diffusion.cpp runtime
 
-By default, `pip install abstractvision` includes the pip-installable stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`).
-This is the simplest path, but it may run **CPU-only** depending on how the wheel was built.
+The base `pip install abstractvision` path does not install stable-diffusion.cpp python bindings. Use one of these explicit runtime choices:
+
+```bash
+pip install "abstractvision[sdcpp]"
+```
+
+This pip binding path is convenient, but it may require a native build or run **CPU-only** depending on how the wheel was built.
 
 Alternative (external executable):
 
@@ -424,7 +429,7 @@ abstractvision repl
 ```
 
 If `sd-cli` is already in your `PATH`, you can omit the final `/path/to/sd-cli` argument. If it is not available,
-AbstractVision falls back to `stable-diffusion-cpp-python` when that package is installed.
+AbstractVision falls back to `stable-diffusion-cpp-python` when that package is installed, for example through `pip install "abstractvision[sdcpp]"`.
 
 ### 6.3 Download the required Qwen Image VAE
 
