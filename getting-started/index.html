@@ -550,10 +550,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#71-serve-the-playground-page" class="md-nav__link">
+  <a href="#71-start-the-playground" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7.1 Serve the playground page
+        7.1 Start the playground
       
     </span>
   </a>
@@ -1114,10 +1114,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#71-serve-the-playground-page" class="md-nav__link">
+  <a href="#71-start-the-playground" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7.1 Serve the playground page
+        7.1 Start the playground
       
     </span>
   </a>
@@ -1155,7 +1155,7 @@
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
 <li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
-<li><strong>Playground (web, optional)</strong>: static UI for AbstractCore Server vision job endpoints (<code>/v1/vision/*</code>)</li>
+<li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
 <p>See also:
 - Docs index: <a href="../">docs/README.md</a>
@@ -1506,22 +1506,20 @@ AbstractVision falls back to <code>stable-diffusion-cpp-python</code> when that 
 Diffusion path or klein-4B first when you are testing a fresh machine.</p>
 <hr />
 <h2 id="7-web-ui-testing-optional-playground">7) Web UI testing (optional): Playground<a class="headerlink" href="#7-web-ui-testing-optional-playground" title="Permanent link">&para;</a></h2>
-<p>This repo includes a static, dependency-free web UI at <code>playground/vision_playground.html</code>.</p>
-<p>It is designed to talk to an <strong>AbstractCore Server</strong> instance that implements the <code>/v1/vision/*</code> endpoints used by the page
-(model list/load/unload and image generation/edit jobs). Evidence: see the fetch calls in <code>playground/vision_playground.html</code>.</p>
-<p>For server requirements and the endpoint list, see <code>playground/README.md</code>.</p>
-<h3 id="71-serve-the-playground-page">7.1 Serve the playground page<a class="headerlink" href="#71-serve-the-playground-page" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>playground
-python<span class="w"> </span>-m<span class="w"> </span>http.server<span class="w"> </span><span class="m">8080</span>
+<p>This repo includes a self-contained web UI and local API server. It is owned by
+AbstractVision and does not require AbstractCore.</p>
+<h3 id="71-start-the-playground">7.1 Start the playground<a class="headerlink" href="#71-start-the-playground" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>playground<span class="w"> </span>--port<span class="w"> </span><span class="m">8091</span>
 </code></pre></div>
 <p>Open:</p>
 <ul>
-<li><code>http://localhost:8080/vision_playground.html</code></li>
+<li><code>http://127.0.0.1:8091/vision_playground.html</code></li>
 </ul>
 <p>In the UI:
-- Set the API Base URL (defaults to <code>http://localhost:8000</code>) and click <strong>Ping</strong>
+- The API Base URL defaults to the same process that serves the page
 - Select a cached model and load it
 - Generate (T2I) or upload an input image (I2I) and run edits</p>
+<p>For the endpoint list, see <code>playground/README.md</code>.</p>
 
 
 

@@ -695,9 +695,9 @@
 - Artifacts: <a href="../artifacts/">docs/reference/artifacts.md</a>
 - Backends: <a href="../backends/">docs/reference/backends.md</a></p>
 <h2 id="1-capability-plugin-abstractcore-visioncapability">1) Capability plugin (AbstractCore → VisionCapability)<a class="headerlink" href="#1-capability-plugin-abstractcore-visioncapability" title="Permanent link">&para;</a></h2>
-<p>The plugin registers a backend id:</p>
+<p>The plugin registers a legacy-compatible backend id:</p>
 <ul>
-<li><code>abstractvision:openai-compatible</code> (see <code>_AbstractVisionCapability.backend_id</code> in <a href="../../src/abstractvision/integrations/abstractcore_plugin.py"><code>../../src/abstractvision/integrations/abstractcore_plugin.py</code></a>)</li>
+<li><code>abstractvision:openai-compatible</code> (see <code>_AbstractVisionCapability.backend_id</code> in <a href="../../src/abstractvision/integrations/abstractcore_plugin.py"><code>../../src/abstractvision/integrations/abstractcore_plugin.py</code></a>). The id is retained for compatibility; the implementation now supports local and HTTP backends.</li>
 </ul>
 <p>Current behavior:
 - Default: local Diffusers with <code>runwayml/stable-diffusion-v1-5</code>, cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set.
@@ -740,7 +740,7 @@
 - image→video</p>
 <p>Important:
 - Tool outputs are designed to be <strong>artifact refs</strong>, so <code>VisionManager.store</code> must be set (<a href="../../src/abstractvision/integrations/abstractcore.py"><code>../../src/abstractvision/integrations/abstractcore.py</code></a>).
-- This module requires AbstractCore to be installed (install extra: <code>pip install "abstractvision[abstractcore]"</code>).</p>
+- This module requires AbstractCore to be installed by the host application. AbstractVision does not install AbstractCore as a dependency.</p>
 <p>Tip (framework mode):
 - If your runtime provides an artifact store (e.g. AbstractRuntime), use <code>RuntimeArtifactStoreAdapter</code> so tool outputs can be stored and referenced across processes (see <a href="../artifacts/">docs/reference/artifacts.md</a>).</p>
 

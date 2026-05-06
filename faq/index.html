@@ -1126,9 +1126,10 @@ abstractvision<span class="w"> </span>repl
 <h2 id="how-do-i-integrate-with-abstractcore">How do I integrate with AbstractCore?<a class="headerlink" href="#how-do-i-integrate-with-abstractcore" title="Permanent link">&para;</a></h2>
 <p>Two options (details in <a href="../reference/abstractcore-integration/">docs/reference/abstractcore-integration.md</a>):</p>
 <ul>
-<li><strong>Capability plugin</strong>: <a href="../src/abstractvision/integrations/abstractcore_plugin.py"><code>../src/abstractvision/integrations/abstractcore_plugin.py</code></a> (plugin currently supports only the OpenAI-compatible backend).</li>
-<li><strong>Tool helpers</strong>: <code>make_vision_tools(...)</code> in <a href="../src/abstractvision/integrations/abstractcore.py"><code>../src/abstractvision/integrations/abstractcore.py</code></a> (requires <code>VisionManager.store</code> for artifact-ref outputs).</li>
+<li><strong>Capability plugin</strong>: <a href="../src/abstractvision/integrations/abstractcore_plugin.py"><code>../src/abstractvision/integrations/abstractcore_plugin.py</code></a> supports Diffusers, stable-diffusion.cpp, and OpenAI-compatible backends through env/config.</li>
+<li><strong>Tool helpers</strong>: <code>make_vision_tools(...)</code> in <a href="../src/abstractvision/integrations/abstractcore.py"><code>../src/abstractvision/integrations/abstractcore.py</code></a> requires <code>VisionManager.store</code> for artifact-ref outputs.</li>
 </ul>
+<p>AbstractCore is the host package; AbstractVision does not install it as a dependency.</p>
 <h2 id="how-do-i-run-tests">How do I run tests?<a class="headerlink" href="#how-do-i-run-tests" title="Permanent link">&para;</a></h2>
 <p>From the repo root:</p>
 <div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>discover<span class="w"> </span>-s<span class="w"> </span>tests<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;test_*.py&quot;</span><span class="w"> </span>-q
