@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from ..artifacts import RuntimeArtifactStoreAdapter, is_artifact_ref, get_artifact_id
+from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
 from ..errors import AbstractVisionError
 from ..vision_manager import VisionManager
+
+_DEFAULT_LOCAL_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
 
 
 def _env(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -15,6 +18,13 @@ def _env(key: str, default: Optional[str] = None) -> Optional[str]:
         return default
     s = str(v).strip()
     return s if s else default
+
+
+def _env_bool(key: str, default: bool = False) -> bool:
+    v = _env(key)
+    if v is None:
+        return bool(default)
+    return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _owner_cfg(owner: Any, key: str) -> Optional[str]:
@@ -29,6 +39,13 @@ def _owner_cfg(owner: Any, key: str) -> Optional[str]:
     except Exception:
         return None
     return None
+
+
+def _owner_cfg_bool(owner: Any, key: str, default: bool = False) -> bool:
+    v = _owner_cfg(owner, key)
+    if v is None:
+        return bool(default)
+    return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _read_bytes_from_path(path: Union[str, Path]) -> bytes:
@@ -83,18 +100,123 @@ class _AbstractVisionCapability:
             pass
 
         # Prefer AbstractCore config keys when present; fall back to AbstractVision env vars.
-        backend_kind = (_owner_cfg(self._owner, "vision_backend") or _env("ABSTRACTVISION_BACKEND", "openai") or "openai").lower()
+        backend_kind = (
+            _owner_cfg(self._owner, "vision_backend")
+            or _env("ABSTRACTVISION_BACKEND", "diffusers")
+            or "diffusers"
+        ).lower()
+        if backend_kind in {"openai_compatible", "openai-compatible", "proxy"}:
+            backend_kind = "openai"
+        elif backend_kind in {"huggingface", "hf", "hf-diffusers"}:
+            backend_kind = "diffusers"
+        elif backend_kind in {
+            "sd-cpp",
+            "stable-diffusion.cpp",
+            "stable-diffusion-cpp",
+            "stable_diffusion_cpp",
+        }:
+            backend_kind = "sdcpp"
 
-        if backend_kind not in {"openai", "openai-compatible"}:
+        if backend_kind == "diffusers":
+            model_id = (
+                _owner_cfg(self._owner, "vision_model_id")
+                or _env("ABSTRACTVISION_DIFFUSERS_MODEL_ID")
+                or _env("ABSTRACTVISION_MODEL_ID")
+                or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID
+            )
+            device = (
+                _owner_cfg(self._owner, "vision_device")
+                or _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "auto")
+                or "auto"
+            )
+            torch_dtype = _owner_cfg(self._owner, "vision_torch_dtype") or _env(
+                "ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE"
+            )
+            allow_download = _owner_cfg_bool(
+                self._owner,
+                "vision_allow_download",
+                _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False),
+            )
+            auto_retry_fp32 = _owner_cfg_bool(
+                self._owner,
+                "vision_auto_retry_fp32",
+                _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True),
+            )
+
+            from ..backends.huggingface_diffusers import (
+                HuggingFaceDiffusersBackendConfig,
+                HuggingFaceDiffusersVisionBackend,
+            )
+
+            cfg = HuggingFaceDiffusersBackendConfig(
+                model_id=str(model_id),
+                device=str(device),
+                torch_dtype=str(torch_dtype) if torch_dtype else None,
+                allow_download=allow_download,
+                auto_retry_fp32=auto_retry_fp32,
+            )
+            self._backend = HuggingFaceDiffusersVisionBackend(config=cfg)
+            return self._backend
+
+        if backend_kind == "sdcpp":
+            model = _owner_cfg(self._owner, "vision_sdcpp_model") or _env(
+                "ABSTRACTVISION_SDCPP_MODEL"
+            )
+            diffusion_model = _owner_cfg(self._owner, "vision_sdcpp_diffusion_model") or _env(
+                "ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"
+            )
+            if not model and not diffusion_model:
+                raise AbstractVisionError(
+                    "Missing stable-diffusion.cpp model configuration. Set vision_sdcpp_model, "
+                    "vision_sdcpp_diffusion_model, ABSTRACTVISION_SDCPP_MODEL, or ABSTRACTVISION_SDCPP_DIFFUSION_MODEL."
+                )
+
+            from ..backends.stable_diffusion_cpp import (
+                StableDiffusionCppBackendConfig,
+                StableDiffusionCppVisionBackend,
+            )
+
+            extra_args = _owner_cfg(self._owner, "vision_sdcpp_extra_args") or _env(
+                "ABSTRACTVISION_SDCPP_EXTRA_ARGS"
+            )
+            cfg = StableDiffusionCppBackendConfig(
+                sd_cli_path=_owner_cfg(self._owner, "vision_sdcpp_bin")
+                or _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli")
+                or "sd-cli",
+                model=str(model) if model else None,
+                diffusion_model=str(diffusion_model) if diffusion_model else None,
+                vae=_owner_cfg(self._owner, "vision_sdcpp_vae") or _env("ABSTRACTVISION_SDCPP_VAE"),
+                llm=_owner_cfg(self._owner, "vision_sdcpp_llm") or _env("ABSTRACTVISION_SDCPP_LLM"),
+                llm_vision=_owner_cfg(self._owner, "vision_sdcpp_llm_vision")
+                or _env("ABSTRACTVISION_SDCPP_LLM_VISION"),
+                clip_l=_owner_cfg(self._owner, "vision_sdcpp_clip_l")
+                or _env("ABSTRACTVISION_SDCPP_CLIP_L"),
+                clip_g=_owner_cfg(self._owner, "vision_sdcpp_clip_g")
+                or _env("ABSTRACTVISION_SDCPP_CLIP_G"),
+                t5xxl=_owner_cfg(self._owner, "vision_sdcpp_t5xxl")
+                or _env("ABSTRACTVISION_SDCPP_T5XXL"),
+                extra_args=tuple(shlex.split(str(extra_args))) if extra_args else (),
+                timeout_s=float(
+                    _owner_cfg(self._owner, "vision_timeout_s")
+                    or _env("ABSTRACTVISION_TIMEOUT_S", "3600")
+                    or "3600"
+                ),
+            )
+            self._backend = StableDiffusionCppVisionBackend(config=cfg)
+            return self._backend
+
+        if backend_kind != "openai":
             raise AbstractVisionError(
-                "Only the OpenAI-compatible HTTP backend is supported via the AbstractCore plugin (v0). "
-                "Set vision_backend='openai' (or ABSTRACTVISION_BACKEND=openai)."
+                f"Unsupported AbstractVision backend for AbstractCore plugin: {backend_kind!r}. "
+                "Use 'diffusers', 'sdcpp', or 'openai'."
             )
 
         base_url = _owner_cfg(self._owner, "vision_base_url") or _env("ABSTRACTVISION_BASE_URL")
         api_key = _owner_cfg(self._owner, "vision_api_key") or _env("ABSTRACTVISION_API_KEY")
         model_id = _owner_cfg(self._owner, "vision_model_id") or _env("ABSTRACTVISION_MODEL_ID")
-        timeout_s_raw = _owner_cfg(self._owner, "vision_timeout_s") or _env("ABSTRACTVISION_TIMEOUT_S")
+        timeout_s_raw = _owner_cfg(self._owner, "vision_timeout_s") or _env(
+            "ABSTRACTVISION_TIMEOUT_S"
+        )
         try:
             timeout_s = float(timeout_s_raw) if timeout_s_raw else 300.0
         except Exception:
@@ -107,12 +229,21 @@ class _AbstractVisionCapability:
             )
 
         # Optional video endpoints (not standardized; only enabled when configured).
-        t2v_path = _owner_cfg(self._owner, "vision_text_to_video_path") or _env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH")
-        i2v_path = _owner_cfg(self._owner, "vision_image_to_video_path") or _env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH")
-        i2v_mode = _owner_cfg(self._owner, "vision_image_to_video_mode") or _env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart")
+        t2v_path = _owner_cfg(self._owner, "vision_text_to_video_path") or _env(
+            "ABSTRACTVISION_TEXT_TO_VIDEO_PATH"
+        )
+        i2v_path = _owner_cfg(self._owner, "vision_image_to_video_path") or _env(
+            "ABSTRACTVISION_IMAGE_TO_VIDEO_PATH"
+        )
+        i2v_mode = _owner_cfg(self._owner, "vision_image_to_video_mode") or _env(
+            "ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart"
+        )
 
         # Import backend module lazily (keeps plugin import-light).
-        from ..backends.openai_compatible import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+        from ..backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
 
         cfg = OpenAICompatibleBackendConfig(
             base_url=str(base_url),
@@ -179,15 +310,15 @@ def register(registry: Any) -> None:
         return _AbstractVisionCapability(owner)
 
     config_hint = (
-        "Set ABSTRACTVISION_BASE_URL (or pass vision_base_url=...) to point to an OpenAI-compatible /v1 endpoint. "
-        "Example: vision_base_url='http://localhost:8000/v1' (AbstractCore Server vision endpoints) or "
-        "vision_base_url='http://localhost:1234/v1' (LMStudio/vLLM)."
+        "Use the default local Diffusers backend with ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5 "
+        "(cache-only unless ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1), or set ABSTRACTVISION_BACKEND=openai "
+        "plus ABSTRACTVISION_BASE_URL to point to an OpenAI-compatible /v1 endpoint."
     )
 
     registry.register_vision_backend(
         backend_id=_AbstractVisionCapability.backend_id,
         factory=_factory,
         priority=0,
-        description="AbstractVision via OpenAI-compatible HTTP backend (env/config-driven).",
+        description="AbstractVision capability plugin (Diffusers, stable-diffusion.cpp, or OpenAI-compatible HTTP; env/config-driven).",
         config_hint=config_hint,
     )

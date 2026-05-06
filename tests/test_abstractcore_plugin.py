@@ -1,11 +1,17 @@
+import importlib
 import sys
 import unittest
+from unittest.mock import patch
 
 
 class TestAbstractCorePlugin(unittest.TestCase):
     def test_import_abstractvision_is_import_light(self):
         # Importing the package should not eagerly import heavy backend modules.
-        import abstractvision  # noqa: F401
+        sys.modules.pop("abstractvision.backends.huggingface_diffusers", None)
+        sys.modules.pop("abstractvision.backends.stable_diffusion_cpp", None)
+        import abstractvision
+
+        importlib.reload(abstractvision)
 
         self.assertNotIn("abstractvision.backends.huggingface_diffusers", sys.modules)
         self.assertNotIn("abstractvision.backends.stable_diffusion_cpp", sys.modules)
@@ -23,6 +29,54 @@ class TestAbstractCorePlugin(unittest.TestCase):
         self.assertTrue(calls.get("backend_id"))
         self.assertTrue(callable(calls.get("factory")))
         self.assertIsInstance(calls.get("config_hint"), str)
+
+    def test_abstractcore_plugin_defaults_to_local_diffusers(self):
+        import abstractvision.backends.huggingface_diffusers as hf_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {}
+
+        with patch.object(hf_backend, "HuggingFaceDiffusersVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", {}, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i("a red square", width=64, height=64, steps=2)
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        cfg = seen["config"]
+        self.assertEqual(cfg.model_id, "runwayml/stable-diffusion-v1-5")
+        self.assertEqual(cfg.device, "auto")
+        self.assertFalse(cfg.allow_download)
+        self.assertEqual(seen["request"].width, 64)
+        self.assertEqual(seen["request"].height, 64)
+
+    def test_abstractcore_plugin_openai_backend_still_requires_base_url(self):
+        from abstractvision.errors import AbstractVisionError
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {"vision_backend": "openai"}
+
+        with patch.dict("os.environ", {}, clear=True):
+            cap = _AbstractVisionCapability(_DummyOwner())
+            with self.assertRaises(AbstractVisionError) as ctx:
+                cap.t2i("hello")
+
+        self.assertIn("Missing vision_base_url", str(ctx.exception))
 
     def test_abstractcore_plugin_capability_with_injected_backend_bytes_and_artifact(self):
         from abstractvision.backends.base_backend import VisionBackend
@@ -42,23 +96,55 @@ class TestAbstractCorePlugin(unittest.TestCase):
         class _StubBackend(VisionBackend):
             def get_capabilities(self):
                 return VisionBackendCapabilities(
-                    supported_tasks=["text_to_image", "image_to_image", "text_to_video", "image_to_video"]
+                    supported_tasks=[
+                        "text_to_image",
+                        "image_to_image",
+                        "text_to_video",
+                        "image_to_video",
+                    ]
                 )
 
             def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={"prompt": request.prompt})
+                return GeneratedAsset(
+                    media_type="image",
+                    data=png,
+                    mime_type="image/png",
+                    metadata={"prompt": request.prompt},
+                )
 
             def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={"prompt": request.prompt})
+                return GeneratedAsset(
+                    media_type="image",
+                    data=png,
+                    mime_type="image/png",
+                    metadata={"prompt": request.prompt},
+                )
 
             def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
-                return [GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={"angle": "front"})]
+                return [
+                    GeneratedAsset(
+                        media_type="image",
+                        data=png,
+                        mime_type="image/png",
+                        metadata={"angle": "front"},
+                    )
+                ]
 
             def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
-                return GeneratedAsset(media_type="video", data=b"ftyp" + (b"\x00" * 16), mime_type="video/mp4", metadata={})
+                return GeneratedAsset(
+                    media_type="video",
+                    data=b"ftyp" + (b"\x00" * 16),
+                    mime_type="video/mp4",
+                    metadata={},
+                )
 
             def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
-                return GeneratedAsset(media_type="video", data=b"ftyp" + (b"\x00" * 16), mime_type="video/mp4", metadata={})
+                return GeneratedAsset(
+                    media_type="video",
+                    data=b"ftyp" + (b"\x00" * 16),
+                    mime_type="video/mp4",
+                    metadata={},
+                )
 
         class _DummyOwner:
             def __init__(self):
@@ -110,4 +196,3 @@ class TestAbstractCorePlugin(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

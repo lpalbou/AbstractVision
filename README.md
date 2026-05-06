@@ -143,6 +143,12 @@ print(out)  # {"$artifact": "...", "content_type": "...", ...}
 png_bytes = vm.store.load_bytes(out["$artifact"])  # type: ignore[union-attr]
 ```
 
+When installed next to AbstractCore, AbstractVision is also discovered as a
+`llm.vision` capability plugin. The plugin defaults to the same local Diffusers
+Stable Diffusion 1.5 setup as the REPL; set `ABSTRACTVISION_BACKEND=openai`
+and `ABSTRACTVISION_BASE_URL` when you want the plugin to call an
+OpenAI-compatible image endpoint instead.
+
 ### Interactive testing (CLI / REPL)
 
 ```bash
