@@ -756,13 +756,13 @@
 <td>Diffusers (local)</td>
 <td><a href="../../src/abstractvision/backends/huggingface_diffusers.py"><code>huggingface_diffusers.py</code></a></td>
 <td><code>text_to_image</code>, <code>image_to_image</code></td>
-<td>Heavy deps (Torch/Diffusers). Supports cache-only/offline mode.</td>
+<td>Requires <code>abstractvision[diffusers]</code>. Supports cache-only/offline mode.</td>
 </tr>
 <tr>
 <td>stable-diffusion.cpp (local GGUF/checkpoints)</td>
 <td><a href="../../src/abstractvision/backends/stable_diffusion_cpp.py"><code>stable_diffusion_cpp.py</code></a></td>
 <td><code>text_to_image</code>, <code>image_to_image</code></td>
-<td>Uses <code>sd-cli</code> if present, else <code>stable-diffusion-cpp-python</code>. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components.</td>
+<td>Uses external <code>sd-cli</code> if present, else <code>abstractvision[sdcpp]</code> python bindings. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components.</td>
 </tr>
 </tbody>
 </table>
@@ -792,6 +792,9 @@
 - You want local inference for Diffusers pipelines.
 - Start with <code>runwayml/stable-diffusion-v1-5</code> for the lowest-risk local test.
 - Move to <code>black-forest-labs/FLUX.2-klein-4B</code> after that if you want a newer non-gated model and can install Diffusers <code>main</code>.</p>
+<p>Install:
+- <code>pip install "abstractvision[diffusers]"</code>
+- For newer/unreleased pipeline classes: <code>pip install "abstractvision[diffusers-dev]"</code> plus Diffusers from source.</p>
 <p>Code pointers:
 - Config: <code>HuggingFaceDiffusersBackendConfig</code> (<a href="../../src/abstractvision/backends/huggingface_diffusers.py"><code>../../src/abstractvision/backends/huggingface_diffusers.py</code></a>)
 - Backend: <code>HuggingFaceDiffusersVisionBackend</code> (<a href="../../src/abstractvision/backends/huggingface_diffusers.py"><code>../../src/abstractvision/backends/huggingface_diffusers.py</code></a>)</p>

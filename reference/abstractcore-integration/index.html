@@ -701,8 +701,8 @@
 </ul>
 <p>Current behavior:
 - Default: OpenAI-compatible HTTP. Set <code>ABSTRACTVISION_BASE_URL</code> to OpenAI or a local compatible <code>/v1</code> server.
-- Local Diffusers: set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set.
-- stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure a model path.
+- Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set.
+- stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure a model path. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.</p>
 <p>Key config keys (owner.config):
 - <code>vision_backend_instance</code> / <code>vision_backend_factory</code> (advanced injection hooks; bypass env-driven backend creation)

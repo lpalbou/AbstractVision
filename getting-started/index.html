@@ -1172,13 +1172,13 @@
 <p>From PyPI:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>abstractvision
 </code></pre></div>
-<p>AbstractVision’s base install includes Torch + Diffusers because that is the default local backend. Heavy modules are imported lazily, but the dependencies are still installed (see <code>pyproject.toml</code>). The stable-diffusion.cpp python bindings are optional via <code>abstractvision[sdcpp]</code> or <code>abstractvision[local]</code> because they can require a native build on some platforms.</p>
-<p>If you see “missing pipeline class” errors for newer model families, install the <code>huggingface-dev</code> extra (to get compatible dependencies) and then install Diffusers from source (<code>main</code>).</p>
-<p>If you're installing <strong>AbstractVision from a repo checkout</strong>, install the <code>huggingface-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[huggingface-dev]&quot;</span>
+<p>AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, or <code>abstractvision[local]</code> for both.</p>
+<p>If you see “missing pipeline class” errors for newer model families, install the <code>diffusers-dev</code> extra (or compatibility alias <code>huggingface-dev</code>) to get compatible dependencies, then install Diffusers from source (<code>main</code>).</p>
+<p>If you're installing <strong>AbstractVision from a repo checkout</strong>, install the <code>diffusers-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[diffusers-dev]&quot;</span>
 </code></pre></div>
 <p>If you're installing <strong>AbstractVision from PyPI</strong>, you can install the extra directly:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;abstractvision[huggingface-dev]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers-dev]&quot;</span>
 </code></pre></div>
 <p>Or install Diffusers from source directly:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;git+https://github.com/huggingface/diffusers@main&quot;</span>
@@ -1193,7 +1193,10 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 <p>Or, from a repo checkout (run in the repo root):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </code></pre></div>
-<p>No extras are required for the default Diffusers path, so a fresh environment should only need model weights. Use <code>huggingface-dev</code> only when you need Diffusers <code>main</code>, and use <code>sdcpp</code> only when you want the optional stable-diffusion.cpp python binding fallback.</p>
+<p>For contributor tooling from a repo checkout, use:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+</code></pre></div>
+<p>For local Diffusers generation, install <code>abstractvision[diffusers]</code> before selecting the <code>diffusers</code> backend. Use <code>diffusers-dev</code> only when you need newer Diffusers-compatible dependency pins, and use <code>sdcpp</code> only when you want the optional stable-diffusion.cpp python binding fallback.</p>
 <p>Optional extras:</p>
 <table>
 <thead>
@@ -1204,8 +1207,16 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 </thead>
 <tbody>
 <tr>
+<td><code>openai</code></td>
+<td>Empty official OpenAI provider intent marker; the HTTP backend is stdlib-only today.</td>
+</tr>
+<tr>
 <td><code>openai-compatible</code></td>
-<td>Empty compatibility marker; the HTTP backend is stdlib-only today.</td>
+<td>Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today.</td>
+</tr>
+<tr>
+<td><code>diffusers</code></td>
+<td>Installs Torch/Diffusers and related packages for local Diffusers generation.</td>
 </tr>
 <tr>
 <td><code>sdcpp</code></td>
@@ -1213,14 +1224,18 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 </tr>
 <tr>
 <td><code>huggingface</code></td>
-<td>Compatibility extra for the historical Diffusers backend dependency set.</td>
+<td>Compatibility alias for the historical Diffusers backend dependency set.</td>
 </tr>
 <tr>
 <td><code>local</code></td>
 <td>Convenience extra for both local backend dependency sets, including <code>sdcpp</code>.</td>
 </tr>
 <tr>
-<td><code>huggingface-dev</code></td>
+<td><code>all</code></td>
+<td>All runtime backend dependencies, without contributor tooling.</td>
+</tr>
+<tr>
+<td><code>diffusers-dev</code> / <code>huggingface-dev</code></td>
 <td>Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers <code>main</code> separately when a pipeline is not in the latest release.</td>
 </tr>
 <tr>
@@ -1292,7 +1307,7 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 <td style="text-align: right;">≤ 16 GB</td>
 <td><code>runwayml/stable-diffusion-v1-5</code></td>
 <td>Small, stable, and widely compatible (Windows/Linux CUDA, macOS MPS)</td>
-<td><code>pip install abstractvision</code> then run the REPL using the snippet below</td>
+<td><code>pip install "abstractvision[diffusers]"</code> then run the REPL using the snippet below</td>
 </tr>
 <tr>
 <td style="text-align: right;">24-32 GB</td>
@@ -1327,7 +1342,7 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 <li>If you want strong prompt following + text rendering: <code>Qwen/Qwen-Image-2512</code> (Diffusers on <code>mps</code>, start with <code>float16</code>).</li>
 </ul>
 <p>Recommended default (local, cross-platform) — Stable Diffusion 1.5:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>abstractvision
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers]&quot;</span>
 huggingface-cli<span class="w"> </span>download<span class="w"> </span>runwayml/stable-diffusion-v1-5
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
@@ -1347,7 +1362,7 @@ abstractvision<span class="w"> </span>repl
 <p>The REPL is cache-only by default, so it will not download model weights. Download the model separately first:</p>
 <div class="highlight"><pre><span></span><code>huggingface-cli<span class="w"> </span>download<span class="w"> </span>runwayml/stable-diffusion-v1-5
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><span class="c1"># Optional overrides; these are already the REPL defaults.</span>
+<div class="highlight"><pre><span></span><code><span class="c1"># Required for this local Diffusers recipe.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_DIFFUSERS_DEVICE</span><span class="o">=</span>auto
@@ -1367,7 +1382,7 @@ abstractvision<span class="w"> </span>repl
 <p>Start the REPL:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>repl
 </code></pre></div>
-<p>The REPL defaults to <code>diffusers</code> + <code>runwayml/stable-diffusion-v1-5</code>:</p>
+<p>With <code>ABSTRACTVISION_BACKEND=diffusers</code> and <code>ABSTRACTVISION_MODEL_ID</code> set above, the REPL uses <code>runwayml/stable-diffusion-v1-5</code>:</p>
 <div class="highlight"><pre><span></span><code>/set guidance_scale 7
 /set seed 42
 /t2i &quot;a cinematic photo of a red fox in snow&quot; --width 512 --height 512 --steps 10 --open
@@ -1380,7 +1395,7 @@ abstractvision<span class="w"> </span>repl
 <p>After Stable Diffusion 1.5 works, <code>black-forest-labs/FLUX.2-klein-4B</code> is the next recommended local test. It is
 non-gated and much smaller than FLUX.2-dev, but it currently needs Diffusers from source because released Diffusers
 may not include <code>Flux2KleinPipeline</code>.</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;abstractvision[huggingface-dev]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers-dev]&quot;</span>
 pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;git+https://github.com/huggingface/diffusers@main&quot;</span>
 </code></pre></div>
 <p>Quick REPL test:</p>
@@ -1455,8 +1470,8 @@ Rapid-AIO weights separately before using repo ids here. If you intentionally wa
 <p>Notes:
 - <code>FLUX.2-dev</code> uses Diffusers <code>Flux2Pipeline</code> and works on released Diffusers (0.36+).
 - <code>FLUX.2-klein-4B</code> and <code>FLUX.2-klein-9B</code> use <code>Flux2KleinPipeline</code>, which is not available in the released Diffusers (0.36.0). It currently
-  requires installing Diffusers from source (with the <code>huggingface-dev</code> extra for compatible dependency pins):
-  - <code>pip install -U "abstractvision[huggingface-dev]"</code>
+  requires installing Diffusers from source (with the <code>diffusers-dev</code> extra for compatible dependency pins):
+  - <code>pip install -U "abstractvision[diffusers-dev]"</code>
   - <code>pip install -U "git+https://github.com/huggingface/diffusers@main"</code></p>
 <p>Recommended first FLUX example (<code>FLUX.2-klein-4B</code>, not gated):</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
@@ -1492,7 +1507,7 @@ Rapid-AIO weights separately before using repo ids here. If you intentionally wa
 <h2 id="6-gguf-diffusion-models-stable-diffusioncpp">6) GGUF diffusion models (stable-diffusion.cpp)<a class="headerlink" href="#6-gguf-diffusion-models-stable-diffusioncpp" title="Permanent link">&para;</a></h2>
 <p>If you downloaded a GGUF diffusion model (like Qwen Image GGUF or FLUX.2 GGUF), Diffusers cannot load it. Use the stable-diffusion.cpp backend instead (either via pip-installed python bindings or <code>sd-cli</code>).</p>
 <h3 id="61-install-stable-diffusioncpp-runtime">6.1 Install stable-diffusion.cpp runtime<a class="headerlink" href="#61-install-stable-diffusioncpp-runtime" title="Permanent link">&para;</a></h3>
-<p>The base <code>pip install abstractvision</code> path does not install stable-diffusion.cpp python bindings. Use one of these explicit runtime choices:</p>
+<p>The base <code>pip install abstractvision</code> path does not install local inference runtimes. Use one of these explicit stable-diffusion.cpp runtime choices:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[sdcpp]&quot;</span>
 </code></pre></div>
 <p>This pip binding path is convenient, but it may require a native build or run <strong>CPU-only</strong> depending on how the wheel was built.</p>
