@@ -177,9 +177,16 @@ Optional extras:
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
 | `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
-| `abstractvision[diffusers-dev]` / `abstractvision[huggingface-dev]` | Looser dependency pins for newer/unreleased Diffusers pipelines; install Diffusers `main` separately if needed. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
-| `abstractvision[test]`, `abstractvision[docs]`, `abstractvision[dev]` | Contributor/test/docs tooling. |
+
+Contributor-only extras:
+
+| Extra | Use |
+|---|---|
+| `abstractvision[diffusers-dev]` / `abstractvision[huggingface-dev]` | Looser dependency pins for newer/unreleased Diffusers pipelines; install Diffusers `main` separately if needed. |
+| `abstractvision[test]` | Local test dependencies. |
+| `abstractvision[docs]` | Documentation build tooling. |
+| `abstractvision[dev]` | Full contributor workflow: tests, docs, build, lint, formatting, and pre-commit. Do not use this as an application runtime profile. |
 
 Note (CUDA): on Windows/Linux, `pip install "abstractvision[diffusers]"` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
 
@@ -194,7 +201,7 @@ pip install -U "abstractvision[diffusers-dev]"
 pip install -U "git+https://github.com/huggingface/diffusers@main"
 ```
 
-For local dev (from a repo checkout):
+For local development from a repo checkout:
 
 ```bash
 pip install -e ".[dev]"
@@ -509,7 +516,7 @@ AbstractVision’s base install is lightweight. It includes the shared API, capa
 
 If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
-If you're installing **AbstractVision from a repo checkout**, install the `diffusers-dev` extra (compatible deps; does not include Diffusers `main`):
+For that newer-pipeline workflow from a **repo checkout**, install the `diffusers-dev` extra (compatible deps; does not include Diffusers `main`):
 
 ```bash
 pip install -e ".[diffusers-dev]"
@@ -565,9 +572,16 @@ Optional extras:
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
-| `diffusers-dev` / `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
-| `test`, `docs`, `dev` | Contributor tooling for tests, docs, packaging, formatting, and release checks. |
+
+Contributor-only extras:
+
+| Extra | Use |
+|---|---|
+| `diffusers-dev` / `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
+| `test` | Local test dependencies. |
+| `docs` | Documentation build tooling. |
+| `dev` | Full contributor workflow: tests, docs, packaging, formatting, release checks, and pre-commit. Do not use this as an application runtime profile. |
 
 Optional (recommended): pre-download heavyweight model sets (so first-run doesn’t do surprise multi‑GB downloads):
 
@@ -2104,6 +2118,12 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 # Changelog
 
 ## Unreleased
+
+## 0.3.1 - 2026-05-07
+
+- CI/release: move GitHub Actions checkout/setup-python/artifact/release actions to Node 24-compatible major versions, removing the Node 20 deprecation warnings from release runs.
+- Tests: strengthen packaging metadata coverage so Diffusers aliases and `local`/`all` runtime bundles cannot drift from their intended dependency sets.
+- Docs: separate contributor-only extras from runtime install profiles and explicitly mark `dev` as unsuitable for application/runtime dependency declarations.
 
 ## 0.3.0 - 2026-05-07
 

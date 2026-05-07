@@ -63,9 +63,16 @@ Optional extras:
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
 | `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
-| `abstractvision[diffusers-dev]` / `abstractvision[huggingface-dev]` | Looser dependency pins for newer/unreleased Diffusers pipelines; install Diffusers `main` separately if needed. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
-| `abstractvision[test]`, `abstractvision[docs]`, `abstractvision[dev]` | Contributor/test/docs tooling. |
+
+Contributor-only extras:
+
+| Extra | Use |
+|---|---|
+| `abstractvision[diffusers-dev]` / `abstractvision[huggingface-dev]` | Looser dependency pins for newer/unreleased Diffusers pipelines; install Diffusers `main` separately if needed. |
+| `abstractvision[test]` | Local test dependencies. |
+| `abstractvision[docs]` | Documentation build tooling. |
+| `abstractvision[dev]` | Full contributor workflow: tests, docs, build, lint, formatting, and pre-commit. Do not use this as an application runtime profile. |
 
 Note (CUDA): on Windows/Linux, `pip install "abstractvision[diffusers]"` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
 
@@ -80,7 +87,7 @@ pip install -U "abstractvision[diffusers-dev]"
 pip install -U "git+https://github.com/huggingface/diffusers@main"
 ```
 
-For local dev (from a repo checkout):
+For local development from a repo checkout:
 
 ```bash
 pip install -e ".[dev]"

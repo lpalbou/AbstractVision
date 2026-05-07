@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.1 - 2026-05-07
+
+- CI/release: move GitHub Actions checkout/setup-python/artifact/release actions to Node 24-compatible major versions, removing the Node 20 deprecation warnings from release runs.
+- Tests: strengthen packaging metadata coverage so Diffusers aliases and `local`/`all` runtime bundles cannot drift from their intended dependency sets.
+- Docs: separate contributor-only extras from runtime install profiles and explicitly mark `dev` as unsuitable for application/runtime dependency declarations.
+
 ## 0.3.0 - 2026-05-07
 
 - Packaging: make the base install lightweight. `pip install abstractvision` no longer installs Torch, Diffusers, Transformers, Pillow, or local inference runtimes by default.

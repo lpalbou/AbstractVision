@@ -32,7 +32,7 @@ AbstractVision’s base install is lightweight. It includes the shared API, capa
 
 If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
-If you're installing **AbstractVision from a repo checkout**, install the `diffusers-dev` extra (compatible deps; does not include Diffusers `main`):
+For that newer-pipeline workflow from a **repo checkout**, install the `diffusers-dev` extra (compatible deps; does not include Diffusers `main`):
 
 ```bash
 pip install -e ".[diffusers-dev]"
@@ -88,9 +88,16 @@ Optional extras:
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
-| `diffusers-dev` / `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
-| `test`, `docs`, `dev` | Contributor tooling for tests, docs, packaging, formatting, and release checks. |
+
+Contributor-only extras:
+
+| Extra | Use |
+|---|---|
+| `diffusers-dev` / `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
+| `test` | Local test dependencies. |
+| `docs` | Documentation build tooling. |
+| `dev` | Full contributor workflow: tests, docs, packaging, formatting, release checks, and pre-commit. Do not use this as an application runtime profile. |
 
 Optional (recommended): pre-download heavyweight model sets (so first-run doesn’t do surprise multi‑GB downloads):
 
