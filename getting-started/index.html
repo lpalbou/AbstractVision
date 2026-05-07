@@ -1174,7 +1174,7 @@
 </code></pre></div>
 <p>AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, or <code>abstractvision[local]</code> for both.</p>
 <p>If you see “missing pipeline class” errors for newer model families, install the <code>diffusers-dev</code> extra (or compatibility alias <code>huggingface-dev</code>) to get compatible dependencies, then install Diffusers from source (<code>main</code>).</p>
-<p>If you're installing <strong>AbstractVision from a repo checkout</strong>, install the <code>diffusers-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
+<p>For that newer-pipeline workflow from a <strong>repo checkout</strong>, install the <code>diffusers-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[diffusers-dev]&quot;</span>
 </code></pre></div>
 <p>If you're installing <strong>AbstractVision from PyPI</strong>, you can install the extra directly:</p>
@@ -1235,16 +1235,35 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 <td>All runtime backend dependencies, without contributor tooling.</td>
 </tr>
 <tr>
+<td><code>abstractcore</code></td>
+<td>Empty compatibility marker; install AbstractCore in the host application environment.</td>
+</tr>
+</tbody>
+</table>
+<p>Contributor-only extras:</p>
+<table>
+<thead>
+<tr>
+<th>Extra</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
 <td><code>diffusers-dev</code> / <code>huggingface-dev</code></td>
 <td>Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers <code>main</code> separately when a pipeline is not in the latest release.</td>
 </tr>
 <tr>
-<td><code>abstractcore</code></td>
-<td>Empty compatibility marker; install AbstractCore in the host application environment.</td>
+<td><code>test</code></td>
+<td>Local test dependencies.</td>
 </tr>
 <tr>
-<td><code>test</code>, <code>docs</code>, <code>dev</code></td>
-<td>Contributor tooling for tests, docs, packaging, formatting, and release checks.</td>
+<td><code>docs</code></td>
+<td>Documentation build tooling.</td>
+</tr>
+<tr>
+<td><code>dev</code></td>
+<td>Full contributor workflow: tests, docs, packaging, formatting, release checks, and pre-commit. Do not use this as an application runtime profile.</td>
 </tr>
 </tbody>
 </table>
