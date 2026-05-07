@@ -68,6 +68,16 @@ def _png_bytes(color=(255, 0, 0)):
 
 
 class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import PIL  # noqa: F401
+            import torch  # noqa: F401
+        except Exception as e:
+            raise unittest.SkipTest(
+                "Diffusers backend unit tests require local test deps; install abstractvision[test] or abstractvision[diffusers]."
+            ) from e
+
     def test_default_torch_dtype_for_devices(self):
         from abstractvision.backends.huggingface_diffusers import _default_torch_dtype_for_device
 

@@ -2,19 +2,19 @@
 
 AbstractVision stands on the shoulders of excellent open-source projects and communities.
 
-## Runtime dependencies (declared)
+## Optional runtime dependencies (declared as extras)
 
-- **Hugging Face Diffusers** (local pipeline runtime; used by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
-- **PyTorch** (tensor runtime for local inference; used via Diffusers): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
-- **Hugging Face Transformers** (tokenizers/encoders used by some diffusion pipelines; imported by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
-- **Accelerate** (installed for ecosystem compatibility; used transitively by some pipelines): declared in `pyproject.toml`
-- **Safetensors** (model weight format support; used by Diffusers/Transformers): declared in `pyproject.toml`
-- **SentencePiece** (T5/tokenizer support for some model families): declared in `pyproject.toml`
-- **protobuf** (runtime dependency for some tokenizers/pipelines): declared in `pyproject.toml`
-- **einops** (tensor ops used by some modern architectures): declared in `pyproject.toml`
-- **PEFT** (LoRA adapter support used by Diffusers): declared in `pyproject.toml`
-- **Pillow** (image I/O utilities used by local backends): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py), [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in `pyproject.toml`)
-- **stable-diffusion-cpp-python** (python bindings used when `sd-cli` is not available): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in `pyproject.toml`)
+- **Hugging Face Diffusers** (local pipeline runtime; used by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in the `diffusers`/`local`/`all` extras)
+- **PyTorch** (tensor runtime for local inference; used via Diffusers): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in the `diffusers`/`local`/`all` extras)
+- **Hugging Face Transformers** (tokenizers/encoders used by some diffusion pipelines; imported by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in the `diffusers`/`local`/`all` extras)
+- **Accelerate** (installed for ecosystem compatibility; used transitively by some pipelines): declared in optional extras in `pyproject.toml`
+- **Safetensors** (model weight format support; used by Diffusers/Transformers): declared in optional extras in `pyproject.toml`
+- **SentencePiece** (T5/tokenizer support for some model families): declared in optional extras in `pyproject.toml`
+- **protobuf** (runtime dependency for some tokenizers/pipelines): declared in optional extras in `pyproject.toml`
+- **einops** (tensor ops used by some modern architectures): declared in optional extras in `pyproject.toml`
+- **PEFT** (LoRA adapter support used by Diffusers): declared in optional extras in `pyproject.toml`
+- **Pillow** (image I/O utilities used by local backends): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py), [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in optional extras in `pyproject.toml`)
+- **stable-diffusion-cpp-python** (python bindings used when `sd-cli` is not available): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in the `sdcpp`/`local`/`all` extras)
 
 ## Runtime dependencies (transitive but central)
 

@@ -24,6 +24,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 Note:
 - `abstractvision t2i` / `abstractvision i2i` always use the OpenAI-compatible backend (they do not switch based on `ABSTRACTVISION_BACKEND`).
 - Use `abstractvision repl` or `abstractvision playground` for local backends (`diffusers`, `sdcpp`).
+- Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 
 ## REPL backend selection
 
@@ -42,12 +43,14 @@ The CLI/REPL state object (`_ReplState` in [`../../src/abstractvision/cli.py`](.
 
 ### Common
 
-- `ABSTRACTVISION_BACKEND` — REPL default backend: `diffusers` (default), `openai`, or `sdcpp`
+- `ABSTRACTVISION_BACKEND` — default backend for REPL/playground: `openai`, `diffusers`, or `sdcpp`
+  - if unset and `ABSTRACTVISION_BASE_URL` is set, REPL/playground default to `openai`
+  - if unset and no base URL is configured, no backend is selected until you use `/backend ...` or load a model explicitly
 - `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
 - `ABSTRACTVISION_TIMEOUT_S` — HTTP timeout for OpenAI-compatible backend (default: `300`)
 - `ABSTRACTVISION_MODEL_ID` — model id for the current backend in the REPL:
   - `openai`: sent as `model` in HTTP requests (optional; server-dependent)
-  - `diffusers`: Diffusers model id or local path (defaults to `runwayml/stable-diffusion-v1-5` in the REPL)
+  - `diffusers`: Diffusers model id or local path
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
 
 ### OpenAI-compatible HTTP backend

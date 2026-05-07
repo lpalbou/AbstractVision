@@ -49,7 +49,7 @@ Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
-- **Need a sensible local default model**: the REPL defaults to cache-only `runwayml/stable-diffusion-v1-5` (Diffusers backend). Pre-download it or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
+- **Need local Diffusers**: install `abstractvision[diffusers]`, set `ABSTRACTVISION_BACKEND=diffusers`, pre-download `runwayml/stable-diffusion-v1-5`, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
 
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image` and `image_to_image`.
@@ -161,23 +161,27 @@ Details: [`docs/reference/backends.md`](docs/reference/backends.md).
 pip install abstractvision
 ```
 
-The base install includes the local Diffusers backend because it is the default
-local execution path. stable-diffusion.cpp python bindings are optional; install
-`abstractvision[sdcpp]` only when you want the pip binding fallback instead of an
-external `sd-cli` executable.
+The base install is lightweight. It includes the shared API, capability
+registry, artifact helpers, CLI, AbstractCore plugin entry point, and the
+stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit
+extras.
 
 Optional extras:
 
 | Extra | Use |
 |---|---|
+| `abstractvision[openai]` | Official OpenAI provider intent marker; no SDK dependency today. |
+| `abstractvision[openai-compatible]` | Generic local/remote OpenAI-shaped endpoint intent marker; stdlib-only today. |
+| `abstractvision[diffusers]` | Install Torch/Diffusers and related packages for local Diffusers generation. |
+| `abstractvision[huggingface]` | Compatibility alias for callers that still request the historical Diffusers extra. |
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
-| `abstractvision[local]` | Compatibility convenience for both local backend dependency sets, including `sdcpp`. |
-| `abstractvision[huggingface]` | Compatibility extra for callers that still request the historical Diffusers extra. |
-| `abstractvision[huggingface-dev]` | Looser dependency pins for newer/unreleased Diffusers pipelines; install Diffusers `main` separately if needed. |
+| `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
+| `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
+| `abstractvision[diffusers-dev]` / `abstractvision[huggingface-dev]` | Looser dependency pins for newer/unreleased Diffusers pipelines; install Diffusers `main` separately if needed. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
 | `abstractvision[test]`, `abstractvision[docs]`, `abstractvision[dev]` | Contributor/test/docs tooling. |
 
-Note (CUDA): on Windows/Linux, `pip install abstractvision` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
+Note (CUDA): on Windows/Linux, `pip install "abstractvision[diffusers]"` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
 
 AbstractCore is not installed by AbstractVision. When an AbstractCore application
 has AbstractVision installed in the same environment, AbstractCore can discover
@@ -186,14 +190,14 @@ the plugin entry point and use the integration modules lazily.
 If you hit “missing pipeline class” errors for newer model families, see [`docs/getting-started.md`](docs/getting-started.md). In that case you may need Diffusers from source (`main`):
 
 ```bash
-pip install -U "abstractvision[huggingface-dev]"
+pip install -U "abstractvision[diffusers-dev]"
 pip install -U "git+https://github.com/huggingface/diffusers@main"
 ```
 
 For local dev (from a repo checkout):
 
 ```bash
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 ## Usage
@@ -205,12 +209,13 @@ Start here:
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Docs index: [`docs/README.md`](docs/README.md)
 
-### Recommended default model (local / cross-platform)
+### First local model (Diffusers / cross-platform)
 
-The REPL defaults to a cache-only Diffusers setup using `runwayml/stable-diffusion-v1-5` on `auto` device.
-Pre-download the model outside the REPL, then start generating:
+Install the local runtime extra, pre-download the model outside the REPL, then
+select the Diffusers backend explicitly:
 
 ```bash
+pip install "abstractvision[diffusers]"
 huggingface-cli download runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
@@ -240,10 +245,11 @@ print(reg.models_for_task("text_to_image"))
 
 ### Backend wiring + generation (artifact outputs)
 
-The default install includes Torch + Diffusers for the default local backend, but
-heavy modules are imported lazily (see [`src/abstractvision/backends/__init__.py`](src/abstractvision/backends/__init__.py)).
-Install `abstractvision[sdcpp]` only if you want the optional stable-diffusion.cpp
-python binding fallback.
+The base install is import-light and does not install Torch/Diffusers. Heavy
+local backend modules are imported lazily (see [`src/abstractvision/backends/__init__.py`](src/abstractvision/backends/__init__.py)).
+Install `abstractvision[diffusers]` for local Diffusers, or
+`abstractvision[sdcpp]` for the optional stable-diffusion.cpp python binding
+fallback.
 
 ```python
 from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry, is_artifact_ref
@@ -499,20 +505,20 @@ From PyPI:
 pip install abstractvision
 ```
 
-AbstractVision’s base install includes Torch + Diffusers because that is the default local backend. Heavy modules are imported lazily, but the dependencies are still installed (see `pyproject.toml`). The stable-diffusion.cpp python bindings are optional via `abstractvision[sdcpp]` or `abstractvision[local]` because they can require a native build on some platforms.
+AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, or `abstractvision[local]` for both.
 
-If you see “missing pipeline class” errors for newer model families, install the `huggingface-dev` extra (to get compatible dependencies) and then install Diffusers from source (`main`).
+If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
-If you're installing **AbstractVision from a repo checkout**, install the `huggingface-dev` extra (compatible deps; does not include Diffusers `main`):
+If you're installing **AbstractVision from a repo checkout**, install the `diffusers-dev` extra (compatible deps; does not include Diffusers `main`):
 
 ```bash
-pip install -e ".[huggingface-dev]"
+pip install -e ".[diffusers-dev]"
 ```
 
 If you're installing **AbstractVision from PyPI**, you can install the extra directly:
 
 ```bash
-pip install -U "abstractvision[huggingface-dev]"
+pip install -U "abstractvision[diffusers-dev]"
 ```
 
 Or install Diffusers from source directly:
@@ -540,17 +546,26 @@ Or, from a repo checkout (run in the repo root):
 pip install -e .
 ```
 
-No extras are required for the default Diffusers path, so a fresh environment should only need model weights. Use `huggingface-dev` only when you need Diffusers `main`, and use `sdcpp` only when you want the optional stable-diffusion.cpp python binding fallback.
+For contributor tooling from a repo checkout, use:
+
+```bash
+pip install -e ".[dev]"
+```
+
+For local Diffusers generation, install `abstractvision[diffusers]` before selecting the `diffusers` backend. Use `diffusers-dev` only when you need newer Diffusers-compatible dependency pins, and use `sdcpp` only when you want the optional stable-diffusion.cpp python binding fallback.
 
 Optional extras:
 
 | Extra | Use |
 |---|---|
-| `openai-compatible` | Empty compatibility marker; the HTTP backend is stdlib-only today. |
+| `openai` | Empty official OpenAI provider intent marker; the HTTP backend is stdlib-only today. |
+| `openai-compatible` | Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today. |
+| `diffusers` | Installs Torch/Diffusers and related packages for local Diffusers generation. |
 | `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
-| `huggingface` | Compatibility extra for the historical Diffusers backend dependency set. |
+| `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
-| `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
+| `all` | All runtime backend dependencies, without contributor tooling. |
+| `diffusers-dev` / `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 | `test`, `docs`, `dev` | Contributor tooling for tests, docs, packaging, formatting, and release checks. |
 
@@ -610,7 +625,7 @@ Notes:
 
 | GPU VRAM | Recommended model id | Why | Install / quickstart |
 |---:|---|---|---|
-| ≤ 16 GB | `runwayml/stable-diffusion-v1-5` | Small, stable, and widely compatible (Windows/Linux CUDA, macOS MPS) | `pip install abstractvision` then run the REPL using the snippet below |
+| ≤ 16 GB | `runwayml/stable-diffusion-v1-5` | Small, stable, and widely compatible (Windows/Linux CUDA, macOS MPS) | `pip install "abstractvision[diffusers]"` then run the REPL using the snippet below |
 | 24-32 GB | `black-forest-labs/FLUX.2-klein-4B` | Newer non-gated model, much smaller than FLUX.2-dev | Install Diffusers `main`, then use the FLUX.2 klein section below |
 | 32 GB | `stabilityai/stable-diffusion-3.5-large-turbo` | High-quality still images with low step counts (gated) | Accept model terms on HF, set `HF_TOKEN`, then use the SD3.5 section below |
 | 64 GB | `Qwen/Qwen-Image-2512` | Strong prompt following and text rendering (large model) | Same as Diffusers setup; if pipeline import fails, use Diffusers `main` (see install section above) |
@@ -625,7 +640,7 @@ macOS Metal (Apple Silicon) quick picks:
 Recommended default (local, cross-platform) — Stable Diffusion 1.5:
 
 ```bash
-pip install abstractvision
+pip install "abstractvision[diffusers]"
 huggingface-cli download runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
@@ -654,7 +669,7 @@ huggingface-cli download runwayml/stable-diffusion-v1-5
 ```
 
 ```bash
-# Optional overrides; these are already the REPL defaults.
+# Required for this local Diffusers recipe.
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -682,7 +697,7 @@ Start the REPL:
 abstractvision repl
 ```
 
-The REPL defaults to `diffusers` + `runwayml/stable-diffusion-v1-5`:
+With `ABSTRACTVISION_BACKEND=diffusers` and `ABSTRACTVISION_MODEL_ID` set above, the REPL uses `runwayml/stable-diffusion-v1-5`:
 
 ```text
 /set guidance_scale 7
@@ -705,7 +720,7 @@ non-gated and much smaller than FLUX.2-dev, but it currently needs Diffusers fro
 may not include `Flux2KleinPipeline`.
 
 ```bash
-pip install -U "abstractvision[huggingface-dev]"
+pip install -U "abstractvision[diffusers-dev]"
 pip install -U "git+https://github.com/huggingface/diffusers@main"
 ```
 
@@ -822,8 +837,8 @@ python -c "import diffusers; print(diffusers.__version__)"
 Notes:
 - `FLUX.2-dev` uses Diffusers `Flux2Pipeline` and works on released Diffusers (0.36+).
 - `FLUX.2-klein-4B` and `FLUX.2-klein-9B` use `Flux2KleinPipeline`, which is not available in the released Diffusers (0.36.0). It currently
-  requires installing Diffusers from source (with the `huggingface-dev` extra for compatible dependency pins):
-  - `pip install -U "abstractvision[huggingface-dev]"`
+  requires installing Diffusers from source (with the `diffusers-dev` extra for compatible dependency pins):
+  - `pip install -U "abstractvision[diffusers-dev]"`
   - `pip install -U "git+https://github.com/huggingface/diffusers@main"`
 
 Recommended first FLUX example (`FLUX.2-klein-4B`, not gated):
@@ -883,7 +898,7 @@ If you downloaded a GGUF diffusion model (like Qwen Image GGUF or FLUX.2 GGUF), 
 
 ### 6.1 Install stable-diffusion.cpp runtime
 
-The base `pip install abstractvision` path does not install stable-diffusion.cpp python bindings. Use one of these explicit runtime choices:
+The base `pip install abstractvision` path does not install local inference runtimes. Use one of these explicit stable-diffusion.cpp runtime choices:
 
 ```bash
 pip install "abstractvision[sdcpp]"
@@ -1076,6 +1091,8 @@ png_bytes = store.load_bytes(ref["$artifact"])
 ```
 
 ### Local example (Diffusers backend)
+
+Install `abstractvision[diffusers]` before using this backend.
 
 ```python
 from abstractvision import VisionManager
@@ -1382,7 +1399,7 @@ Helpers: `is_artifact_ref()` / `make_media_ref()` in [`../src/abstractvision/art
 
 Some newer pipelines may only exist on Diffusers GitHub `main`. Install:
 
-- `pip install -U "abstractvision[huggingface-dev]"` (compatible dependency versions)
+- `pip install -U "abstractvision[diffusers-dev]"` (compatible dependency versions)
 - `pip install -U "git+https://github.com/huggingface/diffusers@main"` (Diffusers `main`)
 
 See: [docs/getting-started.md](getting-started.md).
@@ -1430,9 +1447,9 @@ It does **not** guarantee your configured backend can execute the task; backend 
 
 ## I only need the HTTP backend. Do I have to install Torch/Diffusers?
 
-Today, the base install includes Torch/Diffusers because the local Diffusers backend is the default path (see [`../pyproject.toml`](../pyproject.toml)). Heavy modules are imported lazily ([`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)), but the dependencies are still installed.
+No. The base install is lightweight and includes the stdlib OpenAI-compatible HTTP backend without Torch/Diffusers (see [`../pyproject.toml`](../pyproject.toml)). Heavy local backend modules are still imported lazily ([`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 
-The stable-diffusion.cpp python bindings are not part of the base install; use `abstractvision[sdcpp]` or an external `sd-cli` only when you need that backend. If you need a smaller “HTTP-only” install footprint, please open an issue with your target environment and constraints.
+Install `abstractvision[diffusers]` only when you want local Diffusers generation. Use `abstractvision[sdcpp]` or an external `sd-cli` only when you need stable-diffusion.cpp.
 
 ## How do I integrate with AbstractCore?
 
@@ -1467,8 +1484,8 @@ See also:
 | Backend | Implementation | Tasks implemented | Notes |
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
-| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Heavy deps (Torch/Diffusers). Supports cache-only/offline mode. |
-| stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses `sd-cli` if present, else `stable-diffusion-cpp-python`. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components. |
+| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. |
+| stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components. |
 
 Notes:
 - `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
@@ -1504,6 +1521,10 @@ Code pointers:
 - You want local inference for Diffusers pipelines.
 - Start with `runwayml/stable-diffusion-v1-5` for the lowest-risk local test.
 - Move to `black-forest-labs/FLUX.2-klein-4B` after that if you want a newer non-gated model and can install Diffusers `main`.
+
+Install:
+- `pip install "abstractvision[diffusers]"`
+- For newer/unreleased pipeline classes: `pip install "abstractvision[diffusers-dev]"` plus Diffusers from source.
 
 Code pointers:
 - Config: `HuggingFaceDiffusersBackendConfig` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
@@ -1568,6 +1589,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 Note:
 - `abstractvision t2i` / `abstractvision i2i` always use the OpenAI-compatible backend (they do not switch based on `ABSTRACTVISION_BACKEND`).
 - Use `abstractvision repl` or `abstractvision playground` for local backends (`diffusers`, `sdcpp`).
+- Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 
 ## REPL backend selection
 
@@ -1586,12 +1608,14 @@ The CLI/REPL state object (`_ReplState` in [`../../src/abstractvision/cli.py`](.
 
 ### Common
 
-- `ABSTRACTVISION_BACKEND` — REPL default backend: `diffusers` (default), `openai`, or `sdcpp`
+- `ABSTRACTVISION_BACKEND` — default backend for REPL/playground: `openai`, `diffusers`, or `sdcpp`
+  - if unset and `ABSTRACTVISION_BASE_URL` is set, REPL/playground default to `openai`
+  - if unset and no base URL is configured, no backend is selected until you use `/backend ...` or load a model explicitly
 - `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
 - `ABSTRACTVISION_TIMEOUT_S` — HTTP timeout for OpenAI-compatible backend (default: `300`)
 - `ABSTRACTVISION_MODEL_ID` — model id for the current backend in the REPL:
   - `openai`: sent as `model` in HTTP requests (optional; server-dependent)
-  - `diffusers`: Diffusers model id or local path (defaults to `runwayml/stable-diffusion-v1-5` in the REPL)
+  - `diffusers`: Diffusers model id or local path
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
 
 ### OpenAI-compatible HTTP backend
@@ -1765,8 +1789,8 @@ The plugin registers a legacy-compatible backend id:
 
 Current behavior:
 - Default: OpenAI-compatible HTTP. Set `ABSTRACTVISION_BASE_URL` to OpenAI or a local compatible `/v1` server.
-- Local Diffusers: set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
-- stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path.
+- Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
+- stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 
 Key config keys (owner.config):
@@ -1922,7 +1946,7 @@ AbstractVision is part of the **AbstractFramework** ecosystem:
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -U pip
-python -m pip install -e .
+python -m pip install -e ".[dev]"
 ```
 
 Optional (if you work on AbstractCore integration locally):
@@ -2041,19 +2065,19 @@ For non-security bugs and feature requests, please use the normal issue tracker.
 
 AbstractVision stands on the shoulders of excellent open-source projects and communities.
 
-## Runtime dependencies (declared)
+## Optional runtime dependencies (declared as extras)
 
-- **Hugging Face Diffusers** (local pipeline runtime; used by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
-- **PyTorch** (tensor runtime for local inference; used via Diffusers): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
-- **Hugging Face Transformers** (tokenizers/encoders used by some diffusion pipelines; imported by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in [`pyproject.toml`](pyproject.toml))
-- **Accelerate** (installed for ecosystem compatibility; used transitively by some pipelines): declared in `pyproject.toml`
-- **Safetensors** (model weight format support; used by Diffusers/Transformers): declared in `pyproject.toml`
-- **SentencePiece** (T5/tokenizer support for some model families): declared in `pyproject.toml`
-- **protobuf** (runtime dependency for some tokenizers/pipelines): declared in `pyproject.toml`
-- **einops** (tensor ops used by some modern architectures): declared in `pyproject.toml`
-- **PEFT** (LoRA adapter support used by Diffusers): declared in `pyproject.toml`
-- **Pillow** (image I/O utilities used by local backends): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py), [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in `pyproject.toml`)
-- **stable-diffusion-cpp-python** (python bindings used when `sd-cli` is not available): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in `pyproject.toml`)
+- **Hugging Face Diffusers** (local pipeline runtime; used by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in the `diffusers`/`local`/`all` extras)
+- **PyTorch** (tensor runtime for local inference; used via Diffusers): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in the `diffusers`/`local`/`all` extras)
+- **Hugging Face Transformers** (tokenizers/encoders used by some diffusion pipelines; imported by the Diffusers backend): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py) (declared in the `diffusers`/`local`/`all` extras)
+- **Accelerate** (installed for ecosystem compatibility; used transitively by some pipelines): declared in optional extras in `pyproject.toml`
+- **Safetensors** (model weight format support; used by Diffusers/Transformers): declared in optional extras in `pyproject.toml`
+- **SentencePiece** (T5/tokenizer support for some model families): declared in optional extras in `pyproject.toml`
+- **protobuf** (runtime dependency for some tokenizers/pipelines): declared in optional extras in `pyproject.toml`
+- **einops** (tensor ops used by some modern architectures): declared in optional extras in `pyproject.toml`
+- **PEFT** (LoRA adapter support used by Diffusers): declared in optional extras in `pyproject.toml`
+- **Pillow** (image I/O utilities used by local backends): [`src/abstractvision/backends/huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py), [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in optional extras in `pyproject.toml`)
+- **stable-diffusion-cpp-python** (python bindings used when `sd-cli` is not available): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py) (declared in the `sdcpp`/`local`/`all` extras)
 
 ## Runtime dependencies (transitive but central)
 
@@ -2080,6 +2104,14 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 # Changelog
 
 ## Unreleased
+
+## 0.3.0 - 2026-05-07
+
+- Packaging: make the base install lightweight. `pip install abstractvision` no longer installs Torch, Diffusers, Transformers, Pillow, or local inference runtimes by default.
+- Extras: add canonical runtime profiles `abstractvision[openai]`, `abstractvision[openai-compatible]`, `abstractvision[diffusers]`, `abstractvision[sdcpp]`, `abstractvision[local]`, and `abstractvision[all]`; keep `huggingface`/`huggingface-dev` compatibility aliases.
+- Runtime defaults: keep AbstractCore plugin and one-shot CLI remote-first, and stop the REPL/playground from silently selecting Diffusers when no backend is configured.
+- Errors/tests/CI: improve local-backend missing-extra hints, add stronger packaging/import-light/OpenAI-compatible coverage, and split CI into lightweight base and local Diffusers paths.
+- Docs: update install guidance, backend references, and internal backlog policy for explicit local runtime extras.
 
 ## 0.2.6 - 2026-05-06
 
@@ -2173,10 +2205,32 @@ classifiers = [
   "Topic :: Multimedia",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-# Diffusers is included by default because it is the local default backend.
-# stable-diffusion.cpp bindings stay opt-in: they are useful, but wheel/build
-# support is platform-sensitive and should not block the base install.
-dependencies = [
+# Base install is intentionally lightweight. Local inference runtimes are
+# explicit extras so OpenAI-compatible/AbstractCore plugin hosts do not pull
+# Torch, Diffusers, CUDA-adjacent wheels, or local model stacks by default.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/lpalbou/abstractvision"
+Repository = "https://github.com/lpalbou/abstractvision"
+
+[project.scripts]
+abstractvision = "abstractvision.cli:main"
+
+[project.entry-points."abstractcore.capabilities_plugins"]
+abstractvision = "abstractvision.integrations.abstractcore_plugin:register"
+
+[project.optional-dependencies]
+# Official OpenAI image endpoint intent. The backend is stdlib-only today and
+# does not require the OpenAI SDK.
+openai = []
+
+# Generic OpenAI-shaped HTTP endpoint intent (local or remote /v1 servers).
+# The backend is stdlib-only today; keep this extra for readable install commands.
+openai-compatible = []
+
+# Local image generation via Hugging Face Diffusers/Torch.
+diffusers = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
   "transformers>=4.0,<6.0.0",
@@ -2193,56 +2247,84 @@ dependencies = [
   "Pillow>=9.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/lpalbou/abstractvision"
-Repository = "https://github.com/lpalbou/abstractvision"
-
-[project.scripts]
-abstractvision = "abstractvision.cli:main"
-
-[project.entry-points."abstractcore.capabilities_plugins"]
-abstractvision = "abstractvision.integrations.abstractcore_plugin:register"
-
-[project.optional-dependencies]
-# OpenAI-compatible HTTP backend is stdlib-only today; keep the extra for forward compatibility.
-openai-compatible = []
-
 # Local generation via stable-diffusion.cpp python bindings (pip-installable).
 sdcpp = [
   "stable-diffusion-cpp-python>=0.4.2",
+  "Pillow>=9.0",
 ]
 
 # Compatibility extra for callers that still request the historical Diffusers extra.
 huggingface = [
   "diffusers>=0.36.0",
-  "torch>=2.0",
-  "transformers>=4.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
   "Pillow>=9.0",
 ]
 
 # Convenience: installs both local backends (Diffusers + stable-diffusion.cpp python bindings).
 local = [
-  "stable-diffusion-cpp-python>=0.4.2",
   "diffusers>=0.36.0",
-  "torch>=2.0",
-  "transformers>=4.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "stable-diffusion-cpp-python>=0.4.2",
+  "Pillow>=9.0",
+]
+
+# Convenience: installs every runtime backend, but not contributor tooling.
+all = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "stable-diffusion-cpp-python>=0.4.2",
   "Pillow>=9.0",
 ]
 
 # NOTE: PyPI rejects VCS/direct URL dependencies in package metadata.
 # If you need Diffusers "main" for unreleased pipelines, install it explicitly *after*:
-#   pip install "abstractvision[huggingface-dev]"
+#   pip install "abstractvision[diffusers-dev]"
 #   pip install "diffusers @ git+https://github.com/huggingface/diffusers@main"
-huggingface-dev = [
+diffusers-dev = [
   "diffusers>=0.36.0",
-  "torch>=2.0",
+  "torch>=2.0,<3.0.0",
   "transformers>=5.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "Pillow>=9.0",
+]
+
+# Compatibility extra for callers that still request the historical dev extra.
+huggingface-dev = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=5.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
   "Pillow>=9.0",
 ]
 
@@ -2269,6 +2351,14 @@ dev = [
   "pytest>=7.0.0",
   "Pillow>=9.0",
   "torch>=2.0,<3.0.0",
+  "diffusers>=0.36.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
   "mkdocs>=1.5.0",
   "mkdocs-material>=9.0.0",
   "build>=1.0.0",

@@ -71,6 +71,31 @@ class TestPlaygroundServer(unittest.TestCase):
         self.assertTrue(models["runwayml/stable-diffusion-v1-5"]["cached"])
         self.assertIn("configured cache", models["runwayml/stable-diffusion-v1-5"]["cached_in"])
 
+    def test_default_config_does_not_select_backend_without_backend_env(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+
+        with patch.dict("os.environ", {}, clear=True):
+            cfg = PlaygroundServerConfig()
+            state = PlaygroundState(cfg)
+            out = state.list_models()
+
+        self.assertEqual(cfg.backend_kind, "")
+        self.assertEqual(cfg.default_model_id, "")
+        self.assertIsNone(out["active"])
+
+    def test_default_config_lists_remote_when_base_url_is_set(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+
+        with patch.dict("os.environ", {"ABSTRACTVISION_BASE_URL": "http://localhost:1234/v1"}, clear=True):
+            cfg = PlaygroundServerConfig()
+            state = PlaygroundState(cfg)
+            out = state.list_models()
+
+        self.assertEqual(cfg.backend_kind, "openai")
+        models = {m["id"]: m for m in out["models"]}
+        self.assertIn("openai-compatible/default", models)
+        self.assertEqual(models["openai-compatible/default"]["backend"], "openai")
+
     def test_generation_job_uses_active_backend_and_returns_b64_json(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
         from abstractvision.types import GeneratedAsset

@@ -23,7 +23,7 @@ from .model_capabilities import VisionModelCapabilitiesRegistry
 from .vision_manager import VisionManager
 
 
-DEFAULT_REPL_BACKEND = "diffusers"
+DEFAULT_REPL_BACKEND = ""
 DEFAULT_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
 DEFAULT_DIFFUSERS_DEVICE = "auto"
 DEFAULT_T2I_WIDTH = 512
@@ -43,6 +43,15 @@ def _env_bool(key: str, default: bool = False) -> bool:
     if v is None:
         return bool(default)
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _default_repl_backend() -> str:
+    explicit = _env("ABSTRACTVISION_BACKEND")
+    if explicit:
+        return str(explicit)
+    if _env("ABSTRACTVISION_BASE_URL"):
+        return "openai"
+    return DEFAULT_REPL_BACKEND
 
 
 def _print_json(obj: Any) -> None:
@@ -183,9 +192,7 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
 
 @dataclass
 class _ReplState:
-    backend_kind: str = field(
-        default_factory=lambda: _env("ABSTRACTVISION_BACKEND", DEFAULT_REPL_BACKEND) or DEFAULT_REPL_BACKEND
-    )
+    backend_kind: str = field(default_factory=_default_repl_backend)
     base_url: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_BASE_URL"))
     api_key: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_API_KEY"))
     model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_ID"))
@@ -225,7 +232,12 @@ class _ReplState:
     _cached_store: Optional[LocalAssetStore] = None
 
     def __post_init__(self) -> None:
-        if self.model_id is None and str(self.backend_kind or "").strip().lower() == "diffusers":
+        if self.model_id is None and str(self.backend_kind or "").strip().lower() in {
+            "diffusers",
+            "huggingface",
+            "hf",
+            "hf-diffusers",
+        }:
             self.model_id = DEFAULT_DIFFUSERS_MODEL_ID
         if self.defaults is None:
             self.defaults = {
@@ -252,6 +264,7 @@ def _repl_help() -> str:
         "  /config                     Show current backend/store config\n"
         "\n"
         "Backends:\n"
+        "  No backend is selected by default unless ABSTRACTVISION_BACKEND or ABSTRACTVISION_BASE_URL is set.\n"
         "  /backend openai <base_url> [api_key] [model_id]\n"
         "  /backend diffusers <model_id_or_path> [device] [torch_dtype]\n"
         "      default model: runwayml/stable-diffusion-v1-5\n"
@@ -274,7 +287,8 @@ def _repl_help() -> str:
         "      extra flags are forwarded through request.extra\n"
         "\n"
         "Quick examples:\n"
-        "  # Default local Diffusers path: Stable Diffusion 1.5\n"
+        "  # Local Diffusers path: Stable Diffusion 1.5 (requires abstractvision[diffusers])\n"
+        "  /backend diffusers runwayml/stable-diffusion-v1-5 auto\n"
         "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
         "\n"
         "  # Modern small FLUX path: FLUX.2-klein-4B (requires Diffusers main today)\n"
@@ -378,7 +392,13 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
         state._cached_store = store
         state._cached_store_dir = state.store_dir
 
-    backend_kind = str(state.backend_kind or "").strip().lower() or DEFAULT_REPL_BACKEND
+    backend_kind = str(state.backend_kind or "").strip().lower()
+    if backend_kind in {"openai-compatible", "openai_compatible", "proxy"}:
+        backend_kind = "openai"
+    elif backend_kind in {"huggingface", "hf", "hf-diffusers"}:
+        backend_kind = "diffusers"
+    elif backend_kind in {"sd-cpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
+        backend_kind = "sdcpp"
     backend_key: Tuple[Any, ...]
     if backend_kind == "openai":
         base_url = str(state.base_url or "").strip()
@@ -464,6 +484,11 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             backend = StableDiffusionCppVisionBackend(config=cfg)
             state._cached_backend = backend
             state._cached_backend_key = backend_key
+    elif not backend_kind:
+        raise ValueError(
+            "Backend is not configured. Use /backend openai <base_url>, "
+            "/backend diffusers <model_id_or_path>, or /backend sdcpp <model_path>."
+        )
     else:
         raise ValueError(f"Unknown backend kind: {backend_kind!r} (expected 'openai', 'diffusers', or 'sdcpp')")
 

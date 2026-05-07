@@ -56,18 +56,28 @@ class TestCliSmoke(unittest.TestCase):
         self.assertNotIn("FLUX.2-klein-9B", out)
         self.assertNotIn("--negative ...", out)
 
-    def test_repl_state_defaults_to_local_diffusers_cache_only(self):
-        from abstractvision.cli import DEFAULT_DIFFUSERS_DEVICE, DEFAULT_DIFFUSERS_MODEL_ID, _ReplState
+    def test_repl_state_starts_unconfigured_without_backend_env(self):
+        from abstractvision.cli import DEFAULT_DIFFUSERS_DEVICE, _ReplState
 
         with patch.dict("os.environ", {}, clear=True):
             state = _ReplState()
 
-        self.assertEqual(state.backend_kind, "diffusers")
-        self.assertEqual(state.model_id, DEFAULT_DIFFUSERS_MODEL_ID)
+        self.assertEqual(state.backend_kind, "")
+        self.assertIsNone(state.model_id)
         self.assertEqual(state.diffusers_device, DEFAULT_DIFFUSERS_DEVICE)
         self.assertFalse(state.diffusers_allow_download)
         self.assertEqual(state.defaults["t2i"]["width"], 512)
         self.assertEqual(state.defaults["t2i"]["height"], 512)
+
+    def test_repl_state_defaults_to_openai_when_base_url_is_configured(self):
+        from abstractvision.cli import _ReplState
+
+        with patch.dict("os.environ", {"ABSTRACTVISION_BASE_URL": "http://localhost:1234/v1"}, clear=True):
+            state = _ReplState()
+
+        self.assertEqual(state.backend_kind, "openai")
+        self.assertEqual(state.base_url, "http://localhost:1234/v1")
+        self.assertIsNone(state.model_id)
 
     def test_repl_state_openai_override_does_not_inherit_diffusers_model(self):
         from abstractvision.cli import _ReplState

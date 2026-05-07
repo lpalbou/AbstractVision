@@ -3,6 +3,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 # Ensure `src/` layout is importable when running tests without installing the package.
@@ -40,6 +41,7 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         def fake_urlopen(req, timeout=0):
             # Basic request shaping sanity.
             self.assertIn("/images/generations", req.full_url)
+            self.assertEqual(req.headers.get("Authorization"), "Bearer k")
             body = json.loads(req.data.decode("utf-8"))
             self.assertEqual(body.get("prompt"), "hello")
             return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
@@ -54,6 +56,39 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual(out.media_type, "image")
         self.assertEqual(out.mime_type, "image/png")
         self.assertEqual(out.data, png)
+
+    def test_generate_image_uses_custom_path_and_downloads_url_response(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest
+
+        png = b"\x89PNG\r\n\x1a\n" + b"from-url"
+        resp = {"data": [{"url": "http://assets.local/out.png"}]}
+        seen = {"posts": 0, "gets": 0}
+
+        def fake_urlopen(req, timeout=0):
+            if req.full_url == "http://localhost:1234/v1/custom/images":
+                seen["posts"] += 1
+                return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+            if req.full_url == "http://assets.local/out.png":
+                seen["gets"] += 1
+                return _FakeHTTPResponse(png, headers={"Content-Type": "image/png"})
+            raise AssertionError(req.full_url)
+
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="http://localhost:1234/v1",
+            image_generations_path="/custom/images",
+        )
+        backend = OpenAICompatibleVisionBackend(config=cfg)
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            out = backend.generate_image(ImageGenerationRequest(prompt="hello"))
+
+        self.assertEqual(out.mime_type, "image/png")
+        self.assertEqual(out.metadata.get("source"), "url")
+        self.assertEqual(seen, {"posts": 1, "gets": 1})
 
     def test_generate_image_shapes_real_openai_gpt_image_payload(self):
         from abstractvision.backends.openai_compatible import (
@@ -175,6 +210,153 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         backend = OpenAICompatibleVisionBackend(config=cfg)
         with self.assertRaises(CapabilityNotSupportedError):
             backend.generate_video(VideoGenerationRequest(prompt="x"))
+
+    def test_video_capabilities_and_generation_payload(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import VideoGenerationRequest
+
+        mp4 = b"\x00\x00\x00\x18ftypmp42" + b"x"
+        resp = {"data": [{"b64_json": base64.b64encode(mp4).decode("ascii")}]}
+        seen = {}
+
+        def fake_urlopen(req, timeout=0):
+            seen["url"] = req.full_url
+            seen["body"] = json.loads(req.data.decode("utf-8"))
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="http://localhost:1234/v1",
+            model_id="video-model",
+            text_to_video_path="/videos/generations",
+        )
+        backend = OpenAICompatibleVisionBackend(config=cfg)
+        self.assertIn("text_to_video", backend.get_capabilities().supported_tasks)
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            out = backend.generate_video(
+                VideoGenerationRequest(prompt="move", width=320, height=240, fps=12, num_frames=8)
+            )
+
+        self.assertEqual(out.media_type, "video")
+        self.assertEqual(out.mime_type, "video/mp4")
+        self.assertIn("/videos/generations", seen["url"])
+        self.assertEqual(seen["body"].get("model"), "video-model")
+        self.assertEqual(seen["body"].get("fps"), 12)
+        self.assertEqual(seen["body"].get("num_frames"), 8)
+
+    def test_image_to_video_json_b64_payload(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import ImageToVideoRequest
+
+        mp4 = b"\x00\x00\x00\x18ftypmp42" + b"x"
+        resp = {"data": [{"b64_json": base64.b64encode(mp4).decode("ascii")}]}
+        seen = {}
+
+        def fake_urlopen(req, timeout=0):
+            seen["body"] = json.loads(req.data.decode("utf-8"))
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="http://localhost:1234/v1",
+            image_to_video_path="/videos/edits",
+            image_to_video_mode="json_b64",
+        )
+        backend = OpenAICompatibleVisionBackend(config=cfg)
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            out = backend.image_to_video(ImageToVideoRequest(image=b"image-bytes", prompt="move"))
+
+        self.assertEqual(out.mime_type, "video/mp4")
+        self.assertEqual(base64.b64decode(seen["body"]["image_b64"]), b"image-bytes")
+        self.assertEqual(seen["body"].get("prompt"), "move")
+
+    def test_image_to_video_multipart_payload(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import ImageToVideoRequest
+
+        mp4 = b"\x00\x00\x00\x18ftypmp42" + b"x"
+        resp = {"data": [{"b64_json": base64.b64encode(mp4).decode("ascii")}]}
+
+        def fake_urlopen(req, timeout=0):
+            body = bytes(req.data or b"")
+            self.assertIn(b'name="image"; filename="image.png"', body)
+            self.assertIn(b"image-bytes", body)
+            self.assertIn(b'name="prompt"', body)
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="http://localhost:1234/v1",
+            image_to_video_path="/videos/edits",
+        )
+        backend = OpenAICompatibleVisionBackend(config=cfg)
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            out = backend.image_to_video(ImageToVideoRequest(image=b"image-bytes", prompt="move"))
+
+        self.assertEqual(out.mime_type, "video/mp4")
+
+    def test_invalid_response_shape_raises(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest
+
+        def fake_urlopen(req, timeout=0):
+            return _FakeHTTPResponse(json.dumps({"data": [{}]}).encode("utf-8"))
+
+        backend = OpenAICompatibleVisionBackend(
+            config=OpenAICompatibleBackendConfig(base_url="http://localhost:1234/v1")
+        )
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            with self.assertRaises(ValueError) as ctx:
+                backend.generate_image(ImageGenerationRequest(prompt="hello"))
+
+        self.assertIn("missing data", str(ctx.exception))
+
+    def test_provider_http_error_has_context(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest
+
+        class _Body:
+            def read(self):
+                return b'{"error":"bad"}'
+
+            def close(self):
+                return None
+
+        def fake_urlopen(req, timeout=0):
+            raise HTTPError(
+                req.full_url,
+                400,
+                "Bad Request",
+                hdrs=None,
+                fp=_Body(),
+            )
+
+        backend = OpenAICompatibleVisionBackend(
+            config=OpenAICompatibleBackendConfig(base_url="http://localhost:1234/v1")
+        )
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            with self.assertRaises(RuntimeError) as ctx:
+                backend.generate_image(ImageGenerationRequest(prompt="hello"))
+
+        self.assertIn("status=400", str(ctx.exception))
+        self.assertIn("bad", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -22,8 +22,8 @@ The plugin registers a legacy-compatible backend id:
 
 Current behavior:
 - Default: OpenAI-compatible HTTP. Set `ABSTRACTVISION_BASE_URL` to OpenAI or a local compatible `/v1` server.
-- Local Diffusers: set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
-- stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path.
+- Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
+- stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 
 Key config keys (owner.config):

@@ -97,7 +97,7 @@ Helpers: `is_artifact_ref()` / `make_media_ref()` in [`../src/abstractvision/art
 
 Some newer pipelines may only exist on Diffusers GitHub `main`. Install:
 
-- `pip install -U "abstractvision[huggingface-dev]"` (compatible dependency versions)
+- `pip install -U "abstractvision[diffusers-dev]"` (compatible dependency versions)
 - `pip install -U "git+https://github.com/huggingface/diffusers@main"` (Diffusers `main`)
 
 See: [docs/getting-started.md](getting-started.md).
@@ -145,9 +145,9 @@ It does **not** guarantee your configured backend can execute the task; backend 
 
 ## I only need the HTTP backend. Do I have to install Torch/Diffusers?
 
-Today, the base install includes Torch/Diffusers because the local Diffusers backend is the default path (see [`../pyproject.toml`](../pyproject.toml)). Heavy modules are imported lazily ([`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)), but the dependencies are still installed.
+No. The base install is lightweight and includes the stdlib OpenAI-compatible HTTP backend without Torch/Diffusers (see [`../pyproject.toml`](../pyproject.toml)). Heavy local backend modules are still imported lazily ([`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 
-The stable-diffusion.cpp python bindings are not part of the base install; use `abstractvision[sdcpp]` or an external `sd-cli` only when you need that backend. If you need a smaller “HTTP-only” install footprint, please open an issue with your target environment and constraints.
+Install `abstractvision[diffusers]` only when you want local Diffusers generation. Use `abstractvision[sdcpp]` or an external `sd-cli` only when you need stable-diffusion.cpp.
 
 ## How do I integrate with AbstractCore?
 

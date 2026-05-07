@@ -1,4 +1,6 @@
 import importlib
+import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -21,6 +23,52 @@ class TestAbstractCorePlugin(unittest.TestCase):
 
         self.assertNotIn("abstractvision.backends.huggingface_diffusers", sys.modules)
         self.assertNotIn("abstractvision.backends.stable_diffusion_cpp", sys.modules)
+
+    def test_base_import_and_plugin_registration_do_not_import_heavy_modules_subprocess(self):
+        script = r"""
+import builtins
+import os
+import sys
+
+sys.path.insert(0, os.environ["ABSTRACTVISION_SRC"])
+blocked = {"torch", "diffusers", "transformers", "PIL", "stable_diffusion_cpp"}
+real_import = builtins.__import__
+
+def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+    root = str(name).split(".", 1)[0]
+    if root in blocked:
+        raise AssertionError(f"unexpected heavy import: {name}")
+    return real_import(name, globals, locals, fromlist, level)
+
+builtins.__import__ = guarded_import
+
+import abstractvision
+from abstractvision.integrations.abstractcore_plugin import register
+
+calls = {}
+
+class Registry:
+    def register_vision_backend(self, **kwargs):
+        calls.update(kwargs)
+
+register(Registry())
+assert calls["backend_id"] == "abstractvision:openai-compatible"
+assert callable(calls["factory"])
+for name in blocked:
+    assert name not in sys.modules, name
+print("ok")
+"""
+        env = dict(os.environ)
+        env["ABSTRACTVISION_SRC"] = str(SRC_DIR)
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
     def test_abstractcore_plugin_registers_backend(self):
         from abstractvision.integrations.abstractcore_plugin import register

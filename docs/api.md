@@ -82,6 +82,8 @@ png_bytes = store.load_bytes(ref["$artifact"])
 
 ### Local example (Diffusers backend)
 
+Install `abstractvision[diffusers]` before using this backend.
+
 ```python
 from abstractvision import VisionManager
 from abstractvision.backends import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend

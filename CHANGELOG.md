@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-05-07
+
+- Packaging: make the base install lightweight. `pip install abstractvision` no longer installs Torch, Diffusers, Transformers, Pillow, or local inference runtimes by default.
+- Extras: add canonical runtime profiles `abstractvision[openai]`, `abstractvision[openai-compatible]`, `abstractvision[diffusers]`, `abstractvision[sdcpp]`, `abstractvision[local]`, and `abstractvision[all]`; keep `huggingface`/`huggingface-dev` compatibility aliases.
+- Runtime defaults: keep AbstractCore plugin and one-shot CLI remote-first, and stop the REPL/playground from silently selecting Diffusers when no backend is configured.
+- Errors/tests/CI: improve local-backend missing-extra hints, add stronger packaging/import-light/OpenAI-compatible coverage, and split CI into lightweight base and local Diffusers paths.
+- Docs: update install guidance, backend references, and internal backlog policy for explicit local runtime extras.
+
 ## 0.2.6 - 2026-05-06
 
 - Docs: refresh install extras, AbstractCore integration, playground ownership, OpenAI-compatible request-shape notes, and backend/config references so the public docs match the current code.

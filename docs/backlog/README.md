@@ -12,11 +12,11 @@ Note:
 - **No test-driven special casing**: implementation must be general-purpose logic, not tailored to tests.
 - **Keep the public contract stable**: preserve the integrator-facing API (`VisionManager.generate_image/edit_image/generate_angles/generate_video/image_to_video/...`).
 - **Artifact-first outputs**: generated images/videos must be representable as small JSON objects (refs), not inlined bytes, to support tool calling + workflows + third-party integrations.
-- **Default Diffusers install, but lazy imports**: the default install includes the Diffusers local backend, while stable-diffusion.cpp python bindings remain opt-in through `abstractvision[sdcpp]`/`abstractvision[local]`. Importing `abstractvision` should not eagerly import heavy runtime stacks unless needed (avoid model loads/weight downloads at import time; defer heavy backend imports until backend construction or first use).
+- **Lightweight base install, explicit local runtimes**: the default install supports shared contracts, the capability registry, artifact refs, the OpenAI-compatible HTTP backend, CLI glue, and AbstractCore plugin discovery without installing local inference runtimes. Local Diffusers is explicit through `abstractvision[diffusers]`; stable-diffusion.cpp python bindings are explicit through `abstractvision[sdcpp]`; `abstractvision[local]` installs both. Importing `abstractvision` should not eagerly import heavy runtime stacks unless needed (avoid model loads/weight downloads at import time; defer heavy backend imports until backend construction or first use).
 - **Prefer permissive licensing**: only adopt MIT/Apache/BSD-compatible components. If none exist, document feasibility and create a backlog item.
 
-Note: some older completed backlog items mention “heavy deps behind extras” and a “dependency-light base install”.
-Treat those as historical context; current packaging includes the default Diffusers path, but `sdcpp` remains explicit and we still want lazy imports and explicit model download/load semantics.
+Note: older completed backlog items may describe either a “default Diffusers install” phase or earlier “heavy deps behind extras” plans.
+Treat `pyproject.toml` and the latest planned/completed packaging task as the source of truth.
 
 ---
 

@@ -46,7 +46,7 @@ def _require_sd_cli(path: str) -> str:
         raise OptionalDependencyMissingError(
             "stable-diffusion.cpp executable is not configured. "
             "Set sd_cli_path or install `sd-cli` from https://github.com/leejet/stable-diffusion.cpp/releases "
-            "(or install `stable-diffusion-cpp-python` to use pip-installable python bindings). "
+            '(or install `abstractvision[sdcpp]` to use pip-installable python bindings). '
             "If you intended to run a standard Diffusers model (e.g. 'runwayml/stable-diffusion-v1-5'), use the "
             "Diffusers backend instead."
         )
@@ -57,7 +57,7 @@ def _require_sd_cli(path: str) -> str:
         if not Path(p).expanduser().exists():
             raise OptionalDependencyMissingError(
                 f"stable-diffusion.cpp executable not found at: {p!r}. "
-                "Install from https://github.com/leejet/stable-diffusion.cpp/releases or install `stable-diffusion-cpp-python`, "
+                "Install from https://github.com/leejet/stable-diffusion.cpp/releases or install `abstractvision[sdcpp]`, "
                 "or update sd_cli_path. "
                 "If you intended to run a standard Diffusers model (e.g. 'runwayml/stable-diffusion-v1-5'), use the "
                 "Diffusers backend instead."
@@ -68,7 +68,7 @@ def _require_sd_cli(path: str) -> str:
     if not resolved:
         raise OptionalDependencyMissingError(
             f"stable-diffusion.cpp executable not found in PATH: {p!r}. "
-            "Install from https://github.com/leejet/stable-diffusion.cpp/releases or install `stable-diffusion-cpp-python`, "
+            "Install from https://github.com/leejet/stable-diffusion.cpp/releases or install `abstractvision[sdcpp]`, "
             "or set sd_cli_path. "
             "If you intended to run a standard Diffusers model (e.g. 'runwayml/stable-diffusion-v1-5'), use the "
             "Diffusers backend instead."
@@ -425,7 +425,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 import stable_diffusion_cpp  # type: ignore
             except Exception as e:
                 raise OptionalDependencyMissingError(
-                    f"{cli_error} Alternatively, install `stable-diffusion-cpp-python` to use the pip-installable "
+                    f"{cli_error} Alternatively, install `abstractvision[sdcpp]` to use the pip-installable "
                     "stable-diffusion.cpp python bindings."
                 ) from e
 
@@ -499,7 +499,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             raise OptionalDependencyMissingError(
                 "stable-diffusion.cpp executable not found. "
                 "Install `sd-cli` from https://github.com/leejet/stable-diffusion.cpp/releases "
-                "or install `stable-diffusion-cpp-python` for pip-installable python bindings, "
+                "or install `abstractvision[sdcpp]` for pip-installable python bindings, "
                 "or set sd_cli_path to the executable path."
             ) from e
 

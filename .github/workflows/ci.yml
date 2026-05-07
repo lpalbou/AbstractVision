@@ -10,7 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  test-base:
+    name: Base tests Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -26,15 +27,32 @@ jobs:
         run: |
           python -m pip install -U pip
           python -m pip install -e . --no-deps
-          python -m pip install \
-            "Pillow>=9.0" \
-            "torch>=2.0,<3.0.0"
       - name: Unit tests
         env:
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"
           DIFFUSERS_OFFLINE: "1"
         run: python -m unittest discover -s tests -p "test_*.py" -q
+
+  test-local-diffusers:
+    name: Local Diffusers backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[diffusers]"
+      - name: Diffusers backend unit tests
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          DIFFUSERS_OFFLINE: "1"
+        run: python -m unittest tests.test_huggingface_diffusers_backend -q
 
   build:
     runs-on: ubuntu-latest
@@ -50,6 +68,28 @@ jobs:
           python -m pip install build twine
           python -m build
           python -m twine check dist/*
+      - name: Clean base wheel smoke
+        run: |
+          python -m venv /tmp/abstractvision-base-smoke
+          /tmp/abstractvision-base-smoke/bin/python -m pip install -U pip
+          /tmp/abstractvision-base-smoke/bin/python -m pip install dist/*.whl
+          /tmp/abstractvision-base-smoke/bin/python - <<'PY'
+          import importlib.metadata as metadata
+          import sys
+
+          import abstractvision
+          import abstractvision.backends.openai_compatible
+          import abstractvision.integrations.abstractcore_plugin
+
+          blocked = {"torch", "diffusers", "transformers", "PIL", "stable_diffusion_cpp"}
+          imported = blocked.intersection(sys.modules)
+          if imported:
+              raise SystemExit(f"Unexpected heavy imports: {sorted(imported)}")
+
+          eps = metadata.entry_points(group="abstractcore.capabilities_plugins")
+          if not any(ep.name == "abstractvision" for ep in eps):
+              raise SystemExit("Missing AbstractCore plugin entry point")
+          PY
 
   docs:
     runs-on: ubuntu-latest

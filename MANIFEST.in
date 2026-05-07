@@ -12,4 +12,5 @@ recursive-include .github *.md *.yml
 prune site
 prune dist
 prune build
+prune docs/backlog/proposed
 global-exclude __pycache__ *.py[cod]

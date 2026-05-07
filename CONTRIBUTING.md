@@ -21,7 +21,7 @@ AbstractVision is part of the **AbstractFramework** ecosystem:
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -U pip
-python -m pip install -e .
+python -m pip install -e ".[dev]"
 ```
 
 Optional (if you work on AbstractCore integration locally):

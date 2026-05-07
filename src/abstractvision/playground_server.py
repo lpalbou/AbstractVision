@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
+from .errors import AbstractVisionError
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .types import GeneratedAsset, ImageEditRequest, ImageGenerationRequest
 
@@ -38,6 +39,15 @@ def _env_bool(key: str, default: bool = False) -> bool:
     if v is None:
         return bool(default)
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _default_backend_kind() -> str:
+    explicit = _env("ABSTRACTVISION_BACKEND")
+    if explicit:
+        return str(explicit)
+    if _env("ABSTRACTVISION_BASE_URL"):
+        return "openai"
+    return ""
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -275,14 +285,9 @@ class PlaygroundServerConfig:
     diffusers_auto_retry_fp32: bool = field(
         default_factory=lambda: _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True)
     )
-    default_model_id: str = field(
-        default_factory=lambda: _env("ABSTRACTVISION_MODEL_ID", DEFAULT_DIFFUSERS_MODEL_ID)
-        or DEFAULT_DIFFUSERS_MODEL_ID
-    )
+    default_model_id: str = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_ID", "") or "")
 
-    backend_kind: str = field(
-        default_factory=lambda: _env("ABSTRACTVISION_BACKEND", "diffusers") or "diffusers"
-    )
+    backend_kind: str = field(default_factory=_default_backend_kind)
     openai_base_url: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_BASE_URL"))
     openai_api_key: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_API_KEY"))
     openai_timeout_s: float = field(
@@ -371,6 +376,18 @@ class PlaygroundState:
         models: List[Dict[str, Any]] = []
         allow_download = bool(self.config.diffusers_allow_download)
         configured = str(self.config.default_model_id or "").strip()
+        configured_backend = str(self.config.backend_kind or "").strip().lower()
+        if configured_backend in {"openai-compatible", "openai_compatible", "proxy"}:
+            configured_backend = "openai"
+        elif configured_backend in {"huggingface", "hf", "hf-diffusers"}:
+            configured_backend = "diffusers"
+        elif configured_backend in {
+            "sd-cpp",
+            "stable-diffusion.cpp",
+            "stable_diffusion_cpp",
+            "stable-diffusion-cpp",
+        }:
+            configured_backend = "sdcpp"
 
         for model_id in self.registry.list_models():
             spec = self.registry.get(model_id)
@@ -390,6 +407,9 @@ class PlaygroundState:
                     }
                 )
 
+        if not configured and configured_backend == "openai" and self.config.openai_base_url:
+            configured = "openai-compatible/default"
+
         if configured and configured not in {m["id"] for m in models}:
             prefix, rest = _known_prefix(configured)
             if prefix in {"openai", "openai-compatible", "openai_compatible"}:
@@ -397,7 +417,7 @@ class PlaygroundState:
                 load_id = configured
                 backend = "openai"
                 cached_in = ["configured remote"]
-            elif str(self.config.backend_kind).strip().lower() in {"openai", "openai-compatible"}:
+            elif configured_backend == "openai":
                 rest = configured
                 label = f"openai-compatible/{rest}" if rest else "openai-compatible/default"
                 load_id = label
@@ -425,11 +445,7 @@ class PlaygroundState:
                     }
                 )
 
-        if str(self.config.backend_kind).strip().lower() in {
-            "sdcpp",
-            "stable-diffusion.cpp",
-            "stable_diffusion_cpp",
-        }:
+        if configured_backend == "sdcpp":
             models.append(
                 {
                     "id": "sdcpp/default",
@@ -519,6 +535,18 @@ class PlaygroundState:
         self._unload_backend(unload_after_lock)
 
     def _build_backend(self, backend_kind: str, backend_model_id: Optional[str]) -> Any:
+        if backend_kind in {"openai-compatible", "openai_compatible", "proxy"}:
+            backend_kind = "openai"
+        elif backend_kind in {"huggingface", "hf", "hf-diffusers"}:
+            backend_kind = "diffusers"
+        elif backend_kind in {
+            "sd-cpp",
+            "stable-diffusion.cpp",
+            "stable_diffusion_cpp",
+            "stable-diffusion-cpp",
+        }:
+            backend_kind = "sdcpp"
+
         if backend_kind == "diffusers":
             from .backends.huggingface_diffusers import (
                 HuggingFaceDiffusersBackendConfig,
@@ -860,6 +888,8 @@ def _make_handler(state: PlaygroundState) -> type[BaseHTTPRequestHandler]:
                 self._send_error_json(404, f"Not found: {path}")
             except json.JSONDecodeError as e:
                 self._send_error_json(400, f"Invalid JSON: {e}")
+            except AbstractVisionError as e:
+                self._send_error_json(400, str(e))
             except ValueError as e:
                 self._send_error_json(400, str(e))
             except Exception as e:

@@ -28,20 +28,20 @@ From PyPI:
 pip install abstractvision
 ```
 
-AbstractVision’s base install includes Torch + Diffusers because that is the default local backend. Heavy modules are imported lazily, but the dependencies are still installed (see `pyproject.toml`). The stable-diffusion.cpp python bindings are optional via `abstractvision[sdcpp]` or `abstractvision[local]` because they can require a native build on some platforms.
+AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, or `abstractvision[local]` for both.
 
-If you see “missing pipeline class” errors for newer model families, install the `huggingface-dev` extra (to get compatible dependencies) and then install Diffusers from source (`main`).
+If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
-If you're installing **AbstractVision from a repo checkout**, install the `huggingface-dev` extra (compatible deps; does not include Diffusers `main`):
+If you're installing **AbstractVision from a repo checkout**, install the `diffusers-dev` extra (compatible deps; does not include Diffusers `main`):
 
 ```bash
-pip install -e ".[huggingface-dev]"
+pip install -e ".[diffusers-dev]"
 ```
 
 If you're installing **AbstractVision from PyPI**, you can install the extra directly:
 
 ```bash
-pip install -U "abstractvision[huggingface-dev]"
+pip install -U "abstractvision[diffusers-dev]"
 ```
 
 Or install Diffusers from source directly:
@@ -69,17 +69,26 @@ Or, from a repo checkout (run in the repo root):
 pip install -e .
 ```
 
-No extras are required for the default Diffusers path, so a fresh environment should only need model weights. Use `huggingface-dev` only when you need Diffusers `main`, and use `sdcpp` only when you want the optional stable-diffusion.cpp python binding fallback.
+For contributor tooling from a repo checkout, use:
+
+```bash
+pip install -e ".[dev]"
+```
+
+For local Diffusers generation, install `abstractvision[diffusers]` before selecting the `diffusers` backend. Use `diffusers-dev` only when you need newer Diffusers-compatible dependency pins, and use `sdcpp` only when you want the optional stable-diffusion.cpp python binding fallback.
 
 Optional extras:
 
 | Extra | Use |
 |---|---|
-| `openai-compatible` | Empty compatibility marker; the HTTP backend is stdlib-only today. |
+| `openai` | Empty official OpenAI provider intent marker; the HTTP backend is stdlib-only today. |
+| `openai-compatible` | Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today. |
+| `diffusers` | Installs Torch/Diffusers and related packages for local Diffusers generation. |
 | `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
-| `huggingface` | Compatibility extra for the historical Diffusers backend dependency set. |
+| `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
-| `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
+| `all` | All runtime backend dependencies, without contributor tooling. |
+| `diffusers-dev` / `huggingface-dev` | Looser dependency pins for newer/unreleased Diffusers pipelines. Install Diffusers `main` separately when a pipeline is not in the latest release. |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 | `test`, `docs`, `dev` | Contributor tooling for tests, docs, packaging, formatting, and release checks. |
 
@@ -139,7 +148,7 @@ Notes:
 
 | GPU VRAM | Recommended model id | Why | Install / quickstart |
 |---:|---|---|---|
-| ≤ 16 GB | `runwayml/stable-diffusion-v1-5` | Small, stable, and widely compatible (Windows/Linux CUDA, macOS MPS) | `pip install abstractvision` then run the REPL using the snippet below |
+| ≤ 16 GB | `runwayml/stable-diffusion-v1-5` | Small, stable, and widely compatible (Windows/Linux CUDA, macOS MPS) | `pip install "abstractvision[diffusers]"` then run the REPL using the snippet below |
 | 24-32 GB | `black-forest-labs/FLUX.2-klein-4B` | Newer non-gated model, much smaller than FLUX.2-dev | Install Diffusers `main`, then use the FLUX.2 klein section below |
 | 32 GB | `stabilityai/stable-diffusion-3.5-large-turbo` | High-quality still images with low step counts (gated) | Accept model terms on HF, set `HF_TOKEN`, then use the SD3.5 section below |
 | 64 GB | `Qwen/Qwen-Image-2512` | Strong prompt following and text rendering (large model) | Same as Diffusers setup; if pipeline import fails, use Diffusers `main` (see install section above) |
@@ -154,7 +163,7 @@ macOS Metal (Apple Silicon) quick picks:
 Recommended default (local, cross-platform) — Stable Diffusion 1.5:
 
 ```bash
-pip install abstractvision
+pip install "abstractvision[diffusers]"
 huggingface-cli download runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
@@ -183,7 +192,7 @@ huggingface-cli download runwayml/stable-diffusion-v1-5
 ```
 
 ```bash
-# Optional overrides; these are already the REPL defaults.
+# Required for this local Diffusers recipe.
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -211,7 +220,7 @@ Start the REPL:
 abstractvision repl
 ```
 
-The REPL defaults to `diffusers` + `runwayml/stable-diffusion-v1-5`:
+With `ABSTRACTVISION_BACKEND=diffusers` and `ABSTRACTVISION_MODEL_ID` set above, the REPL uses `runwayml/stable-diffusion-v1-5`:
 
 ```text
 /set guidance_scale 7
@@ -234,7 +243,7 @@ non-gated and much smaller than FLUX.2-dev, but it currently needs Diffusers fro
 may not include `Flux2KleinPipeline`.
 
 ```bash
-pip install -U "abstractvision[huggingface-dev]"
+pip install -U "abstractvision[diffusers-dev]"
 pip install -U "git+https://github.com/huggingface/diffusers@main"
 ```
 
@@ -351,8 +360,8 @@ python -c "import diffusers; print(diffusers.__version__)"
 Notes:
 - `FLUX.2-dev` uses Diffusers `Flux2Pipeline` and works on released Diffusers (0.36+).
 - `FLUX.2-klein-4B` and `FLUX.2-klein-9B` use `Flux2KleinPipeline`, which is not available in the released Diffusers (0.36.0). It currently
-  requires installing Diffusers from source (with the `huggingface-dev` extra for compatible dependency pins):
-  - `pip install -U "abstractvision[huggingface-dev]"`
+  requires installing Diffusers from source (with the `diffusers-dev` extra for compatible dependency pins):
+  - `pip install -U "abstractvision[diffusers-dev]"`
   - `pip install -U "git+https://github.com/huggingface/diffusers@main"`
 
 Recommended first FLUX example (`FLUX.2-klein-4B`, not gated):
@@ -412,7 +421,7 @@ If you downloaded a GGUF diffusion model (like Qwen Image GGUF or FLUX.2 GGUF), 
 
 ### 6.1 Install stable-diffusion.cpp runtime
 
-The base `pip install abstractvision` path does not install stable-diffusion.cpp python bindings. Use one of these explicit runtime choices:
+The base `pip install abstractvision` path does not install local inference runtimes. Use one of these explicit stable-diffusion.cpp runtime choices:
 
 ```bash
 pip install "abstractvision[sdcpp]"

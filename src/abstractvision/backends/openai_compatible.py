@@ -5,6 +5,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from ..errors import CapabilityNotSupportedError
@@ -54,6 +55,18 @@ def _first_data_item(resp: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(data, list) and data and isinstance(data[0], dict):
         return data[0]
     return {}
+
+
+def _format_http_error(e: HTTPError) -> str:
+    try:
+        body = e.read().decode("utf-8", errors="replace")
+    except Exception:
+        body = ""
+    body = body.strip()
+    if len(body) > 1000:
+        body = body[:1000] + "..."
+    suffix = f": {body}" if body else ""
+    return f"OpenAI-compatible provider request failed (status={getattr(e, 'code', 'unknown')}){suffix}"
 
 
 def _model_family(model_id: Optional[str]) -> Optional[str]:
@@ -162,8 +175,13 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             method="POST",
             headers=self._headers(content_type="application/json"),
         )
-        with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
-            raw = resp.read()
+        try:
+            with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
+                raw = resp.read()
+        except HTTPError as e:
+            raise RuntimeError(_format_http_error(e)) from e
+        except URLError as e:
+            raise RuntimeError(f"OpenAI-compatible provider request failed: {e}") from e
         data = json.loads(raw.decode("utf-8"))
         if not isinstance(data, dict):
             raise ValueError("Invalid response: expected JSON object")
@@ -176,8 +194,13 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         body, boundary = _multipart_form(fields=fields, files=files)
         ctype = f"multipart/form-data; boundary={boundary}"
         req = Request(url=url, data=body, method="POST", headers=self._headers(content_type=ctype))
-        with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
-            raw = resp.read()
+        try:
+            with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
+                raw = resp.read()
+        except HTTPError as e:
+            raise RuntimeError(_format_http_error(e)) from e
+        except URLError as e:
+            raise RuntimeError(f"OpenAI-compatible provider request failed: {e}") from e
         data = json.loads(raw.decode("utf-8"))
         if not isinstance(data, dict):
             raise ValueError("Invalid response: expected JSON object")
@@ -196,9 +219,14 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             # Best-effort: download bytes.
             u = str(item.get("url"))
             req = Request(url=u, method="GET")
-            with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp2:
-                content = resp2.read()
-                ct = resp2.headers.get("Content-Type") or fallback_mime
+            try:
+                with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp2:
+                    content = resp2.read()
+                    ct = resp2.headers.get("Content-Type") or fallback_mime
+            except HTTPError as e:
+                raise RuntimeError(_format_http_error(e)) from e
+            except URLError as e:
+                raise RuntimeError(f"OpenAI-compatible media download failed: {e}") from e
             mime = _sniff_mime_type(content, str(ct))
             media_type = "video" if mime.startswith("video/") else "image"
             return GeneratedAsset(

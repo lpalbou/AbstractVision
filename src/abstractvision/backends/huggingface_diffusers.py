@@ -30,6 +30,10 @@ def _require_optional_dep(name: str, install_hint: str) -> None:
     )
 
 
+_DIFFUSERS_RUNTIME_HINT = 'pip install "abstractvision[diffusers]"'
+_LOCAL_RUNTIME_HINT = 'pip install "abstractvision[local]"'
+
+
 def _lazy_import_diffusers():
     try:
         import warnings
@@ -46,7 +50,8 @@ def _lazy_import_diffusers():
         from diffusers import DiffusionPipeline  # type: ignore
     except Exception as e:  # pragma: no cover
         raise OptionalDependencyMissingError(
-            "Optional dependency missing (or failed to import): diffusers. Install via: pip install 'diffusers'. "
+            "Diffusers backend requested but the local Diffusers runtime is missing or failed to import. "
+            f"Install via: {_DIFFUSERS_RUNTIME_HINT} (or {_LOCAL_RUNTIME_HINT}). "
             f"(python={__import__('sys').executable})"
         ) from e
 
@@ -88,7 +93,10 @@ def _lazy_import_torch():
     try:
         import torch  # type: ignore
     except Exception:  # pragma: no cover
-        _require_optional_dep("torch", "pip install 'torch'")
+        _require_optional_dep(
+            "torch",
+            f"{_DIFFUSERS_RUNTIME_HINT} (or {_LOCAL_RUNTIME_HINT}); install a CUDA-enabled PyTorch wheel first if you need NVIDIA GPU support",
+        )
     return torch
 
 
@@ -96,7 +104,7 @@ def _lazy_import_pil():
     try:
         from PIL import Image  # type: ignore
     except Exception:  # pragma: no cover
-        _require_optional_dep("pillow", "pip install 'pillow'")
+        _require_optional_dep("pillow", f"{_DIFFUSERS_RUNTIME_HINT} (or {_LOCAL_RUNTIME_HINT})")
     return Image
 
 
