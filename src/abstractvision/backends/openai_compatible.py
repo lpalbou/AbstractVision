@@ -4,7 +4,7 @@ import base64
 import json
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -14,6 +14,7 @@ from ..types import (
     ImageEditRequest,
     ImageGenerationRequest,
     ImageToVideoRequest,
+    ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
@@ -82,6 +83,146 @@ def _looks_like_openai_api(base_url: str) -> bool:
     return "api.openai.com" in str(base_url or "").lower()
 
 
+def _normalise_catalog_token(value: str) -> str:
+    out = str(value or "").strip().lower()
+    for ch in ("-", "/", ".", " "):
+        out = out.replace(ch, "_")
+    return out
+
+
+def _collect_catalog_tokens(value: Any) -> Set[str]:
+    tokens: Set[str] = set()
+    if value is None:
+        return tokens
+    if isinstance(value, str):
+        token = _normalise_catalog_token(value)
+        if token:
+            tokens.add(token)
+        return tokens
+    if isinstance(value, (int, float, bool)):
+        return tokens
+    if isinstance(value, dict):
+        for k, v in value.items():
+            tokens.update(_collect_catalog_tokens(k))
+            tokens.update(_collect_catalog_tokens(v))
+        return tokens
+    if isinstance(value, (list, tuple, set)):
+        for v in value:
+            tokens.update(_collect_catalog_tokens(v))
+    return tokens
+
+
+def _catalog_capability_tokens(raw: Dict[str, Any]) -> Set[str]:
+    tokens: Set[str] = set()
+    for key in (
+        "capabilities",
+        "modalities",
+        "tasks",
+        "supported_tasks",
+        "features",
+        "endpoints",
+        "permissions",
+    ):
+        if key in raw:
+            tokens.update(_collect_catalog_tokens(raw.get(key)))
+    return tokens
+
+
+def _task_catalog_aliases(task: Optional[str]) -> Set[str]:
+    t = _normalise_catalog_token(str(task or ""))
+    if not t:
+        return set()
+    aliases = {t}
+    if t in {"text_to_image", "image_generation", "image_generations", "image"}:
+        aliases.update(
+            {
+                "image",
+                "images",
+                "image_generation",
+                "image_generations",
+                "images_generations",
+                "text_to_image",
+                "t2i",
+            }
+        )
+    if t in {"image_to_image", "image_edit", "image_edits", "inpaint", "image"}:
+        aliases.update(
+            {
+                "image",
+                "images",
+                "image_edit",
+                "image_edits",
+                "images_edits",
+                "image_to_image",
+                "i2i",
+                "inpaint",
+            }
+        )
+    if t in {"text_to_video", "video_generation", "video_generations", "video"}:
+        aliases.update(
+            {
+                "video",
+                "videos",
+                "video_generation",
+                "video_generations",
+                "videos_generations",
+                "text_to_video",
+                "t2v",
+            }
+        )
+    if t in {"image_to_video", "video_edit", "video_edits", "video"}:
+        aliases.update(
+            {
+                "video",
+                "videos",
+                "video_edit",
+                "video_edits",
+                "videos_edits",
+                "image_to_video",
+                "i2v",
+            }
+        )
+    return aliases
+
+
+def _catalog_entry_matches_task(
+    info: ProviderModelInfo, *, task: Optional[str], openai_api: bool
+) -> bool:
+    aliases = _task_catalog_aliases(task)
+    if not aliases:
+        return True
+
+    tokens = set(info.capabilities)
+    if tokens:
+        return bool(tokens.intersection(aliases))
+
+    image_aliases = {
+        "image",
+        "images",
+        "image_generation",
+        "image_generations",
+        "images_generations",
+        "text_to_image",
+        "t2i",
+        "image_edit",
+        "image_edits",
+        "images_edits",
+        "image_to_image",
+        "i2i",
+        "inpaint",
+    }
+    if aliases.intersection(image_aliases):
+        if _model_family(info.id) in {"gpt-image", "dall-e"}:
+            return True
+        if openai_api:
+            return False
+
+    # OpenAI-compatible catalogs do not have a universal capability schema.
+    # When a non-OpenAI provider omits capability metadata, expose the entry
+    # instead of guessing it is incompatible.
+    return not openai_api
+
+
 def _size_value(width: Optional[int], height: Optional[int]) -> Optional[str]:
     if width is None or height is None:
         return None
@@ -136,6 +277,7 @@ class OpenAICompatibleBackendConfig:
 
     # Image-to-video request mode when enabled.
     image_to_video_mode: str = "multipart"  # "multipart" | "json_b64"
+    models_path: str = "/models"
 
 
 class OpenAICompatibleVisionBackend(VisionBackend):
@@ -160,11 +302,59 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             supports_mask=True,
         )
 
-    def _headers(self, *, content_type: str) -> Dict[str, str]:
-        headers = {"Content-Type": str(content_type)}
+    def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
+        resp = self._get_json(path=str(self._cfg.models_path or "/models"))
+        data = resp.get("data")
+        if not isinstance(data, list):
+            raise ValueError("Invalid response: expected JSON object with a data list")
+
+        openai_api = _looks_like_openai_api(self._cfg.base_url)
+        models: List[ProviderModelInfo] = []
+        for item in data:
+            if isinstance(item, str):
+                raw: Dict[str, Any] = {"id": item}
+            elif isinstance(item, dict):
+                raw = dict(item)
+            else:
+                continue
+            model_id = raw.get("id") or raw.get("model") or raw.get("name")
+            if not isinstance(model_id, str) or not model_id.strip():
+                continue
+            created = raw.get("created")
+            info = ProviderModelInfo(
+                id=str(model_id).strip(),
+                object=str(raw.get("object")) if raw.get("object") is not None else None,
+                created=int(created) if isinstance(created, int) else None,
+                owned_by=str(raw.get("owned_by")) if raw.get("owned_by") is not None else None,
+                capabilities=tuple(sorted(_catalog_capability_tokens(raw))),
+                raw=raw,
+            )
+            if _catalog_entry_matches_task(info, task=task, openai_api=openai_api):
+                models.append(info)
+        return models
+
+    def _headers(self, *, content_type: Optional[str] = None) -> Dict[str, str]:
+        headers: Dict[str, str] = {}
+        if content_type:
+            headers["Content-Type"] = str(content_type)
         if self._cfg.api_key:
             headers["Authorization"] = f"Bearer {self._cfg.api_key}"
         return headers
+
+    def _get_json(self, *, path: str) -> Dict[str, Any]:
+        url = _join_url(self._cfg.base_url, path)
+        req = Request(url=url, method="GET", headers=self._headers())
+        try:
+            with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
+                raw = resp.read()
+        except HTTPError as e:
+            raise RuntimeError(_format_http_error(e)) from e
+        except URLError as e:
+            raise RuntimeError(f"OpenAI-compatible provider request failed: {e}") from e
+        data = json.loads(raw.decode("utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("Invalid response: expected JSON object")
+        return data
 
     def _post_json(self, *, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         url = _join_url(self._cfg.base_url, path)

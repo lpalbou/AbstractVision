@@ -7,14 +7,16 @@ Local Diffusers and stable-diffusion.cpp runtimes are explicit extras.
 
 from .artifacts import LocalAssetStore, RuntimeArtifactStoreAdapter, is_artifact_ref
 from .model_capabilities import VisionModelCapabilitiesRegistry
+from .types import ProviderModelInfo
 from .vision_manager import VisionManager
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 __author__ = "Laurent-Philippe Albou"
 __email__ = "contact@abstractcore.ai"
 
 __all__ = [
     "VisionManager",
+    "ProviderModelInfo",
     "VisionModelCapabilitiesRegistry",
     "LocalAssetStore",
     "RuntimeArtifactStoreAdapter",

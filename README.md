@@ -173,18 +173,29 @@ png_bytes = vm.store.load_bytes(out["$artifact"])  # type: ignore[union-attr]
 ```
 
 When installed next to AbstractCore, AbstractVision is also discovered as a
-`llm.vision` capability plugin. The plugin defaults to the OpenAI-compatible
-HTTP backend for compatibility with existing AbstractCore deployments; set
-`ABSTRACTVISION_BASE_URL` for OpenAI or a local compatible `/v1` server, and set
-`ABSTRACTVISION_MODEL_ID` when the server requires an explicit image model (for
-example `gpt-image-1.5` for OpenAI). Set `ABSTRACTVISION_BACKEND=diffusers` or
-`ABSTRACTVISION_BACKEND=sdcpp` when you want AbstractCore to launch local
-AbstractVision generation directly.
+`llm.vision` capability plugin. The plugin defaults to the official OpenAI
+image endpoint (`https://api.openai.com/v1`) and reads `OPENAI_API_KEY` (or
+`ABSTRACTVISION_API_KEY`). Set `OPENAI_BASE_URL` only when you need to override
+that OpenAI-compatible base for the official OpenAI profile. Set
+`ABSTRACTVISION_BACKEND=openai-compatible` plus `ABSTRACTVISION_BASE_URL` for a
+local or remote compatible `/v1` server. Set `ABSTRACTVISION_MODEL_ID`,
+`OPENAI_IMAGE_MODEL_ID`, or `OPENAI_IMAGE_MODEL` when you need an explicit
+image model (static default OpenAI model: `gpt-image-1`). AbstractVision does
+not query provider `/models` catalogs to discover or select image models
+automatically, but you can inspect them explicitly with
+`abstractvision provider-models`, `VisionManager.list_provider_models(...)`,
+or the AbstractCore plugin method `llm.vision.list_provider_models(...)`.
+After inspection, set the model env var explicitly for newer provider models
+when available to your account. Set
+`ABSTRACTVISION_BACKEND=diffusers` or `ABSTRACTVISION_BACKEND=sdcpp` when you
+want AbstractCore to launch local AbstractVision generation directly.
 
 ### Interactive testing (CLI / REPL)
 
 ```bash
 abstractvision models
+abstractvision provider-models --openai --task text_to_image
+abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image
 abstractvision tasks
 abstractvision show-model runwayml/stable-diffusion-v1-5
 
@@ -216,7 +227,9 @@ The CLI/REPL can also be configured via `ABSTRACTVISION_*` env vars; see [`docs/
 
 ### Local web playground
 
-The playground is owned by AbstractVision and runs without AbstractCore:
+The playground is owned by AbstractVision and runs without AbstractCore. It is
+a local/dev testing surface; use AbstractCore/Gateway for production routing,
+authentication, and browser-origin policy.
 
 ```bash
 abstractvision playground --port 8091

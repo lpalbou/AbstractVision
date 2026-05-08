@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from ..types import (
     GeneratedAsset,
@@ -9,6 +9,7 @@ from ..types import (
     ImageGenerationRequest,
     ImageToVideoRequest,
     MultiAngleRequest,
+    ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
@@ -38,6 +39,15 @@ class VisionBackend(ABC):
     def get_capabilities(self) -> Optional[VisionBackendCapabilities]:
         """Return backend-level capability constraints (optional)."""
         return None
+
+    def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
+        """Return provider-advertised model entries, when the backend can query them.
+
+        This is explicit provider catalog discovery. Backends must not use it to
+        silently select or change the configured model.
+        """
+        _ = task
+        return ()
 
     def preload(self) -> None:
         """Best-effort: load model weights into memory for faster first inference."""

@@ -13,6 +13,7 @@ See also:
 The package exports the following symbols from `abstractvision` (see [`../src/abstractvision/__init__.py`](../src/abstractvision/__init__.py)):
 
 - `VisionManager`
+- `ProviderModelInfo`
 - `VisionModelCapabilitiesRegistry`
 - `LocalAssetStore`
 - `RuntimeArtifactStoreAdapter`
@@ -43,6 +44,24 @@ Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvis
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
 
 Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
+
+Provider catalog listing is exposed as a backend contract:
+
+```python
+from abstractvision.backends import OpenAICompatibleBackendConfig, OpenAICompatibleVisionBackend
+
+backend = OpenAICompatibleVisionBackend(
+    config=OpenAICompatibleBackendConfig(base_url="http://localhost:1234/v1")
+)
+for model in backend.list_provider_models(task="text_to_image"):
+    print(model.id)
+```
+
+For official OpenAI, use `base_url="https://api.openai.com/v1"` and an API key. Catalog listing is explicit and does not change the configured generation model.
+
+When AbstractVision is loaded as an AbstractCore capability plugin, the plugin shim exposes the
+same explicit catalog surface as `llm.vision.list_provider_models(task="text_to_image")`. It
+returns JSON-safe dictionaries so Core/Gateway route code can avoid private backend reach-throughs.
 
 ### Outputs: bytes vs artifact refs
 

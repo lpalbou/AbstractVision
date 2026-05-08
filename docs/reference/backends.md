@@ -29,10 +29,18 @@ Notes:
 - `base_url` (required): points to a `/v1`-style root, e.g. `http://localhost:1234/v1`
 - `api_key` (optional): sent as `Authorization: Bearer ...`
 - `model_id` (optional): forwarded as `model` in requests
+- `models_path` (default `/models`): provider catalog path for explicit model listing
 
 Request shape:
 - Unknown/local endpoints receive local extension fields when provided, including `steps`, `seed`, `guidance_scale`, `negative_prompt`, `width`, and `height`.
 - Real OpenAI-looking endpoints and known OpenAI image models use the narrower OpenAI request shape; GPT image models do not receive unsupported local-only fields such as `steps`, `seed`, or `guidance_scale`.
+
+Provider model catalogs:
+- `OpenAICompatibleVisionBackend.list_provider_models(...)` queries `GET /models` by default.
+- `VisionManager.list_provider_models(...)` delegates to the configured backend.
+- The AbstractCore plugin exposes the same catalog through `llm.vision.list_provider_models(...)`.
+- CLI examples: `abstractvision provider-models --openai --task text_to_image` and `abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image`.
+- Listing is explicit; AbstractVision does not use provider catalogs to silently select a model.
 
 Code pointers:
 - Config: `OpenAICompatibleBackendConfig` ([`../../src/abstractvision/backends/openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py))

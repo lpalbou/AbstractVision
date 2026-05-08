@@ -78,7 +78,39 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         out = vm.edit_image("edit", image=b"img")
         self.assertIsNotNone(out)
 
+    def test_provider_model_listing_delegates_to_backend(self):
+        from abstractvision import VisionManager
+        from abstractvision.backends import VisionBackend
+        from abstractvision.types import GeneratedAsset, ProviderModelInfo
+
+        class CatalogBackend(VisionBackend):
+            def list_provider_models(self, *, task=None):
+                self.task = task
+                return [ProviderModelInfo(id="provider/image-model")]
+
+            def generate_image(self, request):  # pragma: no cover
+                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png")
+
+            def edit_image(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_angles(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def image_to_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+        backend = CatalogBackend()
+        vm = VisionManager(backend=backend)
+
+        models = vm.list_provider_models(task="text_to_image")
+
+        self.assertEqual([m.id for m in models], ["provider/image-model"])
+        self.assertEqual(backend.task, "text_to_image")
+
 
 if __name__ == "__main__":
     unittest.main()
-

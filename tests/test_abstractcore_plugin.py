@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -45,15 +46,17 @@ builtins.__import__ = guarded_import
 import abstractvision
 from abstractvision.integrations.abstractcore_plugin import register
 
-calls = {}
+calls = []
 
 class Registry:
     def register_vision_backend(self, **kwargs):
-        calls.update(kwargs)
+        calls.append(dict(kwargs))
 
 register(Registry())
-assert calls["backend_id"] == "abstractvision:openai-compatible"
-assert callable(calls["factory"])
+backend_ids = {call["backend_id"] for call in calls}
+assert "abstractvision:openai" in backend_ids
+assert "abstractvision:openai-compatible" in backend_ids
+assert all(callable(call["factory"]) for call in calls)
 for name in blocked:
     assert name not in sys.modules, name
 print("ok")
@@ -73,18 +76,36 @@ print("ok")
     def test_abstractcore_plugin_registers_backend(self):
         from abstractvision.integrations.abstractcore_plugin import register
 
-        calls = {}
+        calls = []
 
         class _Registry:
             def register_vision_backend(self, **kwargs):
-                calls.update(kwargs)
+                calls.append(dict(kwargs))
 
         register(_Registry())
-        self.assertTrue(calls.get("backend_id"))
-        self.assertTrue(callable(calls.get("factory")))
-        self.assertIsInstance(calls.get("config_hint"), str)
+        calls_by_id = {c.get("backend_id"): c for c in calls}
+        backend_ids = set(calls_by_id)
+        self.assertIn("abstractvision:openai", backend_ids)
+        self.assertIn("abstractvision:openai-compatible", backend_ids)
+        self.assertTrue(all(callable(c.get("factory")) for c in calls))
+        self.assertTrue(all(isinstance(c.get("config_hint"), str) for c in calls))
+        self.assertEqual(calls_by_id["abstractvision:openai"].get("priority"), 0)
+        self.assertEqual(calls_by_id["abstractvision:openai-compatible"].get("priority"), -1)
+        self.assertIn("OpenAI HTTP", calls_by_id["abstractvision:openai"]["config_hint"])
+        self.assertIn(
+            "Compatibility backend id",
+            calls_by_id["abstractvision:openai-compatible"]["config_hint"],
+        )
 
-    def test_abstractcore_plugin_defaults_to_openai_compatible(self):
+        class _DummyOwner:
+            config = {}
+
+        openai_cap = calls_by_id["abstractvision:openai"]["factory"](_DummyOwner())
+        compatible_cap = calls_by_id["abstractvision:openai-compatible"]["factory"](_DummyOwner())
+        self.assertEqual(openai_cap.backend_id, "abstractvision:openai")
+        self.assertEqual(compatible_cap.backend_id, "abstractvision:openai-compatible")
+
+    def test_abstractcore_plugin_defaults_to_openai(self):
         import abstractvision.backends.openai_compatible as openai_backend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset
@@ -103,22 +124,152 @@ print("ok")
                 )
 
         class _DummyOwner:
-            config = {
-                "vision_base_url": "https://api.openai.com/v1",
-                "vision_model_id": "gpt-image-1.5",
-            }
+            config = {}
 
         with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
-            with patch.dict("os.environ", {}, clear=True):
+            with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=True):
                 cap = _AbstractVisionCapability(_DummyOwner())
                 out = cap.t2i("a red square", width=1024, height=1024)
 
         self.assertTrue(out.startswith(b"\x89PNG"))
         cfg = seen["config"]
         self.assertEqual(cfg.base_url, "https://api.openai.com/v1")
-        self.assertEqual(cfg.model_id, "gpt-image-1.5")
+        self.assertEqual(cfg.api_key, "sk-test")
+        self.assertEqual(cfg.model_id, "gpt-image-1")
         self.assertEqual(seen["request"].width, 1024)
         self.assertEqual(seen["request"].height, 1024)
+
+    def test_abstractcore_plugin_openai_env_aliases_override_defaults(self):
+        import abstractvision.backends.openai_compatible as openai_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {}
+
+        env = {
+            "OPENAI_API_KEY": "sk-test",
+            "OPENAI_BASE_URL": "https://proxy.example/v1",
+            "OPENAI_IMAGE_MODEL": "gpt-image-custom",
+        }
+        with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", env, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i("a red square", width=1024, height=1024)
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        cfg = seen["config"]
+        self.assertEqual(cfg.base_url, "https://proxy.example/v1")
+        self.assertEqual(cfg.api_key, "sk-test")
+        self.assertEqual(cfg.model_id, "gpt-image-custom")
+
+    def test_abstractcore_plugin_preserves_explicit_openai_compatible_config(self):
+        import abstractvision.backends.openai_compatible as openai_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {}
+
+        env = {
+            "ABSTRACTVISION_BACKEND": "openai-compatible",
+            "ABSTRACTVISION_BASE_URL": "http://localhost:1234/v1",
+            "ABSTRACTVISION_API_KEY": "local-key",
+            "ABSTRACTVISION_MODEL_ID": "local-image",
+        }
+        with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", env, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i("a red square", width=1024, height=1024)
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        cfg = seen["config"]
+        self.assertEqual(cfg.base_url, "http://localhost:1234/v1")
+        self.assertEqual(cfg.api_key, "local-key")
+        self.assertEqual(cfg.model_id, "local-image")
+
+    def test_abstractcore_plugin_preserves_legacy_base_url_only_config(self):
+        import abstractvision.backends.openai_compatible as openai_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {}
+
+        env = {
+            "ABSTRACTVISION_BASE_URL": "http://localhost:1234/v1",
+            "ABSTRACTVISION_API_KEY": "local-key",
+        }
+        with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", env, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i("a red square", width=1024, height=1024)
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        cfg = seen["config"]
+        self.assertEqual(cfg.base_url, "http://localhost:1234/v1")
+        self.assertEqual(cfg.api_key, "local-key")
+        self.assertIsNone(cfg.model_id)
+
+    def test_abstractcore_plugin_legacy_factory_preserves_compatible_default(self):
+        from abstractvision.errors import AbstractVisionError
+        from abstractvision.integrations.abstractcore_plugin import register
+
+        calls = {}
+
+        class _Registry:
+            def register_vision_backend(self, **kwargs):
+                calls[kwargs["backend_id"]] = dict(kwargs)
+
+        class _DummyOwner:
+            config = {}
+
+        register(_Registry())
+        factory = calls["abstractvision:openai-compatible"]["factory"]
+        with patch.dict("os.environ", {}, clear=True):
+            cap = factory(_DummyOwner())
+            self.assertEqual(cap.backend_id, "abstractvision:openai-compatible")
+            with self.assertRaises(AbstractVisionError) as ctx:
+                cap.t2i("hello")
+
+        self.assertIn("Missing vision_base_url", str(ctx.exception))
 
     def test_abstractcore_plugin_can_select_local_diffusers(self):
         import abstractvision.backends.huggingface_diffusers as hf_backend
@@ -191,7 +342,7 @@ print("ok")
         self.assertEqual(seen["request"].width, 64)
         self.assertEqual(seen["request"].height, 64)
 
-    def test_abstractcore_plugin_default_openai_backend_requires_base_url(self):
+    def test_abstractcore_plugin_default_openai_backend_requires_api_key(self):
         from abstractvision.errors import AbstractVisionError
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
 
@@ -203,7 +354,104 @@ print("ok")
             with self.assertRaises(AbstractVisionError) as ctx:
                 cap.t2i("hello")
 
+        self.assertIn("OPENAI_API_KEY", str(ctx.exception))
+
+    def test_abstractcore_plugin_explicit_compatible_backend_requires_base_url(self):
+        from abstractvision.errors import AbstractVisionError
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {}
+
+        with patch.dict("os.environ", {"ABSTRACTVISION_BACKEND": "openai-compatible"}, clear=True):
+            cap = _AbstractVisionCapability(_DummyOwner())
+            with self.assertRaises(AbstractVisionError) as ctx:
+                cap.t2i("hello")
+
         self.assertIn("Missing vision_base_url", str(ctx.exception))
+
+    def test_abstractcore_plugin_lists_provider_models_from_configured_backend(self):
+        import abstractvision.backends.openai_compatible as openai_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import ProviderModelInfo
+
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def list_provider_models(self, *, task=None):
+                seen["task"] = task
+                return [
+                    ProviderModelInfo(
+                        id="gpt-image-1",
+                        object="model",
+                        created=123,
+                        owned_by="openai",
+                        capabilities=("text_to_image",),
+                        raw={"id": "gpt-image-1", "provider_note": "x" * 5000},
+                    )
+                ]
+
+        class _DummyOwner:
+            config = {}
+
+        with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
+            with patch.dict(
+                "os.environ",
+                {"OPENAI_API_KEY": "sk-test", "ABSTRACTVISION_MODELS_PATH": "/catalog"},
+                clear=True,
+            ):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.list_provider_models(task="text_to_image")
+
+        json.dumps(out)
+        self.assertEqual(seen["task"], "text_to_image")
+        self.assertEqual(seen["config"].base_url, "https://api.openai.com/v1")
+        self.assertEqual(seen["config"].models_path, "/catalog")
+        self.assertEqual(out[0]["id"], "gpt-image-1")
+        self.assertEqual(out[0]["capabilities"], ["text_to_image"])
+        self.assertTrue(out[0]["raw"]["provider_note"].endswith("...<truncated>"))
+
+    def test_abstractcore_plugin_provider_models_requires_catalog_backend(self):
+        from abstractvision.backends.base_backend import VisionBackend
+        from abstractvision.errors import AbstractVisionError
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import (
+            GeneratedAsset,
+            ImageEditRequest,
+            ImageGenerationRequest,
+            ImageToVideoRequest,
+            MultiAngleRequest,
+            VideoGenerationRequest,
+        )
+
+        class _NoCatalogBackend(VisionBackend):
+            def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+                raise NotImplementedError
+
+            def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
+                raise NotImplementedError
+
+            def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
+                raise NotImplementedError
+
+            def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
+                raise NotImplementedError
+
+            def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
+                raise NotImplementedError
+
+        class _DummyOwner:
+            def __init__(self):
+                self.config = {"vision_backend_instance": _NoCatalogBackend()}
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        with self.assertRaises(AbstractVisionError) as ctx:
+            cap.list_provider_models(task="text_to_image")
+
+        self.assertIn("does not support provider model catalogs", str(ctx.exception))
 
     def test_abstractcore_plugin_capability_with_injected_backend_bytes_and_artifact(self):
         from abstractvision.backends.base_backend import VisionBackend

@@ -5,6 +5,23 @@ from typing import Any, Dict, Optional, Sequence
 
 
 @dataclass(frozen=True)
+class ProviderModelInfo:
+    """A model entry returned by a provider catalog endpoint.
+
+    Provider catalogs are runtime metadata from a remote/local service. They do
+    not replace the packaged capability registry, which remains the source for
+    AbstractVision's known model/task metadata.
+    """
+
+    id: str
+    object: Optional[str] = None
+    created: Optional[int] = None
+    owned_by: Optional[str] = None
+    capabilities: Sequence[str] = field(default_factory=tuple)
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class VisionBackendCapabilities:
     """Backend-level capability constraints (optional; additive).
 

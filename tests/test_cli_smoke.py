@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -44,6 +45,88 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("zai-org/GLM-Image", out)
         self.assertIn("tasks:", out)
 
+    def test_provider_models_lists_openai_compatible_catalog(self):
+        from abstractvision.cli import main
+
+        class _Resp:
+            headers = {}
+
+            def read(self):
+                return json.dumps({"data": [{"id": "provider/image-model"}]}).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        seen = {}
+
+        def fake_urlopen(req, timeout=0):
+            seen["url"] = req.full_url
+            seen["method"] = req.get_method()
+            return _Resp()
+
+        buf = io.StringIO()
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["provider-models", "--base-url", "http://localhost:1234/v1"])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(seen, {"url": "http://localhost:1234/v1/models", "method": "GET"})
+        self.assertIn("provider/image-model", buf.getvalue())
+
+    def test_provider_models_openai_uses_default_catalog(self):
+        from abstractvision.cli import main
+
+        class _Resp:
+            headers = {}
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "data": [
+                            {"id": "gpt-4.1"},
+                            {"id": "gpt-image-1"},
+                            {"id": "dall-e-3"},
+                        ]
+                    }
+                ).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        seen = {}
+
+        def fake_urlopen(req, timeout=0):
+            seen["url"] = req.full_url
+            seen["method"] = req.get_method()
+            seen["auth"] = req.headers.get("Authorization")
+            return _Resp()
+
+        buf = io.StringIO()
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=True):
+            with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+                with contextlib.redirect_stdout(buf):
+                    rc = main(["provider-models", "--openai", "--task", "text_to_image"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            seen,
+            {
+                "url": "https://api.openai.com/v1/models",
+                "method": "GET",
+                "auth": "Bearer sk-test",
+            },
+        )
+        self.assertIn("gpt-image-1", out)
+        self.assertIn("dall-e-3", out)
+        self.assertNotIn("gpt-4.1", out)
+
     def test_repl_help_prioritizes_small_local_examples(self):
         from abstractvision.cli import _repl_help
 
@@ -52,6 +135,7 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("cache-only by default", out)
         self.assertIn("black-forest-labs/FLUX.2-klein-4B", out)
         self.assertIn("/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]", out)
+        self.assertIn("/provider-models", out)
         self.assertIn("--negative-prompt", out)
         self.assertNotIn("FLUX.2-klein-9B", out)
         self.assertNotIn("--negative ...", out)

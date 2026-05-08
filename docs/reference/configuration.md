@@ -4,6 +4,7 @@ AbstractVision configuration is intentionally simple:
 
 - In Python, you configure backends by instantiating backend config objects (see [docs/reference/backends.md](backends.md)).
 - The CLI/REPL/playground reads `ABSTRACTVISION_*` environment variables to set defaults ([`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py), [`../../src/abstractvision/playground_server.py`](../../src/abstractvision/playground_server.py)).
+- The AbstractCore capability plugin also reads `owner.config` plus a small set of standard OpenAI environment aliases. Plugin-only aliases are called out below.
 
 See also:
 - Getting started (examples): [docs/getting-started.md](../getting-started.md)
@@ -16,6 +17,8 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision models` — list known registry model ids
 - `abstractvision tasks` — list known tasks
 - `abstractvision show-model <id>` — print a model’s tasks + params
+- `abstractvision provider-models --openai --task text_to_image` — explicitly query the official OpenAI `/models` catalog
+- `abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image` — explicitly query an OpenAI-compatible provider catalog
 - `abstractvision repl` — interactive testing (supports `openai`, `diffusers`, `sdcpp`)
 - `abstractvision playground [--host 127.0.0.1] [--port 8091]` — self-contained local web UI and `/v1/vision/*` API
 - `abstractvision serve [--host 127.0.0.1] [--port 8091]` — alias for `abstractvision playground`
@@ -31,6 +34,7 @@ Note:
 Inside `abstractvision repl`:
 
 - `/backend openai <base_url> [api_key] [model_id]`
+- `/provider-models [--task text_to_image] [--json]` — query the configured OpenAI-compatible provider catalog
 - `/backend diffusers <model_id_or_path> [device] [torch_dtype]`
 - `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]`
 - `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`
@@ -43,7 +47,9 @@ The CLI/REPL state object (`_ReplState` in [`../../src/abstractvision/cli.py`](.
 
 ### Common
 
-- `ABSTRACTVISION_BACKEND` — default backend for REPL/playground: `openai`, `diffusers`, or `sdcpp`
+- `ABSTRACTVISION_BACKEND` — backend selector: `openai`, `openai-compatible`, `diffusers`, or `sdcpp`
+  - AbstractCore plugin default: `openai` using `https://api.openai.com/v1` plus `OPENAI_API_KEY` or `ABSTRACTVISION_API_KEY`
+  - AbstractCore compatibility: selecting `abstractvision:openai-compatible` directly, or setting only `ABSTRACTVISION_BASE_URL`, keeps compatible-endpoint semantics
   - if unset and `ABSTRACTVISION_BASE_URL` is set, REPL/playground default to `openai`
   - if unset and no base URL is configured, no backend is selected until you use `/backend ...` or load a model explicitly
 - `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
@@ -53,11 +59,16 @@ The CLI/REPL state object (`_ReplState` in [`../../src/abstractvision/cli.py`](.
   - `diffusers`: Diffusers model id or local path
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
 
-### OpenAI-compatible HTTP backend
+### OpenAI / OpenAI-Compatible HTTP Backend
 
-- `ABSTRACTVISION_BASE_URL` — required for `openai` backend
-- `ABSTRACTVISION_API_KEY` — optional bearer token
+- `ABSTRACTVISION_BASE_URL` — compatible `/v1` endpoint; optional for the AbstractCore `openai` default because it uses `https://api.openai.com/v1`
+- `OPENAI_BASE_URL` — override for the official OpenAI profile when `ABSTRACTVISION_BASE_URL` / `vision_base_url` are unset; also used by `abstractvision provider-models --openai`
+- `ABSTRACTVISION_API_KEY` — bearer token for OpenAI or compatible providers that require auth
+- `OPENAI_API_KEY` — fallback when `ABSTRACTVISION_API_KEY` / `vision_api_key` are unset; also used by `abstractvision provider-models --openai`
 - `ABSTRACTVISION_MODEL_ID` — optional remote model id/name (see also “Common”)
+- `OPENAI_IMAGE_MODEL_ID` / `OPENAI_IMAGE_MODEL` — plugin-only OpenAI model aliases when `ABSTRACTVISION_MODEL_ID` / `vision_model_id` are unset
+- `ABSTRACTVISION_MODELS_PATH` / `vision_models_path` — provider catalog path for explicit listing (default: `/models`, so a `/v1` base URL queries `/v1/models`)
+- Many OpenAI-compatible providers expose `GET /models`. AbstractVision exposes that catalog via `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, and the AbstractCore plugin method `llm.vision.list_provider_models(...)`; it does not call the catalog automatically or use it to select a model. The plugin uses its static default (`gpt-image-1`) unless a model id is configured.
 - `ABSTRACTVISION_IMAGES_GENERATIONS_PATH` — default: `/images/generations`
 - `ABSTRACTVISION_IMAGES_EDITS_PATH` — default: `/images/edits`
 - `ABSTRACTVISION_TEXT_TO_VIDEO_PATH` — optional (enables `text_to_video`)

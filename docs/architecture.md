@@ -110,9 +110,10 @@ flowchart LR
 ```
 
 Current plugin behavior (evidence in [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py)):
-- Default: OpenAI-compatible HTTP, preserving the legacy backend id `abstractvision:openai-compatible`.
+- Default: OpenAI HTTP with backend id `abstractvision:openai`; the legacy backend id `abstractvision:openai-compatible` remains registered and preserves compatible-endpoint defaults when selected directly.
+- Compatible endpoints should set `ABSTRACTVISION_BACKEND=openai-compatible` plus `ABSTRACTVISION_BASE_URL`; legacy base-url-only configs still resolve as compatible endpoints.
 - Local Diffusers and stable-diffusion.cpp are supported when `vision_backend` / `ABSTRACTVISION_BACKEND` selects `diffusers` or `sdcpp`.
-- Configuration is read from `owner.config` keys like `vision_base_url`, `vision_model_id`, `vision_backend`, and backend-specific keys, then falls back to `ABSTRACTVISION_*` env vars.
+- Configuration is read from `owner.config` keys like `vision_base_url`, `vision_model_id`, `vision_backend`, and backend-specific keys, then falls back to `ABSTRACTVISION_*` and standard OpenAI env vars where relevant.
 
 ## Extending AbstractVision (practical steps)
 

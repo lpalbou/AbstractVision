@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
-from .backends.base_backend import VisionBackend
 from .artifacts import MediaStore
+from .backends.base_backend import VisionBackend
 from .errors import BackendNotConfiguredError, CapabilityNotSupportedError
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .types import (
@@ -13,6 +13,7 @@ from .types import (
     ImageGenerationRequest,
     ImageToVideoRequest,
     MultiAngleRequest,
+    ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
@@ -60,7 +61,7 @@ class VisionManager:
         caps = self._backend_caps(backend)
         if caps is None:
             return None
-        if caps.supported_tasks is not None and str(task) not in set([str(t) for t in caps.supported_tasks]):
+        if caps.supported_tasks is not None and str(task) not in {str(t) for t in caps.supported_tasks}:
             raise CapabilityNotSupportedError(f"Backend does not support task '{task}'.")
         return caps
 
@@ -73,6 +74,11 @@ class VisionManager:
             metadata=asset.metadata,
             tags=tags,
         )
+
+    def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
+        """List models advertised by the configured provider backend, if supported."""
+        backend = self._require_backend()
+        return backend.list_provider_models(task=task)
 
     def generate_image(self, prompt: str, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()

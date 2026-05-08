@@ -4,6 +4,10 @@ This is a tiny web UI for testing AbstractVision locally. It is powered by the
 self-contained `abstractvision playground` command; it does **not** require an
 AbstractCore server.
 
+The playground is a local/dev surface. Do not expose it as an authenticated
+production serving boundary; use AbstractCore/Gateway for production routing,
+authentication, and browser-origin policy.
+
 ## Required API endpoints
 
 The page calls:

@@ -1,10 +1,11 @@
 import base64
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
-from urllib.error import HTTPError
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 # Ensure `src/` layout is importable when running tests without installing the package.
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -210,6 +211,127 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         backend = OpenAICompatibleVisionBackend(config=cfg)
         with self.assertRaises(CapabilityNotSupportedError):
             backend.generate_video(VideoGenerationRequest(prompt="x"))
+
+    def test_list_provider_models_calls_models_endpoint_and_parses_entries(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+
+        resp = {
+            "object": "list",
+            "data": [
+                {
+                    "id": "provider/image-model",
+                    "object": "model",
+                    "created": 123,
+                    "owned_by": "provider",
+                    "tasks": {"text_to_image": True},
+                },
+                "provider/string-model",
+            ],
+        }
+
+        def fake_urlopen(req, timeout=0):
+            self.assertEqual(req.get_method(), "GET")
+            self.assertEqual(req.full_url, "http://localhost:1234/v1/models")
+            self.assertEqual(req.headers.get("Authorization"), "Bearer k")
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        backend = OpenAICompatibleVisionBackend(
+            config=OpenAICompatibleBackendConfig(
+                base_url="http://localhost:1234/v1",
+                api_key="k",
+            )
+        )
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            models = backend.list_provider_models()
+
+        self.assertEqual([m.id for m in models], ["provider/image-model", "provider/string-model"])
+        self.assertEqual(models[0].object, "model")
+        self.assertEqual(models[0].created, 123)
+        self.assertEqual(models[0].owned_by, "provider")
+        self.assertIn("text_to_image", models[0].capabilities)
+        self.assertEqual(models[1].raw, {"id": "provider/string-model"})
+
+    def test_list_provider_models_filters_official_openai_image_models(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+
+        resp = {
+            "object": "list",
+            "data": [
+                {"id": "gpt-4.1", "object": "model"},
+                {"id": "gpt-image-1", "object": "model"},
+                {"id": "dall-e-3", "object": "model"},
+            ],
+        }
+
+        def fake_urlopen(req, timeout=0):
+            self.assertEqual(req.full_url, "https://api.openai.com/v1/models")
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        backend = OpenAICompatibleVisionBackend(
+            config=OpenAICompatibleBackendConfig(base_url="https://api.openai.com/v1")
+        )
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            models = backend.list_provider_models(task="text_to_image")
+
+        self.assertEqual([m.id for m in models], ["gpt-image-1", "dall-e-3"])
+
+    def test_list_provider_models_keeps_compatible_entries_without_capability_metadata(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+
+        resp = {"data": [{"id": "local-image-model"}, {"id": "local-video-model"}]}
+
+        def fake_urlopen(req, timeout=0):
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        backend = OpenAICompatibleVisionBackend(
+            config=OpenAICompatibleBackendConfig(base_url="http://localhost:1234/v1")
+        )
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            models = backend.list_provider_models(task="text_to_image")
+
+        self.assertEqual([m.id for m in models], ["local-image-model", "local-video-model"])
+
+    @unittest.skipUnless(
+        os.environ.get("OPENAI_API_KEY") or os.environ.get("ABSTRACTVISION_API_KEY"),
+        "OPENAI_API_KEY or ABSTRACTVISION_API_KEY not configured",
+    )
+    def test_list_provider_models_default_openai_catalog_live(self):
+        from abstractvision import VisionManager
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+
+        api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ABSTRACTVISION_API_KEY")
+        backend = OpenAICompatibleVisionBackend(
+            config=OpenAICompatibleBackendConfig(
+                base_url="https://api.openai.com/v1",
+                api_key=api_key,
+                timeout_s=30.0,
+            )
+        )
+        manager = VisionManager(backend=backend)
+
+        models = list(manager.list_provider_models(task="text_to_image"))
+        model_ids = {m.id for m in models}
+
+        self.assertTrue(model_ids, "OpenAI provider catalog returned no image-capable models")
+        self.assertTrue(
+            any(mid.startswith(("gpt-image-", "dall-e-")) for mid in model_ids),
+            f"Expected at least one OpenAI image model, got: {sorted(model_ids)[:10]}",
+        )
 
     def test_video_capabilities_and_generation_payload(self):
         from abstractvision.backends.openai_compatible import (

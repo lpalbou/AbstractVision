@@ -13,6 +13,7 @@ Maintenance tips:
 Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
+- **Inspect provider model catalogs**: use `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, or `llm.vision.list_provider_models(...)`; catalog listing is explicit and does not select the active model.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
 - **Need local Diffusers**: install `abstractvision[diffusers]`, set `ABSTRACTVISION_BACKEND=diffusers`, pre-download `runwayml/stable-diffusion-v1-5`, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
 
@@ -20,6 +21,7 @@ Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image` and `image_to_image`.
 - `text_to_video` and `image_to_video` are supported only via the OpenAI-compatible backend when video endpoints are configured.
 - `multi_view_image` exists in the API but no built-in backend implements it yet.
+- Provider `/models` catalogs can be listed explicitly, including through the AbstractCore plugin boundary; they are not used for automatic model selection.
 
 ## Documentation
 
@@ -61,7 +63,7 @@ Reality checks (current shipped behavior, anchored in code):
 - [src/abstractvision/cli.py](src/abstractvision/cli.py): CLI/REPL (`abstractvision`)
 - [src/abstractvision/playground_server.py](src/abstractvision/playground_server.py): self-contained playground server and `/v1/vision/*` jobs
 - [src/abstractvision/playground/vision_playground.html](src/abstractvision/playground/vision_playground.html): packaged playground UI asset
-- [src/abstractvision/integrations/abstractcore_plugin.py](src/abstractvision/integrations/abstractcore_plugin.py): AbstractCore capability plugin entry point
+- [src/abstractvision/integrations/abstractcore_plugin.py](src/abstractvision/integrations/abstractcore_plugin.py): AbstractCore capability plugin entry point and provider catalog shim
 - [src/abstractvision/integrations/abstractcore.py](src/abstractvision/integrations/abstractcore.py): AbstractCore tool helpers (`make_vision_tools`)
 
 ## Testing

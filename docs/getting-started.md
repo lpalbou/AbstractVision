@@ -271,6 +271,13 @@ Use this path if you already have a server that exposes OpenAI-shaped image endp
 
 For unknown or local OpenAI-compatible servers, AbstractVision forwards local extension fields such as `steps`, `seed`, `guidance_scale`, `width`, and `height`. For the real OpenAI API and known GPT image models, it suppresses unsupported local-only fields and sends the narrower OpenAI request shape.
 
+List provider-advertised models explicitly:
+
+```bash
+abstractvision provider-models --openai --task text_to_image
+abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image
+```
+
 One-shot (stores output via `LocalAssetStore` and prints an artifact ref + file path):
 
 ```bash
@@ -517,7 +524,9 @@ Diffusion path or klein-4B first when you are testing a fresh machine.
 ## 7) Web UI testing (optional): Playground
 
 This repo includes a self-contained web UI and local API server. It is owned by
-AbstractVision and does not require AbstractCore.
+AbstractVision and does not require AbstractCore. Treat it as a local/dev
+testing surface; use AbstractCore/Gateway for production routing,
+authentication, and browser-origin policy.
 
 ### 7.1 Start the playground
 

@@ -6,7 +6,7 @@ import os
 import shlex
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -21,7 +21,6 @@ from .backends import (
 )
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .vision_manager import VisionManager
-
 
 DEFAULT_REPL_BACKEND = ""
 DEFAULT_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
@@ -81,6 +80,7 @@ def _build_openai_backend_from_args(args: argparse.Namespace) -> OpenAICompatibl
         api_key=str(args.api_key) if args.api_key else None,
         model_id=str(args.model_id) if args.model_id else None,
         timeout_s=float(args.timeout_s),
+        models_path=str(getattr(args, "models_path", None) or "/models"),
         image_generations_path=str(args.images_generations_path),
         image_edits_path=str(args.images_edits_path),
         text_to_video_path=str(args.text_to_video_path) if args.text_to_video_path else None,
@@ -146,6 +146,38 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_provider_models(args: argparse.Namespace) -> int:
+    if bool(getattr(args, "openai", False)):
+        base_url = (
+            str(args.base_url).strip()
+            if getattr(args, "base_url", None)
+            else str(_env("OPENAI_BASE_URL", "https://api.openai.com/v1") or "").strip()
+        )
+    else:
+        base_url = str(getattr(args, "base_url", None) or _env("ABSTRACTVISION_BASE_URL") or "").strip()
+    if not base_url:
+        raise SystemExit("Missing --base-url (or use --openai for https://api.openai.com/v1).")
+
+    api_key = getattr(args, "api_key", None)
+    if api_key is None:
+        api_key = _env("ABSTRACTVISION_API_KEY") or _env("OPENAI_API_KEY")
+    backend = OpenAICompatibleVisionBackend(
+        config=OpenAICompatibleBackendConfig(
+            base_url=base_url,
+            api_key=str(api_key) if api_key else None,
+            timeout_s=float(getattr(args, "timeout_s", 300.0)),
+            models_path=str(getattr(args, "models_path", None) or "/models"),
+        )
+    )
+    models = backend.list_provider_models(task=getattr(args, "task", None))
+    if bool(getattr(args, "json", False)):
+        _print_json([asdict(m) for m in models])
+    else:
+        for m in models:
+            print(m.id)
+    return 0
+
+
 def _cmd_t2i(args: argparse.Namespace) -> int:
     vm = _build_manager_from_args(args)
     out = vm.generate_image(
@@ -206,6 +238,7 @@ class _ReplState:
     images_edits_path: str = field(
         default_factory=lambda: _env("ABSTRACTVISION_IMAGES_EDITS_PATH", "/images/edits") or "/images/edits"
     )
+    models_path: str = field(default_factory=lambda: _env("ABSTRACTVISION_MODELS_PATH", "/models") or "/models")
     text_to_video_path: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH"))
     image_to_video_path: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH"))
     image_to_video_mode: str = field(default_factory=lambda: _env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart") or "multipart")
@@ -259,6 +292,7 @@ def _repl_help() -> str:
         "  /help                       Show this help\n"
         "  /exit                       Quit (aliases: /quit, /q)\n"
         "  /models                     List known capability model ids\n"
+        "  /provider-models            List models from the configured OpenAI-compatible provider\n"
         "  /tasks                      List known task keys\n"
         "  /show-model <id>            Show a model's tasks + params\n"
         "  /config                     Show current backend/store config\n"
@@ -384,6 +418,31 @@ def _coerce_scalar(v: Any) -> Any:
         return s
 
 
+def _build_openai_backend_from_state(state: _ReplState) -> OpenAICompatibleVisionBackend:
+    backend_kind = str(state.backend_kind or "").strip().lower()
+    if backend_kind in {"openai-compatible", "openai_compatible", "proxy"}:
+        backend_kind = "openai"
+    if backend_kind != "openai":
+        raise ValueError("Provider model listing requires an OpenAI-compatible backend.")
+    base_url = str(state.base_url or "").strip()
+    if not base_url:
+        raise ValueError("Backend is not configured. Use: /backend openai <base_url> [api_key] [model_id]")
+    return OpenAICompatibleVisionBackend(
+        config=OpenAICompatibleBackendConfig(
+            base_url=base_url,
+            api_key=str(state.api_key) if state.api_key else None,
+            model_id=str(state.model_id) if state.model_id else None,
+            timeout_s=float(state.timeout_s),
+            models_path=str(state.models_path),
+            image_generations_path=str(state.images_generations_path),
+            image_edits_path=str(state.images_edits_path),
+            text_to_video_path=str(state.text_to_video_path) if state.text_to_video_path else None,
+            image_to_video_path=str(state.image_to_video_path) if state.image_to_video_path else None,
+            image_to_video_mode=str(state.image_to_video_mode),
+        )
+    )
+
+
 def _build_manager_from_state(state: _ReplState) -> VisionManager:
     if state._cached_store is not None and state._cached_store_dir == state.store_dir:
         store = state._cached_store
@@ -410,6 +469,7 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             state.api_key,
             state.model_id,
             state.timeout_s,
+            state.models_path,
             state.images_generations_path,
             state.images_edits_path,
             state.text_to_video_path,
@@ -424,6 +484,7 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
                 api_key=str(state.api_key) if state.api_key else None,
                 model_id=str(state.model_id) if state.model_id else None,
                 timeout_s=float(state.timeout_s),
+                models_path=str(state.models_path),
                 image_generations_path=str(state.images_generations_path),
                 image_edits_path=str(state.images_edits_path),
                 text_to_video_path=str(state.text_to_video_path) if state.text_to_video_path else None,
@@ -538,6 +599,17 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 for mid in reg.list_models():
                     print(mid)
                 continue
+            if cmd in {"provider-models", "openai-models", "remote-models"}:
+                flags = _parse_flag_args(args)
+                models = _build_openai_backend_from_state(state).list_provider_models(
+                    task=flags.get("task")
+                )
+                if bool(flags.get("json")):
+                    _print_json([asdict(m) for m in models])
+                else:
+                    for m in models:
+                        print(m.id)
+                continue
             if cmd == "tasks":
                 for t in reg.list_tasks():
                     desc = reg.get_task(t).get("description")
@@ -560,6 +632,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     "capabilities_model_id": state.capabilities_model_id,
                     "store_dir": state.store_dir,
                     "timeout_s": state.timeout_s,
+                    "models_path": state.models_path,
                     "images_generations_path": state.images_generations_path,
                     "images_edits_path": state.images_edits_path,
                     "text_to_video_path": state.text_to_video_path,
@@ -805,6 +878,35 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("models", help="List known model ids (from capability registry).").set_defaults(_fn=_cmd_models)
+    pm = sub.add_parser(
+        "provider-models",
+        aliases=["openai-models", "remote-models"],
+        help="List models from an OpenAI/OpenAI-compatible provider catalog.",
+    )
+    pm.add_argument(
+        "--openai",
+        action="store_true",
+        help="Use the official OpenAI API base URL (or OPENAI_BASE_URL if set).",
+    )
+    pm.add_argument(
+        "--base-url",
+        default=None,
+        help="OpenAI-compatible base URL (e.g. http://localhost:1234/v1).",
+    )
+    pm.add_argument("--api-key", default=None, help="API key (Bearer).")
+    pm.add_argument(
+        "--models-path",
+        default=_env("ABSTRACTVISION_MODELS_PATH", "/models"),
+        help="Path for the provider model catalog (default: /models).",
+    )
+    pm.add_argument(
+        "--task",
+        default=None,
+        help="Best-effort task filter (e.g. text_to_image, image_to_image).",
+    )
+    pm.add_argument("--timeout-s", type=float, default=30.0, help="HTTP timeout seconds.")
+    pm.add_argument("--json", action="store_true", help="Print full provider model entries as JSON.")
+    pm.set_defaults(_fn=_cmd_provider_models)
     sub.add_parser("tasks", help="List known task keys (from capability registry).").set_defaults(_fn=_cmd_tasks)
 
     sm = sub.add_parser("show-model", help="Show a model's supported tasks and params.")
