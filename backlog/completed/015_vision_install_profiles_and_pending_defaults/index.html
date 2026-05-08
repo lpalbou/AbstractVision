@@ -803,10 +803,13 @@ intentional production server.</p>
 <li><code>abstractvision[sdcpp]</code>: stable-diffusion.cpp python binding support.</li>
 <li><code>abstractvision[local]</code>: local backends.</li>
 <li><code>abstractvision[all]</code>: all Vision backends, not contributor tooling.</li>
+<li><code>abstractvision[apple]</code> / <code>abstractvision[all-apple]</code>: native macOS profile aliases for the
+  full local Vision stack.</li>
+<li><code>abstractvision[gpu]</code>: Diffusers/Torch GPU stack.</li>
+<li><code>abstractvision[all-gpu]</code>: full GPU-relevant local Vision stack.</li>
 </ul>
-<p>Do not add Vision-level <code>apple</code> or <code>gpu</code> until Vision owns a clearly different platform dependency
-set. Gateway/Core/root should aggregate Vision's existing local extras into their Apple/GPU
-profiles.</p>
+<p>Gateway/Core/root should still own the higher-level deployment aggregation; Vision profile aliases
+only describe Vision-owned backend dependencies.</p>
 <h2 id="pending-changes-guidance">Pending Changes Guidance<a class="headerlink" href="#pending-changes-guidance" title="Permanent link">&para;</a></h2>
 <p>Keep:</p>
 <ul>
