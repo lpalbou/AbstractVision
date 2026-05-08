@@ -904,9 +904,10 @@ text→image, image→image (and optionally video when a backend supports it).</
   BE --&gt; SDCPP[Local stable-diffusion.cpp]
 </code></pre></div>
 <p>Current plugin behavior (evidence in <a href="../src/abstractvision/integrations/abstractcore_plugin.py"><code>../src/abstractvision/integrations/abstractcore_plugin.py</code></a>):
-- Default: OpenAI-compatible HTTP, preserving the legacy backend id <code>abstractvision:openai-compatible</code>.
+- Default: OpenAI HTTP with backend id <code>abstractvision:openai</code>; the legacy backend id <code>abstractvision:openai-compatible</code> remains registered and preserves compatible-endpoint defaults when selected directly.
+- Compatible endpoints should set <code>ABSTRACTVISION_BACKEND=openai-compatible</code> plus <code>ABSTRACTVISION_BASE_URL</code>; legacy base-url-only configs still resolve as compatible endpoints.
 - Local Diffusers and stable-diffusion.cpp are supported when <code>vision_backend</code> / <code>ABSTRACTVISION_BACKEND</code> selects <code>diffusers</code> or <code>sdcpp</code>.
-- Configuration is read from <code>owner.config</code> keys like <code>vision_base_url</code>, <code>vision_model_id</code>, <code>vision_backend</code>, and backend-specific keys, then falls back to <code>ABSTRACTVISION_*</code> env vars.</p>
+- Configuration is read from <code>owner.config</code> keys like <code>vision_base_url</code>, <code>vision_model_id</code>, <code>vision_backend</code>, and backend-specific keys, then falls back to <code>ABSTRACTVISION_*</code> and standard OpenAI env vars where relevant.</p>
 <h2 id="extending-abstractvision-practical-steps">Extending AbstractVision (practical steps)<a class="headerlink" href="#extending-abstractvision-practical-steps" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Add a new backend:

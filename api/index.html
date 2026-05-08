@@ -938,6 +938,7 @@
 <p>The package exports the following symbols from <code>abstractvision</code> (see <a href="../src/abstractvision/__init__.py"><code>../src/abstractvision/__init__.py</code></a>):</p>
 <ul>
 <li><code>VisionManager</code></li>
+<li><code>ProviderModelInfo</code></li>
 <li><code>VisionModelCapabilitiesRegistry</code></li>
 <li><code>LocalAssetStore</code></li>
 <li><code>RuntimeArtifactStoreAdapter</code></li>
@@ -962,6 +963,19 @@
 - <code>HuggingFaceDiffusersVisionBackend</code> (local Diffusers)
 - <code>StableDiffusionCppVisionBackend</code> (local stable-diffusion.cpp / GGUF)</p>
 <p>Backend config classes are re-exported from <code>abstractvision.backends</code> via lazy imports (see <a href="../src/abstractvision/backends/__init__.py"><code>../src/abstractvision/backends/__init__.py</code></a>).</p>
+<p>Provider catalog listing is exposed as a backend contract:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAICompatibleBackendConfig</span><span class="p">,</span> <span class="n">OpenAICompatibleVisionBackend</span>
+
+<span class="n">backend</span> <span class="o">=</span> <span class="n">OpenAICompatibleVisionBackend</span><span class="p">(</span>
+    <span class="n">config</span><span class="o">=</span><span class="n">OpenAICompatibleBackendConfig</span><span class="p">(</span><span class="n">base_url</span><span class="o">=</span><span class="s2">&quot;http://localhost:1234/v1&quot;</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">backend</span><span class="o">.</span><span class="n">list_provider_models</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="s2">&quot;text_to_image&quot;</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+</code></pre></div>
+<p>For official OpenAI, use <code>base_url="https://api.openai.com/v1"</code> and an API key. Catalog listing is explicit and does not change the configured generation model.</p>
+<p>When AbstractVision is loaded as an AbstractCore capability plugin, the plugin shim exposes the
+same explicit catalog surface as <code>llm.vision.list_provider_models(task="text_to_image")</code>. It
+returns JSON-safe dictionaries so Core/Gateway route code can avoid private backend reach-throughs.</p>
 <h3 id="outputs-bytes-vs-artifact-refs">Outputs: bytes vs artifact refs<a class="headerlink" href="#outputs-bytes-vs-artifact-refs" title="Permanent link">&para;</a></h3>
 <p><code>VisionManager</code> returns:</p>
 <ul>

@@ -1426,6 +1426,10 @@ pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </s
 <h2 id="21-openai-compatible-http">2.1) OpenAI-compatible HTTP<a class="headerlink" href="#21-openai-compatible-http" title="Permanent link">&para;</a></h2>
 <p>Use this path if you already have a server that exposes OpenAI-shaped image endpoints (e.g. a local model server).</p>
 <p>For unknown or local OpenAI-compatible servers, AbstractVision forwards local extension fields such as <code>steps</code>, <code>seed</code>, <code>guidance_scale</code>, <code>width</code>, and <code>height</code>. For the real OpenAI API and known GPT image models, it suppresses unsupported local-only fields and sends the narrower OpenAI request shape.</p>
+<p>List provider-advertised models explicitly:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>provider-models<span class="w"> </span>--openai<span class="w"> </span>--task<span class="w"> </span>text_to_image
+abstractvision<span class="w"> </span>provider-models<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:1234/v1<span class="w"> </span>--task<span class="w"> </span>text_to_image
+</code></pre></div>
 <p>One-shot (stores output via <code>LocalAssetStore</code> and prints an artifact ref + file path):</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:1234/v1<span class="w"> </span><span class="s2">&quot;a watercolor painting of a lighthouse&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">512</span><span class="w"> </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--open
 </code></pre></div>
@@ -1583,7 +1587,9 @@ Diffusion path or klein-4B first when you are testing a fresh machine.</p>
 <hr />
 <h2 id="7-web-ui-testing-optional-playground">7) Web UI testing (optional): Playground<a class="headerlink" href="#7-web-ui-testing-optional-playground" title="Permanent link">&para;</a></h2>
 <p>This repo includes a self-contained web UI and local API server. It is owned by
-AbstractVision and does not require AbstractCore.</p>
+AbstractVision and does not require AbstractCore. Treat it as a local/dev
+testing surface; use AbstractCore/Gateway for production routing,
+authentication, and browser-origin policy.</p>
 <h3 id="71-start-the-playground">7.1 Start the playground<a class="headerlink" href="#71-start-the-playground" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>playground<span class="w"> </span>--port<span class="w"> </span><span class="m">8091</span>
 </code></pre></div>

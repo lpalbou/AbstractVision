@@ -776,10 +776,17 @@
 <p><strong>Core config</strong>
 - <code>base_url</code> (required): points to a <code>/v1</code>-style root, e.g. <code>http://localhost:1234/v1</code>
 - <code>api_key</code> (optional): sent as <code>Authorization: Bearer ...</code>
-- <code>model_id</code> (optional): forwarded as <code>model</code> in requests</p>
+- <code>model_id</code> (optional): forwarded as <code>model</code> in requests
+- <code>models_path</code> (default <code>/models</code>): provider catalog path for explicit model listing</p>
 <p>Request shape:
 - Unknown/local endpoints receive local extension fields when provided, including <code>steps</code>, <code>seed</code>, <code>guidance_scale</code>, <code>negative_prompt</code>, <code>width</code>, and <code>height</code>.
 - Real OpenAI-looking endpoints and known OpenAI image models use the narrower OpenAI request shape; GPT image models do not receive unsupported local-only fields such as <code>steps</code>, <code>seed</code>, or <code>guidance_scale</code>.</p>
+<p>Provider model catalogs:
+- <code>OpenAICompatibleVisionBackend.list_provider_models(...)</code> queries <code>GET /models</code> by default.
+- <code>VisionManager.list_provider_models(...)</code> delegates to the configured backend.
+- The AbstractCore plugin exposes the same catalog through <code>llm.vision.list_provider_models(...)</code>.
+- CLI examples: <code>abstractvision provider-models --openai --task text_to_image</code> and <code>abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image</code>.
+- Listing is explicit; AbstractVision does not use provider catalogs to silently select a model.</p>
 <p>Code pointers:
 - Config: <code>OpenAICompatibleBackendConfig</code> (<a href="../../src/abstractvision/backends/openai_compatible.py"><code>../../src/abstractvision/backends/openai_compatible.py</code></a>)
 - Backend: <code>OpenAICompatibleVisionBackend</code> (<a href="../../src/abstractvision/backends/openai_compatible.py"><code>../../src/abstractvision/backends/openai_compatible.py</code></a>)</p>
