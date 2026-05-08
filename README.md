@@ -63,6 +63,9 @@ Optional extras:
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
 | `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
+| `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS plus stable-diffusion.cpp bindings. |
+| `abstractvision[gpu]` | GPU Diffusers/Torch profile. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
+| `abstractvision[all-gpu]` | Full GPU-relevant local vision profile: Diffusers plus stable-diffusion.cpp bindings. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
 
 Contributor-only extras:

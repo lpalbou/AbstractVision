@@ -59,10 +59,13 @@ Keep Vision package profiles local to Vision:
 - `abstractvision[sdcpp]`: stable-diffusion.cpp python binding support.
 - `abstractvision[local]`: local backends.
 - `abstractvision[all]`: all Vision backends, not contributor tooling.
+- `abstractvision[apple]` / `abstractvision[all-apple]`: native macOS profile aliases for the
+  full local Vision stack.
+- `abstractvision[gpu]`: Diffusers/Torch GPU stack.
+- `abstractvision[all-gpu]`: full GPU-relevant local Vision stack.
 
-Do not add Vision-level `apple` or `gpu` until Vision owns a clearly different platform dependency
-set. Gateway/Core/root should aggregate Vision's existing local extras into their Apple/GPU
-profiles.
+Gateway/Core/root should still own the higher-level deployment aggregation; Vision profile aliases
+only describe Vision-owned backend dependencies.
 
 ## Pending Changes Guidance
 

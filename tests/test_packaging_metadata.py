@@ -84,7 +84,11 @@ class TestPackagingMetadata(unittest.TestCase):
         )
         sdcpp_names = _dependency_names(_optional_dependency_requirements(pyproject, "sdcpp"))
         local_names = _dependency_names(_optional_dependency_requirements(pyproject, "local"))
+        apple_names = _dependency_names(_optional_dependency_requirements(pyproject, "apple"))
+        gpu_names = _dependency_names(_optional_dependency_requirements(pyproject, "gpu"))
         all_names = _dependency_names(_optional_dependency_requirements(pyproject, "all"))
+        all_apple_names = _dependency_names(_optional_dependency_requirements(pyproject, "all-apple"))
+        all_gpu_names = _dependency_names(_optional_dependency_requirements(pyproject, "all-gpu"))
 
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(diffusers_names))
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(huggingface_names))
@@ -92,8 +96,14 @@ class TestPackagingMetadata(unittest.TestCase):
         self.assertIn("Pillow", sdcpp_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(local_names))
         self.assertIn("stable-diffusion-cpp-python", local_names)
+        self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(apple_names))
+        self.assertIn("stable-diffusion-cpp-python", apple_names)
+        self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(gpu_names))
+        self.assertNotIn("stable-diffusion-cpp-python", gpu_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(all_names))
         self.assertIn("stable-diffusion-cpp-python", all_names)
+        self.assertEqual(apple_names, all_apple_names)
+        self.assertEqual(local_names, all_gpu_names)
 
     def test_runtime_aliases_and_bundles_do_not_drift(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -103,12 +113,20 @@ class TestPackagingMetadata(unittest.TestCase):
         sdcpp = _optional_dependency_requirements(pyproject, "sdcpp")
         local = _optional_dependency_requirements(pyproject, "local")
         all_runtime = _optional_dependency_requirements(pyproject, "all")
+        apple = _optional_dependency_requirements(pyproject, "apple")
+        gpu = _optional_dependency_requirements(pyproject, "gpu")
+        all_apple = _optional_dependency_requirements(pyproject, "all-apple")
+        all_gpu = _optional_dependency_requirements(pyproject, "all-gpu")
         diffusers_dev = _optional_dependency_requirements(pyproject, "diffusers-dev")
         huggingface_dev = _optional_dependency_requirements(pyproject, "huggingface-dev")
 
         self.assertEqual(diffusers, huggingface)
         self.assertEqual(diffusers | sdcpp, local)
+        self.assertEqual(local, apple)
+        self.assertEqual(diffusers, gpu)
         self.assertEqual(local, all_runtime)
+        self.assertEqual(local, all_apple)
+        self.assertEqual(local, all_gpu)
         self.assertEqual(diffusers_dev, huggingface_dev)
 
         contributor_only = {

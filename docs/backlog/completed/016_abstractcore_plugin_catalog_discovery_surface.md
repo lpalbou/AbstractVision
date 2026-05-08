@@ -53,7 +53,8 @@ The method should:
 - Do not make provider catalog listing automatic model selection.
 - Do not move Core Server route code into AbstractVision.
 - Do not add Gateway auth/CORS/server policy to AbstractVision.
-- Do not add Apple/GPU profile symmetry for this discovery surface.
+- Do not add Apple/GPU profile behavior as part of this discovery surface. Hardware-profile aliases
+  are handled by the package install-profile work.
 
 ## Promotion Criteria
 

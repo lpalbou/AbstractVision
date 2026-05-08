@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.3 - 2026-05-08
+
+- Packaging: add shared native install profiles. `abstractvision[apple]` and
+  `abstractvision[all-apple]` install the full local macOS vision stack;
+  `abstractvision[gpu]` installs the Diffusers/Torch GPU stack; and
+  `abstractvision[all-gpu]` installs Diffusers plus stable-diffusion.cpp
+  bindings for full local GPU-capable deployments.
+- Docs/tests: document and verify the Apple/GPU profile aliases while keeping
+  the base package lightweight and remote/OpenAI-compatible by default.
+
 ## 0.3.2 - 2026-05-08
 
 - AbstractCore plugin: switch the default backend id to `abstractvision:openai` with official OpenAI defaults, while keeping `abstractvision:openai-compatible` registered as a legacy-compatible backend id.

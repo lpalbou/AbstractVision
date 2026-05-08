@@ -72,6 +72,35 @@ sdcpp = [
   "Pillow>=9.0",
 ]
 
+# Native Apple Python install profile. Docker cannot expose Apple's Metal stack,
+# but direct macOS installs can use PyTorch/MPS and stable-diffusion.cpp/Metal.
+apple = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "stable-diffusion-cpp-python>=0.4.2",
+  "Pillow>=9.0",
+]
+
+gpu = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "Pillow>=9.0",
+]
+
 # Compatibility extra for callers that still request the historical Diffusers extra.
 huggingface = [
   "diffusers>=0.36.0",
@@ -103,6 +132,36 @@ local = [
 
 # Convenience: installs every runtime backend, but not contributor tooling.
 all = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "stable-diffusion-cpp-python>=0.4.2",
+  "Pillow>=9.0",
+]
+
+# Full native Apple profile: every runtime backend relevant to macOS/Apple
+# Silicon, excluding NVIDIA/CUDA-specific stacks.
+all-apple = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "stable-diffusion-cpp-python>=0.4.2",
+  "Pillow>=9.0",
+]
+
+all-gpu = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
   "transformers>=4.0,<6.0.0",
