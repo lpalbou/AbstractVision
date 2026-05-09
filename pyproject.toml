@@ -68,7 +68,7 @@ diffusers = [
 
 # Local generation via stable-diffusion.cpp python bindings (pip-installable).
 sdcpp = [
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
 
@@ -84,7 +84,7 @@ apple = [
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
 
@@ -126,7 +126,7 @@ local = [
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
 
@@ -141,7 +141,7 @@ all = [
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
 
@@ -157,7 +157,7 @@ all-apple = [
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
 
@@ -171,7 +171,7 @@ all-gpu = [
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
 

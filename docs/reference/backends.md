@@ -89,6 +89,8 @@ Runtime modes (auto-selected):
 Notes:
 - If you care about **GPU acceleration** (macOS **Metal**, NVIDIA **CUDA**, etc.), prefer **CLI mode** via `sd-cli`.
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means **CPU-only**, so FLUX/Qwen-class models can be extremely slow.
+- The optional python binding is constrained below `0.4.6` because that sdist
+  currently misses vendored CMake files needed by native Linux builds.
 - REPL selection supports both `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]` and
   `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`.
 - Python code and AbstractCore plugin configuration can also pass component paths such as `clip_l`, `clip_g`, `t5xxl`, `llm_vision`, plus `extra_args`, `timeout_s`, and `cwd`.

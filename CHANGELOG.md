@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.3.4 - 2026-05-09
+
+- Packaging: constrain the optional `stable-diffusion-cpp-python` binding to
+  `<0.4.6` for `sdcpp`, `local`, `apple`, `all`, `all-apple`, and `all-gpu`
+  extras. Version `0.4.6` currently ships an sdist that fails native Linux
+  builds because required vendored libwebm CMake files are missing.
+
 ## 0.3.3 - 2026-05-08
 
 - Packaging: add shared native install profiles. `abstractvision[apple]` and

@@ -68,6 +68,10 @@ Optional extras:
 | `abstractvision[all-gpu]` | Full GPU-relevant local vision profile: Diffusers plus stable-diffusion.cpp bindings. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
 
+`stable-diffusion-cpp-python` is currently constrained below `0.4.6` because
+that release's source distribution is missing vendored CMake files required by
+native Linux builds.
+
 Contributor-only extras:
 
 | Extra | Use |
@@ -254,7 +258,7 @@ single-file Stable Diffusion model when possible; Qwen Image and FLUX GGUF compo
 
 Recommended:
 - **macOS (Apple Silicon / Metal)**: install `sd-cli` (stable-diffusion.cpp executable) from releases and use CLI mode for Metal acceleration.
-- Otherwise (pip-only convenience): `pip install "abstractvision[sdcpp]"` installs the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`), but this may run CPU-only depending on the wheel build.
+- Otherwise (pip-only convenience): `pip install "abstractvision[sdcpp]"` installs the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python>=0.4.2,<0.4.6`), but this may run CPU-only depending on the wheel build.
 
 Alternative (external executable):
 

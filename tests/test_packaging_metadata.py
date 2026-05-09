@@ -141,6 +141,18 @@ class TestPackagingMetadata(unittest.TestCase):
         }
         self.assertFalse(contributor_only.intersection(_dependency_names(all_runtime)))
 
+    def test_sdcpp_binding_extras_avoid_known_broken_sdist(self):
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        expected = "stable-diffusion-cpp-python>=0.4.2,<0.4.6"
+
+        for extra in ("sdcpp", "local", "apple", "all", "all-apple", "all-gpu"):
+            self.assertIn(expected, _optional_dependency_requirements(pyproject, extra))
+
+        self.assertNotIn(
+            "stable-diffusion-cpp-python",
+            _dependency_names(_optional_dependency_requirements(pyproject, "gpu")),
+        )
+
     def test_lightweight_marker_extras_and_entry_point_exist(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
