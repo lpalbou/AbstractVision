@@ -823,6 +823,8 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 <p>Notes:
 - If you care about <strong>GPU acceleration</strong> (macOS <strong>Metal</strong>, NVIDIA <strong>CUDA</strong>, etc.), prefer <strong>CLI mode</strong> via <code>sd-cli</code>.
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means <strong>CPU-only</strong>, so FLUX/Qwen-class models can be extremely slow.
+- The optional python binding is constrained below <code>0.4.6</code> because that sdist
+  currently misses vendored CMake files needed by native Linux builds.
 - REPL selection supports both <code>/backend sdcpp &lt;model.gguf|model.safetensors&gt; [sd_cli_path]</code> and
   <code>/backend sdcpp &lt;diffusion_model.gguf&gt; &lt;vae.safetensors&gt; &lt;llm.gguf&gt; [sd_cli_path]</code>.
 - Python code and AbstractCore plugin configuration can also pass component paths such as <code>clip_l</code>, <code>clip_g</code>, <code>t5xxl</code>, <code>llm_vision</code>, plus <code>extra_args</code>, <code>timeout_s</code>, and <code>cwd</code>.</p>
