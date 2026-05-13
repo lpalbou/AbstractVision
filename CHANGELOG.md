@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.3.5 - 2026-05-13
+
+- AbstractCore plugin: accept runtime output metadata such as `provider` and `size` without rejecting image generation requests, and forward per-call image model selectors to OpenAI-compatible backends.
+
+
 ## 0.3.4 - 2026-05-09
 
 - Packaging: constrain the optional `stable-diffusion-cpp-python` binding to

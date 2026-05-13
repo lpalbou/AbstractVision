@@ -394,7 +394,25 @@ class _AbstractVisionCapability:
 
     def t2i(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
-        vm = self._make_manager(artifact_store=store)
+        kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        backend = self._get_backend()
+        allowed_request_keys = {"negative_prompt", "width", "height", "seed", "steps", "guidance_scale", "extra"}
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
+            merged_extra["model"] = model.strip()
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=RuntimeArtifactStoreAdapter(store) if store is not None else None,
+        )
         out = vm.generate_image(str(prompt), **kwargs)
         if isinstance(out, dict):
             return out
