@@ -582,6 +582,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="JSON shape (high level)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#downloads-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloads (optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -685,6 +702,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="JSON shape (high level)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#downloads-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloads (optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -722,6 +756,11 @@
 <li><strong>Optional safety gating</strong>:</li>
 <li><code>VisionManager(model_id=..., registry=...)</code> will fail fast if the model doesn’t support a task (<a href="../../src/abstractvision/vision_manager.py"><code>../../src/abstractvision/vision_manager.py</code></a>).</li>
 <li>The CLI/REPL can enforce gating via <code>--capabilities-model-id</code> (CLI) or <code>/cap-model</code> (REPL).</li>
+<li><strong>Task-aware UI/catalog metadata</strong>:</li>
+<li><code>image_to_image</code> in a model’s <code>tasks</code> map is the explicit “this model supports edits” signal.</li>
+<li>The playground API surfaces that structured metadata as <code>task_specs</code> so local tooling can enable edit-only flows without re-encoding model rules elsewhere.</li>
+<li><strong>Request normalization hints</strong>:</li>
+<li>additive parameter metadata such as <code>default</code>, <code>const</code>, <code>min</code>, <code>multiple_of</code>, <code>supported</code>, and <code>auto_derived_from_input</code> can be consumed by backends to keep model-specific defaults and constraints in one packaged source of truth.</li>
 </ul>
 <p>Important:
 - The registry describes <strong>model capability intent</strong>.
@@ -746,12 +785,32 @@
 <li>Each model entry includes:</li>
 <li><code>provider</code> (string)</li>
 <li><code>license</code> (string; informational)</li>
+<li>optional <code>downloads</code> (list of downloadable artifacts; informational metadata used by <code>abstractvision show-model</code>)</li>
 <li><code>tasks</code> (map of task name → task spec)</li>
 <li>Each task spec includes:</li>
 <li><code>inputs</code>, <code>outputs</code> (lists of strings)</li>
 <li><code>params</code> (object where each param has <code>required: bool</code>, plus additive fields)</li>
 <li>optional <code>requires</code> for dependencies like <code>base_model_id</code></li>
 </ul>
+<p>Examples of additive <code>params</code> metadata used in this repo:
+- <code>default</code>: backend fills a missing value
+- <code>const</code>: backend forces a model-specific fixed value
+- <code>min</code>: backend clamps the value upward
+- <code>multiple_of</code>: backend rounds dimensions to a required multiple
+- <code>supported: false</code>: backend drops an unsupported optional parameter
+- <code>auto_derived_from_input: true</code>: image-edit backends can infer a missing size from the input image</p>
+<h3 id="downloads-optional">Downloads (optional)<a class="headerlink" href="#downloads-optional" title="Permanent link">&para;</a></h3>
+<p>Some models include a <code>downloads</code> list to document what AbstractVision considers “downloadable” for common engines:</p>
+<ul>
+<li><code>key</code>: the canonical short name used in <code>model-presets</code> / <code>download-model</code> (e.g. <code>qwen-image</code>, <code>flux2-klein-4b</code>)</li>
+<li><code>engine</code>: <code>mflux</code>, <code>diffusers</code>, <code>stable-diffusion.cpp</code>, ...</li>
+<li><code>target</code>: <code>mlx</code>, <code>diffusers</code>, <code>gguf</code>, ...</li>
+<li><code>bits</code>: typically <code>8</code> (quantized) or <code>16</code> (full snapshot)</li>
+<li><code>repo_id</code>: Hugging Face repo id to download</li>
+<li>optional <code>source</code>, <code>notes</code></li>
+</ul>
+<p>This metadata is descriptive; the curated preset list printed by <code>abstractvision model-catalog</code> remains the practical “what can I download” view.</p>
+<p>In this repo, we keep <code>downloads</code> entries aligned with the curated preset table (<code>model_downloads._PRESETS</code>) so <code>abstractvision show-model</code> and the docs can reliably describe what the CLI can download.</p>
 
 
 

@@ -529,6 +529,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mflux-backend-local-apple-silicon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MFLUX backend (local Apple Silicon)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stable-diffusioncpp-backend-local-ggufcheckpoints" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -699,6 +710,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mflux-backend-local-apple-silicon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MFLUX backend (local Apple Silicon)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stable-diffusioncpp-backend-local-ggufcheckpoints" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -733,7 +755,7 @@
 <p>AbstractVision executes tasks via a <code>VisionBackend</code> adapter (<a href="../../src/abstractvision/backends/base_backend.py"><code>../../src/abstractvision/backends/base_backend.py</code></a>).
 <code>VisionManager</code> is intentionally thin and delegates to the configured backend (<a href="../../src/abstractvision/vision_manager.py"><code>../../src/abstractvision/vision_manager.py</code></a>).</p>
 <p>See also:
-- Getting started (REPL examples): <a href="../../getting-started/">docs/getting-started.md</a>
+- Getting started (interactive CLI examples): <a href="../../getting-started/">docs/getting-started.md</a>
 - Configuration (env vars / CLI flags): <a href="../configuration/">docs/reference/configuration.md</a></p>
 <h2 id="support-matrix-built-in-backends">Support matrix (built-in backends)<a class="headerlink" href="#support-matrix-built-in-backends" title="Permanent link">&para;</a></h2>
 <table>
@@ -759,6 +781,12 @@
 <td>Requires <code>abstractvision[diffusers]</code>. Supports cache-only/offline mode.</td>
 </tr>
 <tr>
+<td>MFLUX (local, Apple Silicon)</td>
+<td><a href="../../src/abstractvision/backends/mflux.py"><code>mflux.py</code></a></td>
+<td><code>text_to_image</code>, <code>image_to_image</code></td>
+<td>Requires <code>abstractvision[mflux]</code> (or <code>abstractvision[all-apple]</code>). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is legacy migration input only.</td>
+</tr>
+<tr>
 <td>stable-diffusion.cpp (local GGUF/checkpoints)</td>
 <td><a href="../../src/abstractvision/backends/stable_diffusion_cpp.py"><code>stable_diffusion_cpp.py</code></a></td>
 <td><code>text_to_image</code>, <code>image_to_image</code></td>
@@ -768,7 +796,8 @@
 </table>
 <p>Notes:
 - <code>multi_view_image</code> (<code>VisionManager.generate_angles</code>) is part of the public API, but <strong>no built-in backend implements it yet</strong> (all raise <code>CapabilityNotSupportedError</code> today).
-- Backends may also expose best-effort <code>get_capabilities()</code>, <code>preload()</code>, <code>unload()</code>, <code>generate_image_with_progress(...)</code>, and <code>edit_image_with_progress(...)</code> hooks via the shared <code>VisionBackend</code> contract.</p>
+- Backends may also expose best-effort <code>get_capabilities()</code>, <code>preload()</code>, <code>unload()</code>, <code>generate_image_with_progress(...)</code>, and <code>edit_image_with_progress(...)</code> hooks via the shared <code>VisionBackend</code> contract.
+- Backends may also implement <code>normalize_image_generation_request(...)</code> and <code>normalize_image_edit_request(...)</code>. <code>VisionManager</code>, the CLI/REPL, the playground API, and the AbstractCore plugin all route through those hooks so model-specific defaults and constraints are applied consistently instead of being hard-coded in one surface.</p>
 <h2 id="openai-compatible-http-backend">OpenAI-compatible HTTP backend<a class="headerlink" href="#openai-compatible-http-backend" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
 - You already run a service that exposes OpenAI-shaped endpoints (local or remote).
@@ -802,11 +831,38 @@
 <p>Install:
 - <code>pip install "abstractvision[diffusers]"</code>
 - For newer/unreleased pipeline classes: <code>pip install "abstractvision[diffusers-dev]"</code> plus Diffusers from source.</p>
+<p>Model downloads (curated):
+- See what's downloadable for Diffusers:
+  - <code>abstractvision model-catalog --provider diffusers</code> (add <code>--all-targets</code> to compare engines)
+  - Tip: <code>--provider diffusers</code> implies <code>--target diffusers</code> (you usually set one or the other).
+- Download a curated Diffusers snapshot into the Hugging Face cache (legacy <code>~/models</code> trees auto-migrate when encountered):
+  - <code>abstractvision download-model stable-diffusion --provider diffusers</code>
+  - <code>abstractvision download-model sd1.4 --provider diffusers</code>
+  - <code>abstractvision download-model sd1.5-inpaint --provider diffusers</code>
+  - <code>abstractvision download-model instruct-pix2pix --provider diffusers</code>
+  - <code>abstractvision download-model sdxl-base --provider diffusers</code>
+  - <code>abstractvision download-model sdxl-refiner --provider diffusers</code>
+  - <code>abstractvision download-model sdxl-inpaint --provider diffusers</code>
+  - <code>abstractvision download-model sdxl-turbo --provider diffusers</code>
+  - <code>abstractvision download-model sd-turbo --provider diffusers</code>
+  - <code>abstractvision download-model sd3-medium --provider diffusers</code>
+  - <code>abstractvision download-model sd3.5-medium --provider diffusers</code>
+  - <code>abstractvision download-model sd3.5-large --provider diffusers</code>
+  - <code>abstractvision download-model sd3.5-large-turbo --provider diffusers</code>
+  - <code>abstractvision download-model ernie-image --provider diffusers</code>
+  - <code>abstractvision download-model qwen-image --provider diffusers</code>
+  - <code>abstractvision download-model qwen-image-edit --provider diffusers</code>
+  - <code>abstractvision download-model glm-image --provider diffusers</code>
+  - <code>abstractvision download-model flux2-dev --provider diffusers</code>
+  - <code>abstractvision download-model flux2-klein-4b --provider diffusers</code>
+  - <code>abstractvision download-model z-image-turbo --provider diffusers</code></p>
+<p>One-shot generation (uses the cached snapshot when present):
+- <code>abstractvision t2i --provider diffusers --model qwen-image "a studio photo of a ceramic teapot"</code></p>
 <p>Code pointers:
 - Config: <code>HuggingFaceDiffusersBackendConfig</code> (<a href="../../src/abstractvision/backends/huggingface_diffusers.py"><code>../../src/abstractvision/backends/huggingface_diffusers.py</code></a>)
 - Backend: <code>HuggingFaceDiffusersVisionBackend</code> (<a href="../../src/abstractvision/backends/huggingface_diffusers.py"><code>../../src/abstractvision/backends/huggingface_diffusers.py</code></a>)</p>
 <p><strong>Offline / cache-only mode</strong>
-The Python backend and REPL are cache-only by default (<code>allow_download=False</code>). Pre-download model weights separately,
+The Python backend and interactive CLI are cache-only by default (<code>allow_download=False</code>). Pre-download model weights separately,
 or set <code>allow_download=True</code> / <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> when runtime downloads are desired (see
 config/env in <a href="../configuration/">docs/reference/configuration.md</a>).</p>
 <p>Config fields:
@@ -814,6 +870,38 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 - <code>allow_download</code>, <code>auto_retry_fp32</code>
 - <code>cache_dir</code>, <code>revision</code>, <code>variant</code>
 - <code>use_safetensors</code>, <code>low_cpu_mem_usage</code></p>
+<p>Runtime behavior notes:
+- The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
+- This is where model-specific defaults and constraints such as GLM <code>guidance_scale=1.5</code>, GLM <code>steps=20</code>, 32-multiple dimensions, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.</p>
+<h2 id="mflux-backend-local-apple-silicon">MFLUX backend (local Apple Silicon)<a class="headerlink" href="#mflux-backend-local-apple-silicon" title="Permanent link">&para;</a></h2>
+<p><strong>When to use</strong>
+- You are on Apple Silicon and want local 8-bit MLX generation through the optional MFLUX runtime.</p>
+<p>Install:
+- <code>pip install "abstractvision[mflux]"</code> (or <code>pip install "abstractvision[all-apple]"</code>)</p>
+<p>Model presets:
+- See what's downloadable for your machine/engine:
+  - <code>abstractvision model-catalog --provider mflux</code> (add <code>--all</code> for full fallback list)
+  - Tip: <code>--provider mflux</code> implies <code>--target mlx</code> (you usually set one or the other).
+- Download a curated 8-bit preset into the Hugging Face cache (legacy <code>~/models</code> trees auto-migrate when encountered):
+  - <code>abstractvision download-model flux1-dev --provider mflux</code>
+  - <code>abstractvision download-model flux1-schnell --provider mflux</code>
+  - <code>abstractvision download-model flux2-klein-4b --provider mflux</code>
+  - <code>abstractvision download-model flux2-klein-9b --provider mflux</code>
+  - <code>abstractvision download-model qwen-image --provider mflux</code>
+  - <code>abstractvision download-model z-image-turbo --provider mflux</code></p>
+<p>Config/env:
+- <code>ABSTRACTVISION_PROVIDER=mflux</code> (alias: <code>ABSTRACTVISION_BACKEND=mflux</code>)
+- <code>ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b</code> (or routed ids like <code>mflux/flux2-klein-4b</code>)
+- Optional: <code>ABSTRACTVISION_MFLUX_BASE_MODEL</code>, <code>ABSTRACTVISION_MFLUX_QUANTIZE</code>, <code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code>, <code>ABSTRACTVISION_MODEL_DIR</code> (legacy migration root only)</p>
+<p>Non-curated MFLUX models:
+- If you have an MFLUX-compatible Hugging Face repo id that is not in <code>model-presets</code>, you can still use it:
+  - Pre-download it with <code>abstractvision download-model org/name</code> (HF cache) or <code>hf download org/name</code>
+  - Set <code>ABSTRACTVISION_MFLUX_MODEL</code> to that repo id or local path (base model usually auto-infers; override with <code>ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image</code> if needed).</p>
+<p>Runtime behavior notes:
+- MFLUX request normalization is also backend-level, so distilled FLUX-family constraints such as <code>guidance_scale=1.0</code>, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.</p>
+<p>Code pointers:
+- Config: <code>MFluxBackendConfig</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)
+- Backend: <code>MFluxVisionBackend</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)</p>
 <h2 id="stable-diffusioncpp-backend-local-ggufcheckpoints">stable-diffusion.cpp backend (local GGUF/checkpoints)<a class="headerlink" href="#stable-diffusioncpp-backend-local-ggufcheckpoints" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
 - You want to run single-file Stable Diffusion checkpoints/GGUF or component-based GGUF diffusion models locally.</p>
@@ -825,7 +913,7 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means <strong>CPU-only</strong>, so FLUX/Qwen-class models can be extremely slow.
 - The optional python binding is constrained below <code>0.4.6</code> because that sdist
   currently misses vendored CMake files needed by native Linux builds.
-- REPL selection supports both <code>/backend sdcpp &lt;model.gguf|model.safetensors&gt; [sd_cli_path]</code> and
+- Interactive CLI selection supports both <code>/backend sdcpp &lt;model.gguf|model.safetensors&gt; [sd_cli_path]</code> and
   <code>/backend sdcpp &lt;diffusion_model.gguf&gt; &lt;vae.safetensors&gt; &lt;llm.gguf&gt; [sd_cli_path]</code>.
 - Python code and AbstractCore plugin configuration can also pass component paths such as <code>clip_l</code>, <code>clip_g</code>, <code>t5xxl</code>, <code>llm_vision</code>, plus <code>extra_args</code>, <code>timeout_s</code>, and <code>cwd</code>.</p>
 <p>Code pointers:

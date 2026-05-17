@@ -68,7 +68,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#configuration-cli-repl" class="md-skip">
+        <a href="#configuration-cli" class="md-skip">
           Skip to content
         </a>
       
@@ -479,10 +479,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#repl-backend-selection" class="md-nav__link">
+  <a href="#interactive-cli-backend-selection" class="md-nav__link">
     <span class="md-ellipsis">
       
-        REPL backend selection
+        Interactive CLI backend selection
       
     </span>
   </a>
@@ -528,6 +528,17 @@
     <span class="md-ellipsis">
       
         Diffusers backend
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mflux-backend-apple-silicon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MFLUX backend (Apple Silicon)
       
     </span>
   </a>
@@ -716,10 +727,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#repl-backend-selection" class="md-nav__link">
+  <a href="#interactive-cli-backend-selection" class="md-nav__link">
     <span class="md-ellipsis">
       
-        REPL backend selection
+        Interactive CLI backend selection
       
     </span>
   </a>
@@ -772,6 +783,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#mflux-backend-apple-silicon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MFLUX backend (Apple Silicon)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#stable-diffusioncpp-backend" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -807,11 +829,11 @@
   
 
 
-<h1 id="configuration-cli-repl">Configuration (CLI / REPL)<a class="headerlink" href="#configuration-cli-repl" title="Permanent link">&para;</a></h1>
+<h1 id="configuration-cli">Configuration (CLI)<a class="headerlink" href="#configuration-cli" title="Permanent link">&para;</a></h1>
 <p>AbstractVision configuration is intentionally simple:</p>
 <ul>
 <li>In Python, you configure backends by instantiating backend config objects (see <a href="../backends/">docs/reference/backends.md</a>).</li>
-<li>The CLI/REPL/playground reads <code>ABSTRACTVISION_*</code> environment variables to set defaults (<a href="../../src/abstractvision/cli.py"><code>../../src/abstractvision/cli.py</code></a>, <a href="../../src/abstractvision/playground_server.py"><code>../../src/abstractvision/playground_server.py</code></a>).</li>
+<li>The CLI/playground reads <code>ABSTRACTVISION_*</code> environment variables to set defaults (<a href="../../src/abstractvision/cli.py"><code>../../src/abstractvision/cli.py</code></a>, <a href="../../src/abstractvision/playground_server.py"><code>../../src/abstractvision/playground_server.py</code></a>). The interactive command is <code>abstractvision cli</code> (legacy alias: <code>abstractvision repl</code>).</li>
 <li>The AbstractCore capability plugin also reads <code>owner.config</code> plus a small set of standard OpenAI environment aliases. Plugin-only aliases are called out below.</li>
 </ul>
 <p>See also:
@@ -825,47 +847,51 @@
 <li><code>abstractvision show-model &lt;id&gt;</code> — print a model’s tasks + params</li>
 <li><code>abstractvision provider-models --openai --task text_to_image</code> — explicitly query the official OpenAI <code>/models</code> catalog</li>
 <li><code>abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image</code> — explicitly query an OpenAI-compatible provider catalog</li>
-<li><code>abstractvision repl</code> — interactive testing (supports <code>openai</code>, <code>diffusers</code>, <code>sdcpp</code>)</li>
+<li><code>abstractvision cli</code> — interactive testing (supports <code>openai</code>, <code>diffusers</code>, <code>mflux</code>, <code>sdcpp</code>; legacy alias: <code>abstractvision repl</code>)</li>
 <li><code>abstractvision playground [--host 127.0.0.1] [--port 8091]</code> — self-contained local web UI and <code>/v1/vision/*</code> API</li>
 <li><code>abstractvision serve [--host 127.0.0.1] [--port 8091]</code> — alias for <code>abstractvision playground</code></li>
-<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> — one-shot commands using the <strong>OpenAI-compatible HTTP backend</strong></li>
+<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mflux</code>, and <code>sdcpp</code>)</li>
 </ul>
 <p>Note:
-- <code>abstractvision t2i</code> / <code>abstractvision i2i</code> always use the OpenAI-compatible backend (they do not switch based on <code>ABSTRACTVISION_BACKEND</code>).
-- Use <code>abstractvision repl</code> or <code>abstractvision playground</code> for local backends (<code>diffusers</code>, <code>sdcpp</code>).
+- <code>abstractvision t2i</code> / <code>abstractvision i2i</code> default to the OpenAI-compatible HTTP backend, but they also support local providers via <code>--provider diffusers|mflux|sdcpp</code> (legacy alias: <code>--backend</code>).
 - Local Diffusers requires <code>abstractvision[diffusers]</code>. stable-diffusion.cpp python binding fallback requires <code>abstractvision[sdcpp]</code>; external <code>sd-cli</code> can be used without the binding.</p>
-<h2 id="repl-backend-selection">REPL backend selection<a class="headerlink" href="#repl-backend-selection" title="Permanent link">&para;</a></h2>
-<p>Inside <code>abstractvision repl</code>:</p>
+<h2 id="interactive-cli-backend-selection">Interactive CLI backend selection<a class="headerlink" href="#interactive-cli-backend-selection" title="Permanent link">&para;</a></h2>
+<p>Inside <code>abstractvision cli</code>:</p>
 <ul>
 <li><code>/backend openai &lt;base_url&gt; [api_key] [model_id]</code></li>
 <li><code>/provider-models [--task text_to_image] [--json]</code> — query the configured OpenAI-compatible provider catalog</li>
+<li><code>/backend mflux &lt;preset_or_local_path&gt; [base_model]</code></li>
 <li><code>/backend diffusers &lt;model_id_or_path&gt; [device] [torch_dtype]</code></li>
 <li><code>/backend sdcpp &lt;model.gguf|model.safetensors&gt; [sd_cli_path]</code></li>
 <li><code>/backend sdcpp &lt;diffusion_model.gguf&gt; &lt;vae.safetensors&gt; &lt;llm.gguf&gt; [sd_cli_path]</code></li>
 </ul>
-<p>Run <code>/help</code> in the REPL to see the full command list (generated by <code>_repl_help()</code> in <a href="../../src/abstractvision/cli.py"><code>../../src/abstractvision/cli.py</code></a>).</p>
+<p>Run <code>/help</code> in the interactive CLI to see the full command list (generated by <code>_repl_help()</code> in <a href="../../src/abstractvision/cli.py"><code>../../src/abstractvision/cli.py</code></a>).</p>
+<p>Important runtime note:
+- Model-specific request adjustments are not implemented only in the interactive UI. The shared backend normalization hooks are applied by <code>VisionManager</code> and by the playground API server, so the same parameter corrections reach <code>abstractvision cli</code>, the legacy <code>repl</code> alias, one-shot CLI commands, the playground, and the AbstractCore plugin.</p>
 <h2 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
-<p>The CLI/REPL state object (<code>_ReplState</code> in <a href="../../src/abstractvision/cli.py"><code>../../src/abstractvision/cli.py</code></a>) reads the common and backend env vars below. The playground server reads the same backend family plus a few playground-only Diffusers cache/version vars through <code>PlaygroundServerConfig</code> in <a href="../../src/abstractvision/playground_server.py"><code>../../src/abstractvision/playground_server.py</code></a>.</p>
+<p>The interactive CLI state object (<code>_ReplState</code> in <a href="../../src/abstractvision/cli.py"><code>../../src/abstractvision/cli.py</code></a>) reads the common and backend env vars below. The playground server reads the same backend family plus a few playground-only Diffusers cache/version vars through <code>PlaygroundServerConfig</code> in <a href="../../src/abstractvision/playground_server.py"><code>../../src/abstractvision/playground_server.py</code></a>.</p>
 <h3 id="common">Common<a class="headerlink" href="#common" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>ABSTRACTVISION_BACKEND</code> — backend selector: <code>openai</code>, <code>openai-compatible</code>, <code>diffusers</code>, or <code>sdcpp</code></li>
-<li>AbstractCore plugin default: <code>openai</code> using <code>https://api.openai.com/v1</code> plus <code>OPENAI_API_KEY</code> or <code>ABSTRACTVISION_API_KEY</code></li>
-<li>AbstractCore compatibility: selecting <code>abstractvision:openai-compatible</code> directly, or setting only <code>ABSTRACTVISION_BASE_URL</code>, keeps compatible-endpoint semantics</li>
-<li>if unset and <code>ABSTRACTVISION_BASE_URL</code> is set, REPL/playground default to <code>openai</code></li>
+<li><code>ABSTRACTVISION_PROVIDER</code> — preferred backend selector: <code>openai</code>, <code>openai-compatible</code>, <code>diffusers</code>, <code>mflux</code>, or <code>sdcpp</code> (alias: <code>ABSTRACTVISION_BACKEND</code>)</li>
+<li>AbstractCore plugin default: <code>openai</code> using <code>https://api.openai.com/v1</code> plus <code>OPENAI_API_KEY</code></li>
+<li>AbstractCore compatibility: selecting <code>abstractvision:openai-compatible</code> directly, or setting <code>OPENAI_BASE_URL</code> to a non-OpenAI endpoint, keeps compatible-endpoint semantics</li>
+<li>if unset and <code>OPENAI_BASE_URL</code> is set, the interactive CLI/playground default to <code>openai</code></li>
 <li>if unset and no base URL is configured, no backend is selected until you use <code>/backend ...</code> or load a model explicitly</li>
 <li><code>ABSTRACTVISION_STORE_DIR</code> — local artifact output directory (default: <code>~/.abstractvision/assets</code>)</li>
 <li><code>ABSTRACTVISION_TIMEOUT_S</code> — HTTP timeout for OpenAI-compatible backend (default: <code>300</code>)</li>
-<li><code>ABSTRACTVISION_MODEL_ID</code> — model id for the current backend in the REPL:</li>
+<li><code>ABSTRACTVISION_MODEL</code> — preferred model selector for the current backend/provider (alias: <code>ABSTRACTVISION_MODEL_ID</code>)</li>
+<li><code>ABSTRACTVISION_MODEL_ID</code> — model id for the current backend in the interactive CLI (legacy):</li>
 <li><code>openai</code>: sent as <code>model</code> in HTTP requests (optional; server-dependent)</li>
 <li><code>diffusers</code>: Diffusers model id or local path</li>
+<li><code>ABSTRACTVISION_MODEL_DIR</code> — legacy preset root imported into the Hugging Face cache when older installs are migrated</li>
 <li><code>ABSTRACTVISION_CAPABILITIES_MODEL_ID</code> — optional capability-gating model id (must exist in the registry)</li>
 </ul>
+<p>Note:
+- Curated <code>abstractvision download-model ...</code> presets are written to the Hugging Face cache by default, and older <code>~/models/&lt;preset&gt;</code> trees are imported into that same cache on first use.</p>
 <h3 id="openai-openai-compatible-http-backend">OpenAI / OpenAI-Compatible HTTP Backend<a class="headerlink" href="#openai-openai-compatible-http-backend" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>ABSTRACTVISION_BASE_URL</code> — compatible <code>/v1</code> endpoint; optional for the AbstractCore <code>openai</code> default because it uses <code>https://api.openai.com/v1</code></li>
-<li><code>OPENAI_BASE_URL</code> — override for the official OpenAI profile when <code>ABSTRACTVISION_BASE_URL</code> / <code>vision_base_url</code> are unset; also used by <code>abstractvision provider-models --openai</code></li>
-<li><code>ABSTRACTVISION_API_KEY</code> — bearer token for OpenAI or compatible providers that require auth</li>
-<li><code>OPENAI_API_KEY</code> — fallback when <code>ABSTRACTVISION_API_KEY</code> / <code>vision_api_key</code> are unset; also used by <code>abstractvision provider-models --openai</code></li>
+<li><code>OPENAI_BASE_URL</code> — optional OpenAI-compatible <code>/v1</code> endpoint override; when unset, the official OpenAI profile uses <code>https://api.openai.com/v1</code></li>
+<li><code>OPENAI_API_KEY</code> — bearer token for official OpenAI and compatible <code>/v1</code> endpoints that require auth</li>
 <li><code>ABSTRACTVISION_MODEL_ID</code> — optional remote model id/name (see also “Common”)</li>
 <li><code>OPENAI_IMAGE_MODEL_ID</code> / <code>OPENAI_IMAGE_MODEL</code> — plugin-only OpenAI model aliases when <code>ABSTRACTVISION_MODEL_ID</code> / <code>vision_model_id</code> are unset</li>
 <li><code>ABSTRACTVISION_MODELS_PATH</code> / <code>vision_models_path</code> — provider catalog path for explicit listing (default: <code>/models</code>, so a <code>/v1</code> base URL queries <code>/v1/models</code>)</li>
@@ -888,6 +914,14 @@
 - <code>ABSTRACTVISION_DIFFUSERS_CACHE_DIR</code> — optional Hugging Face cache directory override
 - <code>ABSTRACTVISION_DIFFUSERS_REVISION</code> — optional model revision
 - <code>ABSTRACTVISION_DIFFUSERS_VARIANT</code> — optional model variant</p>
+<h3 id="mflux-backend-apple-silicon">MFLUX backend (Apple Silicon)<a class="headerlink" href="#mflux-backend-apple-silicon" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — preset key, local model path, or repo id (examples: <code>flux2-klein-4b</code>, <code>mflux/flux2-klein-4b</code>, <code>/path/to/preset-dir</code>, <code>mlx-community/Qwen-Image-2512-8bit</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional explicit base model (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>z-image-turbo</code>, <code>qwen-image</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_QUANTIZE</code> — optional quantization override for the MFLUX runtime</li>
+<li><code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code> — <code>0</code> (default) or <code>1</code> to permit runtime downloads when a preset/repo is missing from the local cache</li>
+<li><code>ABSTRACTVISION_MODEL_DIR</code> — legacy preset root only; curated downloads now land in the Hugging Face cache</li>
+</ul>
 <h3 id="stable-diffusioncpp-backend">stable-diffusion.cpp backend<a class="headerlink" href="#stable-diffusioncpp-backend" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>ABSTRACTVISION_SDCPP_BIN</code> — <code>sd-cli</code> path/name (default: <code>sd-cli</code>)</li>

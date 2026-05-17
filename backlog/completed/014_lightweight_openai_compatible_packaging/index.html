@@ -840,7 +840,7 @@
 <ul>
 <li>OpenAI-compatible HTTP backend: <code>src/abstractvision/backends/openai_compatible.py</code></li>
 <li>AbstractCore capability plugin: <code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
-<li>AbstractCore plugin default: OpenAI-compatible when configured through <code>ABSTRACTVISION_BASE_URL</code></li>
+<li>AbstractCore plugin default: OpenAI-compatible when configured through <code>OPENAI_BASE_URL</code></li>
 <li>Lazy backend exports: <code>src/abstractvision/backends/__init__.py</code></li>
 </ul>
 <p>The current package metadata contradicts that deployment target. <code>pyproject.toml</code> installs local Diffusers dependencies in the base package:</p>
@@ -1040,13 +1040,13 @@
 <li>Keep remote-first default. It already defaults to OpenAI-compatible HTTP and imports local backend modules only when explicitly selected.</li>
 <li>One-shot CLI commands:</li>
 <li>Keep <code>abstractvision t2i</code> and <code>abstractvision i2i</code> OpenAI-compatible only.</li>
-<li>Clarify help/docs that these commands require <code>--base-url</code> or <code>ABSTRACTVISION_BASE_URL</code>.</li>
+<li>Clarify help/docs that these commands require <code>--base-url</code> or <code>OPENAI_BASE_URL</code>.</li>
 <li>REPL:</li>
-<li>Prefer remote-first when <code>ABSTRACTVISION_BASE_URL</code> is configured.</li>
+<li>Prefer remote-first when <code>OPENAI_BASE_URL</code> is configured.</li>
 <li>If no backend is configured, start unconfigured and require explicit <code>/backend openai ...</code>, <code>/backend diffusers ...</code>, or <code>/backend sdcpp ...</code>.</li>
 <li>Do not silently select Diffusers in a lightweight base install.</li>
 <li>Playground:</li>
-<li>Prefer OpenAI-compatible when <code>ABSTRACTVISION_BASE_URL</code> is configured.</li>
+<li>Prefer OpenAI-compatible when <code>OPENAI_BASE_URL</code> is configured.</li>
 <li>Otherwise list only cached/configured local models and make local selection explicit.</li>
 <li>Keep raw Hugging Face model id normalization for local mode, but do not make it the unconfigured default.</li>
 </ul>
@@ -1135,11 +1135,11 @@
 <li><code>abstractvision i2i</code></li>
 <li>Change REPL initialization:</li>
 <li>if <code>ABSTRACTVISION_BACKEND</code> is set, honor it</li>
-<li>else if <code>ABSTRACTVISION_BASE_URL</code> is set, default to <code>openai</code></li>
+<li>else if <code>OPENAI_BASE_URL</code> is set, default to <code>openai</code></li>
 <li>else start with no active backend and require explicit <code>/backend ...</code></li>
 <li>Change playground initialization:</li>
 <li>if <code>ABSTRACTVISION_BACKEND</code> is set, honor it</li>
-<li>else if <code>ABSTRACTVISION_BASE_URL</code> is set, default to OpenAI-compatible</li>
+<li>else if <code>OPENAI_BASE_URL</code> is set, default to OpenAI-compatible</li>
 <li>else avoid implicit Diffusers preload/default model</li>
 <li>list cached/configured local models only when they are actually available or downloads are explicitly enabled</li>
 <li>When a user explicitly selects <code>diffusers</code> without the extra installed:</li>
@@ -1295,7 +1295,7 @@
 <li><code>sdcpp</code> for stable-diffusion.cpp python binding support</li>
 <li><code>local</code> and <code>all</code> as convenience runtime bundles</li>
 <li><code>openai</code>, <code>openai-compatible</code>, and <code>abstractcore</code> as valid lightweight intent/compatibility markers</li>
-<li>Updated REPL and playground defaults so a clean base install starts unconfigured unless <code>ABSTRACTVISION_BASE_URL</code> is present, in which case it defaults to the OpenAI-compatible backend.</li>
+<li>Updated REPL and playground defaults so a clean base install starts unconfigured unless <code>OPENAI_BASE_URL</code> is present, in which case it defaults to the OpenAI-compatible backend.</li>
 <li>Preserved explicit local backend selection while improving missing-extra errors for Diffusers and stable-diffusion.cpp.</li>
 <li>Hardened OpenAI-compatible backend HTTP error handling and expanded coverage for auth headers, custom paths, URL downloads, video generation, image-to-video modes, malformed responses, and provider errors.</li>
 <li>Expanded packaging/import-light tests and split CI/release jobs into lightweight base validation and narrower local-Diffusers validation.</li>

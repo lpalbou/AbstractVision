@@ -1154,6 +1154,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
 <li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)</li>
+<li><strong>MFLUX (local Apple Silicon)</strong>: 8-bit MLX/MFLUX image generation via the optional MFLUX runtime</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
 <li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
@@ -1172,7 +1173,7 @@
 <p>From PyPI:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>abstractvision
 </code></pre></div>
-<p>AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, or <code>abstractvision[local]</code> for both.</p>
+<p>AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, <code>abstractvision[mflux]</code> for Apple Silicon MLX/MFLUX, or <code>abstractvision[all-apple]</code> for the full native macOS stack.</p>
 <p>If you see “missing pipeline class” errors for newer model families, install the <code>diffusers-dev</code> extra (or compatibility alias <code>huggingface-dev</code>) to get compatible dependencies, then install Diffusers from source (<code>main</code>).</p>
 <p>For that newer-pipeline workflow from a <strong>repo checkout</strong>, install the <code>diffusers-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[diffusers-dev]&quot;</span>
@@ -1223,6 +1224,18 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 <td>Installs <code>stable-diffusion-cpp-python</code> for the stable-diffusion.cpp pip binding fallback.</td>
 </tr>
 <tr>
+<td><code>mflux</code></td>
+<td>Installs the optional MFLUX runtime for Apple Silicon MLX image generation.</td>
+</tr>
+<tr>
+<td><code>apple</code></td>
+<td>Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MFLUX.</td>
+</tr>
+<tr>
+<td><code>gpu</code></td>
+<td>GPU-friendly profile for Diffusers/Torch (does not include MFLUX).</td>
+</tr>
+<tr>
 <td><code>huggingface</code></td>
 <td>Compatibility alias for the historical Diffusers backend dependency set.</td>
 </tr>
@@ -1233,6 +1246,14 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 <tr>
 <td><code>all</code></td>
 <td>All runtime backend dependencies, without contributor tooling.</td>
+</tr>
+<tr>
+<td><code>all-apple</code></td>
+<td>Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MFLUX.</td>
+</tr>
+<tr>
+<td><code>all-gpu</code></td>
+<td>Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings).</td>
 </tr>
 <tr>
 <td><code>abstractcore</code></td>
@@ -1274,9 +1295,10 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </span>--set<span class="w"> </span>sd15_diffusers
 </code></pre></div>
 <h3 id="01-hardware-quickstart-macos-metal-vs-nvidia-cuda-vs-cpu">0.1 Hardware quickstart (macOS Metal vs NVIDIA CUDA vs CPU)<a class="headerlink" href="#01-hardware-quickstart-macos-metal-vs-nvidia-cuda-vs-cpu" title="Permanent link">&para;</a></h3>
-<p>AbstractVision can run “locally” via two main routes:</p>
+<p>AbstractVision can run “locally” via three main routes:</p>
 <ul>
 <li><strong>Diffusers backend</strong>: uses Torch device selection (<code>cuda</code> / <code>mps</code> / <code>cpu</code>).</li>
+<li><strong>MFLUX backend (<code>mflux</code>)</strong>: Apple Silicon MLX generation through the optional MFLUX runtime (8-bit presets).</li>
 <li><strong>stable-diffusion.cpp backend (<code>sdcpp</code>)</strong>: runs GGUF diffusion models using:</li>
 <li><code>sd-cli</code> (<strong>recommended</strong> when you want GPU backends like <strong>Metal</strong> or <strong>CUDA</strong>)</li>
 <li>or <code>stable-diffusion-cpp-python</code> (convenient, but often <strong>CPU-only</strong>, especially on macOS)</li>
@@ -1362,7 +1384,7 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 </ul>
 <p>Recommended default (local, cross-platform) — Stable Diffusion 1.5:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers]&quot;</span>
-huggingface-cli<span class="w"> </span>download<span class="w"> </span>runwayml/stable-diffusion-v1-5
+abstractvision<span class="w"> </span>download-model<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_DIFFUSERS_DEVICE</span><span class="o">=</span>auto
@@ -1379,7 +1401,7 @@ abstractvision<span class="w"> </span>repl
 <hr />
 <h2 id="1-first-local-image-diffusers">1) First local image (Diffusers)<a class="headerlink" href="#1-first-local-image-diffusers" title="Permanent link">&para;</a></h2>
 <p>The REPL is cache-only by default, so it will not download model weights. Download the model separately first:</p>
-<div class="highlight"><pre><span></span><code>huggingface-cli<span class="w"> </span>download<span class="w"> </span>runwayml/stable-diffusion-v1-5
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download-model<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="c1"># Required for this local Diffusers recipe.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers

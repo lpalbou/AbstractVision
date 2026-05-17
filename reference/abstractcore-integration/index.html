@@ -606,6 +606,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#shared-request-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared request normalization
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2-tool-helpers-make_vision_tools" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -687,6 +698,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#shared-request-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared request normalization
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2-tool-helpers-make_vision_tools" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -734,20 +756,23 @@
 <li><code>abstractvision:openai</code> (default backend id) and <code>abstractvision:openai-compatible</code> (legacy compatibility backend id) are registered by <a href="../../src/abstractvision/integrations/abstractcore_plugin.py"><code>../../src/abstractvision/integrations/abstractcore_plugin.py</code></a>. The implementation also supports local backends.</li>
 </ul>
 <p>Current behavior:
-- Default <code>abstractvision:openai</code>: OpenAI HTTP (<code>https://api.openai.com/v1</code>). Set <code>OPENAI_API_KEY</code> or <code>ABSTRACTVISION_API_KEY</code>.
+- Default <code>abstractvision:openai</code>: OpenAI HTTP (<code>https://api.openai.com/v1</code>). Set <code>OPENAI_API_KEY</code>.
 - OpenAI model ids are configured, not discovered dynamically. Providers may expose an OpenAI-compatible <code>GET /models</code> catalog; AbstractVision exposes it through <code>abstractvision provider-models</code>, <code>VisionManager.list_provider_models(...)</code>, and the plugin method <code>llm.vision.list_provider_models(...)</code>, but the plugin does not call it automatically or use it to select a model. The static plugin default is <code>gpt-image-1</code>; set <code>OPENAI_IMAGE_MODEL_ID</code>, <code>OPENAI_IMAGE_MODEL</code>, <code>ABSTRACTVISION_MODEL_ID</code>, or <code>vision_model_id</code> for newer provider models.
-- Compatible HTTP: set <code>ABSTRACTVISION_BACKEND=openai-compatible</code> and <code>ABSTRACTVISION_BASE_URL</code> to a local/remote compatible <code>/v1</code> server. Legacy <code>ABSTRACTVISION_BASE_URL</code>-only deployments still use compatible semantics, but new configs should set the backend explicitly.
+- Compatible HTTP: set <code>OPENAI_BASE_URL</code> to a local/remote compatible <code>/v1</code> server. Set <code>ABSTRACTVISION_BACKEND=openai-compatible</code> when you want to force compatible-endpoint semantics.
 - Legacy <code>abstractvision:openai-compatible</code>: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set.
+- Local MFLUX (Apple Silicon): install <code>abstractvision[mflux]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mflux</code>. Download an 8-bit MLX/MFLUX preset with <code>abstractvision download-model flux2-klein-4b --provider mflux</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed model ids such as <code>mflux/flux2-klein-4b</code>.
 - stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure a model path. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.
 - Gateway/Core should pass process-level config or <code>owner.config</code> and report readiness; they should not mutate AbstractVision environment variables per request.</p>
 <p>Key config keys (owner.config):
 - <code>vision_backend_instance</code> / <code>vision_backend_factory</code> (advanced injection hooks; bypass env-driven backend creation)
-- <code>vision_backend</code> (<code>openai</code>, <code>openai-compatible</code>, <code>diffusers</code>, or <code>sdcpp</code>; default <code>openai</code>)
+- <code>vision_backend</code> (<code>openai</code>, <code>openai-compatible</code>, <code>diffusers</code>, <code>mflux</code>, or <code>sdcpp</code>; default <code>openai</code>)
 - <code>vision_model_id</code> (Diffusers/OpenAI-compatible model id; default <code>gpt-image-1</code> only for the official OpenAI profile and <code>runwayml/stable-diffusion-v1-5</code> for Diffusers)
 - <code>vision_device</code> / <code>vision_torch_dtype</code> / <code>vision_allow_download</code> / <code>vision_auto_retry_fp32</code> (Diffusers)
 - <code>vision_base_url</code> / <code>vision_api_key</code> (OpenAI or compatible HTTP)
+- <code>vision_mflux_model</code> / <code>vision_mflux_base_model</code> / <code>vision_mflux_quantize</code> / <code>vision_mflux_allow_download</code> (MFLUX)
+- <code>vision_model_dir</code> (legacy preset import root used by MFLUX compatibility/migration helpers; new downloads land in the Hugging Face cache)
 - <code>vision_sdcpp_model</code> / <code>vision_sdcpp_diffusion_model</code> / <code>vision_sdcpp_bin</code> (stable-diffusion.cpp)
 - <code>vision_sdcpp_vae</code> / <code>vision_sdcpp_llm</code> / <code>vision_sdcpp_llm_vision</code> / <code>vision_sdcpp_clip_l</code> / <code>vision_sdcpp_clip_g</code> / <code>vision_sdcpp_t5xxl</code> / <code>vision_sdcpp_extra_args</code> (stable-diffusion.cpp component mode)
 - <code>vision_timeout_s</code> (optional)
@@ -758,8 +783,8 @@
   - <code>vision_image_to_video_mode</code></p>
 <p>Env-only aliases:
 - <code>ABSTRACTVISION_DIFFUSERS_MODEL_ID</code> is accepted for the Diffusers plugin backend before falling back to <code>ABSTRACTVISION_MODEL_ID</code>.
-- <code>OPENAI_BASE_URL</code> is accepted by the official OpenAI profile when <code>vision_base_url</code> / <code>ABSTRACTVISION_BASE_URL</code> are unset.
-- <code>OPENAI_API_KEY</code> is accepted after <code>ABSTRACTVISION_API_KEY</code>.
+- <code>OPENAI_BASE_URL</code> is accepted by the OpenAI-shaped HTTP backend.
+- Compatible OpenAI-shaped endpoints can use <code>OPENAI_API_KEY</code> when they require bearer auth.
 - <code>OPENAI_IMAGE_MODEL_ID</code> and <code>OPENAI_IMAGE_MODEL</code> are accepted when <code>vision_model_id</code> / <code>ABSTRACTVISION_MODEL_ID</code> are unset.
 - <code>ABSTRACTVISION_SDCPP_CLIP_L</code>, <code>ABSTRACTVISION_SDCPP_CLIP_G</code>, and <code>ABSTRACTVISION_SDCPP_T5XXL</code> are accepted for stable-diffusion.cpp component mode.</p>
 <p>Examples:</p>
@@ -779,7 +804,7 @@
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="c1"># Local OpenAI-compatible HTTP server, for example AbstractCore Server.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>openai-compatible
-<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BASE_URL</span><span class="o">=</span>http://localhost:8000/v1
+<span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_BASE_URL</span><span class="o">=</span>http://localhost:8000/v1
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>server/default
 </code></pre></div>
 <h3 id="provider-catalog-discovery">Provider Catalog Discovery<a class="headerlink" href="#provider-catalog-discovery" title="Permanent link">&para;</a></h3>
@@ -794,7 +819,18 @@ provider metadata is retained in a bounded <code>raw</code> field for diagnostic
 inspection only: it does not mutate the configured backend or select a generation model.</p>
 <p>Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
 of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
-remain separate local-backend concerns.</p>
+remain separate local-backend concerns, while MFLUX and Diffusers provider listings reflect
+cache-backed snapshots rather than a separate <code>~/models</code> download tree.</p>
+<h2 id="shared-request-normalization">Shared request normalization<a class="headerlink" href="#shared-request-normalization" title="Permanent link">&para;</a></h2>
+<p><code>llm.vision</code> calls go through <code>VisionManager</code>, which applies backend normalization hooks before
+execution. That means model-specific constraints are shared with the CLI/REPL and playground API
+instead of being reimplemented in the plugin layer.</p>
+<p>Current examples:
+- Distilled MFLUX/FLUX-family models can clamp guidance or minimum steps in the backend.
+- Diffusers-backed GLM Image requests pick up registry-driven defaults such as <code>guidance_scale</code>,
+  recommended step counts, 32-multiple dimension rounding, and auto-derived edit dimensions.
+- Unsupported parameters, such as negative prompts on constrained model families, are dropped in
+  the backend rather than surfacing as per-surface validation bugs.</p>
 <h2 id="2-tool-helpers-make_vision_tools">2) Tool helpers (<code>make_vision_tools</code>)<a class="headerlink" href="#2-tool-helpers-make_vision_tools" title="Permanent link">&para;</a></h2>
 <p><code>make_vision_tools(...)</code> builds AbstractCore <code>@tool</code> callables for:
 - text→image
