@@ -49,6 +49,7 @@ Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
 - **Inspect provider model catalogs**: use `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, or `llm.vision.list_provider_models(...)`; catalog listing is explicit and does not select the active model.
+- **Inspect local model/task metadata**: use `abstractvision model-catalog`, `abstractvision show-model`, or `GET /v1/vision/models`; `image_to_image` in `task_specs` is the explicit edit-capability signal for local surfaces.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
 - **Need local Diffusers**: install `abstractvision[diffusers]`, set `ABSTRACTVISION_BACKEND=diffusers`, pre-download `runwayml/stable-diffusion-v1-5`, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
 
@@ -57,6 +58,7 @@ Reality checks (current shipped behavior, anchored in code):
 - `text_to_video` and `image_to_video` are supported only via the OpenAI-compatible backend when video endpoints are configured.
 - `multi_view_image` exists in the API but no built-in backend implements it yet.
 - Provider `/models` catalogs can be listed explicitly, including through the AbstractCore plugin boundary; they are not used for automatic model selection.
+- Backend normalization is shared across `VisionManager`, the playground API, and the AbstractCore plugin, so model-specific parameter constraints are enforced once in the backend layer instead of separately in each UI.
 
 ## Documentation
 
@@ -128,12 +130,13 @@ Model-agnostic generative vision API (images, optional video) for Python and the
 
 - A small orchestration API: [`VisionManager`](src/abstractvision/vision_manager.py)
 - A packaged capability registry (“what models can do”): [`VisionModelCapabilitiesRegistry`](src/abstractvision/model_capabilities.py) backed by [`vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json)
+- Shared model metadata that now also drives local catalog surfacing and backend request normalization across the CLI, playground, and AbstractCore paths
 - Optional artifact-ref outputs (small JSON refs): [`LocalAssetStore`](src/abstractvision/artifacts.py) and [`RuntimeArtifactStoreAdapter`](src/abstractvision/artifacts.py)
 - Built-in backends (execution engines): [`src/abstractvision/backends/`](src/abstractvision/backends/)
   - OpenAI-compatible HTTP: [`openai_compatible.py`](src/abstractvision/backends/openai_compatible.py)
   - Local Diffusers: [`huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py)
   - Local stable-diffusion.cpp / GGUF: [`stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
-- CLI/REPL for manual testing: [`abstractvision`](src/abstractvision/cli.py)
+- CLI for manual testing (`abstractvision cli`, legacy alias: `abstractvision repl`): [`abstractvision`](src/abstractvision/cli.py)
 - Self-contained local Playground UI/API: [`playground/vision_playground.html`](playground/vision_playground.html) (docs: [`playground/README.md`](playground/README.md))
 
 ## How it fits together (diagram)
@@ -174,12 +177,21 @@ Optional extras:
 |---|---|
 | `abstractvision[openai]` | Official OpenAI provider intent marker; no SDK dependency today. |
 | `abstractvision[openai-compatible]` | Generic local/remote OpenAI-shaped endpoint intent marker; stdlib-only today. |
+| `abstractvision[models]` | Curated Hugging Face download helpers for cache-backed local 8-bit vision model presets. |
 | `abstractvision[diffusers]` | Install Torch/Diffusers and related packages for local Diffusers generation. |
 | `abstractvision[huggingface]` | Compatibility alias for callers that still request the historical Diffusers extra. |
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
+| `abstractvision[mflux]` | Install the optional MFLUX/MLX Apple Silicon image runtime. |
 | `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
+| `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MFLUX. |
+| `abstractvision[gpu]` | GPU Diffusers/Torch profile. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
+| `abstractvision[all-gpu]` | Full GPU-relevant local vision profile: Diffusers plus stable-diffusion.cpp bindings. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
+
+`stable-diffusion-cpp-python` is currently constrained below `0.4.6` because
+that release's source distribution is missing vendored CMake files required by
+native Linux builds.
 
 Contributor-only extras:
 
@@ -218,24 +230,60 @@ Start here:
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Docs index: [`docs/README.md`](docs/README.md)
 
-### First local model (Diffusers / cross-platform)
+### First local model (8-bit first)
 
-Install the local runtime extra, pre-download the model outside the REPL, then
-select the Diffusers backend explicitly:
+For local model downloads, prefer the curated 8-bit presets first. On macOS
+they resolve to MLX artifacts that declare the `mflux` engine; on non-macOS
+systems the default target is GGUF or an equivalent local-runtime artifact. The
+downloader stores curated presets in the Hugging Face cache by default and
+imports older `~/models/<preset>` trees on first use. It does not fall back to
+full models unless you pass `--allow-non-8bit`.
 
 ```bash
-pip install "abstractvision[diffusers]"
-huggingface-cli download runwayml/stable-diffusion-v1-5
+pip install "abstractvision[models,mflux]"
+abstractvision model-presets
+abstractvision model-catalog --provider mflux
+# Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
+abstractvision download-model flux1-dev --provider mflux
+abstractvision download-model flux1-schnell --provider mflux
+abstractvision download-model flux2-klein-4b --provider mflux
+abstractvision download-model flux2-klein-9b --provider mflux
+abstractvision download-model qwen-image --provider mflux
+abstractvision download-model z-image-turbo --provider mflux
+abstractvision t2i --provider mflux --model flux2-klein-4b "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
+```
+
+Stable Diffusion does not currently have a curated MLX 8-bit preset in
+AbstractVision, so full Diffusers downloads remain explicit.
+
+Install the Diffusers runtime extra, download a Diffusers snapshot, then select
+the Diffusers backend explicitly:
+
+```bash
+pip install "abstractvision[models,diffusers]"
+abstractvision model-catalog --provider diffusers
+# Tip: `--provider diffusers` implies `--target diffusers` (you usually set one or the other).
+abstractvision download-model stable-diffusion --provider diffusers
+abstractvision download-model sd1.4 --provider diffusers
+abstractvision download-model sd1.5-inpaint --provider diffusers
+abstractvision download-model sdxl-base --provider diffusers
+abstractvision download-model sdxl-inpaint --provider diffusers
+abstractvision download-model sd3-medium --provider diffusers
+abstractvision download-model sd3.5-large --provider diffusers
+abstractvision download-model ernie-image --provider diffusers
+abstractvision download-model qwen-image-edit --provider diffusers
+abstractvision download-model glm-image --provider diffusers
+abstractvision download-model flux2-dev --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
-abstractvision repl
+abstractvision cli
 ```
 
-For a fresh cache, you can also permit the REPL to download missing files:
+For a fresh cache, you can also permit the interactive CLI to download missing files:
 
 ```bash
-ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 abstractvision repl
+ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 abstractvision cli
 ```
 
 More recommendations by VRAM: [`docs/getting-started.md`](docs/getting-started.md).
@@ -247,9 +295,11 @@ from abstractvision import VisionModelCapabilitiesRegistry
 
 reg = VisionModelCapabilitiesRegistry()
 assert reg.supports("runwayml/stable-diffusion-v1-5", "text_to_image")
+assert reg.supports("zai-org/GLM-Image", "image_to_image")
 
 print(reg.list_tasks())
 print(reg.models_for_task("text_to_image"))
+print(reg.models_for_task("image_to_image"))
 ```
 
 ### Backend wiring + generation (artifact outputs)
@@ -302,11 +352,13 @@ automatically, but you can inspect them explicitly with
 `abstractvision provider-models`, `VisionManager.list_provider_models(...)`,
 or the AbstractCore plugin method `llm.vision.list_provider_models(...)`.
 After inspection, set the model env var explicitly for newer provider models
-when available to your account. Set
-`ABSTRACTVISION_BACKEND=diffusers` or `ABSTRACTVISION_BACKEND=sdcpp` when you
-want AbstractCore to launch local AbstractVision generation directly.
+when available to your account. Set `ABSTRACTVISION_BACKEND=mflux`,
+`ABSTRACTVISION_BACKEND=diffusers`, or `ABSTRACTVISION_BACKEND=sdcpp` when you
+want AbstractCore to launch local AbstractVision generation directly. For
+MFLUX, set `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` or use routed model ids
+such as `mflux/flux2-klein-4b`.
 
-### Interactive testing (CLI / REPL)
+### Interactive testing (CLI)
 
 ```bash
 abstractvision models
@@ -315,10 +367,10 @@ abstractvision provider-models --base-url http://localhost:1234/v1 --task text_t
 abstractvision tasks
 abstractvision show-model runwayml/stable-diffusion-v1-5
 
-abstractvision repl
+abstractvision cli
 ```
 
-Inside the REPL:
+Inside the interactive CLI:
 
 ```text
 /t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
@@ -329,6 +381,13 @@ from source (see [`docs/getting-started.md`](docs/getting-started.md)):
 
 ```text
 /backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
+/t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
+```
+
+For Apple Silicon 8-bit local generation through MFLUX:
+
+```text
+/backend mflux flux2-klein-4b
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
 ```
 
@@ -353,6 +412,12 @@ abstractvision playground --port 8091
 
 Open `http://127.0.0.1:8091/vision_playground.html`, select a cached model, then load it. The page and the API are served by the same process.
 
+Current behavior:
+- Selecting a model switches to it by auto-loading the new backend/model; there is no separate unload step in the UI.
+- The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry.
+- Model-specific request normalization happens at the API/backend layer, not just in the page. The same MFLUX and GLM parameter corrections therefore apply to the playground, `abstractvision cli`, and AbstractCore.
+- Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
+
 One-shot commands (OpenAI-compatible HTTP backend only):
 
 ```bash
@@ -367,7 +432,7 @@ single-file Stable Diffusion model when possible; Qwen Image and FLUX GGUF compo
 
 Recommended:
 - **macOS (Apple Silicon / Metal)**: install `sd-cli` (stable-diffusion.cpp executable) from releases and use CLI mode for Metal acceleration.
-- Otherwise (pip-only convenience): `pip install "abstractvision[sdcpp]"` installs the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python`), but this may run CPU-only depending on the wheel build.
+- Otherwise (pip-only convenience): `pip install "abstractvision[sdcpp]"` installs the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python>=0.4.2,<0.4.6`), but this may run CPU-only depending on the wheel build.
 
 Alternative (external executable):
 
@@ -503,6 +568,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)
+- **MFLUX (local Apple Silicon)**: 8-bit MLX/MFLUX image generation via the optional MFLUX runtime
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -527,7 +593,7 @@ From PyPI:
 pip install abstractvision
 ```
 
-AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, or `abstractvision[local]` for both.
+AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, `abstractvision[mflux]` for Apple Silicon MLX/MFLUX, or `abstractvision[all-apple]` for the full native macOS stack.
 
 If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
@@ -584,9 +650,14 @@ Optional extras:
 | `openai-compatible` | Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today. |
 | `diffusers` | Installs Torch/Diffusers and related packages for local Diffusers generation. |
 | `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
+| `mflux` | Installs the optional MFLUX runtime for Apple Silicon MLX image generation. |
+| `apple` | Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MFLUX. |
+| `gpu` | GPU-friendly profile for Diffusers/Torch (does not include MFLUX). |
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
+| `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MFLUX. |
+| `all-gpu` | Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings). |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 
 Contributor-only extras:
@@ -609,9 +680,10 @@ python scripts/download_model_sets.py --set sd15_diffusers
 
 ### 0.1 Hardware quickstart (macOS Metal vs NVIDIA CUDA vs CPU)
 
-AbstractVision can run “locally” via two main routes:
+AbstractVision can run “locally” via three main routes:
 
 - **Diffusers backend**: uses Torch device selection (`cuda` / `mps` / `cpu`).
+- **MFLUX backend (`mflux`)**: Apple Silicon MLX generation through the optional MFLUX runtime (8-bit presets).
 - **stable-diffusion.cpp backend (`sdcpp`)**: runs GGUF diffusion models using:
   - `sd-cli` (**recommended** when you want GPU backends like **Metal** or **CUDA**)
   - or `stable-diffusion-cpp-python` (convenient, but often **CPU-only**, especially on macOS)
@@ -670,7 +742,7 @@ Recommended default (local, cross-platform) — Stable Diffusion 1.5:
 
 ```bash
 pip install "abstractvision[diffusers]"
-huggingface-cli download runwayml/stable-diffusion-v1-5
+abstractvision download-model stable-diffusion --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -694,7 +766,7 @@ Jump to detailed recipes:
 The REPL is cache-only by default, so it will not download model weights. Download the model separately first:
 
 ```bash
-huggingface-cli download runwayml/stable-diffusion-v1-5
+abstractvision download-model stable-diffusion --provider diffusers
 ```
 
 ```bash
@@ -1411,7 +1483,7 @@ If you’re running locally via the Diffusers backend and want a reliable starti
 Quickstart:
 
 ```bash
-huggingface-cli download runwayml/stable-diffusion-v1-5
+abstractvision download-model stable-diffusion --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -1534,7 +1606,7 @@ AbstractVision executes tasks via a `VisionBackend` adapter ([`../../src/abstrac
 `VisionManager` is intentionally thin and delegates to the configured backend ([`../../src/abstractvision/vision_manager.py`](../../src/abstractvision/vision_manager.py)).
 
 See also:
-- Getting started (REPL examples): [docs/getting-started.md](../getting-started.md)
+- Getting started (interactive CLI examples): [docs/getting-started.md](../getting-started.md)
 - Configuration (env vars / CLI flags): [docs/reference/configuration.md](configuration.md)
 
 ## Support matrix (built-in backends)
@@ -1543,11 +1615,13 @@ See also:
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. |
+| MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components. |
 
 Notes:
 - `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
 - Backends may also expose best-effort `get_capabilities()`, `preload()`, `unload()`, `generate_image_with_progress(...)`, and `edit_image_with_progress(...)` hooks via the shared `VisionBackend` contract.
+- Backends may also implement `normalize_image_generation_request(...)` and `normalize_image_edit_request(...)`. `VisionManager`, the CLI/REPL, the playground API, and the AbstractCore plugin all route through those hooks so model-specific defaults and constraints are applied consistently instead of being hard-coded in one surface.
 
 ## OpenAI-compatible HTTP backend
 
@@ -1592,12 +1666,41 @@ Install:
 - `pip install "abstractvision[diffusers]"`
 - For newer/unreleased pipeline classes: `pip install "abstractvision[diffusers-dev]"` plus Diffusers from source.
 
+Model downloads (curated):
+- See what's downloadable for Diffusers:
+  - `abstractvision model-catalog --provider diffusers` (add `--all-targets` to compare engines)
+  - Tip: `--provider diffusers` implies `--target diffusers` (you usually set one or the other).
+- Download a curated Diffusers snapshot into the Hugging Face cache (legacy `~/models` trees auto-migrate when encountered):
+  - `abstractvision download-model stable-diffusion --provider diffusers`
+  - `abstractvision download-model sd1.4 --provider diffusers`
+  - `abstractvision download-model sd1.5-inpaint --provider diffusers`
+  - `abstractvision download-model instruct-pix2pix --provider diffusers`
+  - `abstractvision download-model sdxl-base --provider diffusers`
+  - `abstractvision download-model sdxl-refiner --provider diffusers`
+  - `abstractvision download-model sdxl-inpaint --provider diffusers`
+  - `abstractvision download-model sdxl-turbo --provider diffusers`
+  - `abstractvision download-model sd-turbo --provider diffusers`
+  - `abstractvision download-model sd3-medium --provider diffusers`
+  - `abstractvision download-model sd3.5-medium --provider diffusers`
+  - `abstractvision download-model sd3.5-large --provider diffusers`
+  - `abstractvision download-model sd3.5-large-turbo --provider diffusers`
+  - `abstractvision download-model ernie-image --provider diffusers`
+  - `abstractvision download-model qwen-image --provider diffusers`
+  - `abstractvision download-model qwen-image-edit --provider diffusers`
+  - `abstractvision download-model glm-image --provider diffusers`
+  - `abstractvision download-model flux2-dev --provider diffusers`
+  - `abstractvision download-model flux2-klein-4b --provider diffusers`
+  - `abstractvision download-model z-image-turbo --provider diffusers`
+
+One-shot generation (uses the cached snapshot when present):
+- `abstractvision t2i --provider diffusers --model qwen-image "a studio photo of a ceramic teapot"`
+
 Code pointers:
 - Config: `HuggingFaceDiffusersBackendConfig` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
 - Backend: `HuggingFaceDiffusersVisionBackend` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
 
 **Offline / cache-only mode**
-The Python backend and REPL are cache-only by default (`allow_download=False`). Pre-download model weights separately,
+The Python backend and interactive CLI are cache-only by default (`allow_download=False`). Pre-download model weights separately,
 or set `allow_download=True` / `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` when runtime downloads are desired (see
 config/env in [docs/reference/configuration.md](configuration.md)).
 
@@ -1606,6 +1709,47 @@ Config fields:
 - `allow_download`, `auto_retry_fp32`
 - `cache_dir`, `revision`, `variant`
 - `use_safetensors`, `low_cpu_mem_usage`
+
+Runtime behavior notes:
+- The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
+- This is where model-specific defaults and constraints such as GLM `guidance_scale=1.5`, GLM `steps=20`, 32-multiple dimensions, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.
+
+## MFLUX backend (local Apple Silicon)
+
+**When to use**
+- You are on Apple Silicon and want local 8-bit MLX generation through the optional MFLUX runtime.
+
+Install:
+- `pip install "abstractvision[mflux]"` (or `pip install "abstractvision[all-apple]"`)
+
+Model presets:
+- See what's downloadable for your machine/engine:
+  - `abstractvision model-catalog --provider mflux` (add `--all` for full fallback list)
+  - Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
+- Download a curated 8-bit preset into the Hugging Face cache (legacy `~/models` trees auto-migrate when encountered):
+  - `abstractvision download-model flux1-dev --provider mflux`
+  - `abstractvision download-model flux1-schnell --provider mflux`
+  - `abstractvision download-model flux2-klein-4b --provider mflux`
+  - `abstractvision download-model flux2-klein-9b --provider mflux`
+  - `abstractvision download-model qwen-image --provider mflux`
+  - `abstractvision download-model z-image-turbo --provider mflux`
+
+Config/env:
+- `ABSTRACTVISION_PROVIDER=mflux` (alias: `ABSTRACTVISION_BACKEND=mflux`)
+- `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` (or routed ids like `mflux/flux2-klein-4b`)
+- Optional: `ABSTRACTVISION_MFLUX_BASE_MODEL`, `ABSTRACTVISION_MFLUX_QUANTIZE`, `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD`, `ABSTRACTVISION_MODEL_DIR` (legacy migration root only)
+
+Non-curated MFLUX models:
+- If you have an MFLUX-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
+  - Pre-download it with `abstractvision download-model org/name` (HF cache) or `hf download org/name`
+  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (base model usually auto-infers; override with `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image` if needed).
+
+Runtime behavior notes:
+- MFLUX request normalization is also backend-level, so distilled FLUX-family constraints such as `guidance_scale=1.0`, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
+
+Code pointers:
+- Config: `MFluxBackendConfig` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
+- Backend: `MFluxVisionBackend` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
 
 ## stable-diffusion.cpp backend (local GGUF/checkpoints)
 
@@ -1619,7 +1763,9 @@ Runtime modes (auto-selected):
 Notes:
 - If you care about **GPU acceleration** (macOS **Metal**, NVIDIA **CUDA**, etc.), prefer **CLI mode** via `sd-cli`.
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means **CPU-only**, so FLUX/Qwen-class models can be extremely slow.
-- REPL selection supports both `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]` and
+- The optional python binding is constrained below `0.4.6` because that sdist
+  currently misses vendored CMake files needed by native Linux builds.
+- Interactive CLI selection supports both `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]` and
   `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`.
 - Python code and AbstractCore plugin configuration can also pass component paths such as `clip_l`, `clip_g`, `t5xxl`, `llm_vision`, plus `extra_args`, `timeout_s`, and `cwd`.
 
@@ -1629,12 +1775,12 @@ Code pointers:
 --- >8 --- END FILE: docs/reference/backends.md --- >8 ---
 
 --- 8< --- FILE: docs/reference/configuration.md --- 8< ---
-# Configuration (CLI / REPL)
+# Configuration (CLI)
 
 AbstractVision configuration is intentionally simple:
 
 - In Python, you configure backends by instantiating backend config objects (see [docs/reference/backends.md](backends.md)).
-- The CLI/REPL/playground reads `ABSTRACTVISION_*` environment variables to set defaults ([`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py), [`../../src/abstractvision/playground_server.py`](../../src/abstractvision/playground_server.py)).
+- The CLI/playground reads `ABSTRACTVISION_*` environment variables to set defaults ([`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py), [`../../src/abstractvision/playground_server.py`](../../src/abstractvision/playground_server.py)). The interactive command is `abstractvision cli` (legacy alias: `abstractvision repl`).
 - The AbstractCore capability plugin also reads `owner.config` plus a small set of standard OpenAI environment aliases. Plugin-only aliases are called out below.
 
 See also:
@@ -1650,45 +1796,53 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision show-model <id>` — print a model’s tasks + params
 - `abstractvision provider-models --openai --task text_to_image` — explicitly query the official OpenAI `/models` catalog
 - `abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image` — explicitly query an OpenAI-compatible provider catalog
-- `abstractvision repl` — interactive testing (supports `openai`, `diffusers`, `sdcpp`)
+- `abstractvision cli` — interactive testing (supports `openai`, `diffusers`, `mflux`, `sdcpp`; legacy alias: `abstractvision repl`)
 - `abstractvision playground [--host 127.0.0.1] [--port 8091]` — self-contained local web UI and `/v1/vision/*` API
 - `abstractvision serve [--host 127.0.0.1] [--port 8091]` — alias for `abstractvision playground`
-- `abstractvision t2i ...` / `abstractvision i2i ...` — one-shot commands using the **OpenAI-compatible HTTP backend**
+- `abstractvision t2i ...` / `abstractvision i2i ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mflux`, and `sdcpp`)
 
 Note:
-- `abstractvision t2i` / `abstractvision i2i` always use the OpenAI-compatible backend (they do not switch based on `ABSTRACTVISION_BACKEND`).
-- Use `abstractvision repl` or `abstractvision playground` for local backends (`diffusers`, `sdcpp`).
+- `abstractvision t2i` / `abstractvision i2i` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mflux|sdcpp` (legacy alias: `--backend`).
 - Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 
-## REPL backend selection
+## Interactive CLI backend selection
 
-Inside `abstractvision repl`:
+Inside `abstractvision cli`:
 
 - `/backend openai <base_url> [api_key] [model_id]`
 - `/provider-models [--task text_to_image] [--json]` — query the configured OpenAI-compatible provider catalog
+- `/backend mflux <preset_or_local_path> [base_model]`
 - `/backend diffusers <model_id_or_path> [device] [torch_dtype]`
 - `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]`
 - `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`
 
-Run `/help` in the REPL to see the full command list (generated by `_repl_help()` in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)).
+Run `/help` in the interactive CLI to see the full command list (generated by `_repl_help()` in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)).
+
+Important runtime note:
+- Model-specific request adjustments are not implemented only in the interactive UI. The shared backend normalization hooks are applied by `VisionManager` and by the playground API server, so the same parameter corrections reach `abstractvision cli`, the legacy `repl` alias, one-shot CLI commands, the playground, and the AbstractCore plugin.
 
 ## Environment variables
 
-The CLI/REPL state object (`_ReplState` in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)) reads the common and backend env vars below. The playground server reads the same backend family plus a few playground-only Diffusers cache/version vars through `PlaygroundServerConfig` in [`../../src/abstractvision/playground_server.py`](../../src/abstractvision/playground_server.py).
+The interactive CLI state object (`_ReplState` in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)) reads the common and backend env vars below. The playground server reads the same backend family plus a few playground-only Diffusers cache/version vars through `PlaygroundServerConfig` in [`../../src/abstractvision/playground_server.py`](../../src/abstractvision/playground_server.py).
 
 ### Common
 
-- `ABSTRACTVISION_BACKEND` — backend selector: `openai`, `openai-compatible`, `diffusers`, or `sdcpp`
+- `ABSTRACTVISION_PROVIDER` — preferred backend selector: `openai`, `openai-compatible`, `diffusers`, `mflux`, or `sdcpp` (alias: `ABSTRACTVISION_BACKEND`)
   - AbstractCore plugin default: `openai` using `https://api.openai.com/v1` plus `OPENAI_API_KEY`
   - AbstractCore compatibility: selecting `abstractvision:openai-compatible` directly, or setting `OPENAI_BASE_URL` to a non-OpenAI endpoint, keeps compatible-endpoint semantics
-  - if unset and `OPENAI_BASE_URL` is set, REPL/playground default to `openai`
+  - if unset and `OPENAI_BASE_URL` is set, the interactive CLI/playground default to `openai`
   - if unset and no base URL is configured, no backend is selected until you use `/backend ...` or load a model explicitly
 - `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
 - `ABSTRACTVISION_TIMEOUT_S` — HTTP timeout for OpenAI-compatible backend (default: `300`)
-- `ABSTRACTVISION_MODEL_ID` — model id for the current backend in the REPL:
+- `ABSTRACTVISION_MODEL` — preferred model selector for the current backend/provider (alias: `ABSTRACTVISION_MODEL_ID`)
+- `ABSTRACTVISION_MODEL_ID` — model id for the current backend in the interactive CLI (legacy):
   - `openai`: sent as `model` in HTTP requests (optional; server-dependent)
   - `diffusers`: Diffusers model id or local path
+- `ABSTRACTVISION_MODEL_DIR` — legacy preset root imported into the Hugging Face cache when older installs are migrated
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
+
+Note:
+- Curated `abstractvision download-model ...` presets are written to the Hugging Face cache by default, and older `~/models/<preset>` trees are imported into that same cache on first use.
 
 ### OpenAI / OpenAI-Compatible HTTP Backend
 
@@ -1716,6 +1870,14 @@ Playground-only Diffusers vars:
 - `ABSTRACTVISION_DIFFUSERS_CACHE_DIR` — optional Hugging Face cache directory override
 - `ABSTRACTVISION_DIFFUSERS_REVISION` — optional model revision
 - `ABSTRACTVISION_DIFFUSERS_VARIANT` — optional model variant
+
+### MFLUX backend (Apple Silicon)
+
+- `ABSTRACTVISION_MFLUX_MODEL` — preset key, local model path, or repo id (examples: `flux2-klein-4b`, `mflux/flux2-klein-4b`, `/path/to/preset-dir`, `mlx-community/Qwen-Image-2512-8bit`)
+- `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional explicit base model (`flux2-klein-4b`, `flux2-klein-9b`, `z-image-turbo`, `qwen-image`)
+- `ABSTRACTVISION_MFLUX_QUANTIZE` — optional quantization override for the MFLUX runtime
+- `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache
+- `ABSTRACTVISION_MODEL_DIR` — legacy preset root only; curated downloads now land in the Hugging Face cache
 
 ### stable-diffusion.cpp backend
 
@@ -1751,6 +1913,11 @@ See also:
 - **Optional safety gating**:
   - `VisionManager(model_id=..., registry=...)` will fail fast if the model doesn’t support a task ([`../../src/abstractvision/vision_manager.py`](../../src/abstractvision/vision_manager.py)).
   - The CLI/REPL can enforce gating via `--capabilities-model-id` (CLI) or `/cap-model` (REPL).
+- **Task-aware UI/catalog metadata**:
+  - `image_to_image` in a model’s `tasks` map is the explicit “this model supports edits” signal.
+  - The playground API surfaces that structured metadata as `task_specs` so local tooling can enable edit-only flows without re-encoding model rules elsewhere.
+- **Request normalization hints**:
+  - additive parameter metadata such as `default`, `const`, `min`, `multiple_of`, `supported`, and `auto_derived_from_input` can be consumed by backends to keep model-specific defaults and constraints in one packaged source of truth.
 
 Important:
 - The registry describes **model capability intent**.
@@ -1780,11 +1947,35 @@ The validator enforces a “soft schema”:
 - Each model entry includes:
   - `provider` (string)
   - `license` (string; informational)
+  - optional `downloads` (list of downloadable artifacts; informational metadata used by `abstractvision show-model`)
   - `tasks` (map of task name → task spec)
 - Each task spec includes:
   - `inputs`, `outputs` (lists of strings)
   - `params` (object where each param has `required: bool`, plus additive fields)
   - optional `requires` for dependencies like `base_model_id`
+
+Examples of additive `params` metadata used in this repo:
+- `default`: backend fills a missing value
+- `const`: backend forces a model-specific fixed value
+- `min`: backend clamps the value upward
+- `multiple_of`: backend rounds dimensions to a required multiple
+- `supported: false`: backend drops an unsupported optional parameter
+- `auto_derived_from_input: true`: image-edit backends can infer a missing size from the input image
+
+### Downloads (optional)
+
+Some models include a `downloads` list to document what AbstractVision considers “downloadable” for common engines:
+
+- `key`: the canonical short name used in `model-presets` / `download-model` (e.g. `qwen-image`, `flux2-klein-4b`)
+- `engine`: `mflux`, `diffusers`, `stable-diffusion.cpp`, ...
+- `target`: `mlx`, `diffusers`, `gguf`, ...
+- `bits`: typically `8` (quantized) or `16` (full snapshot)
+- `repo_id`: Hugging Face repo id to download
+- optional `source`, `notes`
+
+This metadata is descriptive; the curated preset list printed by `abstractvision model-catalog` remains the practical “what can I download” view.
+
+In this repo, we keep `downloads` entries aligned with the curated preset table (`model_downloads._PRESETS`) so `abstractvision show-model` and the docs can reliably describe what the CLI can download.
 --- >8 --- END FILE: docs/reference/capabilities-registry.md --- >8 ---
 
 --- 8< --- FILE: docs/reference/artifacts.md --- 8< ---
@@ -1868,16 +2059,19 @@ Current behavior:
 - Compatible HTTP: set `OPENAI_BASE_URL` to a local/remote compatible `/v1` server. Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
+- Local MFLUX (Apple Silicon): install `abstractvision[mflux]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mflux`. Download an 8-bit MLX/MFLUX preset with `abstractvision download-model flux2-klein-4b --provider mflux` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed model ids such as `mflux/flux2-klein-4b`.
 - stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 - Gateway/Core should pass process-level config or `owner.config` and report readiness; they should not mutate AbstractVision environment variables per request.
 
 Key config keys (owner.config):
 - `vision_backend_instance` / `vision_backend_factory` (advanced injection hooks; bypass env-driven backend creation)
-- `vision_backend` (`openai`, `openai-compatible`, `diffusers`, or `sdcpp`; default `openai`)
+- `vision_backend` (`openai`, `openai-compatible`, `diffusers`, `mflux`, or `sdcpp`; default `openai`)
 - `vision_model_id` (Diffusers/OpenAI-compatible model id; default `gpt-image-1` only for the official OpenAI profile and `runwayml/stable-diffusion-v1-5` for Diffusers)
 - `vision_device` / `vision_torch_dtype` / `vision_allow_download` / `vision_auto_retry_fp32` (Diffusers)
 - `vision_base_url` / `vision_api_key` (OpenAI or compatible HTTP)
+- `vision_mflux_model` / `vision_mflux_base_model` / `vision_mflux_quantize` / `vision_mflux_allow_download` (MFLUX)
+- `vision_model_dir` (legacy preset import root used by MFLUX compatibility/migration helpers; new downloads land in the Hugging Face cache)
 - `vision_sdcpp_model` / `vision_sdcpp_diffusion_model` / `vision_sdcpp_bin` (stable-diffusion.cpp)
 - `vision_sdcpp_vae` / `vision_sdcpp_llm` / `vision_sdcpp_llm_vision` / `vision_sdcpp_clip_l` / `vision_sdcpp_clip_g` / `vision_sdcpp_t5xxl` / `vision_sdcpp_extra_args` (stable-diffusion.cpp component mode)
 - `vision_timeout_s` (optional)
@@ -1940,7 +2134,21 @@ inspection only: it does not mutate the configured backend or select a generatio
 
 Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
 of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
-remain separate local-backend concerns.
+remain separate local-backend concerns, while MFLUX and Diffusers provider listings reflect
+cache-backed snapshots rather than a separate `~/models` download tree.
+
+## Shared request normalization
+
+`llm.vision` calls go through `VisionManager`, which applies backend normalization hooks before
+execution. That means model-specific constraints are shared with the CLI/REPL and playground API
+instead of being reimplemented in the plugin layer.
+
+Current examples:
+- Distilled MFLUX/FLUX-family models can clamp guidance or minimum steps in the backend.
+- Diffusers-backed GLM Image requests pick up registry-driven defaults such as `guidance_scale`,
+  recommended step counts, 32-multiple dimension rounding, and auto-derived edit dimensions.
+- Unsupported parameters, such as negative prompts on constrained model families, are dropped in
+  the backend rather than surfacing as per-surface validation bugs.
 
 ## 2) Tool helpers (`make_vision_tools`)
 
@@ -1977,7 +2185,6 @@ The page calls:
 - `GET /v1/models` (ping)
 - `GET /v1/vision/models` (list cached models + active model)
 - `POST /v1/vision/model/load` (load a model into memory)
-- `POST /v1/vision/model/unload` (unload the active model)
 - `POST /v1/vision/jobs/images/generations` (start a text→image job)
 - `POST /v1/vision/jobs/images/edits` (start an image→image job)
 - `GET /v1/vision/jobs/{job_id}` (poll job status)
@@ -2011,12 +2218,15 @@ Open:
 - `http://127.0.0.1:8091/vision_playground.html`
 
 Usage notes:
-- You must **select a cached model** and load it before running inference.
+- You must **select a cached model** before running inference; selecting a different model auto-loads and switches to it.
 - Raw Hugging Face model ids such as `runwayml/stable-diffusion-v1-5` load directly; no `diffusers/` provider prefix is required.
 - For first tests, prefer a small cached model such as Stable Diffusion 1.5 before loading larger Qwen/FLUX models.
+- The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry metadata returned by `/v1/vision/models`.
+- Response logs intentionally show a shortened `b64_json` preview instead of the full base64 payload.
 - “Extra JSON” is forwarded to the server:
   - T2I: merged into the JSON request body
   - I2I: sent as a string field `extra_json` in the multipart form body
+- Model-specific request fixes happen in the backend/API layer, so the same normalization rules apply to the playground, CLI/REPL, and AbstractCore integration.
 
 ## 3) stable-diffusion.cpp / GGUF notes
 
@@ -2209,7 +2419,45 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
 
-## Unreleased
+## 0.3.6 - 2026-05-18
+
+- Model registry/downloads: expand `vision_model_capabilities.json` and curated preset coverage for current Hugging Face text-to-image and image-to-image models, including FLUX.1/2, Qwen Image, ERNIE Image, GLM Image, Z-Image, SDXL, SD Turbo, and SD3.5. The registry now remains the packaged source of truth for both downloadable artifacts and task capability metadata.
+- Cache/catalog: keep curated downloads in the Hugging Face cache by default, migrate older `~/models/<preset>` trees into that cache on first use, and align Diffusers/MFLUX cache discovery across CLI, REPL, playground, and AbstractCore so cached local models surface consistently.
+- API-level normalization: move model-specific parameter normalization into shared backend hooks used by `VisionManager` and the playground server. Model constraints such as MFLUX distilled `guidance_scale=1.0`, unsupported negative prompts, and GLM `steps/guidance_scale/32-multiple dimensions` now apply consistently through the CLI/REPL, playground, and AbstractCore integration.
+- Playground/API: expose structured per-model `task_specs` from `/v1/vision/models`, only enable the edit surface for models that advertise `image_to_image`, switch models by auto-loading the new selection, and truncate `b64_json` in logs instead of dumping the full base64 payload.
+- AbstractCore/provider catalogs: keep remote provider/model listing robust when internet or API credentials are unavailable, and keep local provider/model catalogs aligned with the same cache-backed discovery used by the interactive surfaces.
+- CLI/docs: keep `abstractvision cli` as the canonical interactive command (with `repl` as a legacy alias), expand model catalog/docs coverage, refresh backend/configuration/AbstractCore/playground references, and regenerate `llms.txt` / `llms-full.txt` for release.
+
+## 0.3.5 - 2026-05-13
+
+- AbstractCore plugin: accept runtime output metadata such as `provider` and `size` without rejecting image generation requests, and forward per-call image model selectors to OpenAI-compatible backends.
+
+
+## 0.3.4 - 2026-05-09
+
+- Packaging: constrain the optional `stable-diffusion-cpp-python` binding to
+  `<0.4.6` for `sdcpp`, `local`, `apple`, `all`, `all-apple`, and `all-gpu`
+  extras. Version `0.4.6` currently ships an sdist that fails native Linux
+  builds because required vendored libwebm CMake files are missing.
+
+## 0.3.3 - 2026-05-08
+
+- Packaging: add shared native install profiles. `abstractvision[apple]` and
+  `abstractvision[all-apple]` install the full local macOS vision stack;
+  `abstractvision[gpu]` installs the Diffusers/Torch GPU stack; and
+  `abstractvision[all-gpu]` installs Diffusers plus stable-diffusion.cpp
+  bindings for full local GPU-capable deployments.
+- Docs/tests: document and verify the Apple/GPU profile aliases while keeping
+  the base package lightweight and remote/OpenAI-compatible by default.
+
+## 0.3.2 - 2026-05-08
+
+- AbstractCore plugin: switch the default backend id to `abstractvision:openai` with official OpenAI defaults, while keeping `abstractvision:openai-compatible` registered as a legacy-compatible backend id.
+- OpenAI configuration: use standard `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_IMAGE_MODEL_ID`, and `OPENAI_IMAGE_MODEL` aliases for the plugin default path; keep compatible endpoints explicit with `ABSTRACTVISION_BACKEND=openai-compatible` and `OPENAI_BASE_URL`.
+- Provider catalogs: add OpenAI/OpenAI-compatible `/models` discovery through `VisionManager.list_provider_models(...)`, `abstractvision provider-models`, REPL `/provider-models`, and `llm.vision.list_provider_models(...)` in the AbstractCore plugin.
+- API/contracts: add `ProviderModelInfo`, provider catalog backend hooks, task filtering for OpenAI image model catalogs, and JSON-safe bounded provider metadata at the AbstractCore plugin boundary.
+- Docs/agent context: refresh AbstractCore integration, backend/configuration/API docs, playground production-boundary notes, completed backlog reports, `llms.txt`, and regenerated `llms-full.txt`.
+- Tests: add coverage for OpenAI defaults, legacy compatible aliases, provider catalog parsing/filtering, plugin catalog exposure, CLI/REPL catalog commands, manager delegation, and a credential-gated live OpenAI catalog check.
 
 ## 0.3.1 - 2026-05-07
 
@@ -2361,7 +2609,43 @@ diffusers = [
 
 # Local generation via stable-diffusion.cpp python bindings (pip-installable).
 sdcpp = [
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "Pillow>=9.0",
+]
+
+# Native Apple image generation via MFLUX/MLX. Kept optional because it pulls
+# Apple-specific local runtime dependencies.
+mflux = [
+  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+]
+
+# Native Apple Python install profile. Docker cannot expose Apple's Metal stack,
+# but direct macOS installs can use PyTorch/MPS, stable-diffusion.cpp/Metal, and MFLUX/MLX.
+apple = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+  "Pillow>=9.0",
+]
+
+gpu = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
   "Pillow>=9.0",
 ]
 
@@ -2390,7 +2674,7 @@ local = [
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
 
@@ -2405,7 +2689,39 @@ all = [
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
-  "stable-diffusion-cpp-python>=0.4.2",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+  "Pillow>=9.0",
+]
+
+# Full native Apple profile: every runtime backend relevant to macOS/Apple
+# Silicon, excluding NVIDIA/CUDA-specific stacks.
+all-apple = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+  "Pillow>=9.0",
+]
+
+all-gpu = [
+  "diffusers>=0.36.0",
+  "torch>=2.0,<3.0.0",
+  "transformers>=4.0,<6.0.0",
+  "accelerate>=0.0",
+  "safetensors>=0.0",
+  "sentencepiece>=0.1.99",
+  "protobuf>=3.20.0",
+  "einops>=0.7.0",
+  "peft>=0.10.0",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
 
@@ -2443,6 +2759,12 @@ huggingface-dev = [
 # Compatibility extra only. AbstractVision is loaded by AbstractCore as a plugin,
 # so it deliberately does not install AbstractCore as a dependency.
 abstractcore = []
+
+# Local model download helpers. Kept optional so the base package remains
+# dependency-free for OpenAI-compatible proxy hosts.
+models = [
+  "huggingface_hub>=0.24.0",
+]
 
 # Test dependencies used by local contributors. CI installs the package with
 # `--no-deps` and then adds only these light test-time dependencies.

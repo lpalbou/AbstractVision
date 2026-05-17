@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 import shlex
 import sys
 import importlib.util
+import socket
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+from urllib.parse import urlparse
 
 from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
 from ..backends.base_backend import VisionBackend
@@ -88,18 +91,117 @@ def _looks_like_openai_api(base_url: Optional[str]) -> bool:
 def _openai_api_key() -> Optional[str]:
     return _env("OPENAI_API_KEY")
 
+
+def _internet_override_flags() -> tuple[bool, bool]:
+    return (
+        _env_bool("ABSTRACTVISION_ASSUME_OFFLINE", False)
+        or _env_bool("ABSTRACTCORE_ASSUME_OFFLINE", False),
+        _env_bool("ABSTRACTVISION_ASSUME_ONLINE", False)
+        or _env_bool("ABSTRACTCORE_ASSUME_ONLINE", False),
+    )
+
+
+def _host_is_local(host: Optional[str]) -> bool:
+    host_s = str(host or "").strip().lower()
+    if not host_s:
+        return False
+    if host_s in {"localhost", "127.0.0.1", "::1"} or host_s.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host_s)
+    except ValueError:
+        return False
+    return bool(ip.is_loopback or ip.is_private or ip.is_link_local)
+
+
+def _catalog_host_port(base_url: Optional[str]) -> tuple[Optional[str], Optional[int]]:
+    url = str(base_url or "").strip()
+    if not url:
+        url = _DEFAULT_OPENAI_BASE_URL
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        return None, None
+    port = parsed.port
+    if port is None:
+        port = 443 if str(parsed.scheme or "").lower() == "https" else 80
+    return host, int(port)
+
+
+def _catalog_endpoint_reachable(base_url: Optional[str]) -> bool:
+    host, port = _catalog_host_port(base_url)
+    if not host or port is None:
+        return False
+    if _host_is_local(host):
+        return True
+
+    assume_offline, assume_online = _internet_override_flags()
+    if assume_offline:
+        return False
+    if assume_online:
+        return True
+    try:
+        with socket.create_connection((host, int(port)), timeout=0.5):
+            return True
+    except Exception:
+        return False
+
+
+def _remote_provider_catalog_enabled(
+    provider_id: Optional[str],
+    *,
+    base_url: Optional[str],
+    api_key: Optional[str],
+) -> bool:
+    provider = str(provider_id or "").strip().lower().replace("_", "-")
+    if provider == "openai":
+        if not str(api_key or "").strip():
+            return False
+        return _catalog_endpoint_reachable(base_url or _DEFAULT_OPENAI_BASE_URL)
+    if provider == "openai-compatible":
+        if not str(base_url or "").strip():
+            return False
+        return _catalog_endpoint_reachable(base_url)
+    return True
+
+
+def _backend_catalog_enabled(owner: Any, provider_id: Optional[str], backend: Any) -> bool:
+    provider = str(provider_id or "").strip().lower().replace("_", "-")
+    if provider not in {"openai", "openai-compatible"}:
+        return True
+    cfg = getattr(backend, "_cfg", None)
+    base_url = getattr(cfg, "base_url", None)
+    api_key = getattr(cfg, "api_key", None)
+    if api_key is None:
+        api_key = _owner_cfg(owner, "vision_api_key") or _openai_api_key()
+    return _remote_provider_catalog_enabled(provider, base_url=base_url, api_key=api_key)
+
 def _mflux_weights_present() -> bool:
     """Return True when MFLUX preset weights appear to be downloaded locally."""
     if sys.platform != "darwin":
         return False
     try:
-        from ..model_downloads import default_download_root, model_presets
+        from ..model_cache import (
+            default_hf_cache_root,
+            default_legacy_model_root,
+            framework_hf_cache_roots,
+            resolve_hf_repo_snapshot,
+        )
+        from ..model_downloads import model_presets
     except Exception:
         return False
-    root = default_download_root()
+    cache_root = str(default_hf_cache_root())
+    legacy_root = default_legacy_model_root()
     for preset in model_presets(target="mlx", engine="mflux", include_non_8bit=False):
-        local_dir = root / preset.local_dir_name
+        local_dir = legacy_root / preset.local_dir_name
         try:
+            if resolve_hf_repo_snapshot(
+                preset.repo_id,
+                cache_dir=cache_root,
+                require_weight_files=True,
+                extra_roots=framework_hf_cache_roots(),
+            ) is not None:
+                return True
             if local_dir.is_dir() and any(local_dir.rglob("*.safetensors")):
                 return True
         except Exception:
@@ -240,10 +342,23 @@ def _has_local_mflux_preset(model_id: str) -> bool:
     if sys.platform != "darwin":
         return False
     try:
-        from ..model_downloads import default_download_root, find_model_preset
+        from ..model_cache import (
+            default_hf_cache_root,
+            default_legacy_model_root,
+            framework_hf_cache_roots,
+            resolve_hf_repo_snapshot,
+        )
+        from ..model_downloads import find_model_preset
 
         preset = find_model_preset(str(model_id), target="mlx", engine="mflux", require_8bit=True)
-        local_dir = default_download_root() / preset.local_dir_name
+        if resolve_hf_repo_snapshot(
+            preset.repo_id,
+            cache_dir=str(default_hf_cache_root()),
+            require_weight_files=True,
+            extra_roots=framework_hf_cache_roots(),
+        ) is not None:
+            return True
+        local_dir = default_legacy_model_root() / preset.local_dir_name
         return local_dir.exists() and any(local_dir.rglob("*.safetensors"))
     except Exception:
         return False
@@ -295,6 +410,20 @@ class _AbstractVisionCapability:
         self.backend_id = backend_id or type(self).backend_id
         self._backend = None
         self._routed_backends: Dict[tuple[Any, ...], Any] = {}
+        self._active_request_backend: Any = None
+
+    def _activate_request_backend(self, backend: Any) -> Any:
+        previous = self._active_request_backend
+        self._active_request_backend = backend
+        if previous is None or previous is backend:
+            return backend
+        unload = getattr(previous, "unload", None)
+        if callable(unload):
+            try:
+                unload()
+            except Exception:
+                pass
+        return backend
 
     def _make_diffusers_backend(self, *, model_id: Optional[str] = None):
         resolved_model_id = (
@@ -737,6 +866,15 @@ class _AbstractVisionCapability:
         backends: list[tuple[Any, Optional[str]]] = []
         last_error: Optional[Exception] = None
         injected_backend = False
+        configured_base_url = _configured_openai_base_url(self._owner)
+        configured_api_key = _owner_cfg(self._owner, "vision_api_key") or _openai_api_key()
+        configured_remote_provider = (
+            "openai-compatible"
+            if _base_url_implies_openai_compatible(configured_base_url)
+            else "openai"
+        )
+        skipped_remote_catalog = False
+        attempted_catalog = False
         try:
             owner_cfg = getattr(self._owner, "config", None)
             injected_backend = isinstance(owner_cfg, dict) and (
@@ -749,8 +887,8 @@ class _AbstractVisionCapability:
         try:
             active_backend = self._get_backend()
             backends.append((active_backend, _provider_id_for_backend(active_backend)))
-        except Exception as exc:
-            last_error = exc
+        except Exception:
+            pass
 
         active_provider = backends[0][1] if backends else None
 
@@ -766,17 +904,36 @@ class _AbstractVisionCapability:
             except Exception:
                 pass
 
-        if not injected_backend and active_provider != "openai" and _env("OPENAI_API_KEY"):
+        if (
+            not injected_backend
+            and active_provider != configured_remote_provider
+            and _remote_provider_catalog_enabled(
+                configured_remote_provider,
+                base_url=configured_base_url,
+                api_key=configured_api_key,
+            )
+        ):
             try:
-                backends.append((self._make_openai_backend(provider_id="openai"), "openai"))
+                backends.append(
+                    (
+                        self._make_openai_backend(provider_id=configured_remote_provider),
+                        configured_remote_provider,
+                    )
+                )
             except Exception:
                 pass
 
         out: List[Dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
-        for backend, provider in backends:
+        for idx, (backend, provider) in enumerate(backends):
+            if not (injected_backend and idx == 0) and not _backend_catalog_enabled(
+                self._owner, provider, backend
+            ):
+                skipped_remote_catalog = True
+                continue
             if not _backend_supports_provider_catalog(backend):
                 continue
+            attempted_catalog = True
             try:
                 models = list(backend.list_provider_models(task=task) or [])
             except Exception as exc:
@@ -799,6 +956,10 @@ class _AbstractVisionCapability:
             return out
         if last_error is not None:
             raise AbstractVisionError(str(last_error))
+        if not backends:
+            return []
+        if attempted_catalog or skipped_remote_catalog:
+            return []
         raise AbstractVisionError(
             "The selected AbstractVision backend does not support provider model catalogs."
         )
@@ -813,6 +974,16 @@ class _AbstractVisionCapability:
         configured_base_url = _configured_openai_base_url(self._owner)
         base_url = str(configured_base_url or "").strip() or None
         api_key = _owner_cfg(self._owner, "vision_api_key") or _openai_api_key()
+        openai_available = _remote_provider_catalog_enabled(
+            "openai",
+            base_url=base_url or _DEFAULT_OPENAI_BASE_URL,
+            api_key=api_key,
+        )
+        compatible_available = _remote_provider_catalog_enabled(
+            "openai-compatible",
+            base_url=base_url,
+            api_key=api_key,
+        )
 
         known = ["openai", "openai-compatible", "huggingface", "mflux", "sdcpp"]
         available: list[str] = []
@@ -824,17 +995,11 @@ class _AbstractVisionCapability:
         if _runtime_installed("sdcpp"):
             available.append("sdcpp")
 
-        # Remote OpenAI/OpenAI-compatible availability is configuration-driven.
-        if api_key:
-            if base_url and _base_url_implies_openai_compatible(base_url):
+        if base_url and _base_url_implies_openai_compatible(base_url):
+            if compatible_available:
                 available.append("openai-compatible")
-            else:
-                available.append("openai")
-        else:
-            # OpenAI-compatible endpoints may not require a key; advertise them
-            # when a non-OpenAI base URL is configured.
-            if base_url and _base_url_implies_openai_compatible(base_url):
-                available.append("openai-compatible")
+        elif openai_available:
+            available.append("openai")
 
         # Keep ordering stable for UIs.
         order = ["openai", "openai-compatible", "huggingface", "mflux", "sdcpp"]
@@ -852,6 +1017,13 @@ class _AbstractVisionCapability:
                     "weights_present": _mflux_weights_present() if provider == "mflux" else None,
                     "remote": provider in {"openai", "openai-compatible"},
                     "local": provider not in {"openai", "openai-compatible"},
+                    "reachable": (
+                        openai_available
+                        if provider == "openai"
+                        else compatible_available
+                        if provider == "openai-compatible"
+                        else None
+                    ),
                 }
                 for provider in known
             },
@@ -862,6 +1034,9 @@ class _AbstractVisionCapability:
     def list_available_providers(self, *, task: Optional[str] = None) -> Dict[str, Any]:
         return self.available_providers(task=task)
 
+    def list_available_models(self, *, task: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.list_provider_models(task=task)
+
     def t2i(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
         run_id = kwargs.pop("run_id", None)
@@ -869,6 +1044,7 @@ class _AbstractVisionCapability:
         provider = kwargs.pop("provider", None)
         model = kwargs.pop("model", None)
         backend = self._backend_for_request(provider=provider, model=model)
+        backend = self._activate_request_backend(backend)
         allowed_request_keys = {"negative_prompt", "width", "height", "seed", "steps", "guidance_scale", "extra"}
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
@@ -902,6 +1078,7 @@ class _AbstractVisionCapability:
         if mask is not None:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
         backend = self._backend_for_request(provider=provider, model=model)
+        backend = self._activate_request_backend(backend)
         vm = VisionManager(
             backend=backend,
             store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,

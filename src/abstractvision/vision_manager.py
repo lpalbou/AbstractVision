@@ -84,7 +84,11 @@ class VisionManager:
         backend = self._require_backend()
         self._require_model_support("text_to_image")
         self._require_backend_support(backend, "text_to_image")
-        asset = backend.generate_image(ImageGenerationRequest(prompt=prompt, **kwargs))
+        request = ImageGenerationRequest(prompt=prompt, **kwargs)
+        normalize = getattr(backend, "normalize_image_generation_request", None)
+        if callable(normalize):
+            request = normalize(request)
+        asset = backend.generate_image(request)
         return self._maybe_store(asset, tags={"kind": "generated_media", "modality": "image", "task": "text_to_image"})
 
     def edit_image(self, prompt: str, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
@@ -94,7 +98,11 @@ class VisionManager:
         mask = kwargs.get("mask")
         if mask is not None and caps is not None and caps.supports_mask is False:
             raise CapabilityNotSupportedError("Backend does not support masked image edits (mask parameter).")
-        asset = backend.edit_image(ImageEditRequest(prompt=prompt, image=image, **kwargs))
+        request = ImageEditRequest(prompt=prompt, image=image, **kwargs)
+        normalize = getattr(backend, "normalize_image_edit_request", None)
+        if callable(normalize):
+            request = normalize(request)
+        asset = backend.edit_image(request)
         return self._maybe_store(asset, tags={"kind": "generated_media", "modality": "image", "task": "image_to_image"})
 
     def generate_angles(self, prompt: str, **kwargs) -> Union[List[GeneratedAsset], List[Dict[str, Any]]]:

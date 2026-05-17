@@ -26,7 +26,7 @@ Current behavior:
 - Compatible HTTP: set `OPENAI_BASE_URL` to a local/remote compatible `/v1` server. Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
-- Local MFLUX (Apple Silicon): install `abstractvision[mflux]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mflux`. Download an 8-bit MLX/MFLUX preset with `abstractvision download-model flux2-klein-4b --provider mflux` (or set `ABSTRACTVISION_MODEL_DIR` if you keep presets outside `~/models`). Use routed model ids such as `mflux/flux2-klein-4b`.
+- Local MFLUX (Apple Silicon): install `abstractvision[mflux]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mflux`. Download an 8-bit MLX/MFLUX preset with `abstractvision download-model flux2-klein-4b --provider mflux` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed model ids such as `mflux/flux2-klein-4b`.
 - stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 - Gateway/Core should pass process-level config or `owner.config` and report readiness; they should not mutate AbstractVision environment variables per request.
@@ -38,7 +38,7 @@ Key config keys (owner.config):
 - `vision_device` / `vision_torch_dtype` / `vision_allow_download` / `vision_auto_retry_fp32` (Diffusers)
 - `vision_base_url` / `vision_api_key` (OpenAI or compatible HTTP)
 - `vision_mflux_model` / `vision_mflux_base_model` / `vision_mflux_quantize` / `vision_mflux_allow_download` (MFLUX)
-- `vision_model_dir` (optional root directory for downloaded model presets; used by MFLUX and some local discovery helpers)
+- `vision_model_dir` (legacy preset import root used by MFLUX compatibility/migration helpers; new downloads land in the Hugging Face cache)
 - `vision_sdcpp_model` / `vision_sdcpp_diffusion_model` / `vision_sdcpp_bin` (stable-diffusion.cpp)
 - `vision_sdcpp_vae` / `vision_sdcpp_llm` / `vision_sdcpp_llm_vision` / `vision_sdcpp_clip_l` / `vision_sdcpp_clip_g` / `vision_sdcpp_t5xxl` / `vision_sdcpp_extra_args` (stable-diffusion.cpp component mode)
 - `vision_timeout_s` (optional)
@@ -101,7 +101,21 @@ inspection only: it does not mutate the configured backend or select a generatio
 
 Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
 of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
-remain separate local-backend concerns.
+remain separate local-backend concerns, while MFLUX and Diffusers provider listings reflect
+cache-backed snapshots rather than a separate `~/models` download tree.
+
+## Shared request normalization
+
+`llm.vision` calls go through `VisionManager`, which applies backend normalization hooks before
+execution. That means model-specific constraints are shared with the CLI/REPL and playground API
+instead of being reimplemented in the plugin layer.
+
+Current examples:
+- Distilled MFLUX/FLUX-family models can clamp guidance or minimum steps in the backend.
+- Diffusers-backed GLM Image requests pick up registry-driven defaults such as `guidance_scale`,
+  recommended step counts, 32-multiple dimension rounding, and auto-derived edit dimensions.
+- Unsupported parameters, such as negative prompts on constrained model families, are dropped in
+  the backend rather than surfacing as per-surface validation bugs.
 
 ## 2) Tool helpers (`make_vision_tools`)
 

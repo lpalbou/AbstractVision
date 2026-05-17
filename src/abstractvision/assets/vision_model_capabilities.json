@@ -245,6 +245,15 @@
           "repo_id": "black-forest-labs/FLUX.2-dev",
           "source": "official",
           "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+        },
+        {
+          "key": "flux2-dev",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "city96/FLUX.2-dev-gguf",
+          "source": "curated-community-gguf",
+          "notes": "GGUF quantizations for stable-diffusion.cpp runtimes (prefer Q8_0 / Q8 for quality)."
         }
       ],
       "tasks": {
@@ -279,6 +288,56 @@
             }
           }
         },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "black-forest-labs/FLUX.1-Kontext-dev": {
+      "provider": "huggingface",
+      "license": "flux-non-commercial-license",
+      "notes": "FLUX.1 Kontext dev (Diffusers: FluxKontextPipeline). Official image-edit model for instruction-guided edits and contextual transformations.",
+      "downloads": [
+        {
+          "key": "flux1-kontext-dev",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "black-forest-labs/FLUX.1-Kontext-dev",
+          "source": "official",
+          "notes": "Official Diffusers edit pipeline snapshot."
+        }
+      ],
+      "tasks": {
         "image_to_image": {
           "inputs": [
             "image",
@@ -431,6 +490,96 @@
         }
       }
     },
+    "black-forest-labs/FLUX.2-klein-base-4B": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "FLUX 2 klein base (4B, open) (Diffusers: Flux2KleinPipeline). Official edit-capable base model; prefer the FP8 side artifact on GPU when you need a lighter download.",
+      "downloads": [
+        {
+          "key": "flux2-klein-base-4b",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "black-forest-labs/FLUX.2-klein-base-4B",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        },
+        {
+          "key": "flux2-klein-base-4b",
+          "engine": "diffusers-component",
+          "target": "fp8",
+          "bits": 8,
+          "repo_id": "black-forest-labs/FLUX.2-klein-base-4b-fp8",
+          "source": "official",
+          "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
     "black-forest-labs/FLUX.2-klein-9B": {
       "provider": "huggingface",
       "license": "flux-non-commercial-license",
@@ -541,6 +690,96 @@
               "required": false,
               "default": 1.0,
               "const": 1.0
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "black-forest-labs/FLUX.2-klein-base-9B": {
+      "provider": "huggingface",
+      "license": "flux-non-commercial-license",
+      "notes": "FLUX 2 klein base (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official higher-capacity edit-capable base model; prefer the FP8 side artifact on GPU when possible.",
+      "downloads": [
+        {
+          "key": "flux2-klein-base-9b",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "black-forest-labs/FLUX.2-klein-base-9B",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        },
+        {
+          "key": "flux2-klein-base-9b",
+          "engine": "diffusers-component",
+          "target": "fp8",
+          "bits": 8,
+          "repo_id": "black-forest-labs/FLUX.2-klein-base-9b-fp8",
+          "source": "official",
+          "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
             },
             "seed": {
               "required": false
@@ -852,6 +1091,15 @@
           "repo_id": "Qwen/Qwen-Image-2512",
           "source": "official",
           "notes": "Official Diffusers pipeline snapshot (full model weights)."
+        },
+        {
+          "key": "qwen-image",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "unsloth/Qwen-Image-2512-GGUF",
+          "source": "curated-community-gguf",
+          "notes": "Qwen Image GGUF bundle for stable-diffusion.cpp; requires a separate VAE safetensors file and a Qwen2.5-VL GGUF text encoder at runtime."
         }
       ],
       "tasks": {
@@ -888,6 +1136,106 @@
         }
       }
     },
+    "Qwen/Qwen-Image-Edit": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Earlier Qwen Image Edit release (Diffusers: QwenImageEditPipeline).",
+      "downloads": [
+        {
+          "key": "qwen-image-edit",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Qwen/Qwen-Image-Edit",
+          "source": "official",
+          "notes": "Older Diffusers snapshot; prefer the newer dated Qwen Image Edit releases when possible."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Qwen/Qwen-Image-Edit-2509": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Qwen Image Edit 2509 (Diffusers: QwenImageEditPlusPipeline). Older dated edit checkpoint that remains widely used.",
+      "downloads": [
+        {
+          "key": "qwen-image-edit-2509",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Qwen/Qwen-Image-Edit-2509",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
     "Qwen/Qwen-Image-Edit-2511": {
       "provider": "huggingface",
       "license": "apache-2.0",
@@ -901,6 +1249,15 @@
           "repo_id": "Qwen/Qwen-Image-Edit-2511",
           "source": "official",
           "notes": "Official Diffusers snapshot (full model weights)."
+        },
+        {
+          "key": "qwen-image-edit",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "unsloth/Qwen-Image-Edit-2511-GGUF",
+          "source": "curated-community-gguf",
+          "notes": "Qwen Image Edit GGUF bundle for stable-diffusion.cpp; requires a separate VAE safetensors file and a Qwen2.5-VL GGUF text encoder at runtime."
         }
       ],
       "tasks": {
@@ -1642,8 +1999,8 @@
     },
     "tencent/HunyuanImage-3.0": {
       "provider": "huggingface",
-      "license": "unknown",
-      "notes": "HunyuanImage 3.0 (Transformers/DiT-style). Not a Diffusers pipeline; download is possible but runtime support is not provided by the Diffusers backend.",
+      "license": "tencent-hunyuan-community",
+      "notes": "HunyuanImage 3.0 (Transformers/custom-code runtime). Official text-to-image checkpoint; download is possible, but the dedicated runtime/backend is not shipped by AbstractVision yet.",
       "downloads": [
         {
           "key": "hunyuanimage-3.0",
@@ -1674,6 +2031,180 @@
               "required": false
             },
             "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "not_supported"
+          }
+        }
+      }
+    },
+    "tencent/HunyuanImage-3.0-Instruct": {
+      "provider": "huggingface",
+      "license": "other",
+      "notes": "HunyuanImage 3.0 Instruct adds prompt self-rewrite, image editing, and multi-image fusion. Official Transformers/custom-code checkpoint; runtime support is not shipped by AbstractVision yet.",
+      "downloads": [
+        {
+          "key": "hunyuanimage-3.0-instruct",
+          "engine": "transformers",
+          "target": "hf-snapshot",
+          "bits": 16,
+          "repo_id": "tencent/HunyuanImage-3.0-Instruct",
+          "source": "official",
+          "notes": "Full Hugging Face snapshot (Transformers/custom-code runtime; supports text-to-image and text-image-to-image)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "not_supported"
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "not_supported"
+          }
+        }
+      }
+    },
+    "tencent/HunyuanImage-3.0-Instruct-Distil": {
+      "provider": "huggingface",
+      "license": "other",
+      "notes": "Distilled HunyuanImage 3.0 Instruct checkpoint for fewer sampling steps. Official Transformers/custom-code runtime; runtime support is not shipped by AbstractVision yet.",
+      "downloads": [
+        {
+          "key": "hunyuanimage-3.0-instruct-distil",
+          "engine": "transformers",
+          "target": "hf-snapshot",
+          "bits": 16,
+          "repo_id": "tencent/HunyuanImage-3.0-Instruct-Distil",
+          "source": "official",
+          "notes": "Full Hugging Face snapshot (distilled Instruct checkpoint; 8-step sampling recommended upstream)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "not_supported"
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
               "required": false
             },
             "steps": {
@@ -1736,9 +2267,58 @@
         }
       }
     },
+    "Tongyi-MAI/Z-Image": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Full-capacity Z-Image Diffusers checkpoint. Compared with Z-Image-Turbo, it supports CFG, negative prompting, and longer sampling schedules for higher controllability.",
+      "downloads": [
+        {
+          "key": "z-image",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Tongyi-MAI/Z-Image",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
     "Tongyi-MAI/Z-Image-Turbo": {
       "provider": "huggingface",
-      "license": "unknown",
+      "license": "apache-2.0",
       "notes": "Turbo text-to-image option; backend may clamp/ignore some params. For Apple Silicon local generation, prefer abstractvision download-model z-image-turbo --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
       "downloads": [
         {
@@ -1805,8 +2385,19 @@
     },
     "Wan-AI/Wan2.2-T2V-A14B": {
       "provider": "huggingface",
-      "license": "unknown",
+      "license": "apache-2.0",
       "notes": "Text-to-video foundation model.",
+      "downloads": [
+        {
+          "key": "wan2.2-t2v-a14b",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+          "source": "official",
+          "notes": "Official Diffusers snapshot for the Wan 2.2 text-to-video checkpoint."
+        }
+      ],
       "tasks": {
         "text_to_video": {
           "inputs": [
@@ -1847,6 +2438,68 @@
         }
       }
     },
+    "Wan-AI/Wan2.2-I2V-A14B": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Image-to-video foundation model. The official Wan Diffusers release exposes `WanImageToVideoPipeline`; AbstractVision catalogs the download, but does not ship a runtime backend for it yet.",
+      "downloads": [
+        {
+          "key": "wan2.2-i2v-a14b",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+          "source": "official",
+          "notes": "Official Diffusers snapshot for the Wan 2.2 image-to-video checkpoint."
+        }
+      ],
+      "tasks": {
+        "image_to_video": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "video"
+          ],
+          "params": {
+            "image": {
+              "required": true
+            },
+            "prompt": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "fps": {
+              "required": false
+            },
+            "num_frames": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "not_supported"
+          }
+        }
+      }
+    },
     "zai-org/GLM-Image": {
       "provider": "huggingface",
       "license": "mit",
@@ -1878,16 +2531,20 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "multiple_of": 32
             },
             "height": {
-              "required": false
+              "required": false,
+              "multiple_of": 32
             },
             "steps": {
-              "required": false
+              "required": false,
+              "default": 20
             },
             "guidance_scale": {
-              "required": false
+              "required": false,
+              "default": 1.5
             },
             "seed": {
               "required": false
@@ -1915,11 +2572,23 @@
             "negative_prompt": {
               "required": false
             },
+            "width": {
+              "required": false,
+              "multiple_of": 32,
+              "auto_derived_from_input": true
+            },
+            "height": {
+              "required": false,
+              "multiple_of": 32,
+              "auto_derived_from_input": true
+            },
             "steps": {
-              "required": false
+              "required": false,
+              "default": 20
             },
             "guidance_scale": {
-              "required": false
+              "required": false,
+              "default": 1.5
             },
             "seed": {
               "required": false

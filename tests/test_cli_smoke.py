@@ -15,6 +15,15 @@ sys.path.insert(0, str(SRC_DIR))
 
 
 class TestCliSmoke(unittest.TestCase):
+    def _make_hf_snapshot(self, root: Path, repo_id: str, *, snapshot_name: str = "abc123") -> Path:
+        repo_dir = root / f"models--{repo_id.replace('/', '--')}"
+        snap = repo_dir / "snapshots" / snapshot_name
+        snap.mkdir(parents=True, exist_ok=True)
+        (snap / "model_index.json").write_text("{}", encoding="utf-8")
+        (repo_dir / "refs").mkdir(parents=True, exist_ok=True)
+        (repo_dir / "refs" / "main").write_text(snapshot_name, encoding="utf-8")
+        return snap
+
     def test_models_lists_known_id(self):
         from abstractvision.cli import main
 
@@ -226,7 +235,7 @@ class TestCliSmoke(unittest.TestCase):
             calls["repo_id"] = preset.repo_id
             calls["target"] = preset.target
             calls["bits"] = preset.quantization_bits
-            return Path("/tmp/models") / preset.local_dir_name
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
 
         buf = io.StringIO()
         with patch("abstractvision.cli.download_model_preset", new=fake_download):
@@ -238,15 +247,20 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(calls["target"], "diffusers")
         self.assertEqual(calls["bits"], 16)
 
-    def test_diffusers_provider_prefers_local_download_dir_when_present(self):
+    def test_diffusers_provider_uses_cached_snapshot_and_migrates_legacy_tree(self):
         from abstractvision.cli import _build_manager_from_args
 
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            (root / "qwen-image-2512-diffusers").mkdir(parents=True, exist_ok=True)
-            (root / "qwen-image-2512-diffusers" / "model_index.json").write_text("{}", encoding="utf-8")
+        with tempfile.TemporaryDirectory() as legacy_td, tempfile.TemporaryDirectory() as cache_td:
+            legacy_root = Path(legacy_td)
+            legacy_dir = legacy_root / "qwen-image-2512-diffusers"
+            legacy_dir.mkdir(parents=True, exist_ok=True)
+            (legacy_dir / "model_index.json").write_text("{}", encoding="utf-8")
 
-            with patch.dict("os.environ", {"ABSTRACTVISION_MODEL_DIR": td}, clear=False):
+            with patch.dict(
+                "os.environ",
+                {"ABSTRACTVISION_MODEL_DIR": legacy_td, "HF_HUB_CACHE": cache_td},
+                clear=True,
+            ):
                 args = types.SimpleNamespace(
                     store_dir=None,
                     provider="diffusers",
@@ -284,7 +298,11 @@ class TestCliSmoke(unittest.TestCase):
                 backend = vm.backend
                 cfg = getattr(backend, "_cfg", None)
                 self.assertIsNotNone(cfg)
-                self.assertEqual(getattr(cfg, "model_id", None), str(root / "qwen-image-2512-diffusers"))
+                model_id = str(getattr(cfg, "model_id", ""))
+                self.assertTrue(model_id.startswith(cache_td))
+                self.assertIn("models--Qwen--Qwen-Image-2512", model_id)
+                self.assertIn("snapshots", model_id)
+                self.assertFalse(legacy_dir.exists())
 
     def test_download_model_selects_8bit_without_network_when_mocked(self):
         from abstractvision.cli import main
@@ -295,7 +313,7 @@ class TestCliSmoke(unittest.TestCase):
             calls["repo_id"] = preset.repo_id
             calls["model_dir"] = model_dir
             calls["max_workers"] = max_workers
-            return Path("/tmp/models") / preset.local_dir_name
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
 
         buf = io.StringIO()
         with patch("abstractvision.cli.download_model_preset", new=fake_download):
@@ -307,7 +325,7 @@ class TestCliSmoke(unittest.TestCase):
                         "--provider",
                         "mflux",
                         "--model-dir",
-                        "/tmp/models",
+                        "/tmp/legacy-models",
                         "--max-workers",
                         "2",
                     ]
@@ -315,9 +333,9 @@ class TestCliSmoke(unittest.TestCase):
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertEqual(calls["repo_id"], "deepsweet/FLUX.2-klein-9B-MLX-Q8")
-        self.assertEqual(str(calls["model_dir"]), "/tmp/models")
+        self.assertEqual(str(calls["model_dir"]), "/tmp/legacy-models")
         self.assertEqual(calls["max_workers"], 2)
-        self.assertIn("/tmp/models/flux2-klein-9b-mlx-8bit", out)
+        self.assertIn("/tmp/hf-cache/models--deepsweet--FLUX.2-klein-9B-MLX-Q8/snapshots/abc123", out)
 
     def test_download_model_accepts_repo_id_fallback(self):
         from abstractvision.cli import main
@@ -326,18 +344,21 @@ class TestCliSmoke(unittest.TestCase):
 
         def fake_snapshot(repo_id, *, token=None, revision=None, allow_patterns=None, ignore_patterns=None, cache_dir=None, local_files_only=False, max_workers=4):
             calls["repo_id"] = repo_id
+            calls["cache_dir"] = cache_dir
             calls["local_files_only"] = local_files_only
             calls["max_workers"] = max_workers
             return Path("/tmp/hf-cache") / "snap"
 
         buf = io.StringIO()
-        with patch("abstractvision.cli.download_hf_repo_snapshot", new=fake_snapshot):
-            with contextlib.redirect_stdout(buf):
-                rc = main(["download-model", "some-org/some-model", "--max-workers", "2"])
+        with patch.dict("os.environ", {"HF_HUB_CACHE": "/tmp/hf-cache"}, clear=True):
+            with patch("abstractvision.cli.download_hf_repo_snapshot", new=fake_snapshot):
+                with contextlib.redirect_stdout(buf):
+                    rc = main(["download-model", "some-org/some-model", "--max-workers", "2"])
 
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertEqual(calls["repo_id"], "some-org/some-model")
+        self.assertEqual(calls["cache_dir"], "/tmp/hf-cache")
         self.assertFalse(calls["local_files_only"])
         self.assertEqual(calls["max_workers"], 2)
         self.assertIn("/tmp/hf-cache/snap", out)
@@ -351,7 +372,7 @@ class TestCliSmoke(unittest.TestCase):
             calls["repo_id"] = preset.repo_id
             calls["local_dir_name"] = preset.local_dir_name
             calls["max_workers"] = max_workers
-            return Path("/tmp/models") / preset.local_dir_name
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
 
         buf = io.StringIO()
         with patch("abstractvision.cli.download_model_preset", new=fake_download):
@@ -363,7 +384,82 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(calls["repo_id"], "mlx-community/Qwen-Image-2512-8bit")
         self.assertEqual(calls["local_dir_name"], "qwen-image-2512-mlx-8bit")
         self.assertEqual(calls["max_workers"], 2)
-        self.assertIn("/tmp/models/qwen-image-2512-mlx-8bit", out)
+        self.assertIn("/tmp/hf-cache/models--mlx-community--Qwen-Image-2512-8bit/snapshots/abc123", out)
+
+    def test_download_model_supports_registry_only_hf_snapshot_preset(self):
+        from abstractvision.cli import main
+
+        calls = {}
+
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+            calls["repo_id"] = preset.repo_id
+            calls["target"] = preset.target
+            calls["engine"] = preset.engine
+            calls["bits"] = preset.quantization_bits
+            return Path("/tmp/hf-cache") / "models--tencent--HunyuanImage-3.0" / "snapshots" / "abc123"
+
+        buf = io.StringIO()
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["download-model", "hunyuanimage-3.0"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls["repo_id"], "tencent/HunyuanImage-3.0")
+        self.assertEqual(calls["target"], "hf-snapshot")
+        self.assertEqual(calls["engine"], "transformers")
+        self.assertEqual(calls["bits"], 16)
+        self.assertIn("/tmp/hf-cache/models--tencent--HunyuanImage-3.0/snapshots/abc123", out)
+
+    def test_download_model_surfaces_friendly_hf_access_message(self):
+        from abstractvision.cli import main
+        from abstractvision.model_downloads import HuggingFaceAccessError
+
+        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4):
+            raise HuggingFaceAccessError(
+                "stabilityai/stable-diffusion-3.5-medium",
+                raw_message="403 Client Error: gated repo",
+                status_code=403,
+            )
+
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with patch("sys.stdin.isatty", return_value=False):
+                with self.assertRaises(SystemExit) as ctx:
+                    main(["download-model", "sd3.5-medium", "--provider", "diffusers"])
+
+        msg = str(ctx.exception)
+        self.assertIn("https://huggingface.co/stabilityai/stable-diffusion-3.5-medium", msg)
+        self.assertIn("https://huggingface.co/settings/tokens", msg)
+        self.assertIn("hf auth login", msg)
+
+    def test_download_model_can_prompt_for_hf_token_and_retry(self):
+        from abstractvision.cli import main
+        from abstractvision.model_downloads import HuggingFaceAccessError
+
+        calls = {"count": 0, "tokens": []}
+
+        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4):
+            calls["count"] += 1
+            calls["tokens"].append(token)
+            if calls["count"] == 1:
+                raise HuggingFaceAccessError(
+                    "stabilityai/stable-diffusion-3.5-medium",
+                    raw_message="403 Client Error: gated repo",
+                    status_code=403,
+                )
+            return Path("/tmp/hf-cache/models--stabilityai--stable-diffusion-3.5-medium/snapshots/abc123")
+
+        buf = io.StringIO()
+        with patch.dict("os.environ", {}, clear=True):
+            with patch("abstractvision.cli.download_model_preset", new=fake_download):
+                with patch("sys.stdin.isatty", return_value=True):
+                    with patch("abstractvision.cli.getpass.getpass", return_value="hf_test_token"):
+                        with contextlib.redirect_stdout(buf):
+                            rc = main(["download-model", "sd3.5-medium", "--provider", "diffusers"])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls["tokens"], [None, "hf_test_token"])
+        self.assertIn("/tmp/hf-cache/models--stabilityai--stable-diffusion-3.5-medium/snapshots/abc123", buf.getvalue())
 
     def test_repl_state_starts_unconfigured_without_backend_env(self):
         from abstractvision.cli import DEFAULT_DIFFUSERS_DEVICE, _ReplState
@@ -410,7 +506,7 @@ class TestCliSmoke(unittest.TestCase):
         buf = io.StringIO()
         with patch("builtins.input", side_effect=lambda _prompt: next(commands)):
             with contextlib.redirect_stdout(buf):
-                rc = main(["repl"])
+                rc = main(["cli"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertIn('"backend_kind": "sdcpp"', out)

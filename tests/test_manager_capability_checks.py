@@ -111,6 +111,66 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         self.assertEqual([m.id for m in models], ["provider/image-model"])
         self.assertEqual(backend.task, "text_to_image")
 
+    def test_manager_applies_backend_request_normalization(self):
+        from abstractvision import VisionManager
+        from abstractvision.backends import VisionBackend
+        from abstractvision.types import GeneratedAsset, ImageEditRequest, ImageGenerationRequest
+
+        seen = {}
+
+        class NormalizingBackend(VisionBackend):
+            def normalize_image_generation_request(self, request: ImageGenerationRequest) -> ImageGenerationRequest:
+                return ImageGenerationRequest(
+                    prompt=request.prompt,
+                    negative_prompt=None,
+                    width=request.width,
+                    height=request.height,
+                    seed=request.seed,
+                    steps=2,
+                    guidance_scale=1.0,
+                    extra=dict(request.extra or {}),
+                )
+
+            def normalize_image_edit_request(self, request: ImageEditRequest) -> ImageEditRequest:
+                return ImageEditRequest(
+                    prompt=request.prompt,
+                    image=request.image,
+                    mask=request.mask,
+                    negative_prompt=None,
+                    seed=request.seed,
+                    steps=2,
+                    guidance_scale=1.0,
+                    extra=dict(request.extra or {}),
+                )
+
+            def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+                seen["t2i"] = request
+                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+
+            def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
+                seen["i2i"] = request
+                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+
+            def generate_angles(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def image_to_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+        vm = VisionManager(backend=NormalizingBackend())
+        vm.generate_image("hello", steps=1, guidance_scale=7.0, negative_prompt="blur")
+        vm.edit_image("hello", image=b"img", steps=1, guidance_scale=7.0, negative_prompt="blur")
+
+        self.assertEqual(seen["t2i"].steps, 2)
+        self.assertEqual(seen["t2i"].guidance_scale, 1.0)
+        self.assertIsNone(seen["t2i"].negative_prompt)
+        self.assertEqual(seen["i2i"].steps, 2)
+        self.assertEqual(seen["i2i"].guidance_scale, 1.0)
+        self.assertIsNone(seen["i2i"].negative_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

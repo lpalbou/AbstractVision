@@ -5,11 +5,20 @@ import inspect
 import os
 import hashlib
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
+from ..model_capabilities import VisionModelCapabilitiesRegistry, VisionTaskSpec
+from ..model_cache import (
+    cached_hf_model_sources,
+    hf_snapshot_has_incomplete_downloads,
+    hf_snapshot_has_weight_files,
+    hf_snapshot_is_usable,
+    hf_snapshot_missing_indexed_weight_files,
+    resolve_hf_repo_snapshot,
+)
 from ..types import (
     GeneratedAsset,
     ImageEditRequest,
@@ -33,6 +42,49 @@ def _require_optional_dep(name: str, install_hint: str) -> None:
 
 _DIFFUSERS_RUNTIME_HINT = 'pip install "abstractvision[diffusers]"'
 _LOCAL_RUNTIME_HINT = 'pip install "abstractvision[local]"'
+_DIFFUSERS_CACHE_REQUIRED_FILES = ("model_index.json",)
+_GLM_IMAGE_FALLBACK_CHAT_TEMPLATE = (
+    "{%- for m in messages -%}\n"
+    "{%- if m.content is string -%}\n"
+    "{{ m.content }}\n"
+    "{%- else -%}\n"
+    "{%- for item in m.content -%}\n"
+    "{%- if item.type == 'image' or item.get('image') is not none -%}\n"
+    "<|dit_token_16384|><|image|><|dit_token_16385|>\n"
+    "{%- elif item.type == 'text' -%}\n"
+    "{{ item.text }}\n"
+    "{%- endif -%}\n"
+    "{%- endfor -%}\n"
+    "{%- endif -%}\n"
+    "{%- endfor -%}\n"
+)
+_ERNIE_PE_FALLBACK_CHAT_TEMPLATE = (
+    "{{- bos_token }}[SYSTEM_PROMPT]你是一个专业的文生图 Prompt 增强助手。你将收到用户的简短图片描述及目标生成分辨率，请据此扩写为一段内容丰富、细节充分的视觉描述，以帮助文生图模型生成高质量的图片。仅输出增强后的描述，不要包含任何解释或前缀。[/SYSTEM_PROMPT]\n"
+    "{%- for message in messages %}\n"
+    "{%- if message['role'] == 'user' %}\n"
+    "{{- '[INST]' + message['content'] + '[/INST]' }}\n"
+    "{%- elif message['role'] == 'assistant' %}\n"
+    "{%- generation %}{{ message['content'] }}{{ eos_token }}{% endgeneration %}\n"
+    "{%- endif %}\n"
+    "{%- endfor %}\n"
+)
+_GENERIC_CHAT_TEMPLATE_WITH_ASSISTANT_PROMPT = (
+    "{%- for message in messages -%}\n"
+    "{%- if message.content is string -%}\n"
+    "{%- set content = message.content -%}\n"
+    "{%- else -%}\n"
+    "{%- set content = '' -%}\n"
+    "{%- endif -%}\n"
+    "{%- if message.role in ['user', 'system'] -%}\n"
+    "{{- '<|im_start|>' + message.role + '\\n' + content + '<|im_end|>\\n' }}\n"
+    "{%- elif message.role == 'assistant' -%}\n"
+    "{{- '<|im_start|>assistant\\n' + content + '<|im_end|>\\n' }}\n"
+    "{%- endif -%}\n"
+    "{%- endfor -%}\n"
+    "{%- if add_generation_prompt -%}\n"
+    "{{- '<|im_start|>assistant\\n' }}\n"
+    "{%- endif -%}\n"
+)
 
 
 def _lazy_import_diffusers():
@@ -118,6 +170,98 @@ def _lazy_import_qwen_image_transformer_2d_model():
             "which is not available in this diffusers build."
         )
     return QwenImageTransformer2DModel
+
+
+def _read_chat_template_file(snapshot_dir: Optional[Path], *relative_paths: str) -> Optional[str]:
+    if snapshot_dir is None:
+        return None
+    for rel in relative_paths:
+        candidate = snapshot_dir / rel
+        try:
+            if candidate.is_file():
+                text = candidate.read_text(encoding="utf-8").strip()
+                if text:
+                    return text
+        except Exception:
+            continue
+    return None
+
+
+def _maybe_set_chat_template(target: Any, template: Optional[str]) -> bool:
+    if target is None or not str(template or "").strip():
+        return False
+    try:
+        if getattr(target, "chat_template", None):
+            return True
+    except Exception:
+        pass
+    try:
+        setattr(target, "chat_template", str(template))
+        return True
+    except Exception:
+        return False
+
+
+def _ensure_pipeline_chat_templates(
+    pipe: Any,
+    *,
+    snapshot_dir: Optional[Path],
+    model_id: Optional[str],
+) -> None:
+    model_hint = " ".join(
+        str(value or "")
+        for value in (
+            model_id,
+            type(pipe).__name__,
+            getattr(getattr(pipe, "tokenizer", None), "__class__", type(None)).__name__,
+            getattr(getattr(pipe, "processor", None), "__class__", type(None)).__name__,
+        )
+    ).strip().lower()
+
+    tokenizer = getattr(pipe, "tokenizer", None)
+    processor = getattr(pipe, "processor", None)
+    pe_tokenizer = getattr(pipe, "pe_tokenizer", None)
+
+    tokenizer_targets = [
+        (tokenizer, ("tokenizer/chat_template.jinja",), None),
+        (
+            pe_tokenizer,
+            ("pe_tokenizer/chat_template.jinja", "pe/chat_template.jinja"),
+            _ERNIE_PE_FALLBACK_CHAT_TEMPLATE if "ernie" in model_hint else None,
+        ),
+    ]
+    if processor is not None:
+        tokenizer_targets.append(
+            (
+                getattr(processor, "tokenizer", None),
+                (
+                    "processor/tokenizer/chat_template.jinja",
+                    "tokenizer/chat_template.jinja",
+                ),
+                None,
+            )
+        )
+
+    seen_tokenizers = set()
+    for target, relative_paths, explicit_fallback in tokenizer_targets:
+        if target is None or id(target) in seen_tokenizers:
+            continue
+        seen_tokenizers.add(id(target))
+        if getattr(target, "chat_template", None):
+            continue
+        tokenizer_template = _read_chat_template_file(snapshot_dir, *relative_paths)
+        if tokenizer_template is None:
+            if explicit_fallback is not None:
+                tokenizer_template = explicit_fallback
+            elif any(token in model_hint for token in ("z-image", "flux2", "qwen")):
+                tokenizer_template = _GENERIC_CHAT_TEMPLATE_WITH_ASSISTANT_PROMPT
+        _maybe_set_chat_template(target, tokenizer_template)
+
+    if processor is not None and not getattr(processor, "chat_template", None):
+        processor_template = _read_chat_template_file(snapshot_dir, "processor/chat_template.jinja")
+        if processor_template is None and "glm-image" in model_hint:
+            processor_template = _GLM_IMAGE_FALLBACK_CHAT_TEMPLATE
+        _maybe_set_chat_template(processor, processor_template)
 
 
 _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED = False
@@ -354,6 +498,22 @@ def _forward_extra_kwargs(extra: Any, *, call_params: Optional[set[str]]) -> Dic
     return out
 
 
+def _round_up_to_multiple(value: Optional[int], multiple_of: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        step = int(multiple_of)
+    except Exception:
+        return int(value)
+    if step <= 1:
+        return int(value)
+    current = int(value)
+    remainder = current % step
+    if remainder == 0:
+        return current
+    return current + (step - remainder)
+
+
 def _maybe_upcast_vae_for_mps(torch: Any, pipe: Any, device: str) -> None:
     d = str(device or "").strip().lower()
     if d != "mps" and not d.startswith("mps:"):
@@ -490,6 +650,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self._rapid_transformer_key: Optional[str] = None
         self._rapid_transformer: Any = None
         self._resolved_device: Optional[str] = None
+        self._capability_registry: Optional[VisionModelCapabilitiesRegistry] = None
+        self._capability_registry_failed = False
 
     def _effective_device(self, torch: Any) -> str:
         if self._resolved_device is not None:
@@ -557,6 +719,145 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             gc.collect()
         except Exception:
             pass
+
+    def _registry(self) -> Optional[VisionModelCapabilitiesRegistry]:
+        if self._capability_registry is not None:
+            return self._capability_registry
+        if self._capability_registry_failed:
+            return None
+        try:
+            self._capability_registry = VisionModelCapabilitiesRegistry()
+        except Exception:
+            self._capability_registry_failed = True
+            return None
+        return self._capability_registry
+
+    def _task_spec(self, task: str) -> Optional[VisionTaskSpec]:
+        reg = self._registry()
+        model_id = str(self._cfg.model_id or "").strip()
+        if reg is None or not model_id:
+            return None
+        try:
+            return reg.get(model_id).tasks.get(str(task))
+        except Exception:
+            return None
+
+    def _normalize_int_param(
+        self,
+        value: Optional[int],
+        spec: Optional[Dict[str, Any]],
+    ) -> Optional[int]:
+        if not isinstance(spec, dict):
+            return value
+        out = int(value) if value is not None else None
+        if out is None and spec.get("default") is not None:
+            try:
+                out = int(spec.get("default"))
+            except Exception:
+                out = None
+        if spec.get("const") is not None:
+            try:
+                out = int(spec.get("const"))
+            except Exception:
+                pass
+        if out is not None and spec.get("min") is not None:
+            try:
+                out = max(out, int(spec.get("min")))
+            except Exception:
+                pass
+        if out is not None and spec.get("multiple_of") is not None:
+            out = _round_up_to_multiple(out, spec.get("multiple_of"))
+        return out
+
+    def _normalize_float_param(
+        self,
+        value: Optional[float],
+        spec: Optional[Dict[str, Any]],
+    ) -> Optional[float]:
+        if not isinstance(spec, dict):
+            return value
+        out = float(value) if value is not None else None
+        if out is None and spec.get("default") is not None:
+            try:
+                out = float(spec.get("default"))
+            except Exception:
+                out = None
+        if spec.get("const") is not None:
+            try:
+                out = float(spec.get("const"))
+            except Exception:
+                pass
+        if out is not None and spec.get("min") is not None:
+            try:
+                out = max(out, float(spec.get("min")))
+            except Exception:
+                pass
+        return out
+
+    def normalize_image_generation_request(
+        self,
+        request: ImageGenerationRequest,
+    ) -> ImageGenerationRequest:
+        spec = self._task_spec("text_to_image")
+        if spec is None:
+            return request
+        params = spec.params if isinstance(spec.params, dict) else {}
+        negative_prompt = request.negative_prompt
+        negative_spec = params.get("negative_prompt")
+        if isinstance(negative_spec, dict) and negative_spec.get("supported") is False:
+            negative_prompt = None
+        return replace(
+            request,
+            negative_prompt=negative_prompt,
+            width=self._normalize_int_param(request.width, params.get("width")),
+            height=self._normalize_int_param(request.height, params.get("height")),
+            steps=self._normalize_int_param(request.steps, params.get("steps")),
+            guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
+        )
+
+    def normalize_image_edit_request(
+        self,
+        request: ImageEditRequest,
+    ) -> ImageEditRequest:
+        spec = self._task_spec("image_to_image")
+        if spec is None:
+            return request
+        params = spec.params if isinstance(spec.params, dict) else {}
+        negative_prompt = request.negative_prompt
+        negative_spec = params.get("negative_prompt")
+        if isinstance(negative_spec, dict) and negative_spec.get("supported") is False:
+            negative_prompt = None
+
+        extra = dict(request.extra or {})
+        width_value = extra.get("width")
+        height_value = extra.get("height")
+        if width_value is None or height_value is None:
+            width_spec = params.get("width")
+            height_spec = params.get("height")
+            if isinstance(width_spec, dict) or isinstance(height_spec, dict):
+                try:
+                    pil_image = self._pil_from_bytes(request.image)
+                    image_width, image_height = pil_image.size
+                    if width_value is None and isinstance(width_spec, dict) and width_spec.get("auto_derived_from_input"):
+                        width_value = image_width
+                    if height_value is None and isinstance(height_spec, dict) and height_spec.get("auto_derived_from_input"):
+                        height_value = image_height
+                except Exception:
+                    pass
+
+        width = self._normalize_int_param(int(width_value) if width_value is not None else None, params.get("width"))
+        height = self._normalize_int_param(int(height_value) if height_value is not None else None, params.get("height"))
+        if width is not None:
+            extra["width"] = width
+        if height is not None:
+            extra["height"] = height
+        return replace(
+            request,
+            negative_prompt=negative_prompt,
+            steps=self._normalize_int_param(request.steps, params.get("steps")),
+            guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
+            extra=extra,
+        )
 
         try:
             torch = _lazy_import_torch()
@@ -790,27 +1091,47 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return repo
 
     def get_capabilities(self) -> VisionBackendCapabilities:
+        task_spec = self._task_spec("image_to_image")
+        supports_mask: Optional[bool] = None
+        if task_spec is not None:
+            params = task_spec.params if isinstance(task_spec.params, dict) else {}
+            if "mask" in params:
+                mask_meta = params.get("mask")
+                if isinstance(mask_meta, dict):
+                    supports_mask = False if mask_meta.get("supported") is False else True
+                else:
+                    supports_mask = True
+            else:
+                supports_mask = False
+        model_spec = None
+        reg = self._registry()
+        model_id = str(self._cfg.model_id or "").strip()
+        if reg is not None and model_id:
+            try:
+                model_spec = reg.get(model_id)
+            except Exception:
+                model_spec = None
         return VisionBackendCapabilities(
-            supported_tasks=["text_to_image", "image_to_image"],
-            supports_mask=None,  # depends on whether inpaint pipeline loads for the model
+            supported_tasks=(
+                sorted(str(task_name) for task_name in model_spec.tasks.keys())
+                if model_spec is not None
+                else ["text_to_image", "image_to_image"]
+            ),
+            supports_mask=supports_mask,
         )
 
     def _is_hf_model_cached(self, model_id: str) -> bool:
         model_id = str(model_id or "").strip()
         if not model_id or "/" not in model_id:
             return False
-        folder = "models--" + model_id.replace("/", "--")
-        for cache_root in self._hf_cache_roots():
-            repo_dir = cache_root / folder
-            snaps = repo_dir / "snapshots"
-            if not snaps.is_dir():
-                continue
-            try:
-                if any((p / "model_index.json").is_file() for p in snaps.iterdir() if p.is_dir()):
-                    return True
-            except Exception:
-                continue
-        return False
+        return bool(
+            cached_hf_model_sources(
+                model_id,
+                extra_roots=self._hf_cache_roots(),
+                required_files=_DIFFUSERS_CACHE_REQUIRED_FILES,
+                require_weight_files=True,
+            )
+        )
 
     def _discover_cached_hf_diffusers_models(self) -> List[str]:
         out: List[str] = []
@@ -827,12 +1148,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 model_id = name[len("models--") :].replace("--", "/")
                 if "/" not in model_id or model_id in seen:
                     continue
-                snaps = folder / "snapshots"
-                try:
-                    has_model_index = snaps.is_dir() and any((p / "model_index.json").is_file() for p in snaps.iterdir() if p.is_dir())
-                except Exception:
-                    has_model_index = False
-                if not has_model_index:
+                snap = resolve_hf_repo_snapshot(
+                    model_id,
+                    extra_roots=[cache_root],
+                    required_files=_DIFFUSERS_CACHE_REQUIRED_FILES,
+                    require_weight_files=True,
+                )
+                if snap is None:
                     continue
                 seen.add(model_id)
                 out.append(model_id)
@@ -913,6 +1235,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     raw_extra={
                         "license": spec.license,
                         "notes": spec.notes,
+                        "task_specs": {
+                            str(task_name): {
+                                "inputs": list(task_spec.inputs),
+                                "outputs": list(task_spec.outputs),
+                                "params": dict(task_spec.params),
+                                "requires": dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None,
+                            }
+                            for task_name, task_spec in spec.tasks.items()
+                        },
                     },
                 )
         except Exception:
@@ -1055,26 +1386,24 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         if "/" not in model_id:
             return None
+        return resolve_hf_repo_snapshot(
+            model_id,
+            revision=str(self._cfg.revision or "main").strip() or "main",
+            extra_roots=self._hf_cache_roots(),
+            required_files=_DIFFUSERS_CACHE_REQUIRED_FILES,
+            require_weight_files=True,
+        )
 
-        cache_root = self._hf_cache_root()
-        repo_dir = cache_root / ("models--" + model_id.replace("/", "--"))
-        snaps = repo_dir / "snapshots"
-        if not snaps.is_dir():
+    def _resolve_any_snapshot_dir(self) -> Optional[Path]:
+        model_id = str(self._cfg.model_id).strip()
+        if not model_id or "/" not in model_id:
             return None
-
-        rev = str(self._cfg.revision or "main").strip() or "main"
-        ref_file = repo_dir / "refs" / rev
-        if ref_file.is_file():
-            commit = ref_file.read_text(encoding="utf-8").strip()
-            snap_dir = snaps / commit
-            if snap_dir.is_dir():
-                return snap_dir
-
-        # Fallback: pick the most recently modified snapshot.
-        candidates = [d for d in snaps.iterdir() if d.is_dir()]
-        if not candidates:
-            return None
-        return max(candidates, key=lambda d: d.stat().st_mtime)
+        return resolve_hf_repo_snapshot(
+            model_id,
+            revision=str(self._cfg.revision or "main").strip() or "main",
+            extra_roots=self._hf_cache_roots(),
+            reject_incomplete=False,
+        )
 
     def _preflight_check_model_index(self) -> None:
         snap = self._resolve_snapshot_dir()
@@ -1188,6 +1517,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 auto_variant = "fp16"
 
         load_model_id = str(self._cfg.model_id)
+        snap: Optional[Path] = None
         if not bool(self._cfg.allow_download):
             snap = self._resolve_snapshot_dir()
             if snap is not None:
@@ -1222,6 +1552,34 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 "If the model is gated, accept its terms on Hugging Face and set `HF_TOKEN` before downloading."
             ) from e
 
+        def _maybe_raise_incomplete_snapshot_error(e: Exception) -> None:
+            model_id = str(self._cfg.model_id or "").strip()
+            snap = self._resolve_any_snapshot_dir()
+            if not model_id or not snap:
+                return
+            if hf_snapshot_is_usable(
+                snap,
+                required_files=_DIFFUSERS_CACHE_REQUIRED_FILES,
+                require_weight_files=True,
+            ):
+                return
+            details: List[str] = []
+            if hf_snapshot_has_incomplete_downloads(snap):
+                details.append("interrupted download markers were found")
+            if not hf_snapshot_has_weight_files(snap):
+                details.append("model weight files are missing")
+            missing_indexed = hf_snapshot_missing_indexed_weight_files(snap)
+            if missing_indexed:
+                preview = ", ".join(missing_indexed[:4])
+                if len(missing_indexed) > 4:
+                    preview += ", ..."
+                details.append(f"indexed shard files are missing ({preview})")
+            detail_s = "; ".join(details) if details else "required files are missing"
+            raise ValueError(
+                f"Local Diffusers snapshot for {model_id!r} is incomplete: {snap} ({detail_s}). "
+                "Re-run `abstractvision download-model` for this model, or delete the broken cache snapshot and download it again."
+            ) from e
+
         pipe = None
         with _hf_offline_env(not bool(self._cfg.allow_download)):
             if kind == "t2i":
@@ -1231,12 +1589,14 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                         pipe = _from_pretrained(AutoPipelineForText2Image)
                     except ValueError as e:
                         _maybe_raise_offline_missing_model(e)
+                        _maybe_raise_incomplete_snapshot_error(e)
                         pipe = None
                 if pipe is None:
                     try:
                         pipe = _from_pretrained(DiffusionPipeline)
                     except Exception as e:
                         _maybe_raise_offline_missing_model(e)
+                        _maybe_raise_incomplete_snapshot_error(e)
                         raise
             elif kind == "i2i":
                 if AutoPipelineForImage2Image is not None:
@@ -1244,12 +1604,14 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                         pipe = _from_pretrained(AutoPipelineForImage2Image)
                     except ValueError as e:
                         _maybe_raise_offline_missing_model(e)
+                        _maybe_raise_incomplete_snapshot_error(e)
                         pipe = None
                 if pipe is None:
                     try:
                         pipe = _from_pretrained(DiffusionPipeline)
                     except Exception as e:
                         _maybe_raise_offline_missing_model(e)
+                        _maybe_raise_incomplete_snapshot_error(e)
                         raise ValueError(
                             "Diffusers could not load an image-to-image pipeline for this model id. "
                             "Install/upgrade diffusers (and compatible transformers/torch), or use a model repo that "
@@ -1263,12 +1625,25 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                         "Install/upgrade diffusers (and compatible transformers/torch). "
                         f"(diffusers={diffusers_version})"
                     )
-                pipe = _from_pretrained(AutoPipelineForInpainting)
+                try:
+                    pipe = _from_pretrained(AutoPipelineForInpainting)
+                except Exception as e:
+                    _maybe_raise_offline_missing_model(e)
+                    _maybe_raise_incomplete_snapshot_error(e)
+                    raise
             else:
                 raise ValueError(f"Unknown pipeline kind: {kind!r}")
 
         # Diffusers pipelines support `.to(<device>)` with a string.
         pipe = pipe.to(str(device))
+        template_snapshot = snap
+        if template_snapshot is None:
+            candidate = Path(str(load_model_id)).expanduser()
+            if candidate.exists():
+                template_snapshot = candidate
+            else:
+                template_snapshot = self._resolve_any_snapshot_dir()
+        _ensure_pipeline_chat_templates(pipe, snapshot_dir=template_snapshot, model_id=str(self._cfg.model_id or ""))
         _maybe_cast_pipe_modules_to_dtype(pipe, dtype=torch_dtype)
         _maybe_upcast_vae_for_mps(torch, pipe, device)
         self._pipelines[kind] = pipe

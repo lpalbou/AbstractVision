@@ -141,6 +141,15 @@
         border: 1px solid var(--border);
         background: rgba(0, 0, 0, 0.2);
       }
+      fieldset {
+        border: 0;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
+      }
+      fieldset:disabled {
+        opacity: 0.55;
+      }
       .mono {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size: 12px;
@@ -175,10 +184,9 @@
           <label for="t2iPrompt">Prompt</label>
           <textarea id="t2iPrompt">a cinematic photo of a red fox in snow, 35mm, high detail</textarea>
 
-	          <label for="modelSelect">Model (cached)</label>
+          <label for="modelSelect">Model Catalog</label>
             <div class="hstack">
               <select id="modelSelect"></select>
-              <button class="secondary" id="modelUnloadBtn" disabled>Unload</button>
             </div>
             <progress id="modelLoadProgress" style="display: none"></progress>
             <div id="modelLoadStatus" class="status"></div>
@@ -231,7 +239,9 @@
 
         <div class="card">
           <h2 style="margin: 0 0 8px; font-size: 16px">Image → Image (edits)</h2>
+          <div id="i2iSupportHint" class="status" style="margin-bottom: 8px">Select a model with edit capability to enable this panel.</div>
 
+          <fieldset id="i2iFieldset" disabled>
 	          <label for="i2iPrompt">Prompt</label>
 	          <textarea id="i2iPrompt">make it watercolor</textarea>
             <div class="status" style="margin-top: 6px">Uses the loaded model above.</div>
@@ -267,6 +277,7 @@
             <span id="i2iStatus" class="status"></span>
           </div>
           <progress id="i2iProgress" style="display: none"></progress>
+          </fieldset>
 
           <div class="out">
             <img id="i2iImg" alt="" />
@@ -357,6 +368,10 @@
         return "http://127.0.0.1:8091";
       }
 
+      document.querySelectorAll('input[type="number"]').forEach((el) => {
+        if (el.hasAttribute("min")) el.dataset.defaultMin = el.getAttribute("min") || "";
+        if (el.hasAttribute("step")) el.dataset.defaultStep = el.getAttribute("step") || "";
+      });
       $("baseUrl").value = defaultBaseUrl();
 
       async function fetchJson(url, init) {
@@ -393,13 +408,118 @@
       });
 
       let activeModelId = null;
+      let catalogModels = [];
       let modelOpInFlight = false;
       let inferenceInFlight = 0;
+
+      function summarizeBase64(value) {
+        const text = String(value || "");
+        if (text.length <= 96) return text;
+        return `${text.slice(0, 48)}… (${text.length} base64 chars) …${text.slice(-16)}`;
+      }
+
+      function sanitizeResponseForLog(value) {
+        if (Array.isArray(value)) return value.map((item) => sanitizeResponseForLog(item));
+        if (value && typeof value === "object") {
+          const out = {};
+          for (const [key, item] of Object.entries(value)) {
+            out[key] = key === "b64_json" && typeof item === "string" ? summarizeBase64(item) : sanitizeResponseForLog(item);
+          }
+          return out;
+        }
+        return value;
+      }
+
+      function findModelMetaByValue(value) {
+        const key = String(value || "").trim();
+        if (!key) return null;
+        return (
+          catalogModels.find((model) => String(model.load_id || "") === key) ||
+          catalogModels.find((model) => String(model.id || "") === key) ||
+          null
+        );
+      }
+
+      function currentModelMeta() {
+        return findModelMetaByValue($("modelSelect").value) || findModelMetaByValue(activeModelId);
+      }
+
+      function modelSupportsTask(model, taskName) {
+        if (!model || !taskName) return false;
+        const taskSpecs = model.task_specs && typeof model.task_specs === "object" ? model.task_specs : {};
+        if (taskSpecs[taskName]) return true;
+        const tasks = Array.isArray(model.tasks) ? model.tasks : [];
+        return tasks.includes(taskName);
+      }
+
+      function maybeApplyInputValue(el, nextValue) {
+        if (!el || nextValue === undefined || nextValue === null) return;
+        const current = String(el.value || "");
+        const previousAuto = String(el.dataset.autoValue || "");
+        const initial = String(el.defaultValue || "");
+        const next = String(nextValue);
+        if (!current || current === previousAuto || current === initial) {
+          el.value = next;
+        }
+        el.dataset.autoValue = next;
+      }
+
+      function applyNumericSpec(el, spec) {
+        if (!el) return;
+        const raw = spec && typeof spec === "object" ? spec : {};
+        const defaultMin = el.dataset.defaultMin || "";
+        const defaultStep = el.dataset.defaultStep || "";
+        if (raw.min !== undefined && raw.min !== null) el.min = String(raw.min);
+        else if (defaultMin) el.min = defaultMin;
+        else el.removeAttribute("min");
+        if (raw.multiple_of !== undefined && raw.multiple_of !== null) el.step = String(raw.multiple_of);
+        else if (defaultStep) el.step = defaultStep;
+        else el.removeAttribute("step");
+        if (raw.const !== undefined && raw.const !== null) {
+          maybeApplyInputValue(el, raw.const);
+          return;
+        }
+        if (raw.default !== undefined && raw.default !== null) {
+          maybeApplyInputValue(el, raw.default);
+        }
+      }
+
+      function applyModelDefaultsForTask(prefix, taskName, model) {
+        const taskSpecs = model && model.task_specs && typeof model.task_specs === "object" ? model.task_specs : {};
+        const taskSpec = taskSpecs[taskName];
+        const params = taskSpec && typeof taskSpec.params === "object" ? taskSpec.params : {};
+        applyNumericSpec($(`${prefix}Width`), params.width);
+        applyNumericSpec($(`${prefix}Height`), params.height);
+        applyNumericSpec($(`${prefix}Steps`), params.steps);
+        applyNumericSpec($(`${prefix}Guidance`), params.guidance_scale);
+      }
+
+      function updateEditPanelState() {
+        const model = currentModelMeta();
+        const enabled = !!model && modelSupportsTask(model, "image_to_image");
+        $("i2iFieldset").disabled = !enabled || modelOpInFlight;
+        if (!model) {
+          setStatus($("i2iSupportHint"), "", "Select a model with edit capability to enable this panel.");
+          return;
+        }
+        if (enabled) {
+          setStatus($("i2iSupportHint"), "ok", `Edits enabled for ${model.variant || model.id}.`);
+        } else {
+          setStatus($("i2iSupportHint"), "", `${model.variant || model.id} does not advertise image edit support.`);
+        }
+      }
+
+      function applySelectedModelMetadata() {
+        const model = currentModelMeta();
+        applyModelDefaultsForTask("t2i", "text_to_image", model);
+        applyModelDefaultsForTask("i2i", "image_to_image", model);
+        updateEditPanelState();
+      }
 
       function updateModelControls() {
         const busy = modelOpInFlight || inferenceInFlight > 0;
         $("modelSelect").disabled = busy;
-        $("modelUnloadBtn").disabled = busy || !activeModelId;
+        updateEditPanelState();
       }
 
       function setModelUiBusy(busy, msg) {
@@ -428,19 +548,25 @@
 
         const opt0 = document.createElement("option");
         opt0.value = "";
-        opt0.textContent = "— select a cached model —";
+        opt0.textContent = "— select a loadable model —";
         select.appendChild(opt0);
 
         try {
           const data = await fetchJson(joinUrl(base, "/v1/vision/models"), { method: "GET" });
           const models = (data && data.models) || [];
+          catalogModels = Array.isArray(models) ? models : [];
+          const platform = (data && data.platform) || "local";
+          const targets = Array.isArray(data && data.targets) ? data.targets.filter(Boolean) : [];
 
           for (const m of models) {
             const opt = document.createElement("option");
-            opt.value = m.load_id || m.id;
+            opt.value = m.load_id || `catalog:${m.backend || "download"}:${m.id}`;
             opt.dataset.modelId = m.id;
+            opt.disabled = !m.loadable;
             const sources = (m.cached_in || []).join(", ");
-            opt.textContent = sources ? `${m.id}  (${sources})` : m.id;
+            const variant = m.variant || m.id;
+            const backend = m.backend ? ` [${m.backend}]` : "";
+            opt.textContent = sources ? `${variant} — ${m.id}${backend} (${sources})` : `${variant} — ${m.id}${backend}`;
             select.appendChild(opt);
           }
 
@@ -454,11 +580,19 @@
             select.value = prev;
             setStatus($("modelLoadStatus"), "", "");
           } else {
-            setStatus($("modelLoadStatus"), "", models.length ? "" : "No cached registry models found.");
+            const scope = targets.length ? `${platform}: ${targets.join(", ")}` : platform;
+            setStatus(
+              $("modelLoadStatus"),
+              "",
+              models.length ? `catalog: ${scope}` : "No surfaced playground models found."
+            );
           }
+          applySelectedModelMetadata();
           updateModelControls();
         } catch (e) {
+          catalogModels = [];
           activeModelId = null;
+          applySelectedModelMetadata();
           updateModelControls();
           setStatus($("modelLoadStatus"), "err", String(e.message || e));
         }
@@ -476,32 +610,14 @@
           });
           const active = resp && resp.active;
           activeModelId = active && active.model_id ? String(active.model_id) : modelId;
+          applySelectedModelMetadata();
           setStatus($("modelLoadStatus"), "ok", `loaded: ${activeModelId}`);
         } catch (e) {
           activeModelId = null;
           setStatus($("modelLoadStatus"), "err", String(e.message || e));
           // Reset selection to empty on failure.
           $("modelSelect").value = "";
-        } finally {
-          setModelUiBusy(false, $("modelLoadStatus").textContent);
-          updateModelControls();
-        }
-      }
-
-      async function unloadModel() {
-        const base = $("baseUrl").value;
-        setModelUiBusy(true, "unloading…");
-        try {
-          await fetchJson(joinUrl(base, "/v1/vision/model/unload"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-          });
-          activeModelId = null;
-          $("modelSelect").value = "";
-          setStatus($("modelLoadStatus"), "ok", "unloaded");
-        } catch (e) {
-          setStatus($("modelLoadStatus"), "err", String(e.message || e));
+          applySelectedModelMetadata();
         } finally {
           setModelUiBusy(false, $("modelLoadStatus").textContent);
           updateModelControls();
@@ -511,17 +627,17 @@
       $("modelSelect").addEventListener("change", async () => {
         if (modelOpInFlight) return;
         const modelId = $("modelSelect").value;
+        applySelectedModelMetadata();
         if (!modelId) {
-          if (activeModelId) await unloadModel();
+          if (activeModelId) {
+            $("modelSelect").value = activeModelId;
+            setStatus($("modelLoadStatus"), "ok", `loaded: ${activeModelId}`);
+            applySelectedModelMetadata();
+          }
           return;
         }
         if (activeModelId && modelId === activeModelId) return;
         await loadSelectedModel(modelId);
-      });
-
-      $("modelUnloadBtn").addEventListener("click", async () => {
-        if (modelOpInFlight) return;
-        await unloadModel();
       });
 
       // Initial load.
@@ -566,7 +682,8 @@
         dl.href = "#";
 
         try {
-          if (!activeModelId) throw new Error("select a model (load it into memory) first");
+          const selectedModelId = $("modelSelect").value || activeModelId;
+          if (!selectedModelId) throw new Error("select a model first");
 
           const base = $("baseUrl").value;
           const url = joinUrl(base, "/v1/vision/jobs/images/generations");
@@ -574,6 +691,7 @@
 	          const extra = parseJsonObject($("t2iExtra").value);
 	          const payload = {
 	            prompt: $("t2iPrompt").value,
+              model: selectedModelId,
 	            response_format: "b64_json",
 	            negative_prompt: $("t2iNegative").value || undefined,
 	            width: $("t2iWidth").value ? Number($("t2iWidth").value) : undefined,
@@ -613,7 +731,7 @@
           img.src = out.url;
           dl.href = out.url;
           dl.download = out.mime === "image/jpeg" ? "output.jpg" : "output.png";
-          log.textContent = JSON.stringify(resp, null, 2);
+          log.textContent = JSON.stringify(sanitizeResponseForLog(resp), null, 2);
           setStatus(status, "ok", "done");
         } catch (e) {
           setStatus(status, "err", String(e.message || e));
@@ -644,7 +762,8 @@
         dl.href = "#";
 
         try {
-          if (!activeModelId) throw new Error("select a model (load it into memory) first");
+          const selectedModelId = $("modelSelect").value || activeModelId;
+          if (!selectedModelId) throw new Error("select a model first");
 
           const base = $("baseUrl").value;
           const url = joinUrl(base, "/v1/vision/jobs/images/edits");
@@ -657,6 +776,7 @@
 
 	          const fd = new FormData();
 	          fd.set("prompt", $("i2iPrompt").value);
+            fd.set("model", selectedModelId);
 	          fd.set("image", imageFile, imageFile.name || "image.png");
 	          if (maskFile) fd.set("mask", maskFile, maskFile.name || "mask.png");
 	          if ($("i2iNegative").value) fd.set("negative_prompt", $("i2iNegative").value);
@@ -691,7 +811,7 @@
           img.src = out.url;
           dl.href = out.url;
           dl.download = out.mime === "image/jpeg" ? "output.jpg" : "output.png";
-          log.textContent = JSON.stringify(resp, null, 2);
+          log.textContent = JSON.stringify(sanitizeResponseForLog(resp), null, 2);
           setStatus(status, "ok", "done");
         } catch (e) {
           setStatus(status, "err", String(e.message || e));

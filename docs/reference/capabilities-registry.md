@@ -15,6 +15,11 @@ See also:
 - **Optional safety gating**:
   - `VisionManager(model_id=..., registry=...)` will fail fast if the model doesn’t support a task ([`../../src/abstractvision/vision_manager.py`](../../src/abstractvision/vision_manager.py)).
   - The CLI/REPL can enforce gating via `--capabilities-model-id` (CLI) or `/cap-model` (REPL).
+- **Task-aware UI/catalog metadata**:
+  - `image_to_image` in a model’s `tasks` map is the explicit “this model supports edits” signal.
+  - The playground API surfaces that structured metadata as `task_specs` so local tooling can enable edit-only flows without re-encoding model rules elsewhere.
+- **Request normalization hints**:
+  - additive parameter metadata such as `default`, `const`, `min`, `multiple_of`, `supported`, and `auto_derived_from_input` can be consumed by backends to keep model-specific defaults and constraints in one packaged source of truth.
 
 Important:
 - The registry describes **model capability intent**.
@@ -50,6 +55,14 @@ The validator enforces a “soft schema”:
   - `inputs`, `outputs` (lists of strings)
   - `params` (object where each param has `required: bool`, plus additive fields)
   - optional `requires` for dependencies like `base_model_id`
+
+Examples of additive `params` metadata used in this repo:
+- `default`: backend fills a missing value
+- `const`: backend forces a model-specific fixed value
+- `min`: backend clamps the value upward
+- `multiple_of`: backend rounds dimensions to a required multiple
+- `supported: false`: backend drops an unsupported optional parameter
+- `auto_derived_from_input: true`: image-edit backends can infer a missing size from the input image
 
 ### Downloads (optional)
 

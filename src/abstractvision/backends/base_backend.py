@@ -18,6 +18,20 @@ from ..types import (
 class VisionBackend(ABC):
     """Backend interface for generative vision tasks."""
 
+    def normalize_image_generation_request(
+        self,
+        request: ImageGenerationRequest,
+    ) -> ImageGenerationRequest:
+        """Best-effort request normalization before execution."""
+        return request
+
+    def normalize_image_edit_request(
+        self,
+        request: ImageEditRequest,
+    ) -> ImageEditRequest:
+        """Best-effort request normalization before execution."""
+        return request
+
     def generate_image_with_progress(
         self,
         request: ImageGenerationRequest,

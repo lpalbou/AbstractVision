@@ -1,5 +1,6 @@
 import base64
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -73,6 +74,18 @@ class _FakeQwenImage:
         return _Generated()
 
 
+class _ThreadAwareFlux2:
+    init_thread = None
+    generate_thread = None
+
+    def __init__(self, **kwargs):
+        _ThreadAwareFlux2.init_thread = threading.get_ident()
+
+    def generate_image(self, **kwargs):
+        _ThreadAwareFlux2.generate_thread = threading.get_ident()
+        return _Generated()
+
+
 class TestMFluxVisionBackend(unittest.TestCase):
     def _make_model_dir(self, root: Path, name: str) -> Path:
         model_dir = root / name
@@ -80,37 +93,45 @@ class TestMFluxVisionBackend(unittest.TestCase):
         (model_dir / "transformer" / "0.safetensors").write_bytes(b"x")
         return model_dir
 
-    def test_generate_image_uses_local_mflux_preset(self):
+    def _make_cache_snapshot(self, root: Path, repo_id: str, snapshot_name: str = "abc123") -> Path:
+        repo_dir = root / f"models--{repo_id.replace('/', '--')}"
+        snap = repo_dir / "snapshots" / snapshot_name
+        (snap / "transformer").mkdir(parents=True, exist_ok=True)
+        (snap / "transformer" / "0.safetensors").write_bytes(b"x")
+        (repo_dir / "refs").mkdir(parents=True, exist_ok=True)
+        (repo_dir / "refs" / "main").write_text(snapshot_name, encoding="utf-8")
+        return snap
+
+    def test_generate_image_uses_cached_mflux_preset(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest
 
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            local_dir = self._make_model_dir(root, "flux2-klein-4b-mlx-8bit")
-            backend = MFluxVisionBackend(
-                config=MFluxBackendConfig(model="flux2-klein-4b", model_dir=str(root))
-            )
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            snapshot = self._make_cache_snapshot(cache_root, "AITRADER/FLUX2-klein-4B-mlx-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
 
-            with patch(
-                "abstractvision.backends.mflux._lazy_import_mflux",
-                return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
-            ):
-                asset = backend.generate_image(
-                    ImageGenerationRequest(
-                        prompt="hello",
-                        width=64,
-                        height=32,
-                        steps=4,
-                        guidance_scale=1.0,
-                        seed=123,
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                ):
+                    asset = backend.generate_image(
+                        ImageGenerationRequest(
+                            prompt="hello",
+                            width=64,
+                            height=32,
+                            steps=4,
+                            guidance_scale=1.0,
+                            seed=123,
+                        )
                     )
-                )
 
         self.assertEqual(asset.media_type, "image")
         self.assertEqual(asset.mime_type, "image/png")
         self.assertTrue(asset.data.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(_FakeFlux2.last_init["model_config"], "flux2-4b-config")
-        self.assertEqual(_FakeFlux2.last_init["model_path"], str(local_dir))
+        self.assertEqual(_FakeFlux2.last_init["model_path"], str(snapshot))
         self.assertEqual(_FakeFlux2.last_generate["prompt"], "hello")
         self.assertEqual(_FakeFlux2.last_generate["width"], 64)
         self.assertEqual(_FakeFlux2.last_generate["height"], 32)
@@ -121,62 +142,139 @@ class TestMFluxVisionBackend(unittest.TestCase):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest
 
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            self._make_model_dir(root, "z-image-turbo-mlx-8bit")
-            backend = MFluxVisionBackend(
-                config=MFluxBackendConfig(model="z-image-turbo", model_dir=str(root))
-            )
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "carsenk/z-image-turbo-mflux-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="z-image-turbo"))
 
-            with patch(
-                "abstractvision.backends.mflux._lazy_import_mflux",
-                return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
-            ):
-                asset = backend.generate_image(
-                    ImageGenerationRequest(prompt="hello", negative_prompt="blur", seed=7)
-                )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                ):
+                    asset = backend.generate_image(
+                        ImageGenerationRequest(prompt="hello", negative_prompt="blur", seed=7)
+                    )
 
         self.assertTrue(asset.data.startswith(b"\x89PNG"))
         self.assertEqual(_FakeZImage.last_init["model_config"], "z-image-turbo-config")
+        self.assertEqual(_FakeZImage.last_init["model_path"], str(snapshot))
         self.assertEqual(_FakeZImage.last_generate["negative_prompt"], "blur")
         self.assertEqual(_FakeZImage.last_generate["num_inference_steps"], 9)
 
-    def test_flux2_rejects_negative_prompt(self):
-        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
-        from abstractvision.errors import CapabilityNotSupportedError
-        from abstractvision.types import ImageGenerationRequest
-
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            self._make_model_dir(root, "flux2-klein-9b-mlx-8bit")
-            backend = MFluxVisionBackend(
-                config=MFluxBackendConfig(model="flux2-klein-9b", model_dir=str(root))
-            )
-            with patch(
-                "abstractvision.backends.mflux._lazy_import_mflux",
-                return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
-            ):
-                with self.assertRaises(CapabilityNotSupportedError):
-                    backend.generate_image(ImageGenerationRequest(prompt="hello", negative_prompt="blur"))
-
-    def test_flux2_rejects_single_step_scheduler_edge_case(self):
+    def test_z_image_turbo_uses_alternate_cached_repo_for_preset_key(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest
 
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "andrevp/Z-Image-Turbo-MLX-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="z-image-turbo"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                ):
+                    asset = backend.generate_image(
+                        ImageGenerationRequest(prompt="hello", negative_prompt="blur", seed=7)
+                    )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(_FakeZImage.last_init["model_path"], str(snapshot))
+
+    def test_discovers_quarantined_local_mflux_variant(self):
+        from abstractvision.backends.mflux import discover_cached_mflux_models
+
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            self._make_model_dir(root, "flux2-klein-4b-mlx-8bit")
-            backend = MFluxVisionBackend(
-                config=MFluxBackendConfig(model="flux2-klein-4b", model_dir=str(root))
-            )
+            local_dir = self._make_model_dir(root, "flux2-klein-9b-mlx-q4")
             with patch(
-                "abstractvision.backends.mflux._lazy_import_mflux",
-                return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                "abstractvision.backends.mflux.framework_local_model_roots",
+                return_value=[("quarantined local models", root)],
             ):
-                with self.assertRaises(ValueError) as ctx:
-                    backend.generate_image(ImageGenerationRequest(prompt="hello", steps=1))
+                with patch.dict("os.environ", {"HF_HUB_CACHE": str(root / "empty-cache")}, clear=True):
+                    with patch(
+                        "abstractvision.backends.mflux.framework_hf_cache_roots",
+                        return_value=[],
+                    ):
+                        discovered = discover_cached_mflux_models()
 
-        self.assertIn("steps >= 2", str(ctx.exception))
+        self.assertIn("flux2-klein-9b", discovered)
+        chosen = discovered["flux2-klein-9b"]
+        self.assertEqual(chosen.snapshot_dir, local_dir)
+        self.assertEqual(chosen.source_label, "quarantined local model dir")
+
+    def test_marks_incompatible_quarantined_hf_snapshot_as_invalid(self):
+        from abstractvision.backends.mflux import discover_cached_mflux_models, discover_incomplete_mflux_sources
+
+        with tempfile.TemporaryDirectory() as td:
+            cache_root = Path(td)
+            repo_dir = (
+                cache_root
+                / "models--andrevp--Z-Image-Turbo-MLX-8bit.incompatible.20260515132039"
+            )
+            snap = repo_dir / "snapshots" / "abc123"
+            (snap / "transformer").mkdir(parents=True, exist_ok=True)
+            (snap / "transformer" / "0.safetensors").write_bytes(b"x")
+            (repo_dir / "refs").mkdir(parents=True, exist_ok=True)
+            (repo_dir / "refs" / "main").write_text("abc123", encoding="utf-8")
+
+            with patch(
+                "abstractvision.backends.mflux.framework_local_model_roots",
+                return_value=[],
+            ):
+                with patch.dict("os.environ", {"HF_HUB_CACHE": str(cache_root / "empty")}, clear=True):
+                    with patch(
+                        "abstractvision.backends.mflux.framework_hf_cache_roots",
+                        return_value=[("quarantined HF cache", cache_root)],
+                    ):
+                        discovered = discover_cached_mflux_models()
+                        invalid = discover_incomplete_mflux_sources()
+
+        self.assertNotIn("z-image-turbo", discovered)
+        self.assertIn("z-image-turbo", invalid)
+        self.assertIn(
+            "incompatible HF cache: quarantined HF cache (andrevp/Z-Image-Turbo-MLX-8bit)",
+            invalid["z-image-turbo"],
+        )
+
+    def test_flux2_drops_unsupported_negative_prompt(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "deepsweet/FLUX.2-klein-9B-MLX-Q8")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-9b"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                ):
+                    asset = backend.generate_image(
+                        ImageGenerationRequest(prompt="hello", negative_prompt="blur")
+                    )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertNotIn("negative_prompt", _FakeFlux2.last_generate)
+
+    def test_flux2_normalizes_steps_and_guidance_scale(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AITRADER/FLUX2-klein-4B-mlx-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                ):
+                    asset = backend.generate_image(
+                        ImageGenerationRequest(prompt="hello", steps=1, guidance_scale=7.0)
+                    )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(_FakeFlux2.last_generate["num_inference_steps"], 2)
+        self.assertEqual(_FakeFlux2.last_generate["guidance"], 1.0)
 
     def test_missing_local_model_has_download_hint(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -187,8 +285,13 @@ class TestMFluxVisionBackend(unittest.TestCase):
             backend = MFluxVisionBackend(
                 config=MFluxBackendConfig(model="flux2-klein-4b", model_dir=td)
             )
-            with self.assertRaises(OptionalDependencyMissingError) as ctx:
-                backend.generate_image(ImageGenerationRequest(prompt="hello"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": str(Path(td) / "empty-cache")}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux.framework_hf_cache_roots",
+                    return_value=[],
+                ):
+                    with self.assertRaises(OptionalDependencyMissingError) as ctx:
+                        backend.generate_image(ImageGenerationRequest(prompt="hello"))
 
         self.assertIn("abstractvision download-model flux2-klein-4b", str(ctx.exception))
 
@@ -196,17 +299,13 @@ class TestMFluxVisionBackend(unittest.TestCase):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest
 
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            local_dir = self._make_model_dir(root, "flux2-klein-4b-mlx-8bit")
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "org/repo")
             backend = MFluxVisionBackend(
-                config=MFluxBackendConfig(model="org/repo", base_model="flux2-klein-4b", model_dir=str(root))
+                config=MFluxBackendConfig(model="org/repo", base_model="flux2-klein-4b")
             )
 
-            with patch(
-                "abstractvision.backends.mflux.download_hf_repo_snapshot",
-                return_value=local_dir,
-            ):
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
                     return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
@@ -214,7 +313,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                     asset = backend.generate_image(ImageGenerationRequest(prompt="hello", seed=2))
 
         self.assertTrue(asset.data.startswith(b"\x89PNG"))
-        self.assertEqual(_FakeFlux2.last_init["model_path"], str(local_dir))
+        self.assertEqual(_FakeFlux2.last_init["model_path"], str(snapshot))
 
     def test_qwen_model_family_uses_qwen_variant(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -241,6 +340,36 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(_FakeQwenImage.last_init["model_config"], "qwen-image-config")
         self.assertEqual(_FakeQwenImage.last_init["model_path"], str(local_dir))
         self.assertEqual(_FakeQwenImage.last_generate["prompt"], "hello")
+
+    def test_runtime_serializes_model_init_and_generate_on_same_thread(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AITRADER/FLUX2-klein-4B-mlx-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(_FakeModelConfig, _ThreadAwareFlux2, _FakeZImage),
+                ):
+                    backend.preload()
+                    caller_thread = threading.get_ident()
+                    result = {}
+
+                    def invoke() -> None:
+                        asset = backend.generate_image(ImageGenerationRequest(prompt="hello"))
+                        result["asset"] = asset
+                        result["caller_thread"] = threading.get_ident()
+
+                    t = threading.Thread(target=invoke)
+                    t.start()
+                    t.join()
+
+        self.assertTrue(result["asset"].data.startswith(b"\x89PNG"))
+        self.assertNotEqual(_ThreadAwareFlux2.init_thread, caller_thread)
+        self.assertNotEqual(_ThreadAwareFlux2.generate_thread, result["caller_thread"])
+        self.assertEqual(_ThreadAwareFlux2.init_thread, _ThreadAwareFlux2.generate_thread)
 
 
 if __name__ == "__main__":

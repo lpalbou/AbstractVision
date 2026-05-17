@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import base64
+import importlib.util
 import json
 import os
 import shlex
+import sys
 import threading
 import time
 import traceback
@@ -19,6 +21,13 @@ from urllib.parse import parse_qs, urlparse
 
 from .errors import AbstractVisionError
 from .model_capabilities import VisionModelCapabilitiesRegistry
+from .model_cache import (
+    cached_hf_model_sources,
+    default_legacy_model_root,
+    framework_hf_cache_roots,
+    incomplete_hf_model_sources,
+)
+from .model_downloads import catalog_target_scope, local_model_profile, model_presets
 from .types import GeneratedAsset, ImageEditRequest, ImageGenerationRequest
 
 DEFAULT_PLAYGROUND_HOST = "127.0.0.1"
@@ -48,6 +57,19 @@ def _default_backend_kind() -> str:
     if _env("OPENAI_BASE_URL"):
         return "openai"
     return ""
+
+
+def _local_runtime_available(backend: Optional[str]) -> bool:
+    kind = str(backend or "").strip().lower().replace("_", "-")
+    if kind in {"openai", "openai-compatible", "proxy", ""}:
+        return True
+    if kind in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
+        return importlib.util.find_spec("diffusers") is not None and importlib.util.find_spec("torch") is not None
+    if kind in {"mflux", "m-flux", "mlx"}:
+        return sys.platform == "darwin" and importlib.util.find_spec("mflux") is not None and importlib.util.find_spec("mlx") is not None
+    if kind in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
+        return importlib.util.find_spec("stable_diffusion_cpp") is not None
+    return True
 
 
 def _to_int(value: Any) -> Optional[int]:
@@ -161,19 +183,86 @@ def _hf_cache_roots(extra_cache_dir: Optional[str] = None) -> List[Tuple[str, Pa
     return roots
 
 
-def _cached_hf_model_sources(model_id: str, *, cache_dir: Optional[str] = None) -> List[str]:
-    if "/" not in str(model_id or ""):
-        return []
-    sources: List[str] = []
-    repo_dir_name = "models--" + str(model_id).replace("/", "--")
-    for label, root in _hf_cache_roots(cache_dir):
-        snaps = root / repo_dir_name / "snapshots"
-        try:
-            if snaps.is_dir() and any(p.is_dir() for p in snaps.iterdir()):
-                sources.append(label)
-        except Exception:
-            continue
-    return sources
+def _cached_hf_model_sources(
+    model_id: str,
+    *,
+    cache_dir: Optional[str] = None,
+    required_files: Optional[Tuple[str, ...]] = None,
+    require_weight_files: bool = False,
+) -> List[str]:
+    return cached_hf_model_sources(
+        model_id,
+        cache_dir=cache_dir,
+        extra_roots=framework_hf_cache_roots(),
+        required_files=required_files,
+        require_weight_files=require_weight_files,
+    )
+
+
+def _preset_cache_requirements(*, target: str, engine: str) -> tuple[Tuple[str, ...], bool]:
+    t = str(target or "").strip().lower()
+    e = str(engine or "").strip().lower()
+    if t == "diffusers" or e == "diffusers":
+        return ("model_index.json",), True
+    if t in {"mlx", "gguf", "fp8", "hf-snapshot"}:
+        return tuple(), True
+    if e in {"mflux", "stable-diffusion.cpp", "diffusers-component", "transformers"}:
+        return tuple(), True
+    return tuple(), False
+
+
+def _format_incomplete_sources(sources: Sequence[str]) -> List[str]:
+    out: List[str] = []
+    for source in sources:
+        text = str(source or "").strip()
+        if text:
+            out.append(f"incomplete HF cache: {text}")
+    return out or ["incomplete HF cache"]
+
+
+def _detected_mflux_bits(discovered_model: Any) -> Optional[int]:
+    probe = " ".join(
+        str(value or "")
+        for value in (
+            getattr(discovered_model, "repo_id", None),
+            getattr(getattr(discovered_model, "snapshot_dir", None), "name", ""),
+            getattr(discovered_model, "source_detail", None),
+        )
+    ).strip().lower().replace("_", "-")
+    if "q4" in probe or "4bit" in probe:
+        return 4
+    if "q8" in probe or "8bit" in probe or "fp8" in probe:
+        return 8
+    return None
+
+
+def _mflux_variant_label(display_name: str, discovered_model: Any) -> str:
+    bits = _detected_mflux_bits(discovered_model)
+    text = str(display_name or "")
+    if bits is None or bits == 8:
+        return text
+    if "8-bit" in text:
+        return text.replace("8-bit", "Q4" if bits == 4 else f"{bits}-bit")
+    return f"{text} [{bits}-bit]"
+
+
+def _serialize_task_specs(spec: Any) -> Dict[str, Dict[str, Any]]:
+    tasks = getattr(spec, "tasks", None)
+    if not isinstance(tasks, dict):
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for task_name, task_spec in tasks.items():
+        out[str(task_name)] = {
+            "inputs": list(getattr(task_spec, "inputs", []) or []),
+            "outputs": list(getattr(task_spec, "outputs", []) or []),
+            "params": dict(getattr(task_spec, "params", {}) or {}),
+            "requires": (
+                dict(getattr(task_spec, "requires", {}) or {})
+                if isinstance(getattr(task_spec, "requires", None), dict)
+                else None
+            ),
+        }
+    return out
 
 
 def _parse_json_bytes(body: bytes) -> Dict[str, Any]:
@@ -365,6 +454,35 @@ class PlaygroundState:
         self._jobs_lock = threading.RLock()
         self._jobs: Dict[str, _Job] = {}
 
+    def _task_specs_for_model(self, model_id: str) -> Dict[str, Dict[str, Any]]:
+        try:
+            spec = self.registry.get(str(model_id))
+        except Exception:
+            return {}
+        return _serialize_task_specs(spec)
+
+    def _same_requested_model(self, requested_model_id: str) -> bool:
+        current_model_id = str(self._active_model_id or "").strip()
+        requested = str(requested_model_id or "").strip()
+        if not current_model_id or not requested:
+            return False
+        try:
+            current_kind, current_backend_model = normalize_model_id_for_backend(current_model_id)
+            requested_kind, requested_backend_model = normalize_model_id_for_backend(requested)
+        except Exception:
+            return current_model_id == requested
+        return (current_kind, current_backend_model) == (requested_kind, requested_backend_model)
+
+    def ensure_model_loaded(self, requested_model_id: Optional[str]) -> Dict[str, Any]:
+        requested = str(requested_model_id or "").strip()
+        if not requested:
+            active = self.active_snapshot()
+            return {"ok": bool(active), "active": active}
+        with self._active_lock:
+            if self._same_requested_model(requested):
+                return {"ok": True, "active": self.active_snapshot()}
+        return self.load_model(requested)
+
     def active_snapshot(self) -> Optional[Dict[str, Any]]:
         with self._active_lock:
             if not self._active_backend or not self._active_model_id:
@@ -378,7 +496,13 @@ class PlaygroundState:
 
     def list_models(self) -> Dict[str, Any]:
         models: List[Dict[str, Any]] = []
-        allow_download = bool(self.config.diffusers_allow_download)
+        allow_diffusers_download = bool(self.config.diffusers_allow_download)
+        allow_mflux_download = bool(self.config.mflux_allow_download)
+        diffusers_runtime_available = _local_runtime_available("diffusers")
+        mflux_runtime_available = _local_runtime_available("mflux")
+        sdcpp_runtime_available = _local_runtime_available("sdcpp")
+        platform_profile = local_model_profile()
+        visible_targets = catalog_target_scope(target="auto", engine=None, include_all_targets=False)
         configured = str(self.config.default_model_id or "").strip()
         configured_backend = str(self.config.backend_kind or "").strip().lower()
         if configured_backend in {"openai-compatible", "openai_compatible", "proxy"}:
@@ -392,29 +516,154 @@ class PlaygroundState:
             "stable-diffusion-cpp",
         }:
             configured_backend = "sdcpp"
+        if not configured and configured_backend == "mflux":
+            configured = str(self.config.mflux_model or "").strip()
 
-        for model_id in self.registry.list_models():
-            spec = self.registry.get(model_id)
-            cached_in = _cached_hf_model_sources(
-                model_id, cache_dir=self.config.diffusers_cache_dir
-            )
-            if cached_in or allow_download:
-                models.append(
-                    {
-                        "id": model_id,
-                        "load_id": model_id,
-                        "provider": spec.provider,
-                        "backend": "diffusers",
-                        "tasks": sorted(spec.tasks.keys()),
-                        "cached": bool(cached_in),
-                        "cached_in": cached_in if cached_in else ["download enabled"],
-                    }
+        seen_load_ids: set[str] = set()
+        legacy_root = default_legacy_model_root()
+        image_tasks = {"text_to_image", "image_to_image"}
+        mflux_cached: Dict[str, Any] = {}
+        mflux_invalid: Dict[str, Tuple[str, ...]] = {}
+        if "mlx" in visible_targets:
+            try:
+                from .backends.mflux import (
+                    discover_cached_mflux_models,
+                    discover_incomplete_mflux_sources,
                 )
+
+                mflux_cached = discover_cached_mflux_models(
+                    model_dir=str(self.config.mflux_model_dir) if self.config.mflux_model_dir else None,
+                    cache_dir=self.config.diffusers_cache_dir,
+                )
+                mflux_invalid = discover_incomplete_mflux_sources(
+                    model_dir=str(self.config.mflux_model_dir) if self.config.mflux_model_dir else None,
+                    cache_dir=self.config.diffusers_cache_dir,
+                )
+            except Exception:
+                mflux_cached = {}
+                mflux_invalid = {}
+
+        for preset in model_presets(
+            target="auto",
+            engine=None,
+            include_non_8bit=True,
+            include_all_targets=False,
+        ):
+            model_id = str(preset.upstream_repo_id or preset.repo_id)
+            try:
+                spec = self.registry.get(model_id)
+                tasks = sorted(spec.tasks.keys())
+                provider = spec.provider
+                task_specs = _serialize_task_specs(spec)
+            except Exception:
+                tasks = ["text_to_image", "image_to_image"]
+                provider = "huggingface"
+                task_specs = {}
+            if not image_tasks.intersection(tasks):
+                continue
+
+            backend: Optional[str] = None
+            load_id: Optional[str] = None
+            download_enabled = False
+            runtime_available = True
+            if preset.engine == "diffusers" and preset.target == "diffusers":
+                backend = "diffusers"
+                load_id = model_id
+                runtime_available = diffusers_runtime_available
+                download_enabled = runtime_available and allow_diffusers_download
+            elif preset.engine == "mflux" and preset.target == "mlx":
+                backend = "mflux"
+                load_id = f"mflux/{preset.key}"
+                runtime_available = mflux_runtime_available
+                download_enabled = runtime_available and "mlx" in visible_targets and allow_mflux_download
+
+            required_files, require_weight_files = _preset_cache_requirements(
+                target=preset.target,
+                engine=preset.engine,
+            )
+            cached_in: List[str]
+            invalid_cached_in: Sequence[str]
+            variant_label = preset.display_name
+            bits = preset.quantization_bits
+            if preset.engine == "mflux" and preset.target == "mlx":
+                discovered_model = mflux_cached.get(preset.key)
+                cached_in = [str(discovered_model.source_detail)] if discovered_model is not None else []
+                invalid_cached_in = mflux_invalid.get(preset.key, ())
+                if discovered_model is not None:
+                    variant_label = _mflux_variant_label(preset.display_name, discovered_model)
+                    bits = _detected_mflux_bits(discovered_model) or bits
+            else:
+                cached_in = _cached_hf_model_sources(
+                    preset.repo_id,
+                    cache_dir=self.config.diffusers_cache_dir,
+                    required_files=required_files,
+                    require_weight_files=require_weight_files,
+                )
+                invalid_cached_in = incomplete_hf_model_sources(
+                    preset.repo_id,
+                    cache_dir=self.config.diffusers_cache_dir,
+                    extra_roots=framework_hf_cache_roots(),
+                    required_files=required_files,
+                    require_weight_files=require_weight_files,
+                )
+            legacy_dir = legacy_root / preset.local_dir_name
+            try:
+                if not cached_in and legacy_dir.exists():
+                    cached_in = ["legacy model dir"]
+            except Exception:
+                pass
+
+            variant_id = str(load_id or f"{preset.engine}:{preset.repo_id}")
+            if variant_id in seen_load_ids:
+                continue
+            seen_load_ids.add(variant_id)
+
+            display_sources = (
+                list(cached_in)
+                if cached_in
+                else (
+                    list(invalid_cached_in)
+                    if (preset.engine == "mflux" and invalid_cached_in)
+                    else (
+                        _format_incomplete_sources(invalid_cached_in)
+                        if invalid_cached_in
+                        else (["download enabled"] if download_enabled else ["download only"])
+                    )
+                )
+            )
+            if not runtime_available:
+                runtime_text = f"{backend or preset.engine} runtime missing"
+                if runtime_text not in display_sources:
+                    display_sources.append(runtime_text)
+
+            loadable = bool(load_id) and runtime_available and (bool(cached_in) or download_enabled)
+            models.append(
+                {
+                    "id": model_id,
+                    "load_id": load_id,
+                    "provider": provider,
+                    "backend": backend or preset.engine,
+                    "engine": preset.engine,
+                    "target": preset.target,
+                    "bits": bits,
+                    "variant": variant_label,
+                    "download_repo_id": preset.repo_id,
+                    "tasks": tasks,
+                    "task_specs": task_specs,
+                    "cached": bool(cached_in),
+                    "cached_in": display_sources,
+                    "loadable": loadable,
+                }
+            )
 
         if not configured and configured_backend == "openai" and self.config.openai_base_url:
             configured = "openai-compatible/default"
 
-        if configured and configured not in {m["id"] for m in models}:
+        existing_ids = {
+            str(m.get("id") or "")
+            for m in models
+        }.union({str(m.get("load_id") or "") for m in models})
+        if configured and configured not in existing_ids:
             prefix, rest = _known_prefix(configured)
             if prefix in {"openai", "openai-compatible", "openai_compatible"}:
                 label = configured
@@ -427,25 +676,48 @@ class PlaygroundState:
                 load_id = label
                 backend = "openai"
                 cached_in = ["configured remote"]
+            elif configured_backend == "mflux":
+                label = configured
+                load_id = configured if prefix == "mflux" else f"mflux/{configured}"
+                backend = "mflux"
+                cached_in = ["configured local preset"]
             else:
                 label = configured
                 load_id = configured
                 backend = "diffusers"
                 cached_in = _cached_hf_model_sources(
-                    configured, cache_dir=self.config.diffusers_cache_dir
+                    configured,
+                    cache_dir=self.config.diffusers_cache_dir,
+                    required_files=("model_index.json",),
+                    require_weight_files=True,
                 )
-                if not cached_in and allow_download:
+                if not cached_in and allow_diffusers_download:
                     cached_in = ["download enabled"]
             if cached_in:
+                task_specs = self._task_specs_for_model(label)
+                tasks = sorted(task_specs.keys()) if task_specs else ["text_to_image", "image_to_image"]
+                runtime_available = _local_runtime_available(backend)
+                display_sources = list(cached_in)
+                if not runtime_available:
+                    runtime_text = f"{backend} runtime missing"
+                    if runtime_text not in display_sources:
+                        display_sources.append(runtime_text)
                 models.append(
                     {
                         "id": label,
                         "load_id": load_id,
                         "provider": "configured",
                         "backend": backend,
-                        "tasks": ["text_to_image", "image_to_image"],
+                        "engine": backend,
+                        "target": "configured",
+                        "bits": None,
+                        "variant": label,
+                        "download_repo_id": None,
+                        "tasks": tasks,
+                        "task_specs": task_specs,
                         "cached": "cache" in ",".join(cached_in).lower(),
-                        "cached_in": cached_in,
+                        "cached_in": display_sources,
+                        "loadable": runtime_available,
                     }
                 )
 
@@ -456,13 +728,35 @@ class PlaygroundState:
                     "load_id": "sdcpp/default",
                     "provider": "configured",
                     "backend": "sdcpp",
+                    "engine": "sdcpp",
+                    "target": "configured",
+                    "bits": None,
+                    "variant": "sdcpp/default",
+                    "download_repo_id": None,
                     "tasks": ["text_to_image", "image_to_image"],
+                    "task_specs": {},
                     "cached": True,
-                    "cached_in": ["configured local files"],
+                    "cached_in": ["configured local files"]
+                    + ([] if sdcpp_runtime_available else ["sdcpp runtime missing"]),
+                    "loadable": sdcpp_runtime_available,
                 }
             )
 
-        return {"models": models, "active": self.active_snapshot()}
+        models.sort(
+            key=lambda item: (
+                0 if item.get("cached") else 1,
+                0 if item.get("loadable") else 1,
+                str(item.get("backend") or ""),
+                str(item.get("id") or ""),
+                str(item.get("variant") or ""),
+            )
+        )
+        return {
+            "models": models,
+            "active": self.active_snapshot(),
+            "platform": platform_profile,
+            "targets": list(visible_targets),
+        }
 
     def unload_active(self) -> Dict[str, Any]:
         unload_after_lock: Optional[Any] = None
@@ -477,7 +771,14 @@ class PlaygroundState:
         return {"ok": True, "active": None}
 
     def load_model(self, requested_model_id: str) -> Dict[str, Any]:
-        backend_kind, backend_model_id = normalize_model_id_for_backend(requested_model_id)
+        requested = str(requested_model_id or "").strip()
+        if not requested:
+            raise ValueError("Missing required field: model_id")
+        with self._active_lock:
+            if self._same_requested_model(requested):
+                return {"ok": True, "active": self.active_snapshot()}
+
+        backend_kind, backend_model_id = normalize_model_id_for_backend(requested)
 
         backend = self._build_backend(backend_kind, backend_model_id)
         unload_after_lock: Optional[Any] = None
@@ -495,7 +796,7 @@ class PlaygroundState:
 
             self._active_backend = backend
             self._active_backend_kind = backend_kind
-            self._active_model_id = requested_model_id
+            self._active_model_id = requested
             self._active_loaded_at = time.time()
             out = {"ok": True, "active": self.active_snapshot()}
         self._unload_backend(unload_after_lock)
@@ -553,6 +854,12 @@ class PlaygroundState:
         elif backend_kind == "m-flux":
             backend_kind = "mflux"
 
+        if not _local_runtime_available(backend_kind):
+            raise ValueError(
+                f"The local {backend_kind} runtime is not available in this Python environment "
+                f"({sys.executable})."
+            )
+
         if backend_kind == "diffusers":
             from .backends.huggingface_diffusers import (
                 HuggingFaceDiffusersBackendConfig,
@@ -603,6 +910,7 @@ class PlaygroundState:
                 model=str(backend_model_id or self.config.mflux_model or "") or None,
                 base_model=str(self.config.mflux_base_model) if self.config.mflux_base_model else None,
                 model_dir=str(self.config.mflux_model_dir) if self.config.mflux_model_dir else None,
+                cache_dir=str(self.config.diffusers_cache_dir) if self.config.diffusers_cache_dir else None,
                 allow_download=bool(self.config.mflux_allow_download),
             )
             return MFluxVisionBackend(config=cfg)
@@ -637,10 +945,22 @@ class PlaygroundState:
             raise ValueError("No active model. Select and load a model first.")
         return backend, model_id
 
+    def _require_backend_task_support(self, backend: Any, task: str) -> None:
+        try:
+            caps = backend.get_capabilities()
+        except Exception:
+            return
+        supported = getattr(caps, "supported_tasks", None) if caps is not None else None
+        if supported is not None and str(task) not in {str(item) for item in supported}:
+            raise ValueError(f"The selected model does not support {task}.")
+
     def start_image_generation_job(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         prompt = str(payload.get("prompt") or "").strip()
         if not prompt:
             raise ValueError("Missing required field: prompt")
+        requested_model_id = str(payload.get("model") or "").strip() or None
+        if requested_model_id is None and self.active_snapshot() is None:
+            raise ValueError("No active model. Select and load a model first.")
         known = {
             "prompt",
             "model",
@@ -666,16 +986,31 @@ class PlaygroundState:
             extra=_request_kwargs(payload, known=known),
         )
         response_format = str(payload.get("response_format") or "b64_json")
-        backend, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
+        backend_snapshot: Optional[Any] = None
+        if requested_model_id is None:
+            backend_snapshot, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
 
         def run(progress_callback: Callable[[int, Optional[int]], None]) -> Dict[str, Any]:
+            backend = backend_snapshot
+            if requested_model_id is not None:
+                self.ensure_model_loaded(requested_model_id)
+                backend, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
+            if backend is None:
+                raise ValueError("No active model. Select and load a model first.")
             try:
+                self._require_backend_task_support(backend, "text_to_image")
+                normalized_request = request
+                normalize = getattr(backend, "normalize_image_generation_request", None)
+                if callable(normalize):
+                    normalized_request = normalize(request)
+                progress_callback(0, normalized_request.steps)
                 asset = backend.generate_image_with_progress(
-                    request, progress_callback=progress_callback
+                    normalized_request, progress_callback=progress_callback
                 )
                 return _asset_to_image_response(asset, response_format=response_format)
             finally:
-                self._release_backend_snapshot(backend)
+                if requested_model_id is not None:
+                    self._release_backend_snapshot(backend)
 
         return self._start_job(run, total_steps=request.steps)
 
@@ -687,6 +1022,9 @@ class PlaygroundState:
         prompt = str(fields.get("prompt") or "").strip()
         if not prompt:
             raise ValueError("Missing required field: prompt")
+        requested_model_id = str(fields.get("model") or "").strip() or None
+        if requested_model_id is None and self.active_snapshot() is None:
+            raise ValueError("No active model. Select and load a model first.")
         image = files.get("image")
         if not image:
             raise ValueError("Missing required multipart file: image")
@@ -704,16 +1042,31 @@ class PlaygroundState:
             seed=_to_int(fields.get("seed")),
             extra=extra,
         )
-        backend, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
+        backend_snapshot: Optional[Any] = None
+        if requested_model_id is None:
+            backend_snapshot, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
 
         def run(progress_callback: Callable[[int, Optional[int]], None]) -> Dict[str, Any]:
+            backend = backend_snapshot
+            if requested_model_id is not None:
+                self.ensure_model_loaded(requested_model_id)
+                backend, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
+            if backend is None:
+                raise ValueError("No active model. Select and load a model first.")
             try:
+                self._require_backend_task_support(backend, "image_to_image")
+                normalized_request = request
+                normalize = getattr(backend, "normalize_image_edit_request", None)
+                if callable(normalize):
+                    normalized_request = normalize(request)
+                progress_callback(0, normalized_request.steps)
                 asset = backend.edit_image_with_progress(
-                    request, progress_callback=progress_callback
+                    normalized_request, progress_callback=progress_callback
                 )
                 return _asset_to_image_response(asset, response_format="b64_json")
             finally:
-                self._release_backend_snapshot(backend)
+                if requested_model_id is not None:
+                    self._release_backend_snapshot(backend)
 
         return self._start_job(run, total_steps=request.steps)
 
@@ -816,6 +1169,8 @@ def _make_handler(state: PlaygroundState) -> type[BaseHTTPRequestHandler]:
             self.send_response(status)
             self._cors()
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -827,6 +1182,8 @@ def _make_handler(state: PlaygroundState) -> type[BaseHTTPRequestHandler]:
             self.send_response(200)
             self._cors()
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.send_header("Content-Length", str(len(html_cache)))
             self.end_headers()
             self.wfile.write(html_cache)

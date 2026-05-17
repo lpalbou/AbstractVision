@@ -47,7 +47,18 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
 
         self.assertTrue(reg.supports("Lightricks/LTX-2", "image_to_video"))
 
+    def test_glm_edit_capability_and_defaults_are_explicit(self):
+        from abstractvision import VisionModelCapabilitiesRegistry
+
+        reg = VisionModelCapabilitiesRegistry()
+        spec = reg.get("zai-org/GLM-Image")
+
+        self.assertIn("image_to_image", spec.tasks)
+        self.assertEqual(spec.tasks["text_to_image"].params["steps"]["default"], 20)
+        self.assertEqual(spec.tasks["text_to_image"].params["guidance_scale"]["default"], 1.5)
+        self.assertEqual(spec.tasks["text_to_image"].params["width"]["multiple_of"], 32)
+        self.assertTrue(spec.tasks["image_to_image"].params["width"]["auto_derived_from_input"])
+
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import os
+import platform
+import shutil
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+from .model_capabilities import VisionModelCapabilitiesRegistry
+from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot, hf_snapshot_is_usable
 
 
 @dataclass(frozen=True)
@@ -33,7 +40,11 @@ class VisionModelDownloadPreset:
         return out
 
 
+# Legacy preset trees used to live under `~/models`. Keep the constant for
+# compatibility, but treat it as a migration source rather than the download
+# destination.
 DEFAULT_MODEL_DIR = Path("~/models")
+HF_TOKEN_SETTINGS_URL = "https://huggingface.co/settings/tokens"
 
 
 _COMMON_MLX_PATTERNS = (
@@ -51,6 +62,7 @@ _COMMON_MLX_PATTERNS = (
 _COMMON_DIFFUSERS_PATTERNS = (
     "model_index.json",
     "*.json",
+    "*.jinja",
     "*.md",
     "*.txt",
     "*.yaml",
@@ -93,6 +105,28 @@ _STABLE_DIFFUSION_DIFFUSERS_PATTERNS = (
 )
 
 
+class HuggingFaceAccessError(RuntimeError):
+    def __init__(self, repo_id: str, *, raw_message: str = "", status_code: Optional[int] = None):
+        self.repo_id = str(repo_id)
+        self.repo_url = f"https://huggingface.co/{self.repo_id}"
+        self.token_url = HF_TOKEN_SETTINGS_URL
+        self.raw_message = str(raw_message or "").strip()
+        self.status_code = status_code
+        detail = f" ({status_code})" if status_code else ""
+        msg = (
+            f"Cannot access Hugging Face repo {self.repo_id!r}{detail}.\n"
+            f"1. Open {self.repo_url} and accept the model terms or request access.\n"
+            f"2. Create or copy a Hugging Face read token at {self.token_url}.\n"
+            "3. Retry with one of:\n"
+            "   - `abstractvision download-model ... --token <HF_TOKEN>`\n"
+            "   - `hf auth login` (or `huggingface-cli login`)\n"
+            "   - `export HF_TOKEN=...` (or `export HUGGINGFACE_HUB_TOKEN=...`)\n"
+        )
+        if self.raw_message:
+            msg += f"Upstream error: {self.raw_message}"
+        super().__init__(msg)
+
+
 _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     VisionModelDownloadPreset(
         key="flux2-klein-4b",
@@ -104,7 +138,15 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-4B",
         source="curated-community-mlx",
-        aliases=("flux2-klein-4b", "flux-klein-4b", "klein-4b", "klein4b", "flux4b"),
+        aliases=(
+            "flux2-klein-4b",
+            "flux-klein-4b",
+            "klein-4b",
+            "klein4b",
+            "flux4b",
+            "moxin-org/FLUX.2-klein-4B-8bit-mlx",
+            "Runpod/FLUX.2-klein-4B-mflux-4bit",
+        ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
             "BFL publishes the upstream 4B model and an official FP8 artifact, but not an MLX "
@@ -182,7 +224,15 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-9B",
         source="curated-community-mlx",
-        aliases=("flux2-klein-9b", "flux-klein-9b", "klein-9b", "klein9b", "flux9b"),
+        aliases=(
+            "flux2-klein-9b",
+            "flux-klein-9b",
+            "klein-9b",
+            "klein9b",
+            "flux9b",
+            "deepsweet/FLUX.2-klein-9B-MLX-Q4",
+            "themindstudio/flux2-klein-9b-mlx-4bit",
+        ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
             "BFL publishes the upstream 9B model and official FP8 artifacts, but not an MLX "
@@ -310,7 +360,15 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Tongyi-MAI/Z-Image-Turbo",
         source="curated-community-mflux",
-        aliases=("z-image-turbo", "zimage-turbo", "z-image", "tongyi-z-image-turbo"),
+        aliases=(
+            "z-image-turbo",
+            "zimage-turbo",
+            "z-image",
+            "tongyi-z-image-turbo",
+            "andrevp/Z-Image-Turbo-MLX",
+            "andrevp/Z-Image-Turbo-MLX-8bit",
+            "illusion615/Z-Image-Turbo-MLX",
+        ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
             "Tongyi-MAI publishes the upstream full model; this preset keeps Apple Silicon "
@@ -782,10 +840,196 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
 )
 
 
-def default_model_target() -> str:
+def _default_allow_patterns(*, target: str, engine: str) -> Tuple[str, ...]:
+    if target == "mlx" or engine == "mflux":
+        return _COMMON_MLX_PATTERNS
+    if target == "diffusers" or engine == "diffusers":
+        return _COMMON_DIFFUSERS_PATTERNS
+    if target == "fp8" or engine == "diffusers-component":
+        return ("*.json", "*.md", "LICENSE*", "*.safetensors")
+    if target == "gguf" or engine == "stable-diffusion.cpp":
+        return ("README.md", "LICENSE*", "*.gguf")
+    # Full Hugging Face snapshots should not constrain filenames by default.
+    return ()
+
+
+def _default_source_priority(*, source: str, target: str, engine: str, bits: Optional[int]) -> int:
+    source_s = str(source or "").strip().lower()
+    if target == "fp8" and bits == 8:
+        return 0
+    if target == "mlx" and bits == 8:
+        return 30
+    if target == "gguf" and bits == 8:
+        return 40
+    if source_s == "official":
+        return 90
+    if "community" in source_s:
+        return 95
+    return 100
+
+
+def _slugify_token(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    chars: List[str] = []
+    prev_dash = False
+    for ch in raw:
+        if ch.isalnum():
+            chars.append(ch)
+            prev_dash = False
+            continue
+        if not prev_dash:
+            chars.append("-")
+            prev_dash = True
+    slug = "".join(chars).strip("-")
+    return slug or "model"
+
+
+def _default_local_dir_name(*, key: str, target: str, engine: str, repo_id: str) -> str:
+    base = _slugify_token(key or repo_id.rsplit("/", 1)[-1])
+    suffix = _slugify_token(target or engine)
+    if base.endswith(f"-{suffix}") or base == suffix:
+        return base
+    return f"{base}-{suffix}"
+
+
+def _default_display_name(*, model_id: str, target: str, engine: str, bits: Optional[int]) -> str:
+    stem = str(model_id or "").rsplit("/", 1)[-1].replace("-", " ").strip() or str(model_id)
+    engine_label = {
+        "diffusers": "Diffusers",
+        "diffusers-component": "Diffusers component",
+        "mflux": "MFLUX",
+        "stable-diffusion.cpp": "stable-diffusion.cpp",
+        "transformers": "Transformers",
+    }.get(str(engine), str(engine or target or "download"))
+    if bits is not None:
+        return f"{stem} ({engine_label}, {int(bits)}-bit)"
+    return f"{stem} ({engine_label})"
+
+
+def _merge_aliases(*values: str) -> Tuple[str, ...]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for value in values:
+        s = str(value or "").strip()
+        if not s:
+            continue
+        key = s.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
+    return tuple(out)
+
+
+@lru_cache(maxsize=1)
+def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
+    out: List[VisionModelDownloadPreset] = list(_PRESETS)
+    seen = {(p.key, p.engine, p.target, p.repo_id) for p in out}
+
+    try:
+        reg = VisionModelCapabilitiesRegistry()
+    except Exception:
+        return tuple(sorted(out, key=lambda p: (p.key, p.source_priority, p.repo_id)))
+
+    for model_id in reg.list_models():
+        spec = reg.get(model_id)
+        for dl in spec.downloads:
+            key = (dl.key, dl.engine, dl.target, dl.repo_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                VisionModelDownloadPreset(
+                    key=str(dl.key),
+                    display_name=_default_display_name(
+                        model_id=model_id,
+                        target=str(dl.target),
+                        engine=str(dl.engine),
+                        bits=dl.bits,
+                    ),
+                    repo_id=str(dl.repo_id),
+                    target=str(dl.target),
+                    engine=str(dl.engine),
+                    local_dir_name=_default_local_dir_name(
+                        key=str(dl.key),
+                        target=str(dl.target),
+                        engine=str(dl.engine),
+                        repo_id=str(dl.repo_id),
+                    ),
+                    quantization_bits=dl.bits,
+                    upstream_repo_id=None if str(dl.repo_id) == str(model_id) else str(model_id),
+                    source=str(dl.source or "official"),
+                    aliases=_merge_aliases(str(dl.key), str(model_id), str(dl.repo_id)),
+                    allow_patterns=_default_allow_patterns(target=str(dl.target), engine=str(dl.engine)),
+                    notes=str(dl.notes or spec.notes or ""),
+                    source_priority=_default_source_priority(
+                        source=str(dl.source or "official"),
+                        target=str(dl.target),
+                        engine=str(dl.engine),
+                        bits=dl.bits,
+                    ),
+                )
+            )
+
+    return tuple(sorted(out, key=lambda p: (p.key, p.source_priority, p.repo_id)))
+
+
+@lru_cache(maxsize=1)
+def local_model_profile() -> str:
+    machine = str(platform.machine() or "").strip().lower()
+    if sys.platform == "darwin" and machine in {"arm64", "aarch64"}:
+        return "apple-silicon"
+
+    nvidia_smi = shutil.which("nvidia-smi")
+    if nvidia_smi:
+        try:
+            proc = subprocess.run(
+                [nvidia_smi, "-L"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+            )
+            if proc.returncode == 0 and "gpu" in str(proc.stdout or "").lower():
+                return "cuda"
+        except Exception:
+            pass
+
     if sys.platform == "darwin":
-        return "mlx"
-    return "gguf"
+        return "macos"
+    return "cpu"
+
+
+def local_catalog_targets() -> Tuple[str, ...]:
+    profile = local_model_profile()
+    if profile == "apple-silicon":
+        return ("mlx", "diffusers", "hf-snapshot")
+    if profile == "cuda":
+        return ("fp8", "gguf", "diffusers", "hf-snapshot")
+    return ("diffusers", "hf-snapshot", "gguf")
+
+
+def catalog_target_scope(
+    *,
+    target: Optional[str] = "auto",
+    engine: Optional[str] = None,
+    include_all_targets: bool = False,
+) -> Tuple[str, ...]:
+    raw_target = str(target or "auto").strip().lower()
+    selected_target, selected_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    if include_all_targets:
+        preferred = list(local_catalog_targets())
+        for preset in _all_presets():
+            if preset.target not in preferred:
+                preferred.append(preset.target)
+        return tuple(preferred)
+    if raw_target in {"", "auto", "default"} and selected_engine is None:
+        return local_catalog_targets()
+    return (selected_target,)
+
+
+def default_model_target() -> str:
+    return local_catalog_targets()[0]
 
 
 def normalize_model_target(target: Optional[str]) -> str:
@@ -847,6 +1091,7 @@ def resolve_model_target_and_engine(
             "diffusers": "diffusers",
             "stable-diffusion.cpp": "gguf",
             "diffusers-component": "fp8",
+            "transformers": "hf-snapshot",
         }
         inferred = engine_to_target.get(selected_engine)
         if inferred:
@@ -861,10 +1106,11 @@ def model_presets(
     include_non_8bit: bool = False,
     include_all_targets: bool = False,
 ) -> List[VisionModelDownloadPreset]:
-    selected_target, selected_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    selected_targets = set(catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets))
+    selected_engine = resolve_model_target_and_engine(target=target, engine=engine)[1]
     out: List[VisionModelDownloadPreset] = []
-    for preset in _PRESETS:
-        if not include_all_targets and preset.target != selected_target:
+    for preset in _all_presets():
+        if preset.target not in selected_targets:
             continue
         if selected_engine is not None and preset.engine != selected_engine:
             continue
@@ -897,7 +1143,10 @@ def find_model_preset(
         if requested.startswith(prefix):
             requested = requested[len(prefix) :].strip()
             break
-    selected_target, selected_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=False)
+    selected_engine = resolve_model_target_and_engine(target=target, engine=engine)[1]
+    target_rank = {name: idx for idx, name in enumerate(selected_targets)}
+    selected_target_label = ",".join(selected_targets)
 
     def matches(preset: VisionModelDownloadPreset) -> bool:
         aliases = {a.lower() for a in preset.aliases}
@@ -906,30 +1155,35 @@ def find_model_preset(
             repo_ids.add(preset.upstream_repo_id.lower())
         return requested == preset.key or requested in aliases or requested in repo_ids
 
+    presets = _all_presets()
+
+    def _sort_key(preset: VisionModelDownloadPreset) -> tuple[int, int, str]:
+        return (target_rank.get(preset.target, len(target_rank)), preset.source_priority, preset.repo_id)
+
     candidates = [
         p
-        for p in _PRESETS
-        if p.target == selected_target
+        for p in presets
+        if p.target in selected_targets
         and (selected_engine is None or p.engine == selected_engine)
         and matches(p)
     ]
     if require_8bit:
         candidates = [p for p in candidates if p.quantization_bits == 8]
     if candidates:
-        return sorted(candidates, key=lambda p: (p.source_priority, p.repo_id))[0]
+        return sorted(candidates, key=_sort_key)[0]
 
-    known = sorted({p.key for p in _PRESETS}.union(*(set(p.aliases) for p in _PRESETS)))
-    any_engine_matches = [p for p in _PRESETS if matches(p)]
+    known = sorted({p.key for p in presets}.union(*(set(p.aliases) for p in presets)))
+    any_engine_matches = [p for p in presets if matches(p)]
     target_matches = [
         p
-        for p in _PRESETS
-        if (selected_engine is None or p.engine == selected_engine) and matches(p)
+        for p in presets
+        if p.target in selected_targets and (selected_engine is None or p.engine == selected_engine) and matches(p)
     ]
 
     if raw_target in {"", "auto", "default"} and selected_engine is None and any_engine_matches:
         # If the caller left target/engine on defaults, pick a sensible fallback
-        # when there is only one possible artifact target for this preset key.
-        possible_targets = sorted({p.target for p in any_engine_matches})
+        # when the local runtime only has one possible artifact target for this preset key.
+        possible_targets = [name for name in selected_targets if any(p.target == name for p in any_engine_matches)]
         if len(possible_targets) == 1:
             fallback_target = possible_targets[0]
             fallback = [p for p in any_engine_matches if p.target == fallback_target]
@@ -937,19 +1191,19 @@ def find_model_preset(
                 eight_bit = [p for p in fallback if p.quantization_bits == 8]
                 if eight_bit:
                     fallback = eight_bit
-                else:
+                elif fallback_target != "hf-snapshot":
                     raise ValueError(
                         f"No 8-bit preset for {name!r}. Available target/engine choices: "
                         + ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
                         + ". Use --allow-non-8bit, or select an explicit --target/--provider that has an 8-bit artifact."
                     )
-            return sorted(fallback, key=lambda p: (p.source_priority, p.repo_id))[0]
+            return sorted(fallback, key=_sort_key)[0]
 
     if target_matches:
         available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in target_matches}))
         engine_msg = f" and engine {selected_engine!r}" if selected_engine else ""
         raise ValueError(
-            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target!r}{engine_msg}. "
+            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
             f"Available target/repo choices: {available}"
         )
     if any_engine_matches:
@@ -960,14 +1214,16 @@ def find_model_preset(
                 f"Available target/engine choices: {available}"
             )
         raise ValueError(
-            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target!r}. "
+            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}. "
             f"Available target/engine choices: {available}"
         )
     raise ValueError(f"Unknown vision model preset {name!r}. Known presets: {', '.join(known)}")
 
 
 def default_download_root() -> Path:
-    return Path(os.environ.get("ABSTRACTVISION_MODEL_DIR") or DEFAULT_MODEL_DIR).expanduser()
+    """Return the legacy preset root used for migration input only."""
+
+    return default_legacy_model_root()
 
 
 def looks_like_hf_repo_id(value: Any) -> bool:
@@ -985,6 +1241,42 @@ def looks_like_hf_repo_id(value: Any) -> bool:
     if "\\" in s or " " in s:
         return False
     return s.count("/") == 1 and all(part.strip() for part in s.split("/", 1))
+
+
+def resolve_hf_token(token: Optional[str] = None) -> Optional[str]:
+    explicit = str(token or "").strip()
+    if explicit:
+        return explicit
+    for key in ("HUGGINGFACE_HUB_TOKEN", "HF_TOKEN"):
+        value = str(os.environ.get(key) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _is_hf_access_error(exc: Exception) -> tuple[bool, Optional[int]]:
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    msg = str(exc).lower()
+    if status_code in {401, 403}:
+        return True, int(status_code)
+    if "gated repo" in msg or "not in the authorized list" in msg or "accept the conditions" in msg:
+        return True, int(status_code) if isinstance(status_code, int) else None
+    return False, int(status_code) if isinstance(status_code, int) else None
+
+
+def _snapshot_requirements_for_preset(
+    preset: VisionModelDownloadPreset,
+) -> tuple[Tuple[str, ...], bool]:
+    target = str(preset.target or "").strip().lower()
+    engine = str(preset.engine or "").strip().lower()
+    if target == "diffusers" or engine == "diffusers":
+        return ("model_index.json",), True
+    if target in {"hf-snapshot", "mlx", "gguf", "fp8"}:
+        return tuple(), True
+    if engine in {"transformers", "mflux", "stable-diffusion.cpp", "diffusers-component"}:
+        return tuple(), True
+    return tuple(), False
 
 
 def download_hf_repo_snapshot(
@@ -1008,17 +1300,23 @@ def download_hf_repo_snapshot(
             'Install it with `pip install "abstractvision[models]"` or use the `hf download` CLI.'
         ) from e
 
-    resolved = snapshot_download(
-        repo_id=str(repo_id),
-        repo_type="model",
-        revision=str(revision) if revision else None,
-        token=token or os.environ.get("HUGGINGFACE_HUB_TOKEN"),
-        allow_patterns=list(allow_patterns) if allow_patterns else None,
-        ignore_patterns=list(ignore_patterns) if ignore_patterns else None,
-        cache_dir=str(cache_dir.expanduser()) if cache_dir else None,
-        local_files_only=bool(local_files_only),
-        max_workers=max(1, int(max_workers)),
-    )
+    try:
+        resolved = snapshot_download(
+            repo_id=str(repo_id),
+            repo_type="model",
+            revision=str(revision) if revision else None,
+            token=resolve_hf_token(token),
+            allow_patterns=list(allow_patterns) if allow_patterns else None,
+            ignore_patterns=list(ignore_patterns) if ignore_patterns else None,
+            cache_dir=str(cache_dir.expanduser()) if cache_dir else None,
+            local_files_only=bool(local_files_only),
+            max_workers=max(1, int(max_workers)),
+        )
+    except Exception as e:
+        is_access_error, status_code = _is_hf_access_error(e)
+        if is_access_error:
+            raise HuggingFaceAccessError(str(repo_id), raw_message=str(e), status_code=status_code) from e
+        raise
     return Path(str(resolved))
 
 
@@ -1029,6 +1327,27 @@ def download_model_preset(
     token: Optional[str] = None,
     max_workers: int = 4,
 ) -> Path:
+    """Download a curated preset into the Hugging Face cache.
+
+    Existing `~/models/<preset.local_dir_name>` trees are migrated into the same
+    cache layout on first use so older installs do not need a manual re-download.
+    """
+
+    required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
+    cache_root = default_hf_cache_root()
+    legacy_root = Path(model_dir).expanduser() if model_dir is not None else default_legacy_model_root()
+    legacy_dir = legacy_root / preset.local_dir_name
+    cached = ensure_hf_repo_snapshot(
+        preset.repo_id,
+        source_dir=legacy_dir,
+        cache_dir=str(cache_root),
+        cleanup_source=True,
+        required_files=required_files,
+        require_weight_files=require_weight_files,
+    )
+    if cached is not None:
+        return cached
+
     try:
         from huggingface_hub import snapshot_download
     except ImportError as e:
@@ -1036,18 +1355,32 @@ def download_model_preset(
             "Downloading model presets requires `huggingface_hub`. Install it or use the `hf download` CLI."
         ) from e
 
-    root = Path(model_dir).expanduser() if model_dir is not None else default_download_root()
-    local_dir = root / preset.local_dir_name
-    local_dir.mkdir(parents=True, exist_ok=True)
-    snapshot_download(
-        repo_id=preset.repo_id,
-        repo_type="model",
-        local_dir=str(local_dir),
-        allow_patterns=list(preset.allow_patterns) or None,
-        token=token or os.environ.get("HUGGINGFACE_HUB_TOKEN"),
-        max_workers=max(1, int(max_workers)),
-    )
-    return local_dir
+    try:
+        snapshot = snapshot_download(
+            repo_id=preset.repo_id,
+            repo_type="model",
+            allow_patterns=list(preset.allow_patterns) or None,
+            token=resolve_hf_token(token),
+            cache_dir=str(cache_root),
+            max_workers=max(1, int(max_workers)),
+        )
+    except Exception as e:
+        is_access_error, status_code = _is_hf_access_error(e)
+        if is_access_error:
+            raise HuggingFaceAccessError(str(preset.repo_id), raw_message=str(e), status_code=status_code) from e
+        raise
+    resolved = Path(str(snapshot))
+    if not hf_snapshot_is_usable(
+        resolved,
+        required_files=required_files,
+        require_weight_files=require_weight_files,
+    ):
+        raise RuntimeError(
+            f"Downloaded snapshot for {preset.repo_id!r} is incomplete or missing model weights: {resolved}\n"
+            "This usually means the download was interrupted. Retry the download; if the repo is gated, "
+            "accept its terms first and authenticate with a Hugging Face token."
+        )
+    return resolved
 
 
 def format_model_preset_rows(presets: Sequence[VisionModelDownloadPreset]) -> Iterable[str]:

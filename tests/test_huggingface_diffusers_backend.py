@@ -88,6 +88,74 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertIn(_default_torch_dtype_for_device(torch, "mps"), (torch.bfloat16, torch.float16))
         self.assertIn(_default_torch_dtype_for_device(torch, "mps:0"), (torch.bfloat16, torch.float16))
 
+    def test_ensure_pipeline_chat_templates_reads_snapshot_files(self):
+        from abstractvision.backends.huggingface_diffusers import _ensure_pipeline_chat_templates
+
+        class _FakeTokenizer:
+            chat_template = None
+
+        class _FakePeTokenizer:
+            chat_template = None
+
+        class _FakeProcessor:
+            chat_template = None
+
+        class _FakePipe:
+            def __init__(self):
+                self.tokenizer = _FakeTokenizer()
+                self.pe_tokenizer = _FakePeTokenizer()
+                self.processor = _FakeProcessor()
+
+        with tempfile.TemporaryDirectory() as td:
+            snap = Path(td)
+            (snap / "tokenizer").mkdir(parents=True, exist_ok=True)
+            (snap / "pe_tokenizer").mkdir(parents=True, exist_ok=True)
+            (snap / "processor").mkdir(parents=True, exist_ok=True)
+            (snap / "tokenizer" / "chat_template.jinja").write_text("tokenizer-template", encoding="utf-8")
+            (snap / "pe_tokenizer" / "chat_template.jinja").write_text("pe-tokenizer-template", encoding="utf-8")
+            (snap / "processor" / "chat_template.jinja").write_text("processor-template", encoding="utf-8")
+
+            pipe = _FakePipe()
+            _ensure_pipeline_chat_templates(pipe, snapshot_dir=snap, model_id="zai-org/GLM-Image")
+
+        self.assertEqual(pipe.tokenizer.chat_template, "tokenizer-template")
+        self.assertEqual(pipe.pe_tokenizer.chat_template, "pe-tokenizer-template")
+        self.assertEqual(pipe.processor.chat_template, "processor-template")
+
+    def test_ensure_pipeline_chat_templates_applies_fallbacks(self):
+        from abstractvision.backends.huggingface_diffusers import _ensure_pipeline_chat_templates
+
+        class _FakeTokenizer:
+            chat_template = None
+
+        class _FakePeTokenizer:
+            chat_template = None
+
+        class _FakeProcessor:
+            chat_template = None
+
+        class _FakePipe:
+            def __init__(self, name, *, include_pe_tokenizer: bool = False):
+                self.tokenizer = _FakeTokenizer()
+                self.processor = _FakeProcessor()
+                self.pe_tokenizer = _FakePeTokenizer() if include_pe_tokenizer else None
+                self.__class__.__name__ = name
+
+        z_pipe = _FakePipe("ZImagePipeline")
+        _ensure_pipeline_chat_templates(z_pipe, snapshot_dir=None, model_id="Tongyi-MAI/Z-Image-Turbo")
+        self.assertIsInstance(z_pipe.tokenizer.chat_template, str)
+        self.assertIn("<|im_start|>", z_pipe.tokenizer.chat_template)
+
+        glm_pipe = _FakePipe("GlmImagePipeline")
+        _ensure_pipeline_chat_templates(glm_pipe, snapshot_dir=None, model_id="zai-org/GLM-Image")
+        self.assertIsInstance(glm_pipe.processor.chat_template, str)
+        self.assertIn("<|image|>", glm_pipe.processor.chat_template)
+
+        ernie_pipe = _FakePipe("ErnieImagePipeline", include_pe_tokenizer=True)
+        _ensure_pipeline_chat_templates(ernie_pipe, snapshot_dir=None, model_id="baidu/ERNIE-Image-Turbo")
+        self.assertIsInstance(ernie_pipe.pe_tokenizer.chat_template, str)
+        self.assertIn("[SYSTEM_PROMPT]", ernie_pipe.pe_tokenizer.chat_template)
+
     def test_maybe_upcasts_vae_to_fp32_on_mps(self):
         from abstractvision.backends.huggingface_diffusers import _maybe_upcast_vae_for_mps
 
@@ -184,6 +252,71 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 backend.generate_image(ImageGenerationRequest(prompt="hello"))
         self.assertIn("mps", str(ctx.exception).lower())
+
+    def test_get_capabilities_uses_registry_tasks_for_known_model(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="baidu/ERNIE-Image-Turbo", device="cpu")
+        )
+        caps = backend.get_capabilities()
+
+        self.assertEqual(set(caps.supported_tasks or []), {"text_to_image"})
+        self.assertFalse(caps.supports_mask)
+
+    def test_normalize_glm_generation_request_uses_registry_defaults(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/GLM-Image", device="cpu")
+        )
+        normalized = backend.normalize_image_generation_request(
+            ImageGenerationRequest(prompt="fox", width=513, height=510)
+        )
+
+        self.assertEqual(normalized.steps, 20)
+        self.assertEqual(normalized.guidance_scale, 1.5)
+        self.assertEqual(normalized.width, 544)
+        self.assertEqual(normalized.height, 512)
+
+    def test_normalize_flux2_generation_request_applies_registry_constraints(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="black-forest-labs/FLUX.2-klein-9B", device="cpu")
+        )
+        normalized = backend.normalize_image_generation_request(
+            ImageGenerationRequest(
+                prompt="fox",
+                negative_prompt="bad anatomy",
+                guidance_scale=7.0,
+            )
+        )
+
+        self.assertIsNone(normalized.negative_prompt)
+        self.assertEqual(normalized.guidance_scale, 1.0)
+
+    def test_normalize_glm_edit_request_derives_dimensions_from_input(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageEditRequest
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "input.png"
+            Image.new("RGB", (513, 510), color=(12, 34, 56)).save(path, format="PNG")
+            image_bytes = path.read_bytes()
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/GLM-Image", device="cpu")
+        )
+        normalized = backend.normalize_image_edit_request(ImageEditRequest(prompt="watercolor", image=image_bytes))
+
+        self.assertEqual(normalized.steps, 20)
+        self.assertEqual(normalized.guidance_scale, 1.5)
+        self.assertEqual(normalized.extra.get("width"), 544)
+        self.assertEqual(normalized.extra.get("height"), 512)
 
     def test_generate_image_maps_common_params(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -304,6 +437,9 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
             repo_dir = hf_home / "hub" / "models--runwayml--stable-diffusion-v1-5"
             snap_dir = repo_dir / "snapshots" / "abc123"
             snap_dir.mkdir(parents=True)
+            (snap_dir / "model_index.json").write_text("{}", encoding="utf-8")
+            (snap_dir / "unet").mkdir(parents=True, exist_ok=True)
+            (snap_dir / "unet" / "diffusion_pytorch_model.safetensors").write_bytes(b"x")
             (repo_dir / "refs").mkdir(parents=True)
             (repo_dir / "refs" / "main").write_text("abc123", encoding="utf-8")
 

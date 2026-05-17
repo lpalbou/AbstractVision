@@ -1,12 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.3.6 - 2026-05-18
 
-- Model registry: enrich `vision_model_capabilities.json` with per-model downloadable artifact metadata and show it in `abstractvision show-model`.
-- Downloads: expand curated presets to include official Diffusers snapshots (16-bit/FP fallbacks) for Qwen Image, FLUX.2 klein, Z-Image-Turbo, and Stable Diffusion 1.5; `model-catalog` now lists these across targets/providers.
-- CLI: `--provider/--engine` now implies the matching `--target` when `--target` is left as `auto`, so `abstractvision download-model stable-diffusion --provider diffusers` works without repeating flags.
-- CLI/REPL: when a curated Diffusers snapshot exists under `ABSTRACTVISION_MODEL_DIR`, Diffusers backend selection uses the local path automatically; `download-model --target diffusers` no longer forces an 8-bit-only policy.
-- Downloads/catalog: add curated Diffusers snapshot presets and registry entries for more common Hugging Face text-to-image and image-to-image models (ERNIE Image, SDXL base/refiner, SDXL Turbo, SD Turbo, SD3.5, FLUX.1, Qwen Image Lightning, Playground v2.5).
+- Model registry/downloads: expand `vision_model_capabilities.json` and curated preset coverage for current Hugging Face text-to-image and image-to-image models, including FLUX.1/2, Qwen Image, ERNIE Image, GLM Image, Z-Image, SDXL, SD Turbo, and SD3.5. The registry now remains the packaged source of truth for both downloadable artifacts and task capability metadata.
+- Cache/catalog: keep curated downloads in the Hugging Face cache by default, migrate older `~/models/<preset>` trees into that cache on first use, and align Diffusers/MFLUX cache discovery across CLI, REPL, playground, and AbstractCore so cached local models surface consistently.
+- API-level normalization: move model-specific parameter normalization into shared backend hooks used by `VisionManager` and the playground server. Model constraints such as MFLUX distilled `guidance_scale=1.0`, unsupported negative prompts, and GLM `steps/guidance_scale/32-multiple dimensions` now apply consistently through the CLI/REPL, playground, and AbstractCore integration.
+- Playground/API: expose structured per-model `task_specs` from `/v1/vision/models`, only enable the edit surface for models that advertise `image_to_image`, switch models by auto-loading the new selection, and truncate `b64_json` in logs instead of dumping the full base64 payload.
+- AbstractCore/provider catalogs: keep remote provider/model listing robust when internet or API credentials are unavailable, and keep local provider/model catalogs aligned with the same cache-backed discovery used by the interactive surfaces.
+- CLI/docs: keep `abstractvision cli` as the canonical interactive command (with `repl` as a legacy alias), expand model catalog/docs coverage, refresh backend/configuration/AbstractCore/playground references, and regenerate `llms.txt` / `llms-full.txt` for release.
 
 ## 0.3.5 - 2026-05-13
 

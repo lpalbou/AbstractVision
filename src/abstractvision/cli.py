@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import shlex
@@ -23,17 +24,22 @@ from .backends import (
 )
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_downloads import (
+    catalog_target_scope,
     default_model_target,
     download_hf_repo_snapshot,
     download_model_preset,
     find_model_preset,
     format_model_preset_rows,
+    HuggingFaceAccessError,
+    local_model_profile,
     looks_like_hf_repo_id,
     model_presets,
     normalize_model_engine,
     normalize_model_target,
+    resolve_hf_token,
     resolve_model_target_and_engine,
 )
+from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
 from .vision_manager import VisionManager
 
 DEFAULT_REPL_BACKEND = ""
@@ -83,6 +89,26 @@ def _open_file(path: Path) -> None:
         subprocess.run(["cmd", "/c", "start", "", str(p)], check=False)
         return
     subprocess.run(["xdg-open", str(p)], check=False)
+
+
+def _interactive_hf_token_retry(
+    error: HuggingFaceAccessError,
+    *,
+    current_token: Optional[str] = None,
+    json_mode: bool = False,
+) -> Optional[str]:
+    if json_mode or not sys.stdin.isatty():
+        return None
+    print(error, file=sys.stderr)
+    if current_token:
+        prompt = "Paste a different Hugging Face token to retry now (input hidden, blank to abort): "
+    else:
+        prompt = "Paste a Hugging Face token to retry now (input hidden, blank to abort): "
+    try:
+        entered = str(getpass.getpass(prompt)).strip()
+    except (EOFError, KeyboardInterrupt):
+        entered = ""
+    return entered or None
 
 
 def _build_openai_backend_from_args(args: argparse.Namespace) -> OpenAICompatibleVisionBackend:
@@ -139,6 +165,33 @@ def _split_provider_prefix(model: Optional[str]) -> Tuple[Optional[str], Optiona
     return None, s or None
 
 
+def _resolve_cached_diffusers_model_id(model_id: str) -> str:
+    """Resolve a curated diffusers preset to the HF cache when possible."""
+
+    candidate = str(model_id or "").strip()
+    if not candidate:
+        return candidate
+    try:
+        preset = find_model_preset(candidate, target="diffusers", engine="diffusers", require_8bit=False)
+    except Exception:
+        return candidate
+
+    legacy_root = default_legacy_model_root()
+    legacy_dir = legacy_root / preset.local_dir_name
+    try:
+        cached = ensure_hf_repo_snapshot(
+            preset.repo_id,
+            source_dir=legacy_dir,
+            cache_dir=str(default_hf_cache_root()),
+            cleanup_source=True,
+        )
+    except Exception:
+        cached = None
+    if cached is not None:
+        return str(cached)
+    return str(preset.repo_id).strip() or candidate
+
+
 def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
     store = LocalAssetStore(args.store_dir) if args.store_dir else LocalAssetStore()
     provider_kind = str(
@@ -182,22 +235,7 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
         model_id = str(model_value or DEFAULT_DIFFUSERS_MODEL_ID).strip()
         if not model_id:
             model_id = DEFAULT_DIFFUSERS_MODEL_ID
-        try:
-            preset = find_model_preset(model_id, target="diffusers", engine="diffusers", require_8bit=False)
-        except Exception:
-            preset = None
-        if preset is not None:
-            # Prefer a locally downloaded snapshot when present (downloaded via `abstractvision download-model`).
-            try:
-                from .model_downloads import default_download_root
-
-                local_dir = default_download_root() / preset.local_dir_name
-                if (local_dir / "model_index.json").is_file():
-                    model_id = str(local_dir)
-                else:
-                    model_id = str(preset.repo_id).strip() or model_id
-            except Exception:
-                model_id = str(preset.repo_id).strip() or model_id
+        model_id = _resolve_cached_diffusers_model_id(model_id)
         backend = HuggingFaceDiffusersVisionBackend(
             config=HuggingFaceDiffusersBackendConfig(
                 model_id=model_id,
@@ -331,9 +369,10 @@ def _cmd_model_presets(args: argparse.Namespace) -> int:
     include_non_8bit = all_flag
     include_all_targets = bool(getattr(args, "all_targets", False))
     resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets)
     # Diffusers artifacts are typically full snapshots; treat them as opt-in when
     # listing, but don't force an 8-bit-only view that would otherwise be empty.
-    if not include_non_8bit and resolved_target == "diffusers":
+    if not include_non_8bit and resolved_target in {"diffusers", "hf-snapshot"}:
         include_non_8bit = True
     presets = model_presets(
         target=target,
@@ -345,14 +384,18 @@ def _cmd_model_presets(args: argparse.Namespace) -> int:
         _print_json([p.to_dict() for p in presets])
         return 0
 
-    selected_target = "all" if include_all_targets else resolved_target
+    selected_target = "all" if include_all_targets else ",".join(selected_targets)
     selected_engine = resolved_engine or "any"
+    if not include_all_targets and str(target).strip().lower() in {"", "auto", "default"} and resolved_engine is None:
+        print(f"platform: {local_model_profile()}")
     print(f"target: {selected_target} (auto default: {default_model_target()})")
     print(f"provider/engine: {selected_engine}")
     if all_flag:
         print("policy: showing all presets (including explicit non-8-bit fallbacks)")
     elif resolved_target == "diffusers":
         print("policy: Diffusers target includes full snapshots (16-bit/FP) by default")
+    elif resolved_target == "hf-snapshot":
+        print("policy: HF snapshot targets include full snapshots by default")
     else:
         print("policy: 8-bit presets only by default; pass --all to show explicit non-8-bit fallbacks")
     print("tip: `abstractvision model-catalog` joins presets with the capability registry (tasks)")
@@ -386,6 +429,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     include_non_8bit = bool(getattr(args, "all", False))
     include_all_targets = bool(getattr(args, "all_targets", False))
     resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets)
 
     reg = VisionModelCapabilitiesRegistry()
     presets = model_presets(
@@ -459,9 +503,11 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         _print_json(out)
         return 0
 
-    selected_target = "all" if include_all_targets else resolved_target
+    selected_target = "all" if include_all_targets else ",".join(selected_targets)
     selected_engine = resolved_engine or "any"
     print(f"task: {task or 'any'}")
+    if not include_all_targets and str(target).strip().lower() in {"", "auto", "default"} and resolved_engine is None:
+        print(f"platform: {local_model_profile()}")
     print(f"target: {selected_target} (auto default: {default_model_target()})")
     print(f"provider/engine: {selected_engine}")
     print("policy: recommend 8-bit; show best-effort fallback when no 8-bit preset exists (pass --all for full list)")
@@ -510,9 +556,10 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
     model_dir = Path(str(args.model_dir)).expanduser() if getattr(args, "model_dir", None) else None
     results: List[Dict[str, Any]] = []
     json_mode = bool(getattr(args, "json", False))
+    cli_token = resolve_hf_token(str(getattr(args, "token", None) or "") or None)
     allow_non_8bit = bool(getattr(args, "allow_non_8bit", False))
     require_8bit = not allow_non_8bit
-    if selected_target == "diffusers":
+    if selected_target in {"diffusers", "hf-snapshot"}:
         # Diffusers targets are full pipeline snapshots; do not force an 8-bit-only policy.
         require_8bit = False
 
@@ -532,21 +579,36 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
             if looks_like_hf_repo_id(name):
                 if not json_mode:
                     print(f"selected_repo_id: {name}")
-                    print("download: huggingface_hub snapshot (global cache)")
+                    print("download: huggingface_hub snapshot (HF cache)")
                     print("#FALLBACK: repo id is not a curated preset; downloading full snapshot to the HF cache.")
                 try:
                     path = download_hf_repo_snapshot(
                         name,
-                        token=str(args.token) if getattr(args, "token", None) else None,
+                        token=cli_token,
+                        cache_dir=str(default_hf_cache_root()),
                         max_workers=int(getattr(args, "max_workers", 4) or 4),
                     )
+                except HuggingFaceAccessError as e2:
+                    retry_token = _interactive_hf_token_retry(e2, current_token=cli_token, json_mode=json_mode)
+                    if retry_token is None:
+                        raise SystemExit(str(e2)) from e2
+                    try:
+                        path = download_hf_repo_snapshot(
+                            name,
+                            token=retry_token,
+                            cache_dir=str(default_hf_cache_root()),
+                            max_workers=int(getattr(args, "max_workers", 4) or 4),
+                        )
+                        cli_token = retry_token
+                    except (HuggingFaceAccessError, RuntimeError) as e3:
+                        raise SystemExit(str(e3)) from e3
                 except RuntimeError as e2:
                     raise SystemExit(str(e2)) from e2
 
-                item = {"repo_id": name, "local_dir": str(path), "source": "huggingface_hub_cache"}
+                item = {"repo_id": name, "snapshot_dir": str(path), "source": "huggingface_hub_cache"}
                 results.append(item)
                 if not json_mode:
-                    print(f"local_dir: {path}")
+                    print(f"snapshot_dir: {path}")
                 continue
             raise SystemExit(str(e)) from e
 
@@ -565,17 +627,31 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
             path = download_model_preset(
                 preset,
                 model_dir=model_dir,
-                token=str(args.token) if getattr(args, "token", None) else None,
+                token=cli_token,
                 max_workers=int(getattr(args, "max_workers", 4) or 4),
             )
+        except HuggingFaceAccessError as e:
+            retry_token = _interactive_hf_token_retry(e, current_token=cli_token, json_mode=json_mode)
+            if retry_token is None:
+                raise SystemExit(str(e)) from e
+            try:
+                path = download_model_preset(
+                    preset,
+                    model_dir=model_dir,
+                    token=retry_token,
+                    max_workers=int(getattr(args, "max_workers", 4) or 4),
+                )
+                cli_token = retry_token
+            except (HuggingFaceAccessError, RuntimeError) as e2:
+                raise SystemExit(str(e2)) from e2
         except RuntimeError as e:
             raise SystemExit(str(e)) from e
 
         item = preset.to_dict()
-        item["local_dir"] = str(path)
+        item["snapshot_dir"] = str(path)
         results.append(item)
         if not json_mode:
-            print(f"local_dir: {path}")
+            print(f"snapshot_dir: {path}")
 
     if json_mode:
         _print_json(results[0] if len(results) == 1 else results)
@@ -703,11 +779,12 @@ def _repl_help() -> str:
         "  /help                       Show this help\n"
         "  /exit                       Quit (aliases: /quit, /q)\n"
         "  /models                     List known capability model ids\n"
+        "  /catalog [task]             List downloadable models from the registry + preset catalog\n"
         "  /provider-models            List models from the configured OpenAI-compatible provider\n"
         "  /tasks                      List known task keys\n"
         "  /show-model <id>            Show a model's tasks + params\n"
         "  /config                     Show current backend/store config\n"
-        "  CLI: abstractvision model-presets lists curated 8-bit local downloads\n"
+        "  CLI: abstractvision model-presets lists curated cache-backed downloads\n"
         "\n"
         "Backends:\n"
         "  No backend is selected by default unless ABSTRACTVISION_BACKEND or OPENAI_BASE_URL is set.\n"
@@ -735,7 +812,7 @@ def _repl_help() -> str:
         "      extra flags are forwarded through request.extra\n"
         "\n"
         "Quick examples:\n"
-        "  # Local model download policy: 8-bit MLX on macOS, no full-model fallback by default\n"
+        "  # Local model download policy: 8-bit MLX on macOS, cache-backed by default\n"
         "  abstractvision model-presets\n"
         "  abstractvision download-model flux2-klein-4b\n"
         "  /backend mflux flux2-klein-4b\n"
@@ -920,22 +997,7 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
         model_id = str(state.model_id or "").strip()
         if not model_id:
             raise ValueError("Diffusers backend is not configured. Use: /backend diffusers <model_id_or_path> [device]")
-        # Prefer a locally downloaded snapshot when present (downloaded via `abstractvision download-model`).
-        try:
-            preset = find_model_preset(model_id, target="diffusers", engine="diffusers", require_8bit=False)
-        except Exception:
-            preset = None
-        if preset is not None:
-            try:
-                from .model_downloads import default_download_root
-
-                local_dir = default_download_root() / preset.local_dir_name
-                if (local_dir / "model_index.json").is_file():
-                    model_id = str(local_dir)
-                else:
-                    model_id = str(preset.repo_id).strip() or model_id
-            except Exception:
-                model_id = str(preset.repo_id).strip() or model_id
+        model_id = _resolve_cached_diffusers_model_id(model_id)
         backend_key = (
             "diffusers",
             model_id,
@@ -1024,7 +1086,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
     reg = VisionModelCapabilitiesRegistry()
     state = _ReplState()
 
-    print("AbstractVision REPL")
+    print("AbstractVision CLI")
     print(f"- registry schema_version: {reg.schema_version()}")
     print("Type /help for commands.\n")
 
@@ -1058,6 +1120,19 @@ def _cmd_repl(_: argparse.Namespace) -> int:
             if cmd == "models":
                 for mid in reg.list_models():
                     print(mid)
+                continue
+            if cmd in {"catalog", "model-catalog"}:
+                task = str(args[0]).strip() if args else ""
+                _cmd_model_catalog(
+                    argparse.Namespace(
+                        task=task,
+                        target="auto",
+                        engine="auto",
+                        all=False,
+                        all_targets=True,
+                        json=False,
+                    )
+                )
                 continue
             if cmd in {"provider-models", "openai-models", "remote-models"}:
                 flags = _parse_flag_args(args)
@@ -1153,6 +1228,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     else:
                         state.diffusers_device = args[2] if len(args) >= 3 else state.diffusers_device
                         state.diffusers_torch_dtype = str(args[3]).strip() if len(args) >= 4 else state.diffusers_torch_dtype
+                    state.model_id = _resolve_cached_diffusers_model_id(str(state.model_id))
                     print("ok")
                     continue
                 if kind == "sdcpp":
@@ -1388,14 +1464,14 @@ def build_parser() -> argparse.ArgumentParser:
     presets = sub.add_parser(
         "model-presets",
         aliases=["vision-models"],
-        help="List curated local vision model download presets (8-bit by default).",
+        help="List curated cache-backed vision model download presets (8-bit by default).",
     )
     presets.add_argument(
         "--target",
         default="auto",
-        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "macos", "gpu"],
+        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "hf-snapshot", "macos", "gpu"],
         help=(
-            "Runtime artifact target (default: auto; macOS resolves to mlx, other systems to gguf). "
+            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer fp8, others prefer diffusers). "
             "If left as auto, an explicit --provider/--engine will infer the matching target."
         ),
     )
@@ -1405,7 +1481,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--backend",
         dest="engine",
         default="auto",
-        choices=["auto", "any", "mflux", "mlx", "gguf", "sdcpp", "stable-diffusion.cpp", "diffusers"],
+        choices=[
+            "auto",
+            "any",
+            "mflux",
+            "mlx",
+            "gguf",
+            "sdcpp",
+            "stable-diffusion.cpp",
+            "diffusers",
+            "transformers",
+        ],
         help="Runtime provider/engine filter (default: any for the selected target).",
     )
     presets.add_argument("--all", action="store_true", help="Also show explicit non-8-bit fallbacks.")
@@ -1426,9 +1512,9 @@ def build_parser() -> argparse.ArgumentParser:
     catalog.add_argument(
         "--target",
         default="auto",
-        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "macos", "gpu"],
+        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "hf-snapshot", "macos", "gpu"],
         help=(
-            "Runtime artifact target (default: auto; macOS resolves to mlx, other systems to gguf). "
+            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer fp8, others prefer diffusers). "
             "If left as auto, an explicit --provider/--engine will infer the matching target."
         ),
     )
@@ -1438,7 +1524,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--backend",
         dest="engine",
         default="auto",
-        choices=["auto", "any", "mflux", "mlx", "gguf", "sdcpp", "stable-diffusion.cpp", "diffusers"],
+        choices=[
+            "auto",
+            "any",
+            "mflux",
+            "mlx",
+            "gguf",
+            "sdcpp",
+            "stable-diffusion.cpp",
+            "diffusers",
+            "transformers",
+        ],
         help="Runtime provider/engine filter (default: any for the selected target).",
     )
     catalog.add_argument("--all", action="store_true", help="Also include explicit non-8-bit fallbacks.")
@@ -1449,7 +1545,7 @@ def build_parser() -> argparse.ArgumentParser:
     dl = sub.add_parser(
         "download-model",
         aliases=["download-vision-model"],
-        help="Download a curated local vision model preset (8-bit by default) or a Hugging Face repo snapshot.",
+        help="Download a curated vision model preset (8-bit by default) or a Hugging Face repo snapshot.",
     )
     dl.add_argument(
         "names",
@@ -1463,9 +1559,9 @@ def build_parser() -> argparse.ArgumentParser:
     dl.add_argument(
         "--target",
         default="auto",
-        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "macos", "gpu"],
+        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "hf-snapshot", "macos", "gpu"],
         help=(
-            "Runtime artifact target (default: auto; macOS resolves to mlx, other systems to gguf). "
+            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer fp8, others prefer diffusers). "
             "If left as auto, an explicit --provider/--engine will infer the matching target."
         ),
     )
@@ -1475,29 +1571,43 @@ def build_parser() -> argparse.ArgumentParser:
         "--backend",
         dest="engine",
         default="auto",
-        choices=["auto", "any", "mflux", "mlx", "gguf", "sdcpp", "stable-diffusion.cpp", "diffusers"],
+        choices=[
+            "auto",
+            "any",
+            "mflux",
+            "mlx",
+            "gguf",
+            "sdcpp",
+            "stable-diffusion.cpp",
+            "diffusers",
+            "transformers",
+        ],
         help="Runtime provider/engine filter (default: any for the selected target).",
     )
     dl.add_argument(
         "--model-dir",
         default=_env("ABSTRACTVISION_MODEL_DIR"),
-        help="Root directory for downloaded models (default: $ABSTRACTVISION_MODEL_DIR or ~/models).",
+        help="Legacy preset root to import from (downloads now land in the Hugging Face cache).",
     )
-    dl.add_argument("--token", default=_env("HUGGINGFACE_HUB_TOKEN"), help="Hugging Face token, if needed.")
+    dl.add_argument("--token", default=_env("HUGGINGFACE_HUB_TOKEN") or _env("HF_TOKEN"), help="Hugging Face token, if needed.")
     dl.add_argument("--max-workers", type=int, default=4, help="Hugging Face download workers (default: 4).")
     dl.add_argument(
         "--allow-non-8bit",
         action="store_true",
         help="Permit explicit fallback presets when no 8-bit artifact is curated.",
     )
-    dl.add_argument("--json", action="store_true", help="Print selected preset + local path as JSON.")
+    dl.add_argument("--json", action="store_true", help="Print selected preset + snapshot path as JSON.")
     dl.set_defaults(_fn=_cmd_download_model)
 
     sm = sub.add_parser("show-model", help="Show a model's supported tasks and params.")
     sm.add_argument("model_id")
     sm.set_defaults(_fn=_cmd_show_model)
 
-    repl = sub.add_parser("repl", help="Interactive REPL for testing capabilities and generation.")
+    repl = sub.add_parser(
+        "cli",
+        aliases=["repl"],
+        help="Interactive CLI for testing capabilities, downloads, and generation.",
+    )
     repl.set_defaults(_fn=_cmd_repl)
 
     playground = sub.add_parser(
@@ -1579,7 +1689,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--model-dir",
             dest="mflux_model_dir",
             default=_env("ABSTRACTVISION_MODEL_DIR"),
-            help="Root directory for downloaded MFLUX presets (default: $ABSTRACTVISION_MODEL_DIR or ~/models).",
+            help="Legacy MFLUX preset root imported into the Hugging Face cache when older installs are migrated.",
         )
         ap.add_argument(
             "--mflux-allow-download",

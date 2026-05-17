@@ -12,12 +12,13 @@ Model-agnostic generative vision API (images, optional video) for Python and the
 
 - A small orchestration API: [`VisionManager`](src/abstractvision/vision_manager.py)
 - A packaged capability registry (“what models can do”): [`VisionModelCapabilitiesRegistry`](src/abstractvision/model_capabilities.py) backed by [`vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json)
+- Shared model metadata that now also drives local catalog surfacing and backend request normalization across the CLI, playground, and AbstractCore paths
 - Optional artifact-ref outputs (small JSON refs): [`LocalAssetStore`](src/abstractvision/artifacts.py) and [`RuntimeArtifactStoreAdapter`](src/abstractvision/artifacts.py)
 - Built-in backends (execution engines): [`src/abstractvision/backends/`](src/abstractvision/backends/)
   - OpenAI-compatible HTTP: [`openai_compatible.py`](src/abstractvision/backends/openai_compatible.py)
   - Local Diffusers: [`huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py)
   - Local stable-diffusion.cpp / GGUF: [`stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
-- CLI/REPL for manual testing: [`abstractvision`](src/abstractvision/cli.py)
+- CLI for manual testing (`abstractvision cli`, legacy alias: `abstractvision repl`): [`abstractvision`](src/abstractvision/cli.py)
 - Self-contained local Playground UI/API: [`playground/vision_playground.html`](playground/vision_playground.html) (docs: [`playground/README.md`](playground/README.md))
 
 ## How it fits together (diagram)
@@ -58,7 +59,7 @@ Optional extras:
 |---|---|
 | `abstractvision[openai]` | Official OpenAI provider intent marker; no SDK dependency today. |
 | `abstractvision[openai-compatible]` | Generic local/remote OpenAI-shaped endpoint intent marker; stdlib-only today. |
-| `abstractvision[models]` | Curated Hugging Face download helpers for local 8-bit vision model presets. |
+| `abstractvision[models]` | Curated Hugging Face download helpers for cache-backed local 8-bit vision model presets. |
 | `abstractvision[diffusers]` | Install Torch/Diffusers and related packages for local Diffusers generation. |
 | `abstractvision[huggingface]` | Compatibility alias for callers that still request the historical Diffusers extra. |
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
@@ -116,8 +117,9 @@ Start here:
 For local model downloads, prefer the curated 8-bit presets first. On macOS
 they resolve to MLX artifacts that declare the `mflux` engine; on non-macOS
 systems the default target is GGUF or an equivalent local-runtime artifact. The
-downloader does not fall back to full models unless you pass
-`--allow-non-8bit`.
+downloader stores curated presets in the Hugging Face cache by default and
+imports older `~/models/<preset>` trees on first use. It does not fall back to
+full models unless you pass `--allow-non-8bit`.
 
 ```bash
 pip install "abstractvision[models,mflux]"
@@ -157,13 +159,13 @@ abstractvision download-model flux2-dev --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
-abstractvision repl
+abstractvision cli
 ```
 
-For a fresh cache, you can also permit the REPL to download missing files:
+For a fresh cache, you can also permit the interactive CLI to download missing files:
 
 ```bash
-ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 abstractvision repl
+ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 abstractvision cli
 ```
 
 More recommendations by VRAM: [`docs/getting-started.md`](docs/getting-started.md).
@@ -175,9 +177,11 @@ from abstractvision import VisionModelCapabilitiesRegistry
 
 reg = VisionModelCapabilitiesRegistry()
 assert reg.supports("runwayml/stable-diffusion-v1-5", "text_to_image")
+assert reg.supports("zai-org/GLM-Image", "image_to_image")
 
 print(reg.list_tasks())
 print(reg.models_for_task("text_to_image"))
+print(reg.models_for_task("image_to_image"))
 ```
 
 ### Backend wiring + generation (artifact outputs)
@@ -236,7 +240,7 @@ want AbstractCore to launch local AbstractVision generation directly. For
 MFLUX, set `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` or use routed model ids
 such as `mflux/flux2-klein-4b`.
 
-### Interactive testing (CLI / REPL)
+### Interactive testing (CLI)
 
 ```bash
 abstractvision models
@@ -245,10 +249,10 @@ abstractvision provider-models --base-url http://localhost:1234/v1 --task text_t
 abstractvision tasks
 abstractvision show-model runwayml/stable-diffusion-v1-5
 
-abstractvision repl
+abstractvision cli
 ```
 
-Inside the REPL:
+Inside the interactive CLI:
 
 ```text
 /t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
@@ -289,6 +293,12 @@ abstractvision playground --port 8091
 ```
 
 Open `http://127.0.0.1:8091/vision_playground.html`, select a cached model, then load it. The page and the API are served by the same process.
+
+Current behavior:
+- Selecting a model switches to it by auto-loading the new backend/model; there is no separate unload step in the UI.
+- The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry.
+- Model-specific request normalization happens at the API/backend layer, not just in the page. The same MFLUX and GLM parameter corrections therefore apply to the playground, `abstractvision cli`, and AbstractCore.
+- Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
 One-shot commands (OpenAI-compatible HTTP backend only):
 
