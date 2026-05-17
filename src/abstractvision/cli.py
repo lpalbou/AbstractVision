@@ -524,6 +524,8 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
 def _cmd_download_model(args: argparse.Namespace) -> int:
     target = str(getattr(args, "target", "auto") or "auto")
     engine = str(getattr(args, "engine", "auto") or "auto")
+    raw_target = str(target or "auto").strip().lower()
+    raw_engine = str(engine or "auto").strip().lower().replace("_", "-")
     raw_names = getattr(args, "names", None)
     if raw_names is None:
         raw_names = [getattr(args, "name", "")]
@@ -559,7 +561,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
     cli_token = resolve_hf_token(str(getattr(args, "token", None) or "") or None)
     allow_non_8bit = bool(getattr(args, "allow_non_8bit", False))
     require_8bit = not allow_non_8bit
-    if selected_target in {"diffusers", "hf-snapshot"}:
+    if raw_target in {"diffusers", "hf-snapshot"} or raw_engine in {"diffusers", "transformers"}:
         # Diffusers targets are full pipeline snapshots; do not force an 8-bit-only policy.
         require_8bit = False
 
