@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import shlex
+import sys
+import importlib.util
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -40,6 +42,17 @@ def _env_first(*keys: str, default: Optional[str] = None) -> Optional[str]:
     return default
 
 
+def _strip_openai_model_prefixes(value: Any) -> str:
+    model = str(value or "").strip()
+    while "/" in model:
+        head, tail = model.split("/", 1)
+        if head.strip().lower().replace("_", "-") in {"openai", "openai-compatible"}:
+            model = tail.strip()
+            continue
+        break
+    return model
+
+
 def _env_bool(key: str, default: bool = False) -> bool:
     v = _env(key)
     if v is None:
@@ -70,6 +83,54 @@ def _owner_cfg_bool(owner: Any, key: str, default: bool = False) -> bool:
 
 def _looks_like_openai_api(base_url: Optional[str]) -> bool:
     return "api.openai.com" in str(base_url or "").lower()
+
+
+def _openai_api_key() -> Optional[str]:
+    return _env("OPENAI_API_KEY")
+
+def _mflux_weights_present() -> bool:
+    """Return True when MFLUX preset weights appear to be downloaded locally."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        from ..model_downloads import default_download_root, model_presets
+    except Exception:
+        return False
+    root = default_download_root()
+    for preset in model_presets(target="mlx", engine="mflux", include_non_8bit=False):
+        local_dir = root / preset.local_dir_name
+        try:
+            if local_dir.is_dir() and any(local_dir.rglob("*.safetensors")):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _runtime_installed(provider: str) -> bool | None:
+    p = str(provider or "").strip().lower().replace("_", "-")
+    if not p:
+        return None
+    if p in {"openai", "openai-compatible"}:
+        return True
+    if p in {"huggingface", "diffusers", "hf"}:
+        # Diffusers backends require both diffusers and torch.
+        return importlib.util.find_spec("diffusers") is not None and importlib.util.find_spec("torch") is not None
+    if p in {"mflux", "m-flux"}:
+        if sys.platform != "darwin":
+            return False
+        return importlib.util.find_spec("mflux") is not None and importlib.util.find_spec("mlx") is not None
+    if p in {"sdcpp", "stable-diffusion.cpp", "stable-diffusion-cpp", "stable_diffusion_cpp"}:
+        return importlib.util.find_spec("stable_diffusion_cpp") is not None
+    return None
+
+
+def _configured_openai_base_url(owner: Any) -> Optional[str]:
+    return _owner_cfg(owner, "vision_base_url") or _env("OPENAI_BASE_URL")
+
+
+def _base_url_implies_openai_compatible(base_url: Any) -> bool:
+    return bool(str(base_url or "").strip()) and not _looks_like_openai_api(str(base_url or ""))
 
 
 def _truncate_string(value: str) -> str:
@@ -114,14 +175,41 @@ def _json_safe_provider_value(value: Any, *, depth: int = 0) -> Any:
 
 
 def _provider_model_to_dict(info: ProviderModelInfo) -> Dict[str, Any]:
-    return {
+    raw = _json_safe_provider_value(info.raw if isinstance(info.raw, dict) else {})
+    raw_obj = raw if isinstance(raw, dict) else {}
+    provider = ""
+    for key in ("provider", "provider_id", "provider_name", "backend", "engine_id", "owned_by"):
+        value = raw_obj.get(key)
+        if isinstance(value, str) and value.strip():
+            provider = value.strip()
+            break
+    if not provider and info.owned_by is not None:
+        provider = str(info.owned_by).strip()
+    routed_model = ""
+    for key in ("routed_model", "routing_model"):
+        value = raw_obj.get(key)
+        if isinstance(value, str) and value.strip():
+            routed_model = value.strip()
+            break
+    model_value = raw_obj.get("model")
+    if not isinstance(model_value, str) or not model_value.strip():
+        model_value = routed_model or str(info.id)
+    item = {
         "id": str(info.id),
+        "model": str(model_value).strip(),
+        "provider": provider or None,
+        "routed_model": routed_model or None,
         "object": str(info.object) if info.object is not None else None,
         "created": int(info.created) if isinstance(info.created, int) else None,
         "owned_by": str(info.owned_by) if info.owned_by is not None else None,
         "capabilities": [str(c) for c in info.capabilities],
-        "raw": _json_safe_provider_value(info.raw if isinstance(info.raw, dict) else {}),
+        "raw": raw_obj,
     }
+    for key in ("parameter_defaults", "parameter_constraints", "parameters"):
+        value = raw_obj.get(key)
+        if isinstance(value, dict):
+            item[key] = value
+    return item
 
 
 def _backend_supports_provider_catalog(backend: Any) -> bool:
@@ -132,6 +220,45 @@ def _backend_supports_provider_catalog(backend: Any) -> bool:
         impl = getattr(type(backend), "list_provider_models", None)
         return impl is not VisionBackend.list_provider_models
     return True
+
+
+def _provider_id_for_backend(backend: Any) -> Optional[str]:
+    name = type(backend).__name__.lower()
+    if "mflux" in name:
+        return "mflux"
+    if "huggingface" in name or "diffusers" in name:
+        return "huggingface"
+    if "stable" in name and "diffusion" in name:
+        return "sdcpp"
+    if "openai" in name:
+        base_url = getattr(getattr(backend, "_cfg", None), "base_url", None)
+        return "openai" if _looks_like_openai_api(str(base_url or "")) else "openai-compatible"
+    return None
+
+
+def _has_local_mflux_preset(model_id: str) -> bool:
+    if sys.platform != "darwin":
+        return False
+    try:
+        from ..model_downloads import default_download_root, find_model_preset
+
+        preset = find_model_preset(str(model_id), target="mlx", engine="mflux", require_8bit=True)
+        local_dir = default_download_root() / preset.local_dir_name
+        return local_dir.exists() and any(local_dir.rglob("*.safetensors"))
+    except Exception:
+        return False
+
+
+def _is_known_mflux_model_alias(model_id: str) -> bool:
+    if sys.platform != "darwin":
+        return False
+    try:
+        from ..model_downloads import find_model_preset
+
+        find_model_preset(str(model_id), target="mlx", engine="mflux", require_8bit=True)
+        return True
+    except Exception:
+        return False
 
 
 def _read_bytes_from_path(path: Union[str, Path]) -> bytes:
@@ -167,6 +294,230 @@ class _AbstractVisionCapability:
         self._owner = owner
         self.backend_id = backend_id or type(self).backend_id
         self._backend = None
+        self._routed_backends: Dict[tuple[Any, ...], Any] = {}
+
+    def _make_diffusers_backend(self, *, model_id: Optional[str] = None):
+        resolved_model_id = (
+            str(model_id).strip()
+            if isinstance(model_id, str) and str(model_id).strip()
+            else (
+                _owner_cfg(self._owner, "vision_model_id")
+                or _env("ABSTRACTVISION_DIFFUSERS_MODEL_ID")
+                or _env("ABSTRACTVISION_MODEL")
+                or _env("ABSTRACTVISION_MODEL_ID")
+                or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID
+            )
+        )
+        device = (
+            _owner_cfg(self._owner, "vision_device")
+            or _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "auto")
+            or "auto"
+        )
+        torch_dtype = _owner_cfg(self._owner, "vision_torch_dtype") or _env(
+            "ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE"
+        )
+        allow_download = _owner_cfg_bool(
+            self._owner,
+            "vision_allow_download",
+            _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False),
+        )
+        auto_retry_fp32 = _owner_cfg_bool(
+            self._owner,
+            "vision_auto_retry_fp32",
+            _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True),
+        )
+
+        from ..backends.huggingface_diffusers import (
+            HuggingFaceDiffusersBackendConfig,
+            HuggingFaceDiffusersVisionBackend,
+        )
+
+        cfg = HuggingFaceDiffusersBackendConfig(
+            model_id=str(resolved_model_id),
+            device=str(device),
+            torch_dtype=str(torch_dtype) if torch_dtype else None,
+            allow_download=allow_download,
+            auto_retry_fp32=auto_retry_fp32,
+        )
+        return HuggingFaceDiffusersVisionBackend(config=cfg)
+
+    def _make_openai_backend(self, *, model_id: Optional[str] = None, provider_id: Optional[str] = None):
+        configured_base_url = _configured_openai_base_url(self._owner)
+        requested_provider = str(provider_id or "").strip().lower().replace("_", "-")
+        explicit_openai_compatible = requested_provider in {"openai-compatible", "proxy"}
+
+        base_url = configured_base_url
+        if not base_url and not explicit_openai_compatible:
+            base_url = _DEFAULT_OPENAI_BASE_URL
+
+        owner_api_key = _owner_cfg(self._owner, "vision_api_key")
+        if owner_api_key:
+            api_key = owner_api_key
+        else:
+            api_key = _openai_api_key()
+        resolved_model_id = (
+            str(model_id).strip()
+            if isinstance(model_id, str) and str(model_id).strip()
+            else (
+                _owner_cfg(self._owner, "vision_model_id")
+                or _env("ABSTRACTVISION_MODEL")
+                or _env("ABSTRACTVISION_MODEL_ID")
+            )
+        )
+        if resolved_model_id:
+            resolved_model_id = _strip_openai_model_prefixes(resolved_model_id)
+        if not resolved_model_id:
+            resolved_model_id = _env_first("OPENAI_IMAGE_MODEL_ID", "OPENAI_IMAGE_MODEL")
+        if not resolved_model_id and not explicit_openai_compatible:
+            resolved_model_id = _DEFAULT_OPENAI_IMAGE_MODEL_ID
+        timeout_s_raw = _owner_cfg(self._owner, "vision_timeout_s") or _env(
+            "ABSTRACTVISION_TIMEOUT_S"
+        )
+        try:
+            timeout_s = float(timeout_s_raw) if timeout_s_raw else 300.0
+        except Exception:
+            timeout_s = 300.0
+        if not base_url:
+            raise AbstractVisionError(
+                "Missing vision_base_url / OPENAI_BASE_URL. "
+                "Configure an OpenAI-compatible endpoint or use OPENAI_API_KEY for OpenAI."
+            )
+        if not explicit_openai_compatible and not api_key:
+            raise AbstractVisionError(
+                "OpenAI image generation requires OPENAI_API_KEY."
+            )
+
+        t2v_path = _owner_cfg(self._owner, "vision_text_to_video_path") or _env(
+            "ABSTRACTVISION_TEXT_TO_VIDEO_PATH"
+        )
+        i2v_path = _owner_cfg(self._owner, "vision_image_to_video_path") or _env(
+            "ABSTRACTVISION_IMAGE_TO_VIDEO_PATH"
+        )
+        i2v_mode = _owner_cfg(self._owner, "vision_image_to_video_mode") or _env(
+            "ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart"
+        )
+        models_path = _owner_cfg(self._owner, "vision_models_path") or _env(
+            "ABSTRACTVISION_MODELS_PATH", "/models"
+        )
+
+        from ..backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+
+        cfg = OpenAICompatibleBackendConfig(
+            base_url=str(base_url),
+            api_key=str(api_key) if api_key else None,
+            model_id=str(resolved_model_id) if resolved_model_id else None,
+            timeout_s=float(timeout_s),
+            models_path=str(models_path or "/models"),
+            text_to_video_path=str(t2v_path) if t2v_path else None,
+            image_to_video_path=str(i2v_path) if i2v_path else None,
+            image_to_video_mode=str(i2v_mode or "multipart"),
+        )
+        return OpenAICompatibleVisionBackend(config=cfg)
+
+    def _make_mflux_backend(self, *, model_id: Optional[str] = None):
+        resolved_model = (
+            str(model_id).strip()
+            if isinstance(model_id, str) and str(model_id).strip()
+            else (
+                _owner_cfg(self._owner, "vision_mflux_model")
+                or _env("ABSTRACTVISION_MFLUX_MODEL")
+                or _owner_cfg(self._owner, "vision_model_id")
+                or _env("ABSTRACTVISION_MODEL")
+                or _env("ABSTRACTVISION_MODEL_ID")
+                or _env("ABSTRACTVISION_DIFFUSERS_MODEL_ID")
+            )
+        )
+        base_model = _owner_cfg(self._owner, "vision_mflux_base_model") or _env(
+            "ABSTRACTVISION_MFLUX_BASE_MODEL"
+        )
+        model_dir = _owner_cfg(self._owner, "vision_model_dir") or _env("ABSTRACTVISION_MODEL_DIR")
+        quantize_raw = _owner_cfg(self._owner, "vision_mflux_quantize") or _env(
+            "ABSTRACTVISION_MFLUX_QUANTIZE"
+        )
+        quantize = int(quantize_raw) if quantize_raw else None
+        allow_download = _owner_cfg_bool(
+            self._owner,
+            "vision_mflux_allow_download",
+            _env_bool("ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD", False),
+        )
+
+        from ..backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        cfg = MFluxBackendConfig(
+            model=str(resolved_model) if resolved_model else None,
+            base_model=str(base_model) if base_model else None,
+            model_dir=str(model_dir) if model_dir else None,
+            quantize=quantize,
+            allow_download=allow_download,
+        )
+        return MFluxVisionBackend(config=cfg)
+
+    def _backend_for_request(self, *, provider: Any = None, model: Any = None):
+        provider_id = str(provider or "").strip().lower().replace("_", "-")
+        model_id = str(model or "").strip()
+        if model_id and "/" in model_id:
+            head, tail = model_id.split("/", 1)
+            head_id = head.strip().lower().replace("_", "-")
+            if head_id == "mflux":
+                provider_id = "mflux"
+                model_id = tail.strip()
+            elif head_id == "mlx":
+                raise AbstractVisionError(
+                    "AbstractVision does not have a generic MLX image backend yet. "
+                    "Use provider/model `mflux/<preset>` for MFLUX-compatible 8-bit MLX models."
+                )
+            elif head_id in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
+                provider_id = "diffusers"
+                model_id = tail.strip()
+            elif head_id in {"openai", "openai-compatible"}:
+                if not provider_id:
+                    provider_id = "openai" if head_id == "openai" else "openai-compatible"
+                model_id = _strip_openai_model_prefixes(model_id)
+        if (
+            model_id
+            and provider_id in {"huggingface", "hf", "diffusers", "hf-diffusers", "mlx"}
+            and (_has_local_mflux_preset(model_id) or _is_known_mflux_model_alias(model_id))
+        ):
+            provider_id = "mflux"
+        if model_id and not provider_id and _has_local_mflux_preset(model_id):
+            provider_id = "mflux"
+        if (
+            not provider_id
+            and model_id.count("/") == 1
+            and not model_id.startswith(("./", "../", "/", "~"))
+            and "://" not in model_id
+        ):
+            provider_id = "mflux" if _has_local_mflux_preset(model_id) else "diffusers"
+        if provider_id == "mlx":
+            raise AbstractVisionError(
+                "AbstractVision does not have a generic MLX image backend yet. "
+                "Use provider 'mflux' for MFLUX-compatible 8-bit MLX models."
+            )
+        if provider_id in {"mflux", "m-flux"}:
+            key = ("mflux", model_id)
+            backend = self._routed_backends.get(key)
+            if backend is None:
+                backend = self._make_mflux_backend(model_id=model_id or None)
+                self._routed_backends[key] = backend
+            return backend
+        if provider_id in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
+            key = ("diffusers", model_id or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID)
+            backend = self._routed_backends.get(key)
+            if backend is None:
+                backend = self._make_diffusers_backend(model_id=model_id or None)
+                self._routed_backends[key] = backend
+            return backend
+        if provider_id in {"openai", "openai-compatible", "remote", "proxy"}:
+            key = ("openai", provider_id, model_id)
+            backend = self._routed_backends.get(key)
+            if backend is None:
+                backend = self._make_openai_backend(model_id=model_id or None, provider_id=provider_id)
+                self._routed_backends[key] = backend
+            return backend
+        return self._get_backend()
 
     def _get_backend(self):
         if self._backend is not None:
@@ -187,18 +538,24 @@ class _AbstractVisionCapability:
         except Exception:
             pass
 
-        # Prefer AbstractCore config keys when present; fall back to AbstractVision env vars.
-        # Hosted OpenAI is the new default backend id. The legacy backend id and
-        # base-url-only env setups retain OpenAI-compatible semantics.
-        configured_base_url = _owner_cfg(self._owner, "vision_base_url") or _env(
-            "ABSTRACTVISION_BASE_URL"
-        )
-        configured_backend_kind = _owner_cfg(self._owner, "vision_backend") or _env(
-            "ABSTRACTVISION_BACKEND"
+        # Prefer AbstractCore config keys when present; fall back to standard OpenAI env vars.
+        # Hosted OpenAI is the default unless a non-OpenAI base URL or the legacy
+        # backend id explicitly selects compatible-endpoint semantics.
+        owner_base_url = _owner_cfg(self._owner, "vision_base_url")
+        env_base_url = _env("OPENAI_BASE_URL")
+        configured_base_url = _configured_openai_base_url(self._owner)
+        configured_backend_kind = (
+            _owner_cfg(self._owner, "vision_backend")
+            or _env("ABSTRACTVISION_PROVIDER")
+            or _env("ABSTRACTVISION_BACKEND")
         )
         raw_backend_kind = str(configured_backend_kind or "").strip().lower()
         if not raw_backend_kind:
-            if self.backend_id == self.legacy_backend_id or configured_base_url:
+            if (
+                self.backend_id == self.legacy_backend_id
+                or bool(owner_base_url)
+                or _base_url_implies_openai_compatible(env_base_url)
+            ):
                 raw_backend_kind = "openai-compatible"
             else:
                 raw_backend_kind = "openai"
@@ -216,46 +573,32 @@ class _AbstractVisionCapability:
             "stable_diffusion_cpp",
         }:
             backend_kind = "sdcpp"
+        elif backend_kind in {"m-flux"}:
+            backend_kind = "mflux"
+
+        configured_model_for_auto = (
+            _owner_cfg(self._owner, "vision_mflux_model")
+            or _env("ABSTRACTVISION_MFLUX_MODEL")
+            or _owner_cfg(self._owner, "vision_model_id")
+            or _env("ABSTRACTVISION_MODEL")
+            or _env("ABSTRACTVISION_MODEL_ID")
+            or _env("ABSTRACTVISION_DIFFUSERS_MODEL_ID")
+        )
+        explicit_remote = configured_base_url and raw_backend_kind in _OPENAI_COMPATIBLE_BACKEND_KINDS
+        if (
+            backend_kind in {"openai", "diffusers"}
+            and not explicit_remote
+            and configured_model_for_auto
+            and (
+                _has_local_mflux_preset(str(configured_model_for_auto))
+                or raw_backend_kind in {"mflux", "m-flux"} and _is_known_mflux_model_alias(str(configured_model_for_auto))
+            )
+            and raw_backend_kind in {"", "huggingface", "hf", "hf-diffusers", "diffusers", "mflux", "m-flux"}
+        ):
+            backend_kind = "mflux"
 
         if backend_kind == "diffusers":
-            model_id = (
-                _owner_cfg(self._owner, "vision_model_id")
-                or _env("ABSTRACTVISION_DIFFUSERS_MODEL_ID")
-                or _env("ABSTRACTVISION_MODEL_ID")
-                or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID
-            )
-            device = (
-                _owner_cfg(self._owner, "vision_device")
-                or _env("ABSTRACTVISION_DIFFUSERS_DEVICE", "auto")
-                or "auto"
-            )
-            torch_dtype = _owner_cfg(self._owner, "vision_torch_dtype") or _env(
-                "ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE"
-            )
-            allow_download = _owner_cfg_bool(
-                self._owner,
-                "vision_allow_download",
-                _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False),
-            )
-            auto_retry_fp32 = _owner_cfg_bool(
-                self._owner,
-                "vision_auto_retry_fp32",
-                _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True),
-            )
-
-            from ..backends.huggingface_diffusers import (
-                HuggingFaceDiffusersBackendConfig,
-                HuggingFaceDiffusersVisionBackend,
-            )
-
-            cfg = HuggingFaceDiffusersBackendConfig(
-                model_id=str(model_id),
-                device=str(device),
-                torch_dtype=str(torch_dtype) if torch_dtype else None,
-                allow_download=allow_download,
-                auto_retry_fp32=auto_retry_fp32,
-            )
-            self._backend = HuggingFaceDiffusersVisionBackend(config=cfg)
+            self._backend = self._make_diffusers_backend()
             return self._backend
 
         if backend_kind == "sdcpp":
@@ -305,27 +648,34 @@ class _AbstractVisionCapability:
             self._backend = StableDiffusionCppVisionBackend(config=cfg)
             return self._backend
 
+        if backend_kind == "mflux":
+            self._backend = self._make_mflux_backend()
+            return self._backend
+
         if backend_kind != "openai":
             raise AbstractVisionError(
                 f"Unsupported AbstractVision backend for AbstractCore plugin: {backend_kind!r}. "
-                "Use 'diffusers', 'sdcpp', 'openai-compatible', or 'openai'."
+                "Use 'mflux', 'diffusers', 'sdcpp', 'openai-compatible', or 'openai'."
             )
 
         base_url = configured_base_url
         if not base_url and not explicit_openai_compatible:
-            base_url = _env("OPENAI_BASE_URL", _DEFAULT_OPENAI_BASE_URL)
+            base_url = _DEFAULT_OPENAI_BASE_URL
 
-        api_key = _owner_cfg(self._owner, "vision_api_key") or _env_first(
-            "ABSTRACTVISION_API_KEY",
-            "OPENAI_API_KEY",
+        owner_api_key = _owner_cfg(self._owner, "vision_api_key")
+        if owner_api_key:
+            api_key = owner_api_key
+        else:
+            api_key = _openai_api_key()
+        model_id = (
+            _owner_cfg(self._owner, "vision_model_id")
+            or _env("ABSTRACTVISION_MODEL")
+            or _env("ABSTRACTVISION_MODEL_ID")
         )
-        model_id = _owner_cfg(self._owner, "vision_model_id") or _env("ABSTRACTVISION_MODEL_ID")
+        if not model_id:
+            model_id = _env_first("OPENAI_IMAGE_MODEL_ID", "OPENAI_IMAGE_MODEL")
         if not model_id and not explicit_openai_compatible:
-            model_id = _env_first(
-                "OPENAI_IMAGE_MODEL_ID",
-                "OPENAI_IMAGE_MODEL",
-                default=_DEFAULT_OPENAI_IMAGE_MODEL_ID,
-            )
+            model_id = _DEFAULT_OPENAI_IMAGE_MODEL_ID
         timeout_s_raw = _owner_cfg(self._owner, "vision_timeout_s") or _env(
             "ABSTRACTVISION_TIMEOUT_S"
         )
@@ -336,14 +686,14 @@ class _AbstractVisionCapability:
 
         if not base_url:
             raise AbstractVisionError(
-                "Missing vision_base_url / ABSTRACTVISION_BASE_URL. "
+                "Missing vision_base_url / OPENAI_BASE_URL. "
                 "Configure an OpenAI-compatible endpoint (e.g. http://localhost:8000/v1), "
                 "or use ABSTRACTVISION_BACKEND=openai with OPENAI_API_KEY for OpenAI."
             )
 
-        if _looks_like_openai_api(str(base_url)) and not api_key:
+        if not explicit_openai_compatible and not api_key:
             raise AbstractVisionError(
-                "OpenAI image generation requires OPENAI_API_KEY or ABSTRACTVISION_API_KEY."
+                "OpenAI image generation requires OPENAI_API_KEY."
             )
 
         # Optional video endpoints (not standardized; only enabled when configured).
@@ -384,19 +734,141 @@ class _AbstractVisionCapability:
         return VisionManager(backend=self._get_backend(), store=store)
 
     def list_provider_models(self, *, task: Optional[str] = None) -> List[Dict[str, Any]]:
-        backend = self._get_backend()
-        if not _backend_supports_provider_catalog(backend):
-            raise AbstractVisionError(
-                "The selected AbstractVision backend does not support provider model catalogs."
+        backends: list[tuple[Any, Optional[str]]] = []
+        last_error: Optional[Exception] = None
+        injected_backend = False
+        try:
+            owner_cfg = getattr(self._owner, "config", None)
+            injected_backend = isinstance(owner_cfg, dict) and (
+                owner_cfg.get("vision_backend_instance") is not None
+                or owner_cfg.get("vision_backend_factory") is not None
             )
-        models = backend.list_provider_models(task=task)
-        return [_provider_model_to_dict(model) for model in models]
+        except Exception:
+            injected_backend = False
+
+        try:
+            active_backend = self._get_backend()
+            backends.append((active_backend, _provider_id_for_backend(active_backend)))
+        except Exception as exc:
+            last_error = exc
+
+        active_provider = backends[0][1] if backends else None
+
+        if not injected_backend and active_provider != "mflux":
+            try:
+                backends.append((self._make_mflux_backend(), "mflux"))
+            except Exception:
+                pass
+
+        if not injected_backend and active_provider != "huggingface":
+            try:
+                backends.append((self._make_diffusers_backend(), "huggingface"))
+            except Exception:
+                pass
+
+        if not injected_backend and active_provider != "openai" and _env("OPENAI_API_KEY"):
+            try:
+                backends.append((self._make_openai_backend(provider_id="openai"), "openai"))
+            except Exception:
+                pass
+
+        out: List[Dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for backend, provider in backends:
+            if not _backend_supports_provider_catalog(backend):
+                continue
+            try:
+                models = list(backend.list_provider_models(task=task) or [])
+            except Exception as exc:
+                last_error = exc
+                continue
+            for model in models:
+                item = _provider_model_to_dict(model)
+                if provider and not item.get("provider"):
+                    item["provider"] = provider
+                model_id = str(item.get("model") or item.get("id") or "").strip()
+                provider_id = str(item.get("provider") or provider or "").strip()
+                if not model_id:
+                    continue
+                key = (provider_id, model_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(item)
+        if out:
+            return out
+        if last_error is not None:
+            raise AbstractVisionError(str(last_error))
+        raise AbstractVisionError(
+            "The selected AbstractVision backend does not support provider model catalogs."
+        )
+
+    def available_providers(self, *, task: Optional[str] = None) -> Dict[str, Any]:
+        """Return fast provider availability without remote model discovery.
+
+        This method is used by AbstractCore catalog routes and must be robust:
+        it should not require outbound HTTP calls (e.g. `/models`) to determine
+        provider availability.
+        """
+        configured_base_url = _configured_openai_base_url(self._owner)
+        base_url = str(configured_base_url or "").strip() or None
+        api_key = _owner_cfg(self._owner, "vision_api_key") or _openai_api_key()
+
+        known = ["openai", "openai-compatible", "huggingface", "mflux", "sdcpp"]
+        available: list[str] = []
+
+        if _runtime_installed("huggingface"):
+            available.append("huggingface")
+        if _runtime_installed("mflux") or _mflux_weights_present():
+            available.append("mflux")
+        if _runtime_installed("sdcpp"):
+            available.append("sdcpp")
+
+        # Remote OpenAI/OpenAI-compatible availability is configuration-driven.
+        if api_key:
+            if base_url and _base_url_implies_openai_compatible(base_url):
+                available.append("openai-compatible")
+            else:
+                available.append("openai")
+        else:
+            # OpenAI-compatible endpoints may not require a key; advertise them
+            # when a non-OpenAI base URL is configured.
+            if base_url and _base_url_implies_openai_compatible(base_url):
+                available.append("openai-compatible")
+
+        # Keep ordering stable for UIs.
+        order = ["openai", "openai-compatible", "huggingface", "mflux", "sdcpp"]
+        available_sorted = [provider for provider in order if provider in available]  # provider ids are canonical
+
+        return {
+            "task": task,
+            "providers": list(known),
+            "available_providers": available_sorted,
+            "details": {
+                provider: {
+                    "id": provider,
+                    "provider": provider,
+                    "installed": _runtime_installed(provider),
+                    "weights_present": _mflux_weights_present() if provider == "mflux" else None,
+                    "remote": provider in {"openai", "openai-compatible"},
+                    "local": provider not in {"openai", "openai-compatible"},
+                }
+                for provider in known
+            },
+            "base_url": base_url,
+            "has_api_key": bool(str(api_key or "").strip()),
+        }
+
+    def list_available_providers(self, *, task: Optional[str] = None) -> Dict[str, Any]:
+        return self.available_providers(task=task)
 
     def t2i(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
-        kwargs.pop("provider", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
         model = kwargs.pop("model", None)
-        backend = self._get_backend()
+        backend = self._backend_for_request(provider=provider, model=model)
         allowed_request_keys = {"negative_prompt", "width", "height", "seed", "steps", "guidance_scale", "extra"}
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
@@ -411,7 +883,7 @@ class _AbstractVisionCapability:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
             backend=backend,
-            store=RuntimeArtifactStoreAdapter(store) if store is not None else None,
+            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
         )
         out = vm.generate_image(str(prompt), **kwargs)
         if isinstance(out, dict):
@@ -420,12 +892,20 @@ class _AbstractVisionCapability:
 
     def i2i(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
         image_b = _resolve_bytes_input(image, artifact_store=store)
         mask = kwargs.pop("mask", None)
         mask_b = None
         if mask is not None:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
-        vm = self._make_manager(artifact_store=store)
+        backend = self._backend_for_request(provider=provider, model=model)
+        vm = VisionManager(
+            backend=backend,
+            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+        )
         out = vm.edit_image(str(prompt), image=image_b, mask=mask_b, **kwargs)
         if isinstance(out, dict):
             return out
@@ -476,22 +956,22 @@ def register(registry: Any) -> None:
         )
 
     config_hint = (
-        "Default: OpenAI HTTP via https://api.openai.com/v1. Set OPENAI_API_KEY "
-        "(or ABSTRACTVISION_API_KEY). Set ABSTRACTVISION_BACKEND=openai-compatible "
-        "and ABSTRACTVISION_BASE_URL to target a local/remote compatible /v1 endpoint. "
-        "Set ABSTRACTVISION_BACKEND=diffusers or sdcpp to run local AbstractVision backends."
+        "Default: OpenAI HTTP via https://api.openai.com/v1. Set OPENAI_API_KEY. "
+        "Set ABSTRACTVISION_PROVIDER=openai-compatible (alias: ABSTRACTVISION_BACKEND=openai-compatible) "
+        "and OPENAI_BASE_URL to target a local/remote compatible /v1 endpoint. "
+        "Set ABSTRACTVISION_PROVIDER=mflux|diffusers|sdcpp (alias: ABSTRACTVISION_BACKEND=...) to run local AbstractVision backends."
     )
     legacy_config_hint = (
-        "Compatibility backend id: set ABSTRACTVISION_BASE_URL to a local/remote compatible "
+        "Compatibility backend id: set OPENAI_BASE_URL to a local/remote compatible "
         "/v1 endpoint. New OpenAI configs should use abstractvision:openai or "
-        "ABSTRACTVISION_BACKEND=openai with OPENAI_API_KEY."
+        "ABSTRACTVISION_PROVIDER=openai (alias: ABSTRACTVISION_BACKEND=openai) with OPENAI_API_KEY."
     )
 
     registry.register_vision_backend(
         backend_id=_AbstractVisionCapability.backend_id,
         factory=_factory,
         priority=0,
-        description="AbstractVision capability plugin (OpenAI HTTP by default; compatible HTTP, Diffusers, or stable-diffusion.cpp via env/config).",
+        description="AbstractVision capability plugin (OpenAI HTTP by default; compatible HTTP, MFLUX, Diffusers, or stable-diffusion.cpp via env/config).",
         config_hint=config_hint,
     )
     registry.register_vision_backend(

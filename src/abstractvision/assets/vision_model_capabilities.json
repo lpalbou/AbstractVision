@@ -18,108 +18,216 @@
     }
   },
   "models": {
-    "Qwen/Qwen-Image-2512": {
+    "baidu/ERNIE-Image": {
       "provider": "huggingface",
-      "license": "apache-2.0",
-      "notes": "Primary text-to-image model (Diffusers: QwenImagePipeline).",
+      "license": "unknown",
+      "notes": "ERNIE Image (Diffusers). Strong text-to-image baseline; full snapshot download is a non-8-bit fallback.",
+      "downloads": [
+        {
+          "key": "ernie-image",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "baidu/ERNIE-Image",
+          "source": "official",
+          "notes": "Official Diffusers pipeline snapshot (full model weights)."
+        }
+      ],
       "tasks": {
         "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }
     },
-    "Qwen/Qwen-Image": {
+    "baidu/ERNIE-Image-Turbo": {
       "provider": "huggingface",
-      "license": "apache-2.0",
-      "notes": "Older Qwen Image release (Diffusers: QwenImagePipeline).",
+      "license": "unknown",
+      "notes": "ERNIE Image Turbo (Diffusers). Faster/smaller variant; full snapshot download is a non-8-bit fallback.",
+      "downloads": [
+        {
+          "key": "ernie-image-turbo",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "baidu/ERNIE-Image-Turbo",
+          "source": "official",
+          "notes": "Official Diffusers pipeline snapshot (full model weights)."
+        }
+      ],
       "tasks": {
         "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }
     },
-    "black-forest-labs/FLUX.2-klein-4B": {
-      "provider": "huggingface",
-      "license": "apache-2.0",
-      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Requires Diffusers from source (diffusers@main) today; runtime stays offline-only. Supports generation + editing pipelines.",
-      "tasks": {
-        "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
-          "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
-        },
-        "image_to_image": {
-          "inputs": ["image", "text"],
-          "outputs": ["image"],
-          "params": {
-            "prompt": {"required": true},
-            "image": {"required": true},
-            "mask": {"required": false},
-            "negative_prompt": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
-        }
-      }
-    },
-    "black-forest-labs/FLUX.2-klein-9B": {
+    "black-forest-labs/FLUX.1-dev": {
       "provider": "huggingface",
       "license": "flux-non-commercial-license",
-      "notes": "FLUX 2 klein (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Requires Diffusers from source (diffusers@main) today; runtime stays offline-only. Supports generation + editing pipelines.",
+      "notes": "FLUX.1 dev (Diffusers: FluxPipeline). Gated on Hugging Face; non-commercial license.",
+      "downloads": [
+        {
+          "key": "flux1-dev",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "black-forest-labs/FLUX.1-dev",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+        },
+        {
+          "key": "flux1-dev",
+          "engine": "mflux",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "dhairyashil/FLUX.1-dev-mflux-8bit",
+          "source": "curated-community-mflux",
+          "notes": "Community mflux MLX 8-bit conversion for Apple Silicon."
+        }
+      ],
       "tasks": {
         "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
+        }
+      }
+    },
+    "black-forest-labs/FLUX.1-schnell": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "FLUX.1 schnell (Diffusers: FluxPipeline). Faster distilled variant; may clamp guidance/steps.",
+      "downloads": [
+        {
+          "key": "flux1-schnell",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "black-forest-labs/FLUX.1-schnell",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
         },
-        "image_to_image": {
-          "inputs": ["image", "text"],
-          "outputs": ["image"],
+        {
+          "key": "flux1-schnell",
+          "engine": "mflux",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "dhairyashil/FLUX.1-schnell-mflux-8bit",
+          "source": "curated-community-mflux",
+          "notes": "Community mflux MLX 8-bit conversion for Apple Silicon."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "image": {"required": true},
-            "mask": {"required": false},
-            "negative_prompt": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }
@@ -128,197 +236,315 @@
       "provider": "huggingface",
       "license": "flux-non-commercial-license",
       "notes": "FLUX 2 dev (gated on HF; non-commercial) (Diffusers: Flux2Pipeline). Supports generation + editing pipelines.",
+      "downloads": [
+        {
+          "key": "flux2-dev",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "black-forest-labs/FLUX.2-dev",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+        }
+      ],
       "tasks": {
         "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
         },
         "image_to_image": {
-          "inputs": ["image", "text"],
-          "outputs": ["image"],
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "image": {"required": true},
-            "mask": {"required": false},
-            "negative_prompt": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }
     },
-    "runwayml/stable-diffusion-v1-5": {
+    "black-forest-labs/FLUX.2-klein-4B": {
       "provider": "huggingface",
-      "license": "creativeml-openrail-m",
-      "notes": "Stable Diffusion 1.5 (Diffusers: StableDiffusionPipeline / StableDiffusionImg2ImgPipeline / StableDiffusionInpaintPipeline).",
+      "license": "apache-2.0",
+      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Requires Diffusers from source (diffusers@main) for full upstream Diffusers today; runtime stays offline-only. For Apple Silicon local generation, prefer abstractvision download-model flux2-klein-4b --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
+      "downloads": [
+        {
+          "key": "flux2-klein-4b",
+          "engine": "mflux",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AITRADER/FLUX2-klein-4B-mlx-8bit",
+          "source": "curated-community-mlx",
+          "notes": "Apple Silicon (MLX) 8-bit conversion for the optional MFLUX runtime."
+        },
+        {
+          "key": "flux2-klein-4b",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "black-forest-labs/FLUX.2-klein-4B",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        },
+        {
+          "key": "flux2-klein-4b",
+          "engine": "diffusers-component",
+          "target": "fp8",
+          "bits": 8,
+          "repo_id": "black-forest-labs/FLUX.2-klein-4b-fp8",
+          "source": "official",
+          "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline)."
+        },
+        {
+          "key": "flux2-klein-4b",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "unsloth/FLUX.2-klein-4B-GGUF",
+          "source": "curated-community-gguf",
+          "notes": "GGUF quantizations for stable-diffusion.cpp runtimes (prefer Q8_0 for quality)."
+        }
+      ],
       "tasks": {
         "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false,
+              "supported": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false,
+              "default": 4,
+              "min": 2
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 1.0,
+              "const": 1.0
+            },
+            "seed": {
+              "required": false
+            }
           }
         },
         "image_to_image": {
-          "inputs": ["image", "text"],
-          "outputs": ["image"],
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "image": {"required": true},
-            "mask": {"required": false},
-            "negative_prompt": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false,
+              "supported": false
+            },
+            "steps": {
+              "required": false,
+              "default": 4,
+              "min": 2
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 1.0,
+              "const": 1.0
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }
     },
-    "stabilityai/stable-diffusion-3.5-large-turbo": {
+    "black-forest-labs/FLUX.2-klein-9B": {
       "provider": "huggingface",
-      "license": "stabilityai-ai-community",
-      "notes": "Stable Diffusion 3.5 Large Turbo (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline). Optimized for low step counts.",
-      "tasks": {
-        "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
-          "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
+      "license": "flux-non-commercial-license",
+      "notes": "FLUX 2 klein (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Requires Diffusers from source (diffusers@main) for full upstream Diffusers today; runtime stays offline-only. For Apple Silicon local generation, prefer abstractvision download-model flux2-klein-9b --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
+      "downloads": [
+        {
+          "key": "flux2-klein-9b",
+          "engine": "mflux",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "deepsweet/FLUX.2-klein-9B-MLX-Q8",
+          "source": "curated-community-mlx",
+          "notes": "Apple Silicon (MLX) 8-bit conversion for the optional MFLUX runtime."
+        },
+        {
+          "key": "flux2-klein-9b",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "black-forest-labs/FLUX.2-klein-9B",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+        },
+        {
+          "key": "flux2-klein-9b",
+          "engine": "diffusers-component",
+          "target": "fp8",
+          "bits": 8,
+          "repo_id": "black-forest-labs/FLUX.2-klein-9b-fp8",
+          "source": "official",
+          "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline)."
+        },
+        {
+          "key": "flux2-klein-9b",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "unsloth/FLUX.2-klein-9B-GGUF",
+          "source": "curated-community-gguf",
+          "notes": "GGUF quantizations for stable-diffusion.cpp runtimes (prefer Q8_0 for quality)."
         }
-      }
-    },
-    "stabilityai/stable-diffusion-3.5-large": {
-      "provider": "huggingface",
-      "license": "stabilityai-ai-community",
-      "notes": "Stable Diffusion 3.5 Large (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline).",
+      ],
       "tasks": {
         "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
-        }
-      }
-    },
-    "stabilityai/stable-diffusion-3.5-medium": {
-      "provider": "huggingface",
-      "license": "stabilityai-ai-community",
-      "notes": "Stable Diffusion 3.5 Medium (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline).",
-      "tasks": {
-        "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
-          "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
-        }
-      }
-    },
-    "Tongyi-MAI/Z-Image-Turbo": {
-      "provider": "huggingface",
-      "license": "unknown",
-      "notes": "Turbo text-to-image option; backend may clamp/ignore some params.",
-      "tasks": {
-        "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
-          "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
-        }
-      }
-    },
-    "zai-org/GLM-Image": {
-      "provider": "huggingface",
-      "license": "unknown",
-      "notes": "General image model family (generation + edit in some pipelines). Requires Diffusers from source (diffusers@main) today; runtime stays offline-only.",
-      "tasks": {
-        "text_to_image": {
-          "inputs": ["text"],
-          "outputs": ["image"],
-          "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false,
+              "supported": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false,
+              "default": 4,
+              "min": 2
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 1.0,
+              "const": 1.0
+            },
+            "seed": {
+              "required": false
+            }
           }
         },
         "image_to_image": {
-          "inputs": ["image", "text"],
-          "outputs": ["image"],
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "image": {"required": true},
-            "mask": {"required": false},
-            "negative_prompt": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
-        }
-      }
-    },
-    "Qwen/Qwen-Image-Edit-2511": {
-      "provider": "huggingface",
-      "license": "unknown",
-      "notes": "Primary image edit model (image-to-image).",
-      "tasks": {
-        "image_to_image": {
-          "inputs": ["image", "text"],
-          "outputs": ["image"],
-          "params": {
-            "prompt": {"required": true},
-            "image": {"required": true},
-            "mask": {"required": false},
-            "negative_prompt": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false,
+              "supported": false
+            },
+            "steps": {
+              "required": false,
+              "default": 4,
+              "min": 2
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 1.0,
+              "const": 1.0
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }
@@ -329,63 +555,38 @@
       "notes": "LoRA adapter used with a compatible base (typically Qwen-Image-Edit-2511) to generate multiple angles.",
       "tasks": {
         "multi_view_image": {
-          "inputs": ["text", "image_optional"],
-          "outputs": ["image[]"],
+          "inputs": [
+            "text",
+            "image_optional"
+          ],
+          "outputs": [
+            "image[]"
+          ],
           "requires": {
             "base_model_id": "Qwen/Qwen-Image-Edit-2511"
           },
           "params": {
-            "prompt": {"required": true},
-            "reference_image": {"required": false},
-            "angles": {"required": false},
-            "negative_prompt": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
-        }
-      }
-    },
-    "Wan-AI/Wan2.2-T2V-A14B": {
-      "provider": "huggingface",
-      "license": "unknown",
-      "notes": "Text-to-video foundation model.",
-      "tasks": {
-        "text_to_video": {
-          "inputs": ["text"],
-          "outputs": ["video"],
-          "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "fps": {"required": false},
-            "num_frames": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
-          }
-        }
-      }
-    },
-    "tencent/HunyuanVideo-1.5": {
-      "provider": "huggingface",
-      "license": "unknown",
-      "notes": "Text-to-video model.",
-      "tasks": {
-        "text_to_video": {
-          "inputs": ["text"],
-          "outputs": ["video"],
-          "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "fps": {"required": false},
-            "num_frames": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "reference_image": {
+              "required": false
+            },
+            "angles": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }
@@ -396,18 +597,40 @@
       "notes": "State-of-the-art open text-to-video model (Diffusers).",
       "tasks": {
         "text_to_video": {
-          "inputs": ["text"],
-          "outputs": ["video"],
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "video"
+          ],
           "params": {
-            "prompt": {"required": true},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "fps": {"required": false},
-            "num_frames": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "fps": {
+              "required": false
+            },
+            "num_frames": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }
@@ -418,19 +641,1289 @@
       "notes": "Image-to-video model family; parameters have divisibility constraints (implementation detail).",
       "tasks": {
         "image_to_video": {
-          "inputs": ["image", "text_optional"],
-          "outputs": ["video"],
+          "inputs": [
+            "image",
+            "text_optional"
+          ],
+          "outputs": [
+            "video"
+          ],
           "params": {
-            "image": {"required": true},
-            "prompt": {"required": false},
-            "negative_prompt": {"required": false},
-            "width": {"required": false},
-            "height": {"required": false},
-            "fps": {"required": false},
-            "num_frames": {"required": false},
-            "steps": {"required": false},
-            "guidance_scale": {"required": false},
-            "seed": {"required": false}
+            "image": {
+              "required": true
+            },
+            "prompt": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "fps": {
+              "required": false
+            },
+            "num_frames": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "lightx2v/Qwen-Image-Lightning": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Qwen-Image Lightning (Diffusers). Community-tuned fast variant; treat as best-effort.",
+      "downloads": [
+        {
+          "key": "qwen-image-lightning",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "lightx2v/Qwen-Image-Lightning",
+          "source": "community",
+          "notes": "Community Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "playgroundai/playground-v2.5-1024px-aesthetic": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Playground v2.5 (Diffusers). 1024px SDXL-family aesthetic model; best-effort.",
+      "downloads": [
+        {
+          "key": "playground-v2.5",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "playgroundai/playground-v2.5-1024px-aesthetic",
+          "source": "community",
+          "notes": "Community Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Qwen/Qwen-Image": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Older Qwen Image release (Diffusers: QwenImagePipeline).",
+      "downloads": [
+        {
+          "key": "qwen-image",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Qwen/Qwen-Image",
+          "source": "official",
+          "notes": "Older Diffusers snapshot; prefer Qwen/Qwen-Image-2512 when possible."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Qwen/Qwen-Image-2512": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Primary text-to-image model (Diffusers: QwenImagePipeline).",
+      "downloads": [
+        {
+          "key": "qwen-image",
+          "engine": "mflux",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "mlx-community/Qwen-Image-2512-8bit",
+          "source": "mlx-community",
+          "notes": "Apple Silicon (MLX) 8-bit conversion for the optional MFLUX runtime."
+        },
+        {
+          "key": "qwen-image",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Qwen/Qwen-Image-2512",
+          "source": "official",
+          "notes": "Official Diffusers pipeline snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Qwen/Qwen-Image-Edit-2511": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Primary image edit model (image-to-image).",
+      "downloads": [
+        {
+          "key": "qwen-image-edit",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Qwen/Qwen-Image-Edit-2511",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "timbrooks/instruct-pix2pix": {
+      "provider": "huggingface",
+      "license": "mit",
+      "notes": "InstructPix2Pix (Diffusers: StableDiffusionInstructPix2PixPipeline). Image editing via instructions.",
+      "downloads": [
+        {
+          "key": "instruct-pix2pix",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "timbrooks/instruct-pix2pix",
+          "source": "community",
+          "notes": "Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "CompVis/stable-diffusion-v1-4": {
+      "provider": "huggingface",
+      "license": "creativeml-openrail-m",
+      "notes": "Stable Diffusion v1.4 (Diffusers: StableDiffusionPipeline / StableDiffusionImg2ImgPipeline).",
+      "downloads": [
+        {
+          "key": "sd1.4",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "CompVis/stable-diffusion-v1-4",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "runwayml/stable-diffusion-v1-5": {
+      "provider": "huggingface",
+      "license": "creativeml-openrail-m",
+      "notes": "Stable Diffusion 1.5 (Diffusers: StableDiffusionPipeline / StableDiffusionImg2ImgPipeline / StableDiffusionInpaintPipeline). Prefer 8-bit local artifacts where a compatible backend provides them; AbstractVision does not currently curate a Stable Diffusion MLX 8-bit preset, so full-model downloads should remain explicit.",
+      "downloads": [
+        {
+          "key": "stable-diffusion",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "runwayml/stable-diffusion-v1-5",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "runwayml/stable-diffusion-inpainting": {
+      "provider": "huggingface",
+      "license": "creativeml-openrail-m",
+      "notes": "Stable Diffusion v1.5 Inpainting (Diffusers: StableDiffusionInpaintPipeline).",
+      "downloads": [
+        {
+          "key": "sd1.5-inpaint",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "runwayml/stable-diffusion-inpainting",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/sd-turbo": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "Stable Diffusion Turbo (Diffusers). Fast text-to-image baseline.",
+      "downloads": [
+        {
+          "key": "sd-turbo",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/sd-turbo",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/sdxl-turbo": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "SDXL Turbo (Diffusers). Optimized for very low step counts.",
+      "downloads": [
+        {
+          "key": "sdxl-turbo",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/sdxl-turbo",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-3-medium-diffusers": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "Stable Diffusion 3 Medium (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline).",
+      "downloads": [
+        {
+          "key": "sd3-medium",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/stable-diffusion-3-medium-diffusers",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-3.5-large": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "Stable Diffusion 3.5 Large (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline).",
+      "downloads": [
+        {
+          "key": "sd3.5-large",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/stable-diffusion-3.5-large",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-3.5-large-turbo": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "Stable Diffusion 3.5 Large Turbo (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline). Optimized for low step counts.",
+      "downloads": [
+        {
+          "key": "sd3.5-large-turbo",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/stable-diffusion-3.5-large-turbo",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-3.5-medium": {
+      "provider": "huggingface",
+      "license": "stabilityai-ai-community",
+      "notes": "Stable Diffusion 3.5 Medium (gated on HF; Stability AI Community License) (Diffusers: StableDiffusion3Pipeline).",
+      "downloads": [
+        {
+          "key": "sd3.5-medium",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/stable-diffusion-3.5-medium",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-xl-base-1.0": {
+      "provider": "huggingface",
+      "license": "creativeml-openrail-m",
+      "notes": "Stable Diffusion XL base 1.0 (Diffusers: StableDiffusionXLPipeline).",
+      "downloads": [
+        {
+          "key": "sdxl-base",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/stable-diffusion-xl-base-1.0",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-xl-refiner-1.0": {
+      "provider": "huggingface",
+      "license": "creativeml-openrail-m",
+      "notes": "Stable Diffusion XL refiner 1.0 (Diffusers). Typically used as an image-to-image refinement stage.",
+      "downloads": [
+        {
+          "key": "sdxl-refiner",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/stable-diffusion-xl-refiner-1.0",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1": {
+      "provider": "huggingface",
+      "license": "openrail++",
+      "notes": "Stable Diffusion XL 1.0 Inpainting (Diffusers: StableDiffusionXLInpaintPipeline).",
+      "downloads": [
+        {
+          "key": "sdxl-inpaint",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "tencent/HunyuanImage-3.0": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "HunyuanImage 3.0 (Transformers/DiT-style). Not a Diffusers pipeline; download is possible but runtime support is not provided by the Diffusers backend.",
+      "downloads": [
+        {
+          "key": "hunyuanimage-3.0",
+          "engine": "transformers",
+          "target": "hf-snapshot",
+          "bits": 16,
+          "repo_id": "tencent/HunyuanImage-3.0",
+          "source": "official",
+          "notes": "Full Hugging Face snapshot (Transformers-based). Requires a dedicated backend (not shipped)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "not_supported"
+          }
+        }
+      }
+    },
+    "tencent/HunyuanVideo-1.5": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Text-to-video model.",
+      "tasks": {
+        "text_to_video": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "video"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "fps": {
+              "required": false
+            },
+            "num_frames": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Tongyi-MAI/Z-Image-Turbo": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Turbo text-to-image option; backend may clamp/ignore some params. For Apple Silicon local generation, prefer abstractvision download-model z-image-turbo --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
+      "downloads": [
+        {
+          "key": "z-image-turbo",
+          "engine": "mflux",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "carsenk/z-image-turbo-mflux-8bit",
+          "source": "curated-community-mflux",
+          "notes": "Apple Silicon (MLX) 8-bit conversion for the optional MFLUX runtime."
+        },
+        {
+          "key": "z-image-turbo",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Tongyi-MAI/Z-Image-Turbo",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        },
+        {
+          "key": "z-image-turbo",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "unsloth/Z-Image-Turbo-GGUF",
+          "source": "curated-community-gguf",
+          "notes": "GGUF quantizations for stable-diffusion.cpp runtimes (prefer Q8_0 for quality)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Wan-AI/Wan2.2-T2V-A14B": {
+      "provider": "huggingface",
+      "license": "unknown",
+      "notes": "Text-to-video foundation model.",
+      "tasks": {
+        "text_to_video": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "video"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "fps": {
+              "required": false
+            },
+            "num_frames": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "zai-org/GLM-Image": {
+      "provider": "huggingface",
+      "license": "mit",
+      "notes": "General image model family (generation + edit in some pipelines). Requires Diffusers from source (diffusers@main) today; runtime stays offline-only.",
+      "downloads": [
+        {
+          "key": "glm-image",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "zai-org/GLM-Image",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
           }
         }
       }

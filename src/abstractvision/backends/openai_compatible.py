@@ -72,11 +72,24 @@ def _format_http_error(e: HTTPError) -> str:
 
 def _model_family(model_id: Optional[str]) -> Optional[str]:
     model = str(model_id or "").strip().lower()
+    if "/" in model:
+        model = model.rsplit("/", 1)[-1].strip()
     if model.startswith("gpt-image-"):
         return "gpt-image"
     if model.startswith("dall-e-"):
         return "dall-e"
     return None
+
+
+def _upstream_model_id(model_id: Optional[str]) -> str:
+    model = str(model_id or "").strip()
+    while "/" in model:
+        provider, rest = model.split("/", 1)
+        if provider.strip().lower() in {"openai", "openai-compatible", "openai_compatible"}:
+            model = rest.strip()
+            continue
+        break
+    return model
 
 
 def _looks_like_openai_api(base_url: str) -> bool:
@@ -309,6 +322,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             raise ValueError("Invalid response: expected JSON object with a data list")
 
         openai_api = _looks_like_openai_api(self._cfg.base_url)
+        provider_name = "openai" if openai_api else "openai-compatible"
         models: List[ProviderModelInfo] = []
         for item in data:
             if isinstance(item, str):
@@ -320,12 +334,15 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             model_id = raw.get("id") or raw.get("model") or raw.get("name")
             if not isinstance(model_id, str) or not model_id.strip():
                 continue
+            raw.setdefault("provider", provider_name)
+            raw.setdefault("backend", "openai-compatible")
+            raw.setdefault("routed_model", f"{provider_name}/{str(model_id).strip()}")
             created = raw.get("created")
             info = ProviderModelInfo(
                 id=str(model_id).strip(),
                 object=str(raw.get("object")) if raw.get("object") is not None else None,
                 created=int(created) if isinstance(created, int) else None,
-                owned_by=str(raw.get("owned_by")) if raw.get("owned_by") is not None else None,
+                owned_by=str(raw.get("owned_by")) if raw.get("owned_by") is not None else provider_name,
                 capabilities=tuple(sorted(_catalog_capability_tokens(raw))),
                 raw=raw,
             )
@@ -435,7 +452,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             "n": 1,
         }
         if self._cfg.model_id:
-            payload["model"] = self._cfg.model_id
+            payload["model"] = _upstream_model_id(self._cfg.model_id)
 
         # Real OpenAI image models have a narrower schema than many local
         # OpenAI-compatible servers. Keep local-compatible fields for unknown
@@ -458,6 +475,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             payload["guidance_scale"] = float(request.guidance_scale)
         if isinstance(request.extra, dict) and request.extra:
             payload.update(dict(request.extra))
+        if payload.get("model") is not None:
+            payload["model"] = _upstream_model_id(payload.get("model"))
         if family == "gpt-image":
             payload.pop("response_format", None)
 
@@ -470,7 +489,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         # OpenAI-style image edits use multipart form data.
         fields: Dict[str, str] = {"prompt": request.prompt}
         if self._cfg.model_id:
-            fields["model"] = self._cfg.model_id
+            fields["model"] = _upstream_model_id(self._cfg.model_id)
         if request.negative_prompt is not None and not openai_api:
             fields["negative_prompt"] = request.negative_prompt
 
@@ -493,6 +512,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 if v is None:
                     continue
                 fields[str(k)] = str(v)
+        if fields.get("model") is not None:
+            fields["model"] = _upstream_model_id(fields.get("model"))
 
         resp = self._post_multipart(path=self._cfg.image_edits_path, fields=fields, files=files)
         return self._parse_media(resp, fallback_mime="image/png")
@@ -507,7 +528,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             raise CapabilityNotSupportedError("text_to_video is not configured for this backend.")
         payload: Dict[str, Any] = {"prompt": request.prompt, "response_format": "b64_json", "n": 1}
         if self._cfg.model_id:
-            payload["model"] = self._cfg.model_id
+            payload["model"] = _upstream_model_id(self._cfg.model_id)
         if request.negative_prompt is not None:
             payload["negative_prompt"] = request.negative_prompt
         if request.width is not None:
@@ -526,6 +547,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             payload["guidance_scale"] = float(request.guidance_scale)
         if isinstance(request.extra, dict) and request.extra:
             payload.update(dict(request.extra))
+        if payload.get("model") is not None:
+            payload["model"] = _upstream_model_id(payload.get("model"))
         resp = self._post_json(path=str(self._cfg.text_to_video_path), payload=payload)
         return self._parse_media(resp, fallback_mime="video/mp4")
 
@@ -538,7 +561,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 "image_b64": base64.b64encode(bytes(request.image)).decode("ascii")
             }
             if self._cfg.model_id:
-                payload["model"] = self._cfg.model_id
+                payload["model"] = _upstream_model_id(self._cfg.model_id)
             if request.prompt is not None:
                 payload["prompt"] = request.prompt
             if request.negative_prompt is not None:
@@ -559,12 +582,14 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 payload["guidance_scale"] = float(request.guidance_scale)
             if isinstance(request.extra, dict) and request.extra:
                 payload.update(dict(request.extra))
+            if payload.get("model") is not None:
+                payload["model"] = _upstream_model_id(payload.get("model"))
             resp = self._post_json(path=str(self._cfg.image_to_video_path), payload=payload)
             return self._parse_media(resp, fallback_mime="video/mp4")
 
         fields: Dict[str, str] = {}
         if self._cfg.model_id:
-            fields["model"] = self._cfg.model_id
+            fields["model"] = _upstream_model_id(self._cfg.model_id)
         if request.prompt is not None:
             fields["prompt"] = request.prompt
         if request.negative_prompt is not None:
@@ -588,6 +613,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 if v is None:
                     continue
                 fields[str(k)] = str(v)
+        if fields.get("model") is not None:
+            fields["model"] = _upstream_model_id(fields.get("model"))
 
         files = {"image": ("image.png", bytes(request.image), "image/png")}
         resp = self._post_multipart(

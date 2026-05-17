@@ -51,7 +51,7 @@ If you’re running locally via the Diffusers backend and want a reliable starti
 Quickstart:
 
 ```bash
-huggingface-cli download runwayml/stable-diffusion-v1-5
+abstractvision download-model stable-diffusion --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto

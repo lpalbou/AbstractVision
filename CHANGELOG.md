@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Model registry: enrich `vision_model_capabilities.json` with per-model downloadable artifact metadata and show it in `abstractvision show-model`.
+- Downloads: expand curated presets to include official Diffusers snapshots (16-bit/FP fallbacks) for Qwen Image, FLUX.2 klein, Z-Image-Turbo, and Stable Diffusion 1.5; `model-catalog` now lists these across targets/providers.
+- CLI: `--provider/--engine` now implies the matching `--target` when `--target` is left as `auto`, so `abstractvision download-model stable-diffusion --provider diffusers` works without repeating flags.
+- CLI/REPL: when a curated Diffusers snapshot exists under `ABSTRACTVISION_MODEL_DIR`, Diffusers backend selection uses the local path automatically; `download-model --target diffusers` no longer forces an 8-bit-only policy.
+- Downloads/catalog: add curated Diffusers snapshot presets and registry entries for more common Hugging Face text-to-image and image-to-image models (ERNIE Image, SDXL base/refiner, SDXL Turbo, SD Turbo, SD3.5, FLUX.1, Qwen Image Lightning, Playground v2.5).
+
 ## 0.3.5 - 2026-05-13
 
 - AbstractCore plugin: accept runtime output metadata such as `provider` and `size` without rejecting image generation requests, and forward per-call image model selectors to OpenAI-compatible backends.
@@ -27,7 +33,7 @@
 ## 0.3.2 - 2026-05-08
 
 - AbstractCore plugin: switch the default backend id to `abstractvision:openai` with official OpenAI defaults, while keeping `abstractvision:openai-compatible` registered as a legacy-compatible backend id.
-- OpenAI configuration: add standard `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_IMAGE_MODEL_ID`, and `OPENAI_IMAGE_MODEL` aliases for the plugin default path; keep compatible endpoints explicit with `ABSTRACTVISION_BACKEND=openai-compatible` and `ABSTRACTVISION_BASE_URL`.
+- OpenAI configuration: use standard `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_IMAGE_MODEL_ID`, and `OPENAI_IMAGE_MODEL` aliases for the plugin default path; keep compatible endpoints explicit with `ABSTRACTVISION_BACKEND=openai-compatible` and `OPENAI_BASE_URL`.
 - Provider catalogs: add OpenAI/OpenAI-compatible `/models` discovery through `VisionManager.list_provider_models(...)`, `abstractvision provider-models`, REPL `/provider-models`, and `llm.vision.list_provider_models(...)` in the AbstractCore plugin.
 - API/contracts: add `ProviderModelInfo`, provider catalog backend hooks, task filtering for OpenAI image model catalogs, and JSON-safe bounded provider metadata at the AbstractCore plugin boundary.
 - Docs/agent context: refresh AbstractCore integration, backend/configuration/API docs, playground production-boundary notes, completed backlog reports, `llms.txt`, and regenerated `llms-full.txt`.
@@ -72,7 +78,7 @@
 ## 0.2.3 - 2026-05-06
 
 - AbstractCore plugin: support local Diffusers and stable-diffusion.cpp backends through `llm.vision`, not only OpenAI-compatible HTTP. The default plugin path now matches the REPL default: local Diffusers with `runwayml/stable-diffusion-v1-5`, cache-only unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
-- AbstractCore plugin: keep OpenAI-compatible usage available with `ABSTRACTVISION_BACKEND=openai` plus `ABSTRACTVISION_BASE_URL`, and preserve artifact-store behavior for generated media outputs.
+- AbstractCore plugin: keep OpenAI-compatible usage available with `ABSTRACTVISION_BACKEND=openai` plus `OPENAI_BASE_URL`, and preserve artifact-store behavior for generated media outputs.
 
 ## 0.2.2 - 2026-05-06
 

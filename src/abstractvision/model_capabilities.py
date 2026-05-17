@@ -2,10 +2,23 @@ from __future__ import annotations
 
 import json
 import pkgutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
 from .errors import CapabilityNotSupportedError, UnknownModelError
+
+
+@dataclass(frozen=True)
+class VisionModelDownloadSpec:
+    """Declarative metadata for a downloadable model artifact."""
+
+    key: str
+    engine: str
+    target: str
+    bits: Optional[int]
+    repo_id: str
+    source: str = ""
+    notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -26,6 +39,7 @@ class VisionModelSpec:
     license: str
     tasks: Dict[str, VisionTaskSpec]
     notes: str = ""
+    downloads: List[VisionModelDownloadSpec] = field(default_factory=list)
 
 
 class VisionModelCapabilitiesRegistry:
@@ -61,6 +75,39 @@ class VisionModelCapabilitiesRegistry:
             license_name = str(spec.get("license", "unknown"))
             notes = str(spec.get("notes", "")) if spec.get("notes") is not None else ""
 
+            downloads: List[VisionModelDownloadSpec] = []
+            downloads_raw = spec.get("downloads", [])
+            if isinstance(downloads_raw, list):
+                for item in downloads_raw:
+                    if not isinstance(item, dict):
+                        continue
+                    key = str(item.get("key", "") or "").strip()
+                    engine = str(item.get("engine", "") or "").strip()
+                    target = str(item.get("target", "") or "").strip()
+                    repo_id = str(item.get("repo_id", "") or "").strip()
+                    if not (key and engine and target and repo_id):
+                        continue
+                    bits_raw = item.get("bits")
+                    bits: Optional[int]
+                    if bits_raw is None or bits_raw == "":
+                        bits = None
+                    else:
+                        try:
+                            bits = int(bits_raw)
+                        except Exception:
+                            bits = None
+                    downloads.append(
+                        VisionModelDownloadSpec(
+                            key=key,
+                            engine=engine,
+                            target=target,
+                            bits=bits,
+                            repo_id=repo_id,
+                            source=str(item.get("source", "") or "").strip(),
+                            notes=str(item.get("notes", "") or "").strip(),
+                        )
+                    )
+
             tasks_raw = spec.get("tasks", {})
             if not isinstance(tasks_raw, dict):
                 raise ValueError(f"Invalid tasks for model {model_id}: must be an object keyed by task.")
@@ -85,6 +132,7 @@ class VisionModelCapabilitiesRegistry:
                 license=license_name,
                 tasks=tasks,
                 notes=notes,
+                downloads=downloads,
             )
 
         self._models = parsed

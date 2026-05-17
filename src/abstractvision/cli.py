@@ -14,12 +14,26 @@ from .artifacts import LocalAssetStore, is_artifact_ref
 from .backends import (
     HuggingFaceDiffusersBackendConfig,
     HuggingFaceDiffusersVisionBackend,
+    MFluxBackendConfig,
+    MFluxVisionBackend,
     OpenAICompatibleBackendConfig,
     OpenAICompatibleVisionBackend,
     StableDiffusionCppBackendConfig,
     StableDiffusionCppVisionBackend,
 )
 from .model_capabilities import VisionModelCapabilitiesRegistry
+from .model_downloads import (
+    default_model_target,
+    download_hf_repo_snapshot,
+    download_model_preset,
+    find_model_preset,
+    format_model_preset_rows,
+    looks_like_hf_repo_id,
+    model_presets,
+    normalize_model_engine,
+    normalize_model_target,
+    resolve_model_target_and_engine,
+)
 from .vision_manager import VisionManager
 
 DEFAULT_REPL_BACKEND = ""
@@ -45,10 +59,10 @@ def _env_bool(key: str, default: bool = False) -> bool:
 
 
 def _default_repl_backend() -> str:
-    explicit = _env("ABSTRACTVISION_BACKEND")
+    explicit = _env("ABSTRACTVISION_PROVIDER") or _env("ABSTRACTVISION_BACKEND")
     if explicit:
         return str(explicit)
-    if _env("ABSTRACTVISION_BASE_URL"):
+    if _env("OPENAI_BASE_URL"):
         return "openai"
     return DEFAULT_REPL_BACKEND
 
@@ -74,7 +88,7 @@ def _open_file(path: Path) -> None:
 def _build_openai_backend_from_args(args: argparse.Namespace) -> OpenAICompatibleVisionBackend:
     base_url = str(args.base_url or "").strip()
     if not base_url:
-        raise SystemExit("Missing --base-url (or $ABSTRACTVISION_BASE_URL).")
+        raise SystemExit("Missing --base-url (or $OPENAI_BASE_URL).")
     cfg = OpenAICompatibleBackendConfig(
         base_url=base_url,
         api_key=str(args.api_key) if args.api_key else None,
@@ -90,9 +104,131 @@ def _build_openai_backend_from_args(args: argparse.Namespace) -> OpenAICompatibl
     return OpenAICompatibleVisionBackend(config=cfg)
 
 
+def _first_nonempty(*values: Any) -> Optional[str]:
+    for v in values:
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return None
+
+
+def _split_provider_prefix(model: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    s = str(model or "").strip()
+    if not s or "/" not in s:
+        return None, s or None
+    head, tail = s.split("/", 1)
+    head = head.strip().lower().replace("_", "-")
+    if head in {
+        "openai",
+        "openai-compatible",
+        "openai_compatible",
+        "proxy",
+        "diffusers",
+        "huggingface",
+        "hf",
+        "mflux",
+        "m-flux",
+        "sdcpp",
+        "stable-diffusion.cpp",
+        "stable-diffusion-cpp",
+        "stable_diffusion_cpp",
+    }:
+        return head, tail.strip() or None
+    return None, s or None
+
+
 def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
     store = LocalAssetStore(args.store_dir) if args.store_dir else LocalAssetStore()
-    backend = _build_openai_backend_from_args(args)
+    provider_kind = str(
+        getattr(args, "provider", None)
+        or getattr(args, "backend", None)
+        or _env("ABSTRACTVISION_PROVIDER")
+        or _env("ABSTRACTVISION_BACKEND", "openai")
+        or "openai"
+    ).strip().lower()
+    if provider_kind in {"m-flux"}:
+        provider_kind = "mflux"
+
+    model_value = _first_nonempty(
+        getattr(args, "model", None),
+        getattr(args, "model_id", None),
+        getattr(args, "mflux_model", None),
+        _env("ABSTRACTVISION_MODEL"),
+        _env("ABSTRACTVISION_MODEL_ID"),
+        _env("ABSTRACTVISION_MFLUX_MODEL"),
+    )
+    prefix_provider, unprefixed_model = _split_provider_prefix(model_value)
+    if prefix_provider and not str(getattr(args, "provider", "") or "").strip():
+        provider_kind = prefix_provider
+    if unprefixed_model is not None:
+        model_value = unprefixed_model
+
+    if provider_kind == "mflux":
+        backend = MFluxVisionBackend(
+            config=MFluxBackendConfig(
+                model=str(model_value) if model_value else None,
+                base_model=str(getattr(args, "mflux_base_model", None) or "") or None,
+                model_dir=str(getattr(args, "mflux_model_dir", None) or "") or None,
+                allow_download=bool(getattr(args, "mflux_allow_download", False)),
+            )
+        )
+    elif provider_kind in {"openai", "openai-compatible", "openai_compatible", "proxy"}:
+        if model_value and not getattr(args, "model_id", None):
+            setattr(args, "model_id", model_value)
+        backend = _build_openai_backend_from_args(args)
+    elif provider_kind in {"diffusers", "huggingface", "hf", "hf-diffusers"}:
+        model_id = str(model_value or DEFAULT_DIFFUSERS_MODEL_ID).strip()
+        if not model_id:
+            model_id = DEFAULT_DIFFUSERS_MODEL_ID
+        try:
+            preset = find_model_preset(model_id, target="diffusers", engine="diffusers", require_8bit=False)
+        except Exception:
+            preset = None
+        if preset is not None:
+            # Prefer a locally downloaded snapshot when present (downloaded via `abstractvision download-model`).
+            try:
+                from .model_downloads import default_download_root
+
+                local_dir = default_download_root() / preset.local_dir_name
+                if (local_dir / "model_index.json").is_file():
+                    model_id = str(local_dir)
+                else:
+                    model_id = str(preset.repo_id).strip() or model_id
+            except Exception:
+                model_id = str(preset.repo_id).strip() or model_id
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(
+                model_id=model_id,
+                device=str(getattr(args, "diffusers_device", DEFAULT_DIFFUSERS_DEVICE) or DEFAULT_DIFFUSERS_DEVICE),
+                torch_dtype=str(getattr(args, "diffusers_torch_dtype", None) or "") or None,
+                allow_download=bool(getattr(args, "diffusers_allow_download", False)),
+                auto_retry_fp32=bool(getattr(args, "diffusers_auto_retry_fp32", True)),
+            )
+        )
+    elif provider_kind in {"sdcpp", "stable-diffusion.cpp", "stable-diffusion-cpp", "stable_diffusion_cpp"}:
+        backend = StableDiffusionCppVisionBackend(
+            config=StableDiffusionCppBackendConfig(
+                sd_cli_path=str(getattr(args, "sdcpp_bin", None) or "sd-cli"),
+                model=str(model_value) if model_value else str(getattr(args, "sdcpp_model", None) or "") or None,
+                diffusion_model=str(getattr(args, "sdcpp_diffusion_model", None) or "") or None,
+                vae=str(getattr(args, "sdcpp_vae", None) or "") or None,
+                llm=str(getattr(args, "sdcpp_llm", None) or "") or None,
+                llm_vision=str(getattr(args, "sdcpp_llm_vision", None) or "") or None,
+                extra_args=tuple(
+                    shlex.split(str(getattr(args, "sdcpp_extra_args", "") or ""))
+                    if getattr(args, "sdcpp_extra_args", None)
+                    else ()
+                ),
+                timeout_s=float(getattr(args, "timeout_s", 60.0 * 60.0)),
+                cwd=None,
+            )
+        )
+    else:
+        raise SystemExit(
+            "Unknown provider/backend. Supported one-shot providers: openai, openai-compatible, diffusers, sdcpp, mflux."
+        )
     reg = VisionModelCapabilitiesRegistry()
 
     cap_model_id = str(args.capabilities_model_id) if getattr(args, "capabilities_model_id", None) else None
@@ -131,6 +267,16 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
     print(f"license: {spec.license}")
     if spec.notes:
         print(f"notes: {spec.notes}")
+    if spec.downloads:
+        print("downloads:")
+        for dl in spec.downloads:
+            bits = str(dl.bits) if dl.bits is not None else "n/a"
+            line = f"  - {dl.key}  engine={dl.engine}  target={dl.target}  bits={bits}  repo={dl.repo_id}"
+            if dl.source:
+                line += f"  source={dl.source}"
+            print(line)
+            if dl.notes:
+                print(f"      notes: {dl.notes}")
     print("tasks:")
     for task_name, ts in sorted(spec.tasks.items()):
         print(f"  - {task_name}")
@@ -154,13 +300,13 @@ def _cmd_provider_models(args: argparse.Namespace) -> int:
             else str(_env("OPENAI_BASE_URL", "https://api.openai.com/v1") or "").strip()
         )
     else:
-        base_url = str(getattr(args, "base_url", None) or _env("ABSTRACTVISION_BASE_URL") or "").strip()
+        base_url = str(getattr(args, "base_url", None) or _env("OPENAI_BASE_URL") or "").strip()
     if not base_url:
         raise SystemExit("Missing --base-url (or use --openai for https://api.openai.com/v1).")
 
     api_key = getattr(args, "api_key", None)
     if api_key is None:
-        api_key = _env("ABSTRACTVISION_API_KEY") or _env("OPENAI_API_KEY")
+        api_key = _env("OPENAI_API_KEY")
     backend = OpenAICompatibleVisionBackend(
         config=OpenAICompatibleBackendConfig(
             base_url=base_url,
@@ -175,6 +321,264 @@ def _cmd_provider_models(args: argparse.Namespace) -> int:
     else:
         for m in models:
             print(m.id)
+    return 0
+
+
+def _cmd_model_presets(args: argparse.Namespace) -> int:
+    target = str(getattr(args, "target", "auto") or "auto")
+    engine = str(getattr(args, "engine", "auto") or "auto")
+    all_flag = bool(getattr(args, "all", False))
+    include_non_8bit = all_flag
+    include_all_targets = bool(getattr(args, "all_targets", False))
+    resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    # Diffusers artifacts are typically full snapshots; treat them as opt-in when
+    # listing, but don't force an 8-bit-only view that would otherwise be empty.
+    if not include_non_8bit and resolved_target == "diffusers":
+        include_non_8bit = True
+    presets = model_presets(
+        target=target,
+        engine=engine,
+        include_non_8bit=include_non_8bit,
+        include_all_targets=include_all_targets,
+    )
+    if bool(getattr(args, "json", False)):
+        _print_json([p.to_dict() for p in presets])
+        return 0
+
+    selected_target = "all" if include_all_targets else resolved_target
+    selected_engine = resolved_engine or "any"
+    print(f"target: {selected_target} (auto default: {default_model_target()})")
+    print(f"provider/engine: {selected_engine}")
+    if all_flag:
+        print("policy: showing all presets (including explicit non-8-bit fallbacks)")
+    elif resolved_target == "diffusers":
+        print("policy: Diffusers target includes full snapshots (16-bit/FP) by default")
+    else:
+        print("policy: 8-bit presets only by default; pass --all to show explicit non-8-bit fallbacks")
+    print("tip: `abstractvision model-catalog` joins presets with the capability registry (tasks)")
+    print("tip: `download-model org/name` downloads arbitrary Hugging Face repos (not shown here) into the HF cache")
+    print()
+    for line in format_model_preset_rows(presets):
+        print(line)
+    return 0
+
+
+def _format_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> List[str]:
+    if not rows:
+        return [" ".join(headers)]
+    widths = [
+        max(len(str(row[i])) for row in [headers, *rows])
+        for i in range(len(headers))
+    ]
+    fmt = "  ".join(f"{{:{w}}}" for w in widths)
+    out = [fmt.format(*headers), fmt.format(*("-" * w for w in widths))]
+    for row in rows:
+        out.append(fmt.format(*[str(x) for x in row]))
+    return out
+
+
+def _cmd_model_catalog(args: argparse.Namespace) -> int:
+    """List capability models that have curated download presets."""
+
+    task = str(getattr(args, "task", "") or "").strip()
+    target = str(getattr(args, "target", "auto") or "auto")
+    engine = str(getattr(args, "engine", "auto") or "auto")
+    include_non_8bit = bool(getattr(args, "all", False))
+    include_all_targets = bool(getattr(args, "all_targets", False))
+    resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
+
+    reg = VisionModelCapabilitiesRegistry()
+    presets = model_presets(
+        target=target,
+        engine=engine,
+        include_non_8bit=True,
+        include_all_targets=include_all_targets,
+    )
+    if not include_non_8bit:
+        # Recommended view: include 8-bit presets, plus a best-effort fallback
+        # for any key/target/engine group that lacks an 8-bit artifact.
+        grouped: Dict[tuple[str, str, str], List[Any]] = {}
+        for preset in presets:
+            grouped.setdefault((preset.key, preset.target, preset.engine), []).append(preset)
+        filtered = []
+        for group_presets in grouped.values():
+            eight_bit = [p for p in group_presets if p.quantization_bits == 8]
+            if eight_bit:
+                filtered.extend(eight_bit)
+            else:
+                filtered.append(sorted(group_presets, key=lambda p: (p.source_priority, p.repo_id))[0])
+        presets = sorted(filtered, key=lambda p: (p.key, p.source_priority, p.repo_id))
+
+    rows: List[Sequence[Any]] = []
+    for preset in presets:
+        model_id = str(preset.upstream_repo_id or preset.repo_id)
+        if task and not reg.supports(model_id, task):
+            continue
+        try:
+            spec = reg.get(model_id)
+            tasks = ",".join(sorted(spec.tasks.keys()))
+        except Exception:
+            # #FALLBACK: allow listing presets even if the capability registry is missing an entry.
+            tasks = ""
+        rows.append(
+            (
+                model_id,
+                preset.key,
+                preset.target,
+                preset.engine,
+                str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a",
+                preset.repo_id,
+                preset.source,
+                tasks,
+            )
+        )
+
+    if bool(getattr(args, "json", False)):
+        out: List[Dict[str, Any]] = []
+        for model_id in sorted({str(p.upstream_repo_id or p.repo_id) for p in presets}):
+            if task and not reg.supports(model_id, task):
+                continue
+            spec = reg.get(model_id) if model_id in reg.list_models() else None
+            matching = [
+                p.to_dict()
+                for p in presets
+                if str(p.upstream_repo_id or p.repo_id) == model_id
+                and (not task or reg.supports(model_id, task))
+            ]
+            if not matching:
+                continue
+            out.append(
+                {
+                    "model_id": model_id,
+                    "provider": spec.provider if spec else "unknown",
+                    "license": spec.license if spec else "unknown",
+                    "tasks": sorted(spec.tasks.keys()) if spec else [],
+                    "downloads": matching,
+                }
+            )
+        _print_json(out)
+        return 0
+
+    selected_target = "all" if include_all_targets else resolved_target
+    selected_engine = resolved_engine or "any"
+    print(f"task: {task or 'any'}")
+    print(f"target: {selected_target} (auto default: {default_model_target()})")
+    print(f"provider/engine: {selected_engine}")
+    print("policy: recommend 8-bit; show best-effort fallback when no 8-bit preset exists (pass --all for full list)")
+    print("tip: `abstractvision model-presets --all-targets --all` shows the raw preset table")
+    print()
+    for line in _format_table(
+        ("model_id", "key", "target", "engine", "bits", "repo", "source", "tasks"),
+        rows,
+    ):
+        print(line)
+    return 0
+
+
+def _cmd_download_model(args: argparse.Namespace) -> int:
+    target = str(getattr(args, "target", "auto") or "auto")
+    engine = str(getattr(args, "engine", "auto") or "auto")
+    raw_names = getattr(args, "names", None)
+    if raw_names is None:
+        raw_names = [getattr(args, "name", "")]
+    names = [str(n).strip() for n in raw_names if str(n or "").strip()]
+
+    def _maybe_engine_prefix(value: str) -> Optional[str]:
+        candidate = normalize_model_engine(value)
+        if candidate in {"mflux", "mlx", "diffusers", "stable-diffusion.cpp"}:
+            return candidate
+        return None
+
+    normalized_engine = normalize_model_engine(engine)
+    if len(names) >= 2:
+        prefix_engine = _maybe_engine_prefix(names[0])
+        if prefix_engine is not None and (normalized_engine is None or normalized_engine == prefix_engine):
+            engine = prefix_engine
+            normalized_engine = prefix_engine
+            names = names[1:]
+    if len(names) == 1:
+        solo_engine = _maybe_engine_prefix(names[0])
+        if solo_engine is not None and (normalized_engine is None or normalized_engine == solo_engine):
+            raise SystemExit(
+                f"Missing model name after engine prefix {names[0]!r}. "
+                f"List presets with: abstractvision model-presets --provider {names[0]}"
+            )
+    if not names:
+        raise SystemExit("Missing model name. Use `abstractvision model-presets` to list curated presets.")
+
+    selected_target, _selected_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    model_dir = Path(str(args.model_dir)).expanduser() if getattr(args, "model_dir", None) else None
+    results: List[Dict[str, Any]] = []
+    json_mode = bool(getattr(args, "json", False))
+    allow_non_8bit = bool(getattr(args, "allow_non_8bit", False))
+    require_8bit = not allow_non_8bit
+    if selected_target == "diffusers":
+        # Diffusers targets are full pipeline snapshots; do not force an 8-bit-only policy.
+        require_8bit = False
+
+    for idx, name in enumerate(names):
+        if not json_mode and len(names) > 1:
+            if idx:
+                print()
+            print(f"name: {name}")
+        try:
+            preset = find_model_preset(
+                name,
+                target=target,
+                engine=engine,
+                require_8bit=require_8bit,
+            )
+        except ValueError as e:
+            if looks_like_hf_repo_id(name):
+                if not json_mode:
+                    print(f"selected_repo_id: {name}")
+                    print("download: huggingface_hub snapshot (global cache)")
+                    print("#FALLBACK: repo id is not a curated preset; downloading full snapshot to the HF cache.")
+                try:
+                    path = download_hf_repo_snapshot(
+                        name,
+                        token=str(args.token) if getattr(args, "token", None) else None,
+                        max_workers=int(getattr(args, "max_workers", 4) or 4),
+                    )
+                except RuntimeError as e2:
+                    raise SystemExit(str(e2)) from e2
+
+                item = {"repo_id": name, "local_dir": str(path), "source": "huggingface_hub_cache"}
+                results.append(item)
+                if not json_mode:
+                    print(f"local_dir: {path}")
+                continue
+            raise SystemExit(str(e)) from e
+
+        if not json_mode:
+            print(f"selected: {preset.repo_id}")
+            print(f"target: {selected_target}")
+            print(f"artifact: {preset.target}; bits: {preset.quantization_bits or 'n/a'}; provider/engine: {preset.engine}")
+            if preset.upstream_repo_id and preset.source != "official":
+                print(
+                    f"#FALLBACK: upstream source is {preset.upstream_repo_id}; using {preset.source} artifact for {selected_target}."
+                )
+            if preset.notes:
+                print(preset.notes)
+
+        try:
+            path = download_model_preset(
+                preset,
+                model_dir=model_dir,
+                token=str(args.token) if getattr(args, "token", None) else None,
+                max_workers=int(getattr(args, "max_workers", 4) or 4),
+            )
+        except RuntimeError as e:
+            raise SystemExit(str(e)) from e
+
+        item = preset.to_dict()
+        item["local_dir"] = str(path)
+        results.append(item)
+        if not json_mode:
+            print(f"local_dir: {path}")
+
+    if json_mode:
+        _print_json(results[0] if len(results) == 1 else results)
     return 0
 
 
@@ -225,8 +629,8 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
 @dataclass
 class _ReplState:
     backend_kind: str = field(default_factory=_default_repl_backend)
-    base_url: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_BASE_URL"))
-    api_key: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_API_KEY"))
+    base_url: Optional[str] = field(default_factory=lambda: _env("OPENAI_BASE_URL"))
+    api_key: Optional[str] = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_ID"))
     capabilities_model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_CAPABILITIES_MODEL_ID"))
     store_dir: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_STORE_DIR"))
@@ -257,6 +661,11 @@ class _ReplState:
     sdcpp_llm: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_LLM"))
     sdcpp_llm_vision: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_LLM_VISION"))
     sdcpp_extra_args: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_EXTRA_ARGS"))
+    mflux_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MFLUX_MODEL"))
+    mflux_base_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MFLUX_BASE_MODEL"))
+    mflux_model_dir: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_DIR"))
+    mflux_quantize: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MFLUX_QUANTIZE"))
+    mflux_allow_download: bool = field(default_factory=lambda: _env_bool("ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD", False))
 
     defaults: Dict[str, Any] = None
     _cached_backend_key: Optional[Tuple[Any, ...]] = None
@@ -272,6 +681,8 @@ class _ReplState:
             "hf-diffusers",
         }:
             self.model_id = DEFAULT_DIFFUSERS_MODEL_ID
+        if self.mflux_model is None and str(self.backend_kind or "").strip().lower() in {"mflux", "m-flux"}:
+            self.mflux_model = self.model_id
         if self.defaults is None:
             self.defaults = {
                 "t2i": {
@@ -296,9 +707,10 @@ def _repl_help() -> str:
         "  /tasks                      List known task keys\n"
         "  /show-model <id>            Show a model's tasks + params\n"
         "  /config                     Show current backend/store config\n"
+        "  CLI: abstractvision model-presets lists curated 8-bit local downloads\n"
         "\n"
         "Backends:\n"
-        "  No backend is selected by default unless ABSTRACTVISION_BACKEND or ABSTRACTVISION_BASE_URL is set.\n"
+        "  No backend is selected by default unless ABSTRACTVISION_BACKEND or OPENAI_BASE_URL is set.\n"
         "  /backend openai <base_url> [api_key] [model_id]\n"
         "  /backend diffusers <model_id_or_path> [device] [torch_dtype]\n"
         "      default model: runwayml/stable-diffusion-v1-5\n"
@@ -306,6 +718,8 @@ def _repl_help() -> str:
         "  /backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]\n"
         "  /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]\n"
         "      single-model mode is best for small Stable Diffusion checkpoints; component mode is for Qwen/FLUX GGUF\n"
+        "  /backend mflux <preset_or_local_path> [base_model]\n"
+        "      Apple Silicon MFLUX engine for 8-bit MLX presets (requires abstractvision[mflux])\n"
         "\n"
         "Defaults and output:\n"
         "  /cap-model <id|off>         Set capability-gating model id (from registry) or 'off'\n"
@@ -321,6 +735,12 @@ def _repl_help() -> str:
         "      extra flags are forwarded through request.extra\n"
         "\n"
         "Quick examples:\n"
+        "  # Local model download policy: 8-bit MLX on macOS, no full-model fallback by default\n"
+        "  abstractvision model-presets\n"
+        "  abstractvision download-model flux2-klein-4b\n"
+        "  /backend mflux flux2-klein-4b\n"
+        "  /t2i \"a product photo of a matte black espresso machine\" --steps 4 --guidance-scale 1.0 --open\n"
+        "\n"
         "  # Local Diffusers path: Stable Diffusion 1.5 (requires abstractvision[diffusers])\n"
         "  /backend diffusers runwayml/stable-diffusion-v1-5 auto\n"
         "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
@@ -458,6 +878,8 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
         backend_kind = "diffusers"
     elif backend_kind in {"sd-cpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
         backend_kind = "sdcpp"
+    elif backend_kind == "m-flux":
+        backend_kind = "mflux"
     backend_key: Tuple[Any, ...]
     if backend_kind == "openai":
         base_url = str(state.base_url or "").strip()
@@ -498,6 +920,22 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
         model_id = str(state.model_id or "").strip()
         if not model_id:
             raise ValueError("Diffusers backend is not configured. Use: /backend diffusers <model_id_or_path> [device]")
+        # Prefer a locally downloaded snapshot when present (downloaded via `abstractvision download-model`).
+        try:
+            preset = find_model_preset(model_id, target="diffusers", engine="diffusers", require_8bit=False)
+        except Exception:
+            preset = None
+        if preset is not None:
+            try:
+                from .model_downloads import default_download_root
+
+                local_dir = default_download_root() / preset.local_dir_name
+                if (local_dir / "model_index.json").is_file():
+                    model_id = str(local_dir)
+                else:
+                    model_id = str(preset.repo_id).strip() or model_id
+            except Exception:
+                model_id = str(preset.repo_id).strip() or model_id
         backend_key = (
             "diffusers",
             model_id,
@@ -545,13 +983,35 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             backend = StableDiffusionCppVisionBackend(config=cfg)
             state._cached_backend = backend
             state._cached_backend_key = backend_key
+    elif backend_kind == "mflux":
+        backend_key = (
+            "mflux",
+            str(state.mflux_model) if state.mflux_model else None,
+            str(state.mflux_base_model) if state.mflux_base_model else None,
+            str(state.mflux_model_dir) if state.mflux_model_dir else None,
+            str(state.mflux_quantize) if state.mflux_quantize else None,
+            bool(state.mflux_allow_download),
+        )
+        if state._cached_backend is not None and state._cached_backend_key == backend_key:
+            backend = state._cached_backend
+        else:
+            cfg = MFluxBackendConfig(
+                model=str(state.mflux_model) if state.mflux_model else None,
+                base_model=str(state.mflux_base_model) if state.mflux_base_model else None,
+                model_dir=str(state.mflux_model_dir) if state.mflux_model_dir else None,
+                quantize=int(state.mflux_quantize) if state.mflux_quantize else None,
+                allow_download=bool(state.mflux_allow_download),
+            )
+            backend = MFluxVisionBackend(config=cfg)
+            state._cached_backend = backend
+            state._cached_backend_key = backend_key
     elif not backend_kind:
         raise ValueError(
             "Backend is not configured. Use /backend openai <base_url>, "
-            "/backend diffusers <model_id_or_path>, or /backend sdcpp <model_path>."
+            "/backend mflux <preset_or_path>, /backend diffusers <model_id_or_path>, or /backend sdcpp <model_path>."
         )
     else:
-        raise ValueError(f"Unknown backend kind: {backend_kind!r} (expected 'openai', 'diffusers', or 'sdcpp')")
+        raise ValueError(f"Unknown backend kind: {backend_kind!r} (expected 'openai', 'mflux', 'diffusers', or 'sdcpp')")
 
     reg = VisionModelCapabilitiesRegistry()
     cap_id = str(state.capabilities_model_id) if state.capabilities_model_id else None
@@ -649,6 +1109,11 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     "sdcpp_llm": state.sdcpp_llm,
                     "sdcpp_llm_vision": state.sdcpp_llm_vision,
                     "sdcpp_extra_args": state.sdcpp_extra_args,
+                    "mflux_model": state.mflux_model,
+                    "mflux_base_model": state.mflux_base_model,
+                    "mflux_model_dir": state.mflux_model_dir,
+                    "mflux_quantize": state.mflux_quantize,
+                    "mflux_allow_download": state.mflux_allow_download,
                     "defaults": state.defaults,
                 }
                 _print_json(out)
@@ -659,7 +1124,8 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                         "Usage: /backend openai <base_url> [api_key] [model_id]  OR  "
                         "/backend diffusers <model_id_or_path> [device] [torch_dtype]  OR  "
                         "/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]  OR  "
-                        "/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]"
+                        "/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]  OR  "
+                        "/backend mflux <preset_or_local_path> [base_model]"
                     )
                     continue
                 kind = str(args[0]).strip().lower()
@@ -713,7 +1179,17 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                         state.sdcpp_bin = args[4] if len(args) >= 5 else state.sdcpp_bin
                     print("ok")
                     continue
-                print("Unknown backend kind. Use: openai | diffusers | sdcpp")
+                if kind in {"mflux", "m-flux"}:
+                    if len(args) < 2:
+                        print("Usage: /backend mflux <preset_or_local_path> [base_model]")
+                        continue
+                    state.backend_kind = "mflux"
+                    state.mflux_model = args[1]
+                    state.mflux_base_model = args[2] if len(args) >= 3 else None
+                    state.model_id = args[1]
+                    print("ok")
+                    continue
+                print("Unknown backend kind. Use: openai | mflux | diffusers | sdcpp")
                 continue
             if cmd == "cap-model":
                 if not args:
@@ -909,6 +1385,114 @@ def build_parser() -> argparse.ArgumentParser:
     pm.set_defaults(_fn=_cmd_provider_models)
     sub.add_parser("tasks", help="List known task keys (from capability registry).").set_defaults(_fn=_cmd_tasks)
 
+    presets = sub.add_parser(
+        "model-presets",
+        aliases=["vision-models"],
+        help="List curated local vision model download presets (8-bit by default).",
+    )
+    presets.add_argument(
+        "--target",
+        default="auto",
+        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "macos", "gpu"],
+        help=(
+            "Runtime artifact target (default: auto; macOS resolves to mlx, other systems to gguf). "
+            "If left as auto, an explicit --provider/--engine will infer the matching target."
+        ),
+    )
+    presets.add_argument(
+        "--provider",
+        "--engine",
+        "--backend",
+        dest="engine",
+        default="auto",
+        choices=["auto", "any", "mflux", "mlx", "gguf", "sdcpp", "stable-diffusion.cpp", "diffusers"],
+        help="Runtime provider/engine filter (default: any for the selected target).",
+    )
+    presets.add_argument("--all", action="store_true", help="Also show explicit non-8-bit fallbacks.")
+    presets.add_argument("--all-targets", action="store_true", help="Show presets for every target.")
+    presets.add_argument("--json", action="store_true", help="Print full preset metadata as JSON.")
+    presets.set_defaults(_fn=_cmd_model_presets)
+
+    catalog = sub.add_parser(
+        "model-catalog",
+        aliases=["catalog", "download-catalog"],
+        help="List downloadable models (capability registry joined with curated presets).",
+    )
+    catalog.add_argument(
+        "--task",
+        default="",
+        help="Optional task filter (e.g. text_to_image, image_to_image).",
+    )
+    catalog.add_argument(
+        "--target",
+        default="auto",
+        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "macos", "gpu"],
+        help=(
+            "Runtime artifact target (default: auto; macOS resolves to mlx, other systems to gguf). "
+            "If left as auto, an explicit --provider/--engine will infer the matching target."
+        ),
+    )
+    catalog.add_argument(
+        "--provider",
+        "--engine",
+        "--backend",
+        dest="engine",
+        default="auto",
+        choices=["auto", "any", "mflux", "mlx", "gguf", "sdcpp", "stable-diffusion.cpp", "diffusers"],
+        help="Runtime provider/engine filter (default: any for the selected target).",
+    )
+    catalog.add_argument("--all", action="store_true", help="Also include explicit non-8-bit fallbacks.")
+    catalog.add_argument("--all-targets", action="store_true", help="Show downloadable presets for every target.")
+    catalog.add_argument("--json", action="store_true", help="Print the catalog as JSON.")
+    catalog.set_defaults(_fn=_cmd_model_catalog)
+
+    dl = sub.add_parser(
+        "download-model",
+        aliases=["download-vision-model"],
+        help="Download a curated local vision model preset (8-bit by default) or a Hugging Face repo snapshot.",
+    )
+    dl.add_argument(
+        "names",
+        nargs="+",
+        help=(
+            "Preset name/alias (e.g. flux2-klein-4b, flux2-klein-9b, z-image-turbo) "
+            "or a Hugging Face repo id (org/name). You can pass multiple names to download them in sequence. "
+            "Shorthand: `download-model mflux flux2-klein-4b` (provider/engine prefix)."
+        ),
+    )
+    dl.add_argument(
+        "--target",
+        default="auto",
+        choices=["auto", "mlx", "gguf", "fp8", "diffusers", "macos", "gpu"],
+        help=(
+            "Runtime artifact target (default: auto; macOS resolves to mlx, other systems to gguf). "
+            "If left as auto, an explicit --provider/--engine will infer the matching target."
+        ),
+    )
+    dl.add_argument(
+        "--provider",
+        "--engine",
+        "--backend",
+        dest="engine",
+        default="auto",
+        choices=["auto", "any", "mflux", "mlx", "gguf", "sdcpp", "stable-diffusion.cpp", "diffusers"],
+        help="Runtime provider/engine filter (default: any for the selected target).",
+    )
+    dl.add_argument(
+        "--model-dir",
+        default=_env("ABSTRACTVISION_MODEL_DIR"),
+        help="Root directory for downloaded models (default: $ABSTRACTVISION_MODEL_DIR or ~/models).",
+    )
+    dl.add_argument("--token", default=_env("HUGGINGFACE_HUB_TOKEN"), help="Hugging Face token, if needed.")
+    dl.add_argument("--max-workers", type=int, default=4, help="Hugging Face download workers (default: 4).")
+    dl.add_argument(
+        "--allow-non-8bit",
+        action="store_true",
+        help="Permit explicit fallback presets when no 8-bit artifact is curated.",
+    )
+    dl.add_argument("--json", action="store_true", help="Print selected preset + local path as JSON.")
+    dl.set_defaults(_fn=_cmd_download_model)
+
     sm = sub.add_parser("show-model", help="Show a model's supported tasks and params.")
     sm.add_argument("model_id")
     sm.set_defaults(_fn=_cmd_show_model)
@@ -925,10 +1509,85 @@ def build_parser() -> argparse.ArgumentParser:
     playground.add_argument("--port", type=int, default=8091, help="Port to bind (default: 8091).")
     playground.set_defaults(_fn=_cmd_playground)
 
-    def _add_backend_flags(ap: argparse.ArgumentParser) -> None:
-        ap.add_argument("--base-url", default=_env("ABSTRACTVISION_BASE_URL"), help="OpenAI-compatible base URL (e.g. http://localhost:1234/v1).")
-        ap.add_argument("--api-key", default=_env("ABSTRACTVISION_API_KEY"), help="API key (Bearer).")
-        ap.add_argument("--model-id", default=_env("ABSTRACTVISION_MODEL_ID"), help="Remote model id/name.")
+    def _add_provider_flags(ap: argparse.ArgumentParser) -> None:
+        ap.add_argument(
+            "--provider",
+            "--backend",
+            dest="provider",
+            default=None,
+            help="Provider/backend: openai, openai-compatible, diffusers, sdcpp, or mflux.",
+        )
+        ap.add_argument(
+            "--model",
+            "--model-id",
+            dest="model",
+            default=None,
+            help="Provider model id, preset key, local path, or repo id (provider-specific).",
+        )
+        # Backward-compatible alias (kept visible so older docs still work).
+        ap.add_argument(
+            "--mflux-model",
+            dest="model",
+            default=None,
+            help="Alias for --model when using --provider mflux (preset, local path, or repo id).",
+        )
+
+        # OpenAI/OpenAI-compatible provider config.
+        ap.add_argument("--base-url", default=_env("OPENAI_BASE_URL"), help="OpenAI-compatible base URL (e.g. http://localhost:1234/v1).")
+        ap.add_argument("--api-key", default=_env("OPENAI_API_KEY"), help="API key (Bearer).")
+
+        # Local Diffusers provider config.
+        ap.add_argument(
+            "--diffusers-device",
+            default=_env("ABSTRACTVISION_DIFFUSERS_DEVICE", DEFAULT_DIFFUSERS_DEVICE),
+            help="Diffusers device: cpu|cuda|mps|auto (default: auto).",
+        )
+        ap.add_argument("--diffusers-torch-dtype", default=_env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE"), help="Diffusers torch dtype (e.g. float16).")
+        ap.add_argument(
+            "--diffusers-allow-download",
+            action="store_true",
+            default=_env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False),
+            help="Allow Diffusers to download missing model files (default: cache-only).",
+        )
+        ap.add_argument(
+            "--diffusers-auto-retry-fp32",
+            dest="diffusers_auto_retry_fp32",
+            action="store_true",
+            default=_env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True),
+            help="Enable Diffusers fp32 retry fallback on dtype/device failures (default).",
+        )
+        ap.add_argument(
+            "--diffusers-no-auto-retry-fp32",
+            dest="diffusers_auto_retry_fp32",
+            action="store_false",
+            help="Disable Diffusers fp32 retry fallback on dtype/device failures.",
+        )
+
+        # stable-diffusion.cpp provider config.
+        ap.add_argument("--sdcpp-bin", default=_env("ABSTRACTVISION_SDCPP_BIN", "sd-cli"), help="Path to sd-cli (default: sd-cli).")
+        ap.add_argument("--sdcpp-model", default=_env("ABSTRACTVISION_SDCPP_MODEL"), help="stable-diffusion.cpp single-model path (overrides --model).")
+        ap.add_argument("--sdcpp-diffusion-model", default=_env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"), help="stable-diffusion.cpp diffusion_model path (GGUF).")
+        ap.add_argument("--sdcpp-vae", default=_env("ABSTRACTVISION_SDCPP_VAE"), help="stable-diffusion.cpp VAE path (safetensors).")
+        ap.add_argument("--sdcpp-llm", default=_env("ABSTRACTVISION_SDCPP_LLM"), help="stable-diffusion.cpp LLM path (GGUF).")
+        ap.add_argument("--sdcpp-llm-vision", default=_env("ABSTRACTVISION_SDCPP_LLM_VISION"), help="stable-diffusion.cpp vision LLM path (GGUF).")
+        ap.add_argument("--sdcpp-extra-args", default=_env("ABSTRACTVISION_SDCPP_EXTRA_ARGS"), help="Extra args forwarded to sd-cli / bindings (quoted string).")
+
+        # MFLUX provider config.
+        ap.add_argument("--mflux-base-model", default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"), help="MFLUX base model: flux2-klein-4b, flux2-klein-9b, z-image-turbo, or qwen-image.")
+        ap.add_argument(
+            "--mflux-model-dir",
+            "--model-dir",
+            dest="mflux_model_dir",
+            default=_env("ABSTRACTVISION_MODEL_DIR"),
+            help="Root directory for downloaded MFLUX presets (default: $ABSTRACTVISION_MODEL_DIR or ~/models).",
+        )
+        ap.add_argument(
+            "--mflux-allow-download",
+            action="store_true",
+            default=_env_bool("ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD", False),
+            help="Allow MFLUX to resolve/download non-local model ids (repo ids).",
+        )
+
         ap.add_argument("--capabilities-model-id", default=_env("ABSTRACTVISION_CAPABILITIES_MODEL_ID"), help="Optional: enforce support using a registry model id.")
         ap.add_argument("--timeout-s", type=float, default=float(_env("ABSTRACTVISION_TIMEOUT_S", "300") or "300"), help="HTTP timeout seconds (default: 300).")
         ap.add_argument("--store-dir", default=_env("ABSTRACTVISION_STORE_DIR"), help="Local asset store dir (default: ~/.abstractvision/assets).")
@@ -939,7 +1598,7 @@ def build_parser() -> argparse.ArgumentParser:
         ap.add_argument("--image-to-video-mode", default=_env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart"), help="image_to_video mode: multipart|json_b64.")
 
     t2i = sub.add_parser("t2i", help="One-shot text-to-image (stores output and prints artifact ref + path).")
-    _add_backend_flags(t2i)
+    _add_provider_flags(t2i)
     t2i.add_argument("prompt")
     t2i.add_argument("--negative-prompt", default=None)
     t2i.add_argument("--width", type=int, default=512)
@@ -951,7 +1610,7 @@ def build_parser() -> argparse.ArgumentParser:
     t2i.set_defaults(_fn=_cmd_t2i)
 
     i2i = sub.add_parser("i2i", help="One-shot image-to-image edit (stores output and prints artifact ref + path).")
-    _add_backend_flags(i2i)
+    _add_provider_flags(i2i)
     i2i.add_argument("--image", required=True, help="Input image file path.")
     i2i.add_argument("--mask", default=None, help="Optional mask file path.")
     i2i.add_argument("prompt")

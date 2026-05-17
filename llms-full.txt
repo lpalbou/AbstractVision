@@ -290,11 +290,11 @@ png_bytes = vm.store.load_bytes(out["$artifact"])  # type: ignore[union-attr]
 
 When installed next to AbstractCore, AbstractVision is also discovered as a
 `llm.vision` capability plugin. The plugin defaults to the official OpenAI
-image endpoint (`https://api.openai.com/v1`) and reads `OPENAI_API_KEY` (or
-`ABSTRACTVISION_API_KEY`). Set `OPENAI_BASE_URL` only when you need to override
-that OpenAI-compatible base for the official OpenAI profile. Set
-`ABSTRACTVISION_BACKEND=openai-compatible` plus `ABSTRACTVISION_BASE_URL` for a
-local or remote compatible `/v1` server. Set `ABSTRACTVISION_MODEL_ID`,
+image endpoint (`https://api.openai.com/v1`) and reads `OPENAI_API_KEY`.
+Set `OPENAI_BASE_URL` when you need a local or remote compatible `/v1` server,
+and use the same `OPENAI_API_KEY` bearer token if that endpoint requires auth.
+Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force
+compatible-endpoint semantics. Set `ABSTRACTVISION_MODEL_ID`,
 `OPENAI_IMAGE_MODEL_ID`, or `OPENAI_IMAGE_MODEL` when you need an explicit
 image model (static default OpenAI model: `gpt-image-1`). AbstractVision does
 not query provider `/models` catalogs to discover or select image models
@@ -1341,7 +1341,7 @@ flowchart LR
 
 Current plugin behavior (evidence in [`../src/abstractvision/integrations/abstractcore_plugin.py`](../src/abstractvision/integrations/abstractcore_plugin.py)):
 - Default: OpenAI HTTP with backend id `abstractvision:openai`; the legacy backend id `abstractvision:openai-compatible` remains registered and preserves compatible-endpoint defaults when selected directly.
-- Compatible endpoints should set `ABSTRACTVISION_BACKEND=openai-compatible` plus `ABSTRACTVISION_BASE_URL`; legacy base-url-only configs still resolve as compatible endpoints.
+- Compatible endpoints should set `OPENAI_BASE_URL`; set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Local Diffusers and stable-diffusion.cpp are supported when `vision_backend` / `ABSTRACTVISION_BACKEND` selects `diffusers` or `sdcpp`.
 - Configuration is read from `owner.config` keys like `vision_base_url`, `vision_model_id`, `vision_backend`, and backend-specific keys, then falls back to `ABSTRACTVISION_*` and standard OpenAI env vars where relevant.
 
@@ -1679,9 +1679,9 @@ The CLI/REPL state object (`_ReplState` in [`../../src/abstractvision/cli.py`](.
 ### Common
 
 - `ABSTRACTVISION_BACKEND` — backend selector: `openai`, `openai-compatible`, `diffusers`, or `sdcpp`
-  - AbstractCore plugin default: `openai` using `https://api.openai.com/v1` plus `OPENAI_API_KEY` or `ABSTRACTVISION_API_KEY`
-  - AbstractCore compatibility: selecting `abstractvision:openai-compatible` directly, or setting only `ABSTRACTVISION_BASE_URL`, keeps compatible-endpoint semantics
-  - if unset and `ABSTRACTVISION_BASE_URL` is set, REPL/playground default to `openai`
+  - AbstractCore plugin default: `openai` using `https://api.openai.com/v1` plus `OPENAI_API_KEY`
+  - AbstractCore compatibility: selecting `abstractvision:openai-compatible` directly, or setting `OPENAI_BASE_URL` to a non-OpenAI endpoint, keeps compatible-endpoint semantics
+  - if unset and `OPENAI_BASE_URL` is set, REPL/playground default to `openai`
   - if unset and no base URL is configured, no backend is selected until you use `/backend ...` or load a model explicitly
 - `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
 - `ABSTRACTVISION_TIMEOUT_S` — HTTP timeout for OpenAI-compatible backend (default: `300`)
@@ -1692,10 +1692,8 @@ The CLI/REPL state object (`_ReplState` in [`../../src/abstractvision/cli.py`](.
 
 ### OpenAI / OpenAI-Compatible HTTP Backend
 
-- `ABSTRACTVISION_BASE_URL` — compatible `/v1` endpoint; optional for the AbstractCore `openai` default because it uses `https://api.openai.com/v1`
-- `OPENAI_BASE_URL` — override for the official OpenAI profile when `ABSTRACTVISION_BASE_URL` / `vision_base_url` are unset; also used by `abstractvision provider-models --openai`
-- `ABSTRACTVISION_API_KEY` — bearer token for OpenAI or compatible providers that require auth
-- `OPENAI_API_KEY` — fallback when `ABSTRACTVISION_API_KEY` / `vision_api_key` are unset; also used by `abstractvision provider-models --openai`
+- `OPENAI_BASE_URL` — optional OpenAI-compatible `/v1` endpoint override; when unset, the official OpenAI profile uses `https://api.openai.com/v1`
+- `OPENAI_API_KEY` — bearer token for official OpenAI and compatible `/v1` endpoints that require auth
 - `ABSTRACTVISION_MODEL_ID` — optional remote model id/name (see also “Common”)
 - `OPENAI_IMAGE_MODEL_ID` / `OPENAI_IMAGE_MODEL` — plugin-only OpenAI model aliases when `ABSTRACTVISION_MODEL_ID` / `vision_model_id` are unset
 - `ABSTRACTVISION_MODELS_PATH` / `vision_models_path` — provider catalog path for explicit listing (default: `/models`, so a `/v1` base URL queries `/v1/models`)
@@ -1865,9 +1863,9 @@ The plugin registers these backend ids:
 - `abstractvision:openai` (default backend id) and `abstractvision:openai-compatible` (legacy compatibility backend id) are registered by [`../../src/abstractvision/integrations/abstractcore_plugin.py`](../../src/abstractvision/integrations/abstractcore_plugin.py). The implementation also supports local backends.
 
 Current behavior:
-- Default `abstractvision:openai`: OpenAI HTTP (`https://api.openai.com/v1`). Set `OPENAI_API_KEY` or `ABSTRACTVISION_API_KEY`.
+- Default `abstractvision:openai`: OpenAI HTTP (`https://api.openai.com/v1`). Set `OPENAI_API_KEY`.
 - OpenAI model ids are configured, not discovered dynamically. Providers may expose an OpenAI-compatible `GET /models` catalog; AbstractVision exposes it through `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, and the plugin method `llm.vision.list_provider_models(...)`, but the plugin does not call it automatically or use it to select a model. The static plugin default is `gpt-image-1`; set `OPENAI_IMAGE_MODEL_ID`, `OPENAI_IMAGE_MODEL`, `ABSTRACTVISION_MODEL_ID`, or `vision_model_id` for newer provider models.
-- Compatible HTTP: set `ABSTRACTVISION_BACKEND=openai-compatible` and `ABSTRACTVISION_BASE_URL` to a local/remote compatible `/v1` server. Legacy `ABSTRACTVISION_BASE_URL`-only deployments still use compatible semantics, but new configs should set the backend explicitly.
+- Compatible HTTP: set `OPENAI_BASE_URL` to a local/remote compatible `/v1` server. Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
 - stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
@@ -1891,8 +1889,8 @@ Key config keys (owner.config):
 
 Env-only aliases:
 - `ABSTRACTVISION_DIFFUSERS_MODEL_ID` is accepted for the Diffusers plugin backend before falling back to `ABSTRACTVISION_MODEL_ID`.
-- `OPENAI_BASE_URL` is accepted by the official OpenAI profile when `vision_base_url` / `ABSTRACTVISION_BASE_URL` are unset.
-- `OPENAI_API_KEY` is accepted after `ABSTRACTVISION_API_KEY`.
+- `OPENAI_BASE_URL` is accepted by the OpenAI-shaped HTTP backend.
+- Compatible OpenAI-shaped endpoints can use `OPENAI_API_KEY` when they require bearer auth.
 - `OPENAI_IMAGE_MODEL_ID` and `OPENAI_IMAGE_MODEL` are accepted when `vision_model_id` / `ABSTRACTVISION_MODEL_ID` are unset.
 - `ABSTRACTVISION_SDCPP_CLIP_L`, `ABSTRACTVISION_SDCPP_CLIP_G`, and `ABSTRACTVISION_SDCPP_T5XXL` are accepted for stable-diffusion.cpp component mode.
 
@@ -1921,7 +1919,7 @@ export OPENAI_IMAGE_MODEL=gpt-image-1
 ```bash
 # Local OpenAI-compatible HTTP server, for example AbstractCore Server.
 export ABSTRACTVISION_BACKEND=openai-compatible
-export ABSTRACTVISION_BASE_URL=http://localhost:8000/v1
+export OPENAI_BASE_URL=http://localhost:8000/v1
 export ABSTRACTVISION_MODEL_ID=server/default
 ```
 
@@ -2252,7 +2250,7 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 ## 0.2.3 - 2026-05-06
 
 - AbstractCore plugin: support local Diffusers and stable-diffusion.cpp backends through `llm.vision`, not only OpenAI-compatible HTTP. The default plugin path now matches the REPL default: local Diffusers with `runwayml/stable-diffusion-v1-5`, cache-only unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
-- AbstractCore plugin: keep OpenAI-compatible usage available with `ABSTRACTVISION_BACKEND=openai` plus `ABSTRACTVISION_BASE_URL`, and preserve artifact-store behavior for generated media outputs.
+- AbstractCore plugin: keep OpenAI-compatible usage available with `ABSTRACTVISION_BACKEND=openai` plus `OPENAI_BASE_URL`, and preserve artifact-store behavior for generated media outputs.
 
 ## 0.2.2 - 2026-05-06
 

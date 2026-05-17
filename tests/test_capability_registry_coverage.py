@@ -38,7 +38,36 @@ class TestCapabilityRegistryCoverage(unittest.TestCase):
             spec = reg.get(model_id)
             self.assertGreater(len(spec.tasks), 0, msg=f"Model {model_id!r} declares no tasks")
 
+    def test_every_curated_preset_has_registry_download_entry(self):
+        from abstractvision import VisionModelCapabilitiesRegistry
+        from abstractvision.model_downloads import model_presets
+
+        reg = VisionModelCapabilitiesRegistry()
+        presets = model_presets(target="auto", engine=None, include_non_8bit=True, include_all_targets=True)
+
+        for preset in presets:
+            model_id = str(preset.upstream_repo_id or preset.repo_id)
+            spec = reg.get(model_id)
+            found = False
+            for dl in spec.downloads:
+                if (
+                    dl.key == preset.key
+                    and dl.engine == preset.engine
+                    and dl.target == preset.target
+                    and dl.repo_id == preset.repo_id
+                    and dl.bits == preset.quantization_bits
+                ):
+                    found = True
+                    break
+            self.assertTrue(
+                found,
+                msg=(
+                    f"Missing registry download entry for preset: model_id={model_id!r} key={preset.key!r} "
+                    f"engine={preset.engine!r} target={preset.target!r} bits={preset.quantization_bits!r} "
+                    f"repo_id={preset.repo_id!r}"
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -18,12 +18,16 @@ class TestAbstractCorePlugin(unittest.TestCase):
         # Importing the package should not eagerly import heavy backend modules.
         sys.modules.pop("abstractvision.backends.huggingface_diffusers", None)
         sys.modules.pop("abstractvision.backends.stable_diffusion_cpp", None)
+        sys.modules.pop("abstractvision.backends.mflux", None)
+        sys.modules.pop("mflux", None)
         import abstractvision
 
         importlib.reload(abstractvision)
 
         self.assertNotIn("abstractvision.backends.huggingface_diffusers", sys.modules)
         self.assertNotIn("abstractvision.backends.stable_diffusion_cpp", sys.modules)
+        self.assertNotIn("abstractvision.backends.mflux", sys.modules)
+        self.assertNotIn("mflux", sys.modules)
 
     def test_base_import_and_plugin_registration_do_not_import_heavy_modules_subprocess(self):
         script = r"""
@@ -32,7 +36,7 @@ import os
 import sys
 
 sys.path.insert(0, os.environ["ABSTRACTVISION_SRC"])
-blocked = {"torch", "diffusers", "transformers", "PIL", "stable_diffusion_cpp"}
+blocked = {"torch", "diffusers", "transformers", "PIL", "stable_diffusion_cpp", "mflux", "mlx"}
 real_import = builtins.__import__
 
 def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
@@ -139,6 +143,34 @@ print("ok")
         self.assertEqual(seen["request"].width, 1024)
         self.assertEqual(seen["request"].height, 1024)
 
+    def test_abstractcore_plugin_uses_openai_key_for_official_openai(self):
+        import abstractvision.backends.openai_compatible as openai_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {}
+
+        env = {"OPENAI_API_KEY": "sk-real"}
+        with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", env, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                cap.t2i("a red square")
+
+        self.assertEqual(seen["config"].api_key, "sk-real")
+
     def test_abstractcore_plugin_openai_env_aliases_override_defaults(self):
         import abstractvision.backends.openai_compatible as openai_backend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -198,8 +230,8 @@ print("ok")
 
         env = {
             "ABSTRACTVISION_BACKEND": "openai-compatible",
-            "ABSTRACTVISION_BASE_URL": "http://localhost:1234/v1",
-            "ABSTRACTVISION_API_KEY": "local-key",
+            "OPENAI_BASE_URL": "http://localhost:1234/v1",
+            "OPENAI_API_KEY": "local-key",
             "ABSTRACTVISION_MODEL_ID": "local-image",
         }
         with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
@@ -213,7 +245,7 @@ print("ok")
         self.assertEqual(cfg.api_key, "local-key")
         self.assertEqual(cfg.model_id, "local-image")
 
-    def test_abstractcore_plugin_preserves_legacy_base_url_only_config(self):
+    def test_abstractcore_plugin_uses_openai_base_url_only_config(self):
         import abstractvision.backends.openai_compatible as openai_backend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset
@@ -234,8 +266,8 @@ print("ok")
             config = {}
 
         env = {
-            "ABSTRACTVISION_BASE_URL": "http://localhost:1234/v1",
-            "ABSTRACTVISION_API_KEY": "local-key",
+            "OPENAI_BASE_URL": "http://localhost:1234/v1",
+            "OPENAI_API_KEY": "local-key",
         }
         with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _FakeBackend):
             with patch.dict("os.environ", env, clear=True):
@@ -342,6 +374,143 @@ print("ok")
         self.assertEqual(seen["request"].width, 64)
         self.assertEqual(seen["request"].height, 64)
 
+    def test_abstractcore_plugin_can_select_local_mflux(self):
+        import abstractvision.backends.mflux as mflux_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {
+                "vision_backend": "mflux",
+                "vision_mflux_model": "flux2-klein-4b",
+                "vision_mflux_base_model": "flux2-klein-4b",
+            }
+
+        with patch.object(mflux_backend, "MFluxVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", {}, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i("a red square", width=64, height=64, steps=4)
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        cfg = seen["config"]
+        self.assertEqual(cfg.model, "flux2-klein-4b")
+        self.assertEqual(cfg.base_model, "flux2-klein-4b")
+        self.assertEqual(seen["request"].width, 64)
+        self.assertEqual(seen["request"].height, 64)
+
+    def test_abstractcore_plugin_routes_mflux_model_prefix(self):
+        import abstractvision.backends.mflux as mflux_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+        class _DummyOwner:
+            config = {}
+
+        with patch.object(mflux_backend, "MFluxVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", {}, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i("a red square", model="mflux/flux2-klein-9b")
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        self.assertEqual(seen["config"].model, "flux2-klein-9b")
+
+    def test_abstractcore_plugin_prefers_local_mflux_for_known_raw_model(self):
+        import abstractvision.backends.mflux as mflux_backend
+        from abstractvision.integrations import abstractcore_plugin
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+        class _DummyOwner:
+            config = {}
+
+        with patch.object(abstractcore_plugin, "_has_local_mflux_preset", return_value=True):
+            with patch.object(mflux_backend, "MFluxVisionBackend", _FakeBackend):
+                with patch.dict("os.environ", {}, clear=True):
+                    cap = _AbstractVisionCapability(_DummyOwner())
+                    out = cap.t2i("a red square", model="black-forest-labs/FLUX.2-klein-9B")
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        self.assertEqual(seen["config"].model, "black-forest-labs/FLUX.2-klein-9B")
+
+    def test_abstractcore_plugin_routes_mflux_provider_and_stores_artifact(self):
+        import abstractvision.backends.mflux as mflux_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+        class _Meta:
+            def __init__(self, artifact_id: str):
+                self.artifact_id = artifact_id
+
+        class _Store:
+            def store(self, content, *, content_type="application/octet-stream", run_id=None, tags=None, artifact_id=None):
+                seen["stored"] = {"content": bytes(content), "content_type": content_type, "run_id": run_id, "tags": tags}
+                return _Meta(artifact_id or "img-1")
+
+        class _DummyOwner:
+            config = {}
+
+        with patch.object(mflux_backend, "MFluxVisionBackend", _FakeBackend):
+            with patch.dict("os.environ", {}, clear=True):
+                cap = _AbstractVisionCapability(_DummyOwner())
+                out = cap.t2i(
+                    "a red square",
+                    provider="mflux",
+                    model="flux2-klein-4b",
+                    artifact_store=_Store(),
+                    run_id="run-1",
+                    tags={"node_id": "n1"},
+                )
+
+        self.assertEqual(out.get("$artifact"), "img-1")
+        self.assertEqual(seen["config"].model, "flux2-klein-4b")
+        self.assertEqual(seen["stored"]["content"], png)
+        self.assertEqual(seen["stored"]["run_id"], "run-1")
+        self.assertEqual(seen["stored"]["tags"]["node_id"], "n1")
+        self.assertEqual(seen["stored"]["tags"]["kind"], "generated_media")
+
     def test_abstractcore_plugin_default_openai_backend_requires_api_key(self):
         from abstractvision.errors import AbstractVisionError
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -413,6 +582,29 @@ print("ok")
         self.assertEqual(out[0]["id"], "gpt-image-1")
         self.assertEqual(out[0]["capabilities"], ["text_to_image"])
         self.assertTrue(out[0]["raw"]["provider_note"].endswith("...<truncated>"))
+
+    def test_abstractcore_plugin_provider_models_does_not_synthesize_openai_default(self):
+        from abstractvision.errors import AbstractVisionError
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _Cfg:
+            base_url = "https://api.openai.com/v1"
+
+        class _FailingOpenAIBackend:
+            _cfg = _Cfg()
+
+            def list_provider_models(self, *, task=None):
+                raise RuntimeError("catalog failed")
+
+        class _DummyOwner:
+            config = {"vision_backend_instance": _FailingOpenAIBackend()}
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        with self.assertRaises(AbstractVisionError) as ctx:
+            cap.list_provider_models(task="text_to_image")
+
+        self.assertIn("catalog failed", str(ctx.exception))
+        self.assertNotIn("gpt-image-1", str(ctx.exception))
 
     def test_abstractcore_plugin_provider_models_requires_catalog_backend(self):
         from abstractvision.backends.base_backend import VisionBackend

@@ -42,10 +42,10 @@ def _env_bool(key: str, default: bool = False) -> bool:
 
 
 def _default_backend_kind() -> str:
-    explicit = _env("ABSTRACTVISION_BACKEND")
+    explicit = _env("ABSTRACTVISION_PROVIDER") or _env("ABSTRACTVISION_BACKEND")
     if explicit:
         return str(explicit)
-    if _env("ABSTRACTVISION_BASE_URL"):
+    if _env("OPENAI_BASE_URL"):
         return "openai"
     return ""
 
@@ -76,8 +76,6 @@ def _redact(text: Any) -> str:
     raw = str(text or "")
     for key in (
         "OPENAI_API_KEY",
-        "ABSTRACTVISION_API_KEY",
-        "ABSTRACTVISION_UPSTREAM_API_KEY",
         "ABSTRACTCORE_SERVER_API_KEY",
         "HF_TOKEN",
         "HUGGING_FACE_HUB_TOKEN",
@@ -98,7 +96,7 @@ def _known_prefix(model_id: str) -> Tuple[Optional[str], str]:
         "diffusers",
         "huggingface",
         "hf",
-        "mlx",
+        "mflux",
         "sdcpp",
         "stable-diffusion.cpp",
         "stable_diffusion_cpp",
@@ -128,8 +126,10 @@ def normalize_model_id_for_backend(model_id: str) -> Tuple[str, Optional[str]]:
         raise ValueError("Missing required field: model_id")
 
     prefix, rest = _known_prefix(s)
-    if prefix in {"diffusers", "huggingface", "hf", "mlx"}:
+    if prefix in {"diffusers", "huggingface", "hf"}:
         return "diffusers", DEFAULT_DIFFUSERS_MODEL_ID if _is_default_alias(rest) else rest
+    if prefix == "mflux":
+        return "mflux", None if _is_default_alias(rest) else rest
     if prefix in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
         return "sdcpp", None if _is_default_alias(rest) else rest
     if prefix in {"openai", "openai-compatible", "openai_compatible"}:
@@ -288,8 +288,8 @@ class PlaygroundServerConfig:
     default_model_id: str = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_ID", "") or "")
 
     backend_kind: str = field(default_factory=_default_backend_kind)
-    openai_base_url: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_BASE_URL"))
-    openai_api_key: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_API_KEY"))
+    openai_base_url: Optional[str] = field(default_factory=lambda: _env("OPENAI_BASE_URL"))
+    openai_api_key: Optional[str] = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     openai_timeout_s: float = field(
         default_factory=lambda: float(_env("ABSTRACTVISION_TIMEOUT_S", "300") or "300")
     )
@@ -319,6 +319,10 @@ class PlaygroundServerConfig:
     sdcpp_extra_args: Optional[str] = field(
         default_factory=lambda: _env("ABSTRACTVISION_SDCPP_EXTRA_ARGS")
     )
+    mflux_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MFLUX_MODEL"))
+    mflux_base_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MFLUX_BASE_MODEL"))
+    mflux_model_dir: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_DIR"))
+    mflux_allow_download: bool = field(default_factory=lambda: _env_bool("ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD", False))
 
 
 @dataclass
@@ -546,6 +550,8 @@ class PlaygroundState:
             "stable-diffusion-cpp",
         }:
             backend_kind = "sdcpp"
+        elif backend_kind == "m-flux":
+            backend_kind = "mflux"
 
         if backend_kind == "diffusers":
             from .backends.huggingface_diffusers import (
@@ -590,6 +596,17 @@ class PlaygroundState:
             )
             return StableDiffusionCppVisionBackend(config=cfg)
 
+        if backend_kind == "mflux":
+            from .backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+            cfg = MFluxBackendConfig(
+                model=str(backend_model_id or self.config.mflux_model or "") or None,
+                base_model=str(self.config.mflux_base_model) if self.config.mflux_base_model else None,
+                model_dir=str(self.config.mflux_model_dir) if self.config.mflux_model_dir else None,
+                allow_download=bool(self.config.mflux_allow_download),
+            )
+            return MFluxVisionBackend(config=cfg)
+
         if backend_kind == "openai":
             from .backends.openai_compatible import (
                 OpenAICompatibleBackendConfig,
@@ -598,7 +615,7 @@ class PlaygroundState:
 
             if not self.config.openai_base_url:
                 raise ValueError(
-                    "OpenAI-compatible backend is not configured. Set ABSTRACTVISION_BASE_URL, "
+                    "OpenAI-compatible backend is not configured. Set OPENAI_BASE_URL, "
                     "or select a local Diffusers/sdcpp model."
                 )
             cfg = OpenAICompatibleBackendConfig(

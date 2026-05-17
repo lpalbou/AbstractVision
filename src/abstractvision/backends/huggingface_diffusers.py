@@ -16,6 +16,7 @@ from ..types import (
     ImageGenerationRequest,
     ImageToVideoRequest,
     MultiAngleRequest,
+    ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
@@ -794,6 +795,156 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             supports_mask=None,  # depends on whether inpaint pipeline loads for the model
         )
 
+    def _is_hf_model_cached(self, model_id: str) -> bool:
+        model_id = str(model_id or "").strip()
+        if not model_id or "/" not in model_id:
+            return False
+        folder = "models--" + model_id.replace("/", "--")
+        for cache_root in self._hf_cache_roots():
+            repo_dir = cache_root / folder
+            snaps = repo_dir / "snapshots"
+            if not snaps.is_dir():
+                continue
+            try:
+                if any((p / "model_index.json").is_file() for p in snaps.iterdir() if p.is_dir()):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _discover_cached_hf_diffusers_models(self) -> List[str]:
+        out: List[str] = []
+        seen: set[str] = set()
+        for cache_root in self._hf_cache_roots():
+            try:
+                candidates = list(cache_root.glob("models--*"))
+            except Exception:
+                continue
+            for folder in candidates:
+                name = folder.name
+                if not name.startswith("models--"):
+                    continue
+                model_id = name[len("models--") :].replace("--", "/")
+                if "/" not in model_id or model_id in seen:
+                    continue
+                snaps = folder / "snapshots"
+                try:
+                    has_model_index = snaps.is_dir() and any((p / "model_index.json").is_file() for p in snaps.iterdir() if p.is_dir())
+                except Exception:
+                    has_model_index = False
+                if not has_model_index:
+                    continue
+                seen.add(model_id)
+                out.append(model_id)
+        return sorted(out)
+
+    def _discover_local_diffusers_models(self) -> List[str]:
+        out: List[str] = []
+        seen: set[str] = set()
+        for root in self._local_diffusers_roots():
+            try:
+                model_indexes = list(root.rglob("model_index.json"))
+            except Exception:
+                continue
+            for model_index in model_indexes:
+                folder = model_index.parent
+                name = folder.name
+                model_id = name.replace("__", "/") if "__" in name else str(folder)
+                if not model_id or model_id in seen:
+                    continue
+                seen.add(model_id)
+                out.append(model_id)
+        return sorted(out)
+
+    def list_provider_models(self, *, task: Optional[str] = None) -> List[ProviderModelInfo]:
+        """Return locally cached Diffusers/Hugging Face image models.
+
+        Catalog discovery is intentionally non-mutating: it reports cached models
+        and the configured model when downloads are explicitly allowed, but it
+        never downloads or switches the active pipeline.
+        """
+
+        task_s = str(task or "").strip()
+        out: List[ProviderModelInfo] = []
+        seen: set[str] = set()
+
+        def add_model(model_id: str, *, tasks: List[str], cached: bool, raw_extra: Optional[Dict[str, Any]] = None) -> None:
+            mid = str(model_id or "").strip()
+            if not mid or mid in seen:
+                return
+            if task_s and task_s not in tasks:
+                return
+            seen.add(mid)
+            raw: Dict[str, Any] = {
+                "id": mid,
+                "provider": "huggingface",
+                "backend": "diffusers",
+                "model": f"diffusers/{mid}",
+                "routed_model": f"diffusers/{mid}",
+                "local_cached": bool(cached),
+            }
+            if raw_extra:
+                raw.update(raw_extra)
+            out.append(
+                ProviderModelInfo(
+                    id=mid,
+                    object="model",
+                    owned_by=str(raw.get("provider") or "huggingface"),
+                    capabilities=tuple(tasks),
+                    raw=raw,
+                )
+            )
+
+        try:
+            from ..model_capabilities import VisionModelCapabilitiesRegistry
+
+            reg = VisionModelCapabilitiesRegistry()
+            for model_id in reg.list_models():
+                spec = reg.get(model_id)
+                tasks = sorted(str(t) for t in spec.tasks.keys())
+                if task_s and task_s not in tasks:
+                    continue
+                if not self._is_hf_model_cached(model_id):
+                    continue
+                add_model(
+                    str(model_id),
+                    tasks=tasks,
+                    cached=True,
+                    raw_extra={
+                        "license": spec.license,
+                        "notes": spec.notes,
+                    },
+                )
+        except Exception:
+            pass
+
+        for model_id in [*self._discover_cached_hf_diffusers_models(), *self._discover_local_diffusers_models()]:
+            if model_id in seen:
+                continue
+            tasks = ["image_to_image", "text_to_image"]
+            add_model(
+                str(model_id),
+                tasks=tasks,
+                cached=True,
+                raw_extra={
+                    "discovered": True,
+                    "notes": "Discovered from local Diffusers cache metadata (model_index.json present).",
+                },
+            )
+
+        configured_model = str(self._cfg.model_id or "").strip()
+        if configured_model and configured_model not in seen:
+            cached = self._is_hf_model_cached(configured_model)
+            if cached or bool(self._cfg.allow_download):
+                add_model(
+                    configured_model,
+                    tasks=[str(t) for t in self.get_capabilities().supported_tasks],
+                    cached=cached,
+                    raw_extra={"configured": True},
+                )
+
+        return out
+
     def _pipeline_common_kwargs(self) -> Dict[str, Any]:
         kwargs: Dict[str, Any] = {
             "local_files_only": not bool(self._cfg.allow_download),
@@ -817,6 +968,81 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if hf_home:
             return Path(hf_home).expanduser() / "hub"
         return Path.home() / ".cache" / "huggingface" / "hub"
+
+    def _framework_candidate_roots(self) -> List[Path]:
+        roots: List[Path] = []
+        for candidate in [Path.cwd(), *Path(__file__).resolve().parents]:
+            try:
+                root = candidate.expanduser().resolve()
+            except Exception:
+                continue
+            if root not in roots:
+                roots.append(root)
+            if (root / "runtime").is_dir() or (root / "untracked").is_dir():
+                parent = root.parent
+                if parent not in roots:
+                    roots.append(parent)
+        return roots[:16]
+
+    def _hf_cache_roots(self) -> List[Path]:
+        roots: List[Path] = [self._hf_cache_root()]
+        for key in ("ABSTRACTVISION_HF_HUB_CACHE", "ABSTRACTCORE_VISION_HF_HUB_CACHE", "HF_HUB_CACHE_DIR"):
+            value = os.environ.get(key)
+            if value:
+                roots.append(Path(value).expanduser())
+        for root in self._framework_candidate_roots():
+            roots.append(root / "runtime" / "hf-hub")
+            quarantine = root / "runtime" / "model-quarantine"
+            try:
+                if quarantine.is_dir():
+                    roots.extend(path / "hf-hub" for path in quarantine.iterdir() if path.is_dir())
+            except Exception:
+                pass
+        out: List[Path] = []
+        seen: set[str] = set()
+        for root in roots:
+            try:
+                resolved = root.expanduser()
+            except Exception:
+                continue
+            key = str(resolved)
+            if key in seen:
+                continue
+            seen.add(key)
+            if resolved.is_dir():
+                out.append(resolved)
+        return out
+
+    def _local_diffusers_roots(self) -> List[Path]:
+        roots: List[Path] = []
+        for key in (
+            "ABSTRACTVISION_MODELS_DIR",
+            "ABSTRACTVISION_MODEL_DIR",
+            "ABSTRACTCORE_VISION_MODELS_DIR",
+            "ABSTRACTCORE_VISION_MODEL_DIR",
+        ):
+            value = os.environ.get(key)
+            if value:
+                roots.append(Path(value).expanduser())
+        for root in self._framework_candidate_roots():
+            roots.append(root / "untracked" / "models" / "abstractvision")
+            roots.append(root / "runtime" / "models" / "abstractvision")
+            quarantine = root / "runtime" / "model-quarantine"
+            try:
+                if quarantine.is_dir():
+                    roots.extend(path / "models" for path in quarantine.iterdir() if path.is_dir())
+            except Exception:
+                pass
+        out: List[Path] = []
+        seen: set[str] = set()
+        for root in roots:
+            key = str(root)
+            if key in seen:
+                continue
+            seen.add(key)
+            if root.is_dir():
+                out.append(root)
+        return out
 
     def _resolve_snapshot_dir(self) -> Optional[Path]:
         model_id = str(self._cfg.model_id).strip()

@@ -4,6 +4,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)
+- **MFLUX (local Apple Silicon)**: 8-bit MLX/MFLUX image generation via the optional MFLUX runtime
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -28,7 +29,7 @@ From PyPI:
 pip install abstractvision
 ```
 
-AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, or `abstractvision[local]` for both.
+AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, `abstractvision[mflux]` for Apple Silicon MLX/MFLUX, or `abstractvision[all-apple]` for the full native macOS stack.
 
 If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
@@ -85,9 +86,14 @@ Optional extras:
 | `openai-compatible` | Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today. |
 | `diffusers` | Installs Torch/Diffusers and related packages for local Diffusers generation. |
 | `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
+| `mflux` | Installs the optional MFLUX runtime for Apple Silicon MLX image generation. |
+| `apple` | Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MFLUX. |
+| `gpu` | GPU-friendly profile for Diffusers/Torch (does not include MFLUX). |
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
+| `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MFLUX. |
+| `all-gpu` | Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings). |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 
 Contributor-only extras:
@@ -110,9 +116,10 @@ python scripts/download_model_sets.py --set sd15_diffusers
 
 ### 0.1 Hardware quickstart (macOS Metal vs NVIDIA CUDA vs CPU)
 
-AbstractVision can run “locally” via two main routes:
+AbstractVision can run “locally” via three main routes:
 
 - **Diffusers backend**: uses Torch device selection (`cuda` / `mps` / `cpu`).
+- **MFLUX backend (`mflux`)**: Apple Silicon MLX generation through the optional MFLUX runtime (8-bit presets).
 - **stable-diffusion.cpp backend (`sdcpp`)**: runs GGUF diffusion models using:
   - `sd-cli` (**recommended** when you want GPU backends like **Metal** or **CUDA**)
   - or `stable-diffusion-cpp-python` (convenient, but often **CPU-only**, especially on macOS)
@@ -171,7 +178,7 @@ Recommended default (local, cross-platform) — Stable Diffusion 1.5:
 
 ```bash
 pip install "abstractvision[diffusers]"
-huggingface-cli download runwayml/stable-diffusion-v1-5
+abstractvision download-model stable-diffusion --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -195,7 +202,7 @@ Jump to detailed recipes:
 The REPL is cache-only by default, so it will not download model weights. Download the model separately first:
 
 ```bash
-huggingface-cli download runwayml/stable-diffusion-v1-5
+abstractvision download-model stable-diffusion --provider diffusers
 ```
 
 ```bash

@@ -224,8 +224,16 @@ class LocalAssetStore:
 class RuntimeArtifactStoreAdapter:
     """Duck-typed adapter for AbstractRuntime's ArtifactStore (no hard dependency)."""
 
-    def __init__(self, artifact_store: Any):
+    def __init__(
+        self,
+        artifact_store: Any,
+        *,
+        run_id: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
+    ):
         self._store = artifact_store
+        self._run_id = str(run_id).strip() if isinstance(run_id, str) and str(run_id).strip() else None
+        self._tags = {str(k): str(v) for k, v in tags.items()} if isinstance(tags, dict) else {}
 
     def store_bytes(
         self,
@@ -247,6 +255,8 @@ class RuntimeArtifactStoreAdapter:
         sha = sha256_hex(content_b)
 
         merged_tags: Dict[str, str] = {}
+        if self._tags:
+            merged_tags.update(self._tags)
         if isinstance(tags, dict):
             merged_tags.update({str(k): str(v) for k, v in tags.items()})
         if filename and "filename" not in merged_tags:
@@ -259,7 +269,7 @@ class RuntimeArtifactStoreAdapter:
             meta = store_fn(
                 content_b,
                 content_type=content_type,
-                run_id=str(run_id) if run_id else None,
+                run_id=str(run_id or self._run_id) if (run_id or self._run_id) else None,
                 tags=merged_tags or None,
                 artifact_id=str(artifact_id) if artifact_id else None,
             )
@@ -267,7 +277,7 @@ class RuntimeArtifactStoreAdapter:
             meta = store_fn(
                 content_b,
                 content_type=content_type,
-                run_id=str(run_id) if run_id else None,
+                run_id=str(run_id or self._run_id) if (run_id or self._run_id) else None,
                 tags=merged_tags or None,
             )
 

@@ -13,6 +13,7 @@ See also:
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. |
+| MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset directories under `ABSTRACTVISION_MODEL_DIR` / `~/models`. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components. |
 
 Notes:
@@ -62,6 +63,35 @@ Install:
 - `pip install "abstractvision[diffusers]"`
 - For newer/unreleased pipeline classes: `pip install "abstractvision[diffusers-dev]"` plus Diffusers from source.
 
+Model downloads (curated):
+- See what's downloadable for Diffusers:
+  - `abstractvision model-catalog --provider diffusers` (add `--all-targets` to compare engines)
+  - Tip: `--provider diffusers` implies `--target diffusers` (you usually set one or the other).
+- Download a curated Diffusers snapshot into `ABSTRACTVISION_MODEL_DIR` (default: `~/models`):
+  - `abstractvision download-model stable-diffusion --provider diffusers`
+  - `abstractvision download-model sd1.4 --provider diffusers`
+  - `abstractvision download-model sd1.5-inpaint --provider diffusers`
+  - `abstractvision download-model instruct-pix2pix --provider diffusers`
+  - `abstractvision download-model sdxl-base --provider diffusers`
+  - `abstractvision download-model sdxl-refiner --provider diffusers`
+  - `abstractvision download-model sdxl-inpaint --provider diffusers`
+  - `abstractvision download-model sdxl-turbo --provider diffusers`
+  - `abstractvision download-model sd-turbo --provider diffusers`
+  - `abstractvision download-model sd3-medium --provider diffusers`
+  - `abstractvision download-model sd3.5-medium --provider diffusers`
+  - `abstractvision download-model sd3.5-large --provider diffusers`
+  - `abstractvision download-model sd3.5-large-turbo --provider diffusers`
+  - `abstractvision download-model ernie-image --provider diffusers`
+  - `abstractvision download-model qwen-image --provider diffusers`
+  - `abstractvision download-model qwen-image-edit --provider diffusers`
+  - `abstractvision download-model glm-image --provider diffusers`
+  - `abstractvision download-model flux2-dev --provider diffusers`
+  - `abstractvision download-model flux2-klein-4b --provider diffusers`
+  - `abstractvision download-model z-image-turbo --provider diffusers`
+
+One-shot generation (uses the local download when present):
+- `abstractvision t2i --provider diffusers --model qwen-image "a studio photo of a ceramic teapot"`
+
 Code pointers:
 - Config: `HuggingFaceDiffusersBackendConfig` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
 - Backend: `HuggingFaceDiffusersVisionBackend` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
@@ -76,6 +106,40 @@ Config fields:
 - `allow_download`, `auto_retry_fp32`
 - `cache_dir`, `revision`, `variant`
 - `use_safetensors`, `low_cpu_mem_usage`
+
+## MFLUX backend (local Apple Silicon)
+
+**When to use**
+- You are on Apple Silicon and want local 8-bit MLX generation through the optional MFLUX runtime.
+
+Install:
+- `pip install "abstractvision[mflux]"` (or `pip install "abstractvision[all-apple]"`)
+
+Model presets:
+- See what's downloadable for your machine/engine:
+  - `abstractvision model-catalog --provider mflux` (add `--all` for full fallback list)
+  - Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
+- Download a curated 8-bit preset into `ABSTRACTVISION_MODEL_DIR` (default: `~/models`):
+  - `abstractvision download-model flux1-dev --provider mflux`
+  - `abstractvision download-model flux1-schnell --provider mflux`
+  - `abstractvision download-model flux2-klein-4b --provider mflux`
+  - `abstractvision download-model flux2-klein-9b --provider mflux`
+  - `abstractvision download-model qwen-image --provider mflux`
+  - `abstractvision download-model z-image-turbo --provider mflux`
+
+Config/env:
+- `ABSTRACTVISION_PROVIDER=mflux` (alias: `ABSTRACTVISION_BACKEND=mflux`)
+- `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` (or routed ids like `mflux/flux2-klein-4b`)
+- Optional: `ABSTRACTVISION_MFLUX_BASE_MODEL`, `ABSTRACTVISION_MFLUX_QUANTIZE`, `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD`, `ABSTRACTVISION_MODEL_DIR`
+
+Non-curated MFLUX models:
+- If you have an MFLUX-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
+  - Pre-download it with `abstractvision download-model org/name` (HF cache) or `hf download org/name`
+  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (base model usually auto-infers; override with `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image` if needed).
+
+Code pointers:
+- Config: `MFluxBackendConfig` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
+- Backend: `MFluxVisionBackend` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
 
 ## stable-diffusion.cpp backend (local GGUF/checkpoints)
 

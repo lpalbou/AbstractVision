@@ -44,8 +44,24 @@ The validator enforces a “soft schema”:
 - Each model entry includes:
   - `provider` (string)
   - `license` (string; informational)
+  - optional `downloads` (list of downloadable artifacts; informational metadata used by `abstractvision show-model`)
   - `tasks` (map of task name → task spec)
 - Each task spec includes:
   - `inputs`, `outputs` (lists of strings)
   - `params` (object where each param has `required: bool`, plus additive fields)
   - optional `requires` for dependencies like `base_model_id`
+
+### Downloads (optional)
+
+Some models include a `downloads` list to document what AbstractVision considers “downloadable” for common engines:
+
+- `key`: the canonical short name used in `model-presets` / `download-model` (e.g. `qwen-image`, `flux2-klein-4b`)
+- `engine`: `mflux`, `diffusers`, `stable-diffusion.cpp`, ...
+- `target`: `mlx`, `diffusers`, `gguf`, ...
+- `bits`: typically `8` (quantized) or `16` (full snapshot)
+- `repo_id`: Hugging Face repo id to download
+- optional `source`, `notes`
+
+This metadata is descriptive; the curated preset list printed by `abstractvision model-catalog` remains the practical “what can I download” view.
+
+In this repo, we keep `downloads` entries aligned with the curated preset table (`model_downloads._PRESETS`) so `abstractvision show-model` and the docs can reliably describe what the CLI can download.

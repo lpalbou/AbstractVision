@@ -58,12 +58,14 @@ Optional extras:
 |---|---|
 | `abstractvision[openai]` | Official OpenAI provider intent marker; no SDK dependency today. |
 | `abstractvision[openai-compatible]` | Generic local/remote OpenAI-shaped endpoint intent marker; stdlib-only today. |
+| `abstractvision[models]` | Curated Hugging Face download helpers for local 8-bit vision model presets. |
 | `abstractvision[diffusers]` | Install Torch/Diffusers and related packages for local Diffusers generation. |
 | `abstractvision[huggingface]` | Compatibility alias for callers that still request the historical Diffusers extra. |
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
+| `abstractvision[mflux]` | Install the optional MFLUX/MLX Apple Silicon image runtime. |
 | `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
-| `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS plus stable-diffusion.cpp bindings. |
+| `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MFLUX. |
 | `abstractvision[gpu]` | GPU Diffusers/Torch profile. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
 | `abstractvision[all-gpu]` | Full GPU-relevant local vision profile: Diffusers plus stable-diffusion.cpp bindings. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
@@ -109,14 +111,49 @@ Start here:
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Docs index: [`docs/README.md`](docs/README.md)
 
-### First local model (Diffusers / cross-platform)
+### First local model (8-bit first)
 
-Install the local runtime extra, pre-download the model outside the REPL, then
-select the Diffusers backend explicitly:
+For local model downloads, prefer the curated 8-bit presets first. On macOS
+they resolve to MLX artifacts that declare the `mflux` engine; on non-macOS
+systems the default target is GGUF or an equivalent local-runtime artifact. The
+downloader does not fall back to full models unless you pass
+`--allow-non-8bit`.
 
 ```bash
-pip install "abstractvision[diffusers]"
-huggingface-cli download runwayml/stable-diffusion-v1-5
+pip install "abstractvision[models,mflux]"
+abstractvision model-presets
+abstractvision model-catalog --provider mflux
+# Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
+abstractvision download-model flux1-dev --provider mflux
+abstractvision download-model flux1-schnell --provider mflux
+abstractvision download-model flux2-klein-4b --provider mflux
+abstractvision download-model flux2-klein-9b --provider mflux
+abstractvision download-model qwen-image --provider mflux
+abstractvision download-model z-image-turbo --provider mflux
+abstractvision t2i --provider mflux --model flux2-klein-4b "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
+```
+
+Stable Diffusion does not currently have a curated MLX 8-bit preset in
+AbstractVision, so full Diffusers downloads remain explicit.
+
+Install the Diffusers runtime extra, download a Diffusers snapshot, then select
+the Diffusers backend explicitly:
+
+```bash
+pip install "abstractvision[models,diffusers]"
+abstractvision model-catalog --provider diffusers
+# Tip: `--provider diffusers` implies `--target diffusers` (you usually set one or the other).
+abstractvision download-model stable-diffusion --provider diffusers
+abstractvision download-model sd1.4 --provider diffusers
+abstractvision download-model sd1.5-inpaint --provider diffusers
+abstractvision download-model sdxl-base --provider diffusers
+abstractvision download-model sdxl-inpaint --provider diffusers
+abstractvision download-model sd3-medium --provider diffusers
+abstractvision download-model sd3.5-large --provider diffusers
+abstractvision download-model ernie-image --provider diffusers
+abstractvision download-model qwen-image-edit --provider diffusers
+abstractvision download-model glm-image --provider diffusers
+abstractvision download-model flux2-dev --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -181,11 +218,11 @@ png_bytes = vm.store.load_bytes(out["$artifact"])  # type: ignore[union-attr]
 
 When installed next to AbstractCore, AbstractVision is also discovered as a
 `llm.vision` capability plugin. The plugin defaults to the official OpenAI
-image endpoint (`https://api.openai.com/v1`) and reads `OPENAI_API_KEY` (or
-`ABSTRACTVISION_API_KEY`). Set `OPENAI_BASE_URL` only when you need to override
-that OpenAI-compatible base for the official OpenAI profile. Set
-`ABSTRACTVISION_BACKEND=openai-compatible` plus `ABSTRACTVISION_BASE_URL` for a
-local or remote compatible `/v1` server. Set `ABSTRACTVISION_MODEL_ID`,
+image endpoint (`https://api.openai.com/v1`) and reads `OPENAI_API_KEY`.
+Set `OPENAI_BASE_URL` when you need a local or remote compatible `/v1` server,
+and use the same `OPENAI_API_KEY` bearer token if that endpoint requires auth.
+Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force
+compatible-endpoint semantics. Set `ABSTRACTVISION_MODEL_ID`,
 `OPENAI_IMAGE_MODEL_ID`, or `OPENAI_IMAGE_MODEL` when you need an explicit
 image model (static default OpenAI model: `gpt-image-1`). AbstractVision does
 not query provider `/models` catalogs to discover or select image models
@@ -193,9 +230,11 @@ automatically, but you can inspect them explicitly with
 `abstractvision provider-models`, `VisionManager.list_provider_models(...)`,
 or the AbstractCore plugin method `llm.vision.list_provider_models(...)`.
 After inspection, set the model env var explicitly for newer provider models
-when available to your account. Set
-`ABSTRACTVISION_BACKEND=diffusers` or `ABSTRACTVISION_BACKEND=sdcpp` when you
-want AbstractCore to launch local AbstractVision generation directly.
+when available to your account. Set `ABSTRACTVISION_BACKEND=mflux`,
+`ABSTRACTVISION_BACKEND=diffusers`, or `ABSTRACTVISION_BACKEND=sdcpp` when you
+want AbstractCore to launch local AbstractVision generation directly. For
+MFLUX, set `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` or use routed model ids
+such as `mflux/flux2-klein-4b`.
 
 ### Interactive testing (CLI / REPL)
 
@@ -220,6 +259,13 @@ from source (see [`docs/getting-started.md`](docs/getting-started.md)):
 
 ```text
 /backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
+/t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
+```
+
+For Apple Silicon 8-bit local generation through MFLUX:
+
+```text
+/backend mflux flux2-klein-4b
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
 ```
 

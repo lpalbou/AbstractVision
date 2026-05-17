@@ -44,7 +44,7 @@ There are pending caveats:
 - the legacy backend id alias should either preserve old compatible-endpoint behavior or be clearly
   documented as an alias to env-driven backend selection;
 - docs must consistently require `ABSTRACTVISION_BACKEND=openai-compatible` plus
-  `ABSTRACTVISION_BASE_URL` for compatible endpoints;
+  `OPENAI_BASE_URL` for compatible endpoints;
 - OpenAI default model docs must avoid claiming a conservative default is the latest model.
 
 ## Proposed Direction
@@ -117,7 +117,7 @@ caveats are resolved.
 
 - Kept the `abstractvision:openai` AbstractCore plugin default for official OpenAI semantics.
 - Preserved compatible-endpoint behavior for the legacy `abstractvision:openai-compatible`
-  backend id and for legacy `ABSTRACTVISION_BASE_URL`-only setups.
+  backend id and for `OPENAI_BASE_URL`-only setups.
 - Added standard OpenAI aliases for the plugin default path: `OPENAI_BASE_URL`,
   `OPENAI_API_KEY`, `OPENAI_IMAGE_MODEL_ID`, and `OPENAI_IMAGE_MODEL`.
 - Confirmed that these aliases configure a model id only; they do not trigger automatic
@@ -125,7 +125,7 @@ caveats are resolved.
   selection.
 - Kept Vision package install profiles local to Vision; no `apple` / `gpu` extras were added.
 - Tightened docs so compatible endpoints use `ABSTRACTVISION_BACKEND=openai-compatible`
-  plus `ABSTRACTVISION_BASE_URL`, and so the playground is described as local/dev only.
+  plus `OPENAI_BASE_URL`, and so the playground is described as local/dev only.
 - Added an explicit provider catalog abstraction for OpenAI/OpenAI-compatible `GET /models`
   inspection without changing automatic model selection behavior.
 
@@ -161,7 +161,7 @@ caveats are resolved.
 - `PYTHONPATH=src python -m unittest tests.test_packaging_metadata tests.test_abstractcore_plugin tests.test_cli_smoke tests.test_playground_server tests.test_openai_compatible_backend -q` passed, 44 tests.
 - `PYTHONPATH=src python -m unittest tests.test_cli_smoke.TestCliSmoke.test_provider_models_openai_uses_default_catalog tests.test_openai_compatible_backend.TestOpenAICompatibleVisionBackend.test_list_provider_models_default_openai_catalog_live -q` passed, covering default OpenAI CLI catalog selection and the live OpenAI provider catalog path.
 - `PYTHONPATH=src python -m unittest tests.test_openai_compatible_backend.TestOpenAICompatibleVisionBackend.test_list_provider_models_default_openai_catalog_live -q` passed with `OPENAI_API_KEY` present; the default OpenAI `/models` catalog returned image models through `VisionManager.list_provider_models(task="text_to_image")`.
-- `env -u OPENAI_API_KEY -u ABSTRACTVISION_API_KEY PYTHONPATH=src python -m unittest tests.test_openai_compatible_backend.TestOpenAICompatibleVisionBackend.test_list_provider_models_default_openai_catalog_live -q` passed with `skipped=1`.
+- `env -u OPENAI_API_KEY PYTHONPATH=src python -m unittest tests.test_openai_compatible_backend.TestOpenAICompatibleVisionBackend.test_list_provider_models_default_openai_catalog_live -q` passed with `skipped=1`.
 - `PYTHONPATH=src python -m unittest tests.test_openai_compatible_backend tests.test_manager_capability_checks tests.test_cli_smoke -q` passed, 28 tests.
 - `PYTHONPATH=src python -m unittest discover -s tests -p "test_*.py" -q` passed, 86 tests after the live provider catalog regression was added.
 - `python -m ruff check --ignore UP src/abstractvision/integrations/abstractcore_plugin.py tests/test_abstractcore_plugin.py` passed.

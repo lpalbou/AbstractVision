@@ -72,8 +72,14 @@ sdcpp = [
   "Pillow>=9.0",
 ]
 
+# Native Apple image generation via MFLUX/MLX. Kept optional because it pulls
+# Apple-specific local runtime dependencies.
+mflux = [
+  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+]
+
 # Native Apple Python install profile. Docker cannot expose Apple's Metal stack,
-# but direct macOS installs can use PyTorch/MPS and stable-diffusion.cpp/Metal.
+# but direct macOS installs can use PyTorch/MPS, stable-diffusion.cpp/Metal, and MFLUX/MLX.
 apple = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
@@ -85,6 +91,7 @@ apple = [
   "einops>=0.7.0",
   "peft>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
   "Pillow>=9.0",
 ]
 
@@ -142,6 +149,7 @@ all = [
   "einops>=0.7.0",
   "peft>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
   "Pillow>=9.0",
 ]
 
@@ -158,6 +166,7 @@ all-apple = [
   "einops>=0.7.0",
   "peft>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
   "Pillow>=9.0",
 ]
 
@@ -209,6 +218,12 @@ huggingface-dev = [
 # Compatibility extra only. AbstractVision is loaded by AbstractCore as a plugin,
 # so it deliberately does not install AbstractCore as a dependency.
 abstractcore = []
+
+# Local model download helpers. Kept optional so the base package remains
+# dependency-free for OpenAI-compatible proxy hosts.
+models = [
+  "huggingface_hub>=0.24.0",
+]
 
 # Test dependencies used by local contributors. CI installs the package with
 # `--no-deps` and then adds only these light test-time dependencies.

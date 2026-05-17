@@ -253,7 +253,15 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual(models[0].created, 123)
         self.assertEqual(models[0].owned_by, "provider")
         self.assertIn("text_to_image", models[0].capabilities)
-        self.assertEqual(models[1].raw, {"id": "provider/string-model"})
+        self.assertEqual(
+            models[1].raw,
+            {
+                "id": "provider/string-model",
+                "provider": "openai-compatible",
+                "backend": "openai-compatible",
+                "routed_model": "openai-compatible/provider/string-model",
+            },
+        )
 
     def test_list_provider_models_filters_official_openai_image_models(self):
         from abstractvision.backends.openai_compatible import (
@@ -304,8 +312,8 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual([m.id for m in models], ["local-image-model", "local-video-model"])
 
     @unittest.skipUnless(
-        os.environ.get("OPENAI_API_KEY") or os.environ.get("ABSTRACTVISION_API_KEY"),
-        "OPENAI_API_KEY or ABSTRACTVISION_API_KEY not configured",
+        os.environ.get("OPENAI_API_KEY"),
+        "OPENAI_API_KEY not configured",
     )
     def test_list_provider_models_default_openai_catalog_live(self):
         from abstractvision import VisionManager
@@ -314,7 +322,7 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
             OpenAICompatibleVisionBackend,
         )
 
-        api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ABSTRACTVISION_API_KEY")
+        api_key = os.environ.get("OPENAI_API_KEY")
         backend = OpenAICompatibleVisionBackend(
             config=OpenAICompatibleBackendConfig(
                 base_url="https://api.openai.com/v1",

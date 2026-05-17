@@ -24,6 +24,7 @@ class TestPlaygroundServer(unittest.TestCase):
             ("diffusers", "runwayml/stable-diffusion-v1-5"),
         )
         self.assertEqual(normalize_model_id_for_backend("diffusers/default")[0], "diffusers")
+        self.assertEqual(normalize_model_id_for_backend("mflux/flux2-klein-4b"), ("mflux", "flux2-klein-4b"))
         self.assertEqual(normalize_model_id_for_backend("sdcpp/default"), ("sdcpp", None))
         self.assertEqual(
             normalize_model_id_for_backend("openai-compatible/dall-e-3"), ("openai", "dall-e-3")
@@ -86,7 +87,7 @@ class TestPlaygroundServer(unittest.TestCase):
     def test_default_config_lists_remote_when_base_url_is_set(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
 
-        with patch.dict("os.environ", {"ABSTRACTVISION_BASE_URL": "http://localhost:1234/v1"}, clear=True):
+        with patch.dict("os.environ", {"OPENAI_BASE_URL": "http://localhost:1234/v1"}, clear=True):
             cfg = PlaygroundServerConfig()
             state = PlaygroundState(cfg)
             out = state.list_models()

@@ -34,7 +34,7 @@ The media/plugin image should be useful for remote OpenAI-compatible image/video
 
 - OpenAI-compatible HTTP backend: `src/abstractvision/backends/openai_compatible.py`
 - AbstractCore capability plugin: `src/abstractvision/integrations/abstractcore_plugin.py`
-- AbstractCore plugin default: OpenAI-compatible when configured through `ABSTRACTVISION_BASE_URL`
+- AbstractCore plugin default: OpenAI-compatible when configured through `OPENAI_BASE_URL`
 - Lazy backend exports: `src/abstractvision/backends/__init__.py`
 
 The current package metadata contradicts that deployment target. `pyproject.toml` installs local Diffusers dependencies in the base package:
@@ -204,13 +204,13 @@ Runtime defaults:
   - Keep remote-first default. It already defaults to OpenAI-compatible HTTP and imports local backend modules only when explicitly selected.
 - One-shot CLI commands:
   - Keep `abstractvision t2i` and `abstractvision i2i` OpenAI-compatible only.
-  - Clarify help/docs that these commands require `--base-url` or `ABSTRACTVISION_BASE_URL`.
+  - Clarify help/docs that these commands require `--base-url` or `OPENAI_BASE_URL`.
 - REPL:
-  - Prefer remote-first when `ABSTRACTVISION_BASE_URL` is configured.
+  - Prefer remote-first when `OPENAI_BASE_URL` is configured.
   - If no backend is configured, start unconfigured and require explicit `/backend openai ...`, `/backend diffusers ...`, or `/backend sdcpp ...`.
   - Do not silently select Diffusers in a lightweight base install.
 - Playground:
-  - Prefer OpenAI-compatible when `ABSTRACTVISION_BASE_URL` is configured.
+  - Prefer OpenAI-compatible when `OPENAI_BASE_URL` is configured.
   - Otherwise list only cached/configured local models and make local selection explicit.
   - Keep raw Hugging Face model id normalization for local mode, but do not make it the unconfigured default.
 
@@ -302,11 +302,11 @@ Runtime defaults:
   - `abstractvision i2i`
 - Change REPL initialization:
   - if `ABSTRACTVISION_BACKEND` is set, honor it
-  - else if `ABSTRACTVISION_BASE_URL` is set, default to `openai`
+  - else if `OPENAI_BASE_URL` is set, default to `openai`
   - else start with no active backend and require explicit `/backend ...`
 - Change playground initialization:
   - if `ABSTRACTVISION_BACKEND` is set, honor it
-  - else if `ABSTRACTVISION_BASE_URL` is set, default to OpenAI-compatible
+  - else if `OPENAI_BASE_URL` is set, default to OpenAI-compatible
   - else avoid implicit Diffusers preload/default model
   - list cached/configured local models only when they are actually available or downloads are explicitly enabled
 - When a user explicitly selects `diffusers` without the extra installed:
@@ -464,7 +464,7 @@ Runtime defaults:
   - `sdcpp` for stable-diffusion.cpp python binding support
   - `local` and `all` as convenience runtime bundles
   - `openai`, `openai-compatible`, and `abstractcore` as valid lightweight intent/compatibility markers
-- Updated REPL and playground defaults so a clean base install starts unconfigured unless `ABSTRACTVISION_BASE_URL` is present, in which case it defaults to the OpenAI-compatible backend.
+- Updated REPL and playground defaults so a clean base install starts unconfigured unless `OPENAI_BASE_URL` is present, in which case it defaults to the OpenAI-compatible backend.
 - Preserved explicit local backend selection while improving missing-extra errors for Diffusers and stable-diffusion.cpp.
 - Hardened OpenAI-compatible backend HTTP error handling and expanded coverage for auth headers, custom paths, URL downloads, video generation, image-to-video modes, malformed responses, and provider errors.
 - Expanded packaging/import-light tests and split CI/release jobs into lightweight base validation and narrower local-Diffusers validation.
