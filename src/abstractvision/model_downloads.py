@@ -1182,8 +1182,11 @@ def find_model_preset(
 
     if raw_target in {"", "auto", "default"} and selected_engine is None and any_engine_matches:
         # If the caller left target/engine on defaults, pick a sensible fallback
-        # when the local runtime only has one possible artifact target for this preset key.
-        possible_targets = [name for name in selected_targets if any(p.target == name for p in any_engine_matches)]
+        # when the resolved preset key only maps to one concrete artifact target.
+        # This keeps platform-aware catalog defaults, but still lets explicit repo
+        # ids like `mlx-community/...` resolve to their unique curated preset even
+        # on non-Apple hosts.
+        possible_targets = sorted({p.target for p in any_engine_matches})
         if len(possible_targets) == 1:
             fallback_target = possible_targets[0]
             fallback = [p for p in any_engine_matches if p.target == fallback_target]

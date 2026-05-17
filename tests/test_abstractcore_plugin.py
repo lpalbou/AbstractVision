@@ -512,9 +512,10 @@ print("ok")
         with tempfile.TemporaryDirectory() as cache_td:
             _make_hf_snapshot(Path(cache_td), "deepsweet/FLUX.2-klein-9B-MLX-Q8")
             with patch.object(mflux_backend, "MFluxVisionBackend", _FakeBackend):
-                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
-                    cap = _AbstractVisionCapability(_DummyOwner())
-                    out = cap.t2i("a red square", model="black-forest-labs/FLUX.2-klein-9B")
+                with patch("abstractvision.integrations.abstractcore_plugin.sys.platform", "darwin"):
+                    with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                        cap = _AbstractVisionCapability(_DummyOwner())
+                        out = cap.t2i("a red square", model="black-forest-labs/FLUX.2-klein-9B")
 
         self.assertTrue(out.startswith(b"\x89PNG"))
         self.assertEqual(seen["config"].model, "black-forest-labs/FLUX.2-klein-9B")
@@ -527,9 +528,10 @@ print("ok")
 
         with tempfile.TemporaryDirectory() as cache_td:
             _make_hf_snapshot(Path(cache_td), "deepsweet/FLUX.2-klein-9B-MLX-Q8")
-            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
-                cap = _AbstractVisionCapability(_DummyOwner())
-                out = cap.available_providers()
+            with patch("abstractvision.integrations.abstractcore_plugin.sys.platform", "darwin"):
+                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                    cap = _AbstractVisionCapability(_DummyOwner())
+                    out = cap.available_providers()
 
         self.assertIn("mflux", out["available_providers"])
         self.assertTrue(out["details"]["mflux"]["weights_present"])

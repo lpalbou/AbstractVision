@@ -43,7 +43,8 @@ class TestPlaygroundServer(unittest.TestCase):
         state = PlaygroundState(PlaygroundServerConfig(default_model_id=""))
 
         with patch.object(hf_backend, "HuggingFaceDiffusersVisionBackend", FakeBackend):
-            out = state.load_model("runwayml/stable-diffusion-v1-5")
+            with patch("abstractvision.playground_server._local_runtime_available", return_value=True):
+                out = state.load_model("runwayml/stable-diffusion-v1-5")
 
         self.assertTrue(out["ok"])
         self.assertEqual(seen["config"].model_id, "runwayml/stable-diffusion-v1-5")
@@ -87,14 +88,16 @@ class TestPlaygroundServer(unittest.TestCase):
             (snap / "transformer").mkdir(parents=True)
             (snap / "transformer" / "0.safetensors").write_bytes(b"x")
 
-            state = PlaygroundState(
-                PlaygroundServerConfig(
-                    diffusers_cache_dir=str(cache),
-                    diffusers_allow_download=False,
-                    default_model_id="",
-                )
-            )
-            out = state.list_models()
+            with patch("abstractvision.playground_server.local_model_profile", return_value="apple-silicon"):
+                with patch("abstractvision.playground_server._local_runtime_available", return_value=True):
+                    state = PlaygroundState(
+                        PlaygroundServerConfig(
+                            diffusers_cache_dir=str(cache),
+                            diffusers_allow_download=False,
+                            default_model_id="",
+                        )
+                    )
+                    out = state.list_models()
 
         mflux_models = [m for m in out["models"] if m["backend"] == "mflux"]
         self.assertTrue(any(m["load_id"] == "mflux/flux2-klein-9b" for m in mflux_models))
@@ -114,14 +117,16 @@ class TestPlaygroundServer(unittest.TestCase):
             refs.mkdir(parents=True, exist_ok=True)
             (refs / "main").write_text("abc123", encoding="utf-8")
 
-            state = PlaygroundState(
-                PlaygroundServerConfig(
-                    diffusers_cache_dir=str(cache),
-                    diffusers_allow_download=False,
-                    default_model_id="",
-                )
-            )
-            out = state.list_models()
+            with patch("abstractvision.playground_server.local_model_profile", return_value="apple-silicon"):
+                with patch("abstractvision.playground_server._local_runtime_available", return_value=True):
+                    state = PlaygroundState(
+                        PlaygroundServerConfig(
+                            diffusers_cache_dir=str(cache),
+                            diffusers_allow_download=False,
+                            default_model_id="",
+                        )
+                    )
+                    out = state.list_models()
 
         chosen = next(m for m in out["models"] if m["load_id"] == "mflux/z-image-turbo")
         self.assertEqual(chosen["id"], "Tongyi-MAI/Z-Image-Turbo")
@@ -142,18 +147,19 @@ class TestPlaygroundServer(unittest.TestCase):
             refs.mkdir(parents=True, exist_ok=True)
             (refs / "main").write_text("abc123", encoding="utf-8")
 
-            state = PlaygroundState(
-                PlaygroundServerConfig(
-                    diffusers_cache_dir=str(Path(td) / "empty"),
-                    diffusers_allow_download=False,
-                    default_model_id="",
+            with patch("abstractvision.playground_server._local_runtime_available", return_value=True):
+                state = PlaygroundState(
+                    PlaygroundServerConfig(
+                        diffusers_cache_dir=str(Path(td) / "empty"),
+                        diffusers_allow_download=False,
+                        default_model_id="",
+                    )
                 )
-            )
-            with patch(
-                "abstractvision.playground_server.framework_hf_cache_roots",
-                return_value=[("quarantined HF cache", cache)],
-            ):
-                out = state.list_models()
+                with patch(
+                    "abstractvision.playground_server.framework_hf_cache_roots",
+                    return_value=[("quarantined HF cache", cache)],
+                ):
+                    out = state.list_models()
 
         chosen = next(m for m in out["models"] if m["id"] == "black-forest-labs/FLUX.2-klein-4B" and m["backend"] == "diffusers")
         self.assertTrue(chosen["cached"])
@@ -168,14 +174,15 @@ class TestPlaygroundServer(unittest.TestCase):
             lock_dir = cache / ".locks" / "models--andrevp--Z-Image-Turbo-MLX-8bit"
             lock_dir.mkdir(parents=True, exist_ok=True)
 
-            state = PlaygroundState(
-                PlaygroundServerConfig(
-                    diffusers_cache_dir=str(cache),
-                    diffusers_allow_download=False,
-                    default_model_id="",
+            with patch("abstractvision.playground_server.local_model_profile", return_value="apple-silicon"):
+                state = PlaygroundState(
+                    PlaygroundServerConfig(
+                        diffusers_cache_dir=str(cache),
+                        diffusers_allow_download=False,
+                        default_model_id="",
+                    )
                 )
-            )
-            out = state.list_models()
+                out = state.list_models()
 
         chosen = next(m for m in out["models"] if m["load_id"] == "mflux/z-image-turbo")
         self.assertFalse(chosen["cached"])
@@ -328,15 +335,16 @@ class TestPlaygroundServer(unittest.TestCase):
             refs.mkdir(parents=True, exist_ok=True)
             (refs / "main").write_text("abc123", encoding="utf-8")
 
-            with patch("abstractvision.playground_server._local_runtime_available", side_effect=lambda backend: backend != "mflux"):
-                state = PlaygroundState(
-                    PlaygroundServerConfig(
-                        diffusers_cache_dir=str(cache),
-                        diffusers_allow_download=False,
-                        default_model_id="",
+            with patch("abstractvision.playground_server.local_model_profile", return_value="apple-silicon"):
+                with patch("abstractvision.playground_server._local_runtime_available", side_effect=lambda backend: backend != "mflux"):
+                    state = PlaygroundState(
+                        PlaygroundServerConfig(
+                            diffusers_cache_dir=str(cache),
+                            diffusers_allow_download=False,
+                            default_model_id="",
+                        )
                     )
-                )
-                out = state.list_models()
+                    out = state.list_models()
 
         chosen = next(m for m in out["models"] if m["load_id"] == "mflux/flux2-klein-9b")
         self.assertTrue(chosen["cached"])

@@ -5,7 +5,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple, Union
 
 DEFAULT_LEGACY_MODEL_ROOT = Path("~/models")
 
@@ -22,7 +22,7 @@ _HF_CACHE_ENV_KEYS = (
     "HF_HUB_CACHE_DIR",
 )
 _RootEntry = Tuple[str, Path]
-_RootSpec = Path | str | Tuple[str, Path | str]
+_RootSpec = Union[Path, str, Tuple[str, Union[Path, str]]]
 
 _WEIGHT_FILE_SUFFIXES = {
     ".safetensors",
