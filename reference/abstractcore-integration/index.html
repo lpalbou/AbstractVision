@@ -600,6 +600,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#local-model-residency-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Model Residency Control
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -686,6 +697,17 @@
     <span class="md-ellipsis">
       
         Provider Catalog Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-model-residency-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Model Residency Control
       
     </span>
   </a>
@@ -821,6 +843,38 @@ inspection only: it does not mutate the configured backend or select a generatio
 of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
 remain separate local-backend concerns, while MFLUX and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate <code>~/models</code> download tree.</p>
+<h3 id="local-model-residency-control">Local Model Residency Control<a class="headerlink" href="#local-model-residency-control" title="Permanent link">&para;</a></h3>
+<p>Core/Gateway hosts can also control in-process local model residency through the same capability
+object:</p>
+<div class="highlight"><pre><span></span><code><span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">load_resident_model</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span> <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mflux&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">}</span>
+<span class="p">)</span>
+
+<span class="n">loaded</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_loaded_models</span><span class="p">()</span>
+<span class="n">resident</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_resident_models</span><span class="p">()</span>
+
+<span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">unload_resident_model</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mflux&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Notes:</p>
+<ul>
+<li>this surface is local-only and process-local;</li>
+<li>it controls only AbstractVision-managed in-process backends (<code>diffusers</code>, <code>mflux</code>, <code>sdcpp</code>);</li>
+<li>OpenAI/OpenAI-compatible HTTP backends are intentionally rejected here, even on <code>localhost</code>,
+  because the plugin cannot honestly control another process's loaded-state.</li>
+</ul>
+<p><code>list_loaded_models()</code> reports both explicitly preloaded resident models and transient warm models
+that are currently loaded because of recent local generation requests. <code>list_resident_models()</code>
+returns the explicit pinned subset.</p>
+<p>Each loaded-model entry includes stable routing metadata such as <code>load_id</code>, <code>backend_kind</code>,
+<code>resident</code>, and a <code>tasks</code> list of observed task aliases using that loaded backend.</p>
+<p>For deterministic unload behavior, prefer:</p>
+<ul>
+<li><code>load_id</code>, or</li>
+<li>both <code>provider</code>/<code>backend</code> and <code>model</code>.</li>
+</ul>
+<p>Broad unload filters that match multiple loaded models are rejected as ambiguous.</p>
 <h2 id="shared-request-normalization">Shared request normalization<a class="headerlink" href="#shared-request-normalization" title="Permanent link">&para;</a></h2>
 <p><code>llm.vision</code> calls go through <code>VisionManager</code>, which applies backend normalization hooks before
 execution. That means model-specific constraints are shared with the CLI/REPL and playground API

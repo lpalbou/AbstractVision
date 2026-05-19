@@ -1,0 +1,1033 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Model-agnostic generative vision abstractions for image and video workflows.">
+      
+      
+      
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/proposed/2026-05-19_capability_residency_hooks/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Proposed: Capability-level residency hooks for warm image models - AbstractVision</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proposed-capability-level-residency-hooks-for-warm-image-models" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AbstractVision
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Proposed: Capability-level residency hooks for warm image models
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AbstractVision
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Artifacts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/capabilities-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/abstractcore-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AbstractCore Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-code-reality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current Code Reality
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-proposal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Proposal
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recommended Proposal">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#request-normalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request normalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#public-state-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public state shape
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#internal-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Internal design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generation-interaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generation interaction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#listing-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP backends
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worker-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worker Compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#success-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Success Criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-ideas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Ideas
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="proposed-capability-level-residency-hooks-for-warm-image-models">Proposed: Capability-level residency hooks for warm image models<a class="headerlink" href="#proposed-capability-level-residency-hooks-for-warm-image-models" title="Permanent link">&para;</a></h1>
+<h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Created: 2026-05-19</li>
+<li>Status: Implemented in 0.3.7</li>
+<li>Priority: P1</li>
+</ul>
+<h2 id="current-code-reality">Current Code Reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
+<p>AbstractVision already has most of the low-level primitives needed for model residency:</p>
+<ul>
+<li><code>VisionBackend.preload()</code> and <code>VisionBackend.unload()</code> exist on the shared backend contract;</li>
+<li><code>MFluxVisionBackend</code>, <code>HuggingFaceDiffusersVisionBackend</code>, and <code>StableDiffusionCppVisionBackend</code>
+  implement best-effort preload/unload behavior;</li>
+<li>the AbstractCore plugin caches routed backends in <code>_routed_backends</code>;</li>
+<li>repeated requests for the same provider/model within one long-lived
+  <code>_AbstractVisionCapability</code> instance already reuse the same backend object, so same-model warm
+  reuse exists implicitly today;</li>
+<li>the plugin already exposes <code>list_provider_models()</code> / <code>list_available_models()</code>, but that is
+  provider catalog discovery, not resident-model listing;</li>
+<li><code>PlaygroundState</code> already has explicit <code>load_model()</code>, <code>active_snapshot()</code>, and <code>unload_active()</code>
+  for a single active model in the local playground surface.</li>
+</ul>
+<p>What is still missing is a stable capability-level control surface that AbstractCore can use to
+preload, inspect, and unload image models intentionally.</p>
+<h2 id="evaluation">Evaluation<a class="headerlink" href="#evaluation" title="Permanent link">&para;</a></h2>
+<p>This proposal is useful, especially for:</p>
+<ul>
+<li>long-lived Core worker processes that want deterministic warm local image models;</li>
+<li>local backends with expensive first-load cost (<code>mflux</code>, <code>diffusers</code>, <code>sdcpp</code>);</li>
+<li>operational control and debugging (<code>loaded_at</code>, <code>last_used_at</code>, explicit unload).</li>
+</ul>
+<p>The current gap is narrower than “AbstractVision cannot keep models warm”:</p>
+<ul>
+<li>warm reuse for the same model already happens implicitly inside a single capability instance;</li>
+<li>the real missing piece is explicit control and honest observability across requests and model
+  switches.</li>
+</ul>
+<p>The original proposal is directionally correct, but it needs tightening:</p>
+<ul>
+<li><code>_routed_backends</code> alone is not enough to answer “what is resident?” because a cached backend may
+  already have been <code>unload()</code>ed;</li>
+<li>the plugin currently unloads the previous backend when generation switches to a different
+  backend/model, so a preload-only API would be undone unless the switch behavior also changes;</li>
+<li>the example task and model ids do not match current AbstractVision terminology
+  (<code>text_to_image</code> / <code>image_to_image</code>, and real image model ids such as <code>flux2-klein-4b</code>);</li>
+<li>exposing an internal <code>cache_key</code> as part of the public API would be brittle;</li>
+<li>allowing arbitrary per-request backend options such as <code>device</code>, <code>dtype</code>, or <code>quantize</code> in the
+  first version would conflict with current backend-construction and cache-key semantics.</li>
+</ul>
+<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
+<p>Core wants generic <code>/acore/models/load</code>, <code>/acore/models/loaded</code>, and <code>/acore/models/unload</code>
+behavior across modalities. For image generation, Core should not:</p>
+<ul>
+<li>reach into AbstractVision private plugin fields;</li>
+<li>guess whether a cached backend object is still loaded;</li>
+<li>depend on provider catalog listing as a proxy for warm model state.</li>
+</ul>
+<p>Without an explicit plugin-owned residency surface:</p>
+<ul>
+<li>loaded state remains implicit and process-private;</li>
+<li>Core cannot reliably list which local image models are intentionally kept warm;</li>
+<li>a model preloaded for one request may be unloaded on the next model switch;</li>
+<li>long-lived worker processes cannot expose a clean, serializable residency contract.</li>
+</ul>
+<h2 id="recommended-proposal">Recommended Proposal<a class="headerlink" href="#recommended-proposal" title="Permanent link">&para;</a></h2>
+<p>Add explicit residency hooks to the AbstractVision AbstractCore capability object:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_resident_model</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">list_resident_models</span><span class="p">(</span><span class="n">filters</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">unload_resident_model</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span> <span class="o">...</span>
+</code></pre></div>
+<p>These methods should be public plugin methods that Core calls through the same capability object it
+already uses for generation and provider-catalog discovery.</p>
+<h3 id="request-normalization">Request normalization<a class="headerlink" href="#request-normalization" title="Permanent link">&para;</a></h3>
+<p>The first pass should accept only the fields that AbstractVision can key reliably today:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-4b&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Notes:</p>
+<ul>
+<li><code>task</code> may be accepted for Core protocol alignment and validation, but it should not be part of
+  the residency identity in v1 because current local backends use the same loaded weights for both
+  <code>text_to_image</code> and <code>image_to_image</code>;</li>
+<li>routed ids such as <code>mflux/flux2-klein-4b</code> or raw Diffusers ids such as
+  <code>runwayml/stable-diffusion-v1-5</code> may still be accepted as convenience input, but the plugin
+  should normalize them to one canonical <code>load_id</code>;</li>
+<li>do not add per-request backend-config overrides such as <code>device</code>, <code>dtype</code>, or <code>quantize</code> in v1.
+  Those are currently process/config driven, and supporting them correctly would require changing
+  backend construction and cache-key semantics. That can be a follow-up only if Core proves it
+  needs multiple resident variants of the same model in one process.</li>
+</ul>
+<h3 id="public-state-shape">Public state shape<a class="headerlink" href="#public-state-shape" title="Permanent link">&para;</a></h3>
+<p>Return stable API fields, not plugin-internal tuple keys:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;load_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux/flux2-klein-4b&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;backend_kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;process&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;resident&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;resident&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;explicit_preload&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;loaded_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;last_used_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Keep any backend cache key internal to the plugin.</p>
+<h3 id="internal-design">Internal design<a class="headerlink" href="#internal-design" title="Permanent link">&para;</a></h3>
+<p>The plugin should keep using <code>_routed_backends</code> as the backend object cache. It should not add a
+second backend-object cache.</p>
+<p>It should add a separate residency metadata sidecar, for example:</p>
+<ul>
+<li><code>_resident_models: dict[backend_key, ResidentModelRecord]</code></li>
+<li><code>_active_request_backend_key: Optional[backend_key]</code></li>
+<li>a small lock around residency state</li>
+<li>if concurrent generation/unload is expected, the same refcount/retire pattern already used by
+  <code>PlaygroundState</code></li>
+</ul>
+<p>The key distinction is:</p>
+<ul>
+<li><code>_routed_backends</code> answers “which backend objects have been constructed?”</li>
+<li><code>_resident_models</code> answers “which models are intentionally kept warm right now?”</li>
+</ul>
+<p>If both the playground and plugin continue to grow residency behavior, extract a small
+package-owned helper after the first plugin implementation rather than duplicating the state machine
+twice.</p>
+<h3 id="generation-interaction">Generation interaction<a class="headerlink" href="#generation-interaction" title="Permanent link">&para;</a></h3>
+<p><code>load_resident_model()</code> should:</p>
+<ul>
+<li>resolve the same backend key used by generation;</li>
+<li>call backend-native <code>preload()</code>;</li>
+<li>record <code>loaded_at</code> and <code>last_used_at</code>;</li>
+<li>not generate an image.</li>
+</ul>
+<p><code>t2i()</code> / <code>i2i()</code> should:</p>
+<ul>
+<li>preserve today’s same-model reuse behavior;</li>
+<li>update <code>last_used_at</code> for resident entries;</li>
+<li>stop auto-unloading a backend on model switch if that backend was explicitly loaded as resident;</li>
+<li>continue auto-unloading non-resident backends on switch so current memory behavior remains
+  conservative by default.</li>
+</ul>
+<p>This is the main adjustment missing from the original proposal. Without it, a successful preload
+would be undone as soon as the next request activates a different backend.</p>
+<h3 id="listing-semantics">Listing semantics<a class="headerlink" href="#listing-semantics" title="Permanent link">&para;</a></h3>
+<p>Expose two views:</p>
+<ul>
+<li><code>list_loaded_models()</code> for all plugin-visible local loaded models in the current process;</li>
+<li><code>list_resident_models()</code> for the explicit pinned subset.</li>
+</ul>
+<p>That distinction is useful because AbstractVision already has opportunistic same-model warm reuse for
+the active backend, even when a model was not explicitly preloaded.</p>
+<p><code>list_loaded_models()</code> / <code>list_resident_models()</code> should report plugin-owned, process-local state
+only.</p>
+<p>It should not inspect backend private fields such as <code>_model</code>, <code>_pipelines</code>, or <code>_py_model</code> to
+guess whether a backend is loaded. A later optional backend hook such as <code>residency_info()</code> can be
+added only if plugin-owned metadata proves insufficient.</p>
+<h3 id="http-backends">HTTP backends<a class="headerlink" href="#http-backends" title="Permanent link">&para;</a></h3>
+<p>OpenAI/OpenAI-compatible HTTP backends should be out of scope for this surface, even when the
+endpoint is on <code>localhost</code>.</p>
+<ul>
+<li><code>load_resident_model()</code> / <code>unload_resident_model()</code> should fail clearly for HTTP backends;</li>
+<li><code>list_loaded_models()</code> / <code>list_resident_models()</code> should report only in-process local backends
+  controlled by this plugin.</li>
+</ul>
+<p>This keeps the contract honest. AbstractVision can control its own local backend objects; it cannot
+prove or orchestrate model residency inside another server process over a generic OpenAI-shaped API.</p>
+<h2 id="worker-compatibility">Worker Compatibility<a class="headerlink" href="#worker-compatibility" title="Permanent link">&para;</a></h2>
+<p>The residency hooks should work inside a long-lived worker process, but the contract should be
+explicitly scoped:</p>
+<ul>
+<li>residency is process-local, not cluster-global;</li>
+<li>responses must be deterministic and JSON-serializable;</li>
+<li>AbstractVision owns model-residency reporting, not worker lifecycle or orchestration policy.</li>
+</ul>
+<h2 id="non-goals">Non-Goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
+<ul>
+<li>No cross-process or cluster-wide residency registry in v1.</li>
+<li>No attempt to pin models inside remote providers that expose only OpenAI-compatible inference.</li>
+<li>No automatic model selection from provider catalogs.</li>
+<li>No <code>VisionManager</code> public API expansion in the first pass.</li>
+</ul>
+<h2 id="success-criteria">Success Criteria<a class="headerlink" href="#success-criteria" title="Permanent link">&para;</a></h2>
+<ul>
+<li>AbstractCore can warm a local AbstractVision model without private-field reach-through.</li>
+<li>AbstractCore can inspect both explicitly resident models and transient currently loaded local
+  models.</li>
+<li>AbstractCore can list explicitly resident image models with stable provider/model/load metadata.</li>
+<li>Explicitly resident models survive generation requests that switch to other models until they are
+  unloaded.</li>
+<li>Non-resident models keep the current unload-on-switch behavior.</li>
+<li>OpenAI-compatible HTTP backends are rejected for residency control rather than being reported as
+  falsely resident.</li>
+<li>The implementation does not depend on backend private fields to report residency.</li>
+</ul>
+<h2 id="validation-ideas">Validation Ideas<a class="headerlink" href="#validation-ideas" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Unit tests for residency request normalization and canonical <code>load_id</code> generation.</li>
+<li>Plugin tests that repeated same-model generation still reuses the same backend object.</li>
+<li>Plugin tests that request-driven warm local backends appear in <code>list_loaded_models()</code>.</li>
+<li>Plugin tests that an explicitly resident backend is not unloaded when another model is generated.</li>
+<li>Plugin tests that <code>unload_resident_model()</code> clears metadata and calls <code>unload()</code>.</li>
+<li>Plugin tests that OpenAI-compatible HTTP backends are rejected for residency control.</li>
+<li>If concurrency is supported, tests that in-flight generation is not unloaded mid-request.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
