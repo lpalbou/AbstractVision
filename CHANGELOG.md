@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7 - 2026-05-19
+
+- AbstractCore plugin: add explicit local model residency control for in-process `diffusers`, `mflux`, and `sdcpp` backends through `load_resident_model(...)`, `list_loaded_models(...)`, `list_resident_models(...)`, and `unload_resident_model(...)`, with `load_model(...)` / `unload_model(...)` compatibility aliases for Core route adapters.
+- Residency semantics: preserve explicit resident models across model switches while keeping the previous unload-on-switch behavior for non-resident request-warm backends, and report stable process-local `load_id` / `backend_kind` / `resident` metadata instead of relying on backend private fields.
+- Safety/robustness: reject OpenAI/OpenAI-compatible HTTP backends for residency control even on localhost, normalize provider/task filters consistently, reject ambiguous unload requests, and keep unload behavior deterministic for injected local backends.
+- Tests/docs: expand AbstractCore plugin coverage for local preload/list/unload flows, request-warm loaded-state reporting, task-aware loaded-model filters, injected backend residency, and switch-survival behavior; document the new local residency control surface and regenerate `llms-full.txt`.
+
 ## 0.3.6 - 2026-05-18
 
 - Model registry/downloads: expand `vision_model_capabilities.json` and curated preset coverage for current Hugging Face text-to-image and image-to-image models, including FLUX.1/2, Qwen Image, ERNIE Image, GLM Image, Z-Image, SDXL, SD Turbo, and SD3.5. The registry now remains the packaged source of truth for both downloadable artifacts and task capability metadata.

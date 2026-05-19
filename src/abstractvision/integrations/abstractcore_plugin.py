@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
 import ipaddress
 import os
 import shlex
-import sys
-import importlib.util
 import socket
+import sys
+import threading
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Union
 from urllib.parse import urlparse
 
 from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
@@ -26,6 +28,19 @@ _OPENAI_COMPATIBLE_BACKEND_KINDS = {
     "openai_compatible",
     "openai-compatible",
     "proxy",
+}
+_LOCAL_RESIDENCY_BACKEND_KINDS = {"diffusers", "mflux", "sdcpp"}
+_RESIDENCY_TASK_ALIASES = {
+    "text_to_image": "text_to_image",
+    "text-to-image": "text_to_image",
+    "t2i": "text_to_image",
+    "image_generation": "text_to_image",
+    "image-generation": "text_to_image",
+    "image_to_image": "image_to_image",
+    "image-to-image": "image_to_image",
+    "i2i": "image_to_image",
+    "image_edit": "image_to_image",
+    "image-edit": "image_to_image",
 }
 
 
@@ -338,6 +353,55 @@ def _provider_id_for_backend(backend: Any) -> Optional[str]:
     return None
 
 
+def _canonical_backend_kind(value: Any) -> Optional[str]:
+    provider = str(value or "").strip().lower().replace("_", "-")
+    if not provider:
+        return None
+    if provider in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
+        return "diffusers"
+    if provider in {"mflux", "m-flux"}:
+        return "mflux"
+    if provider in {
+        "sdcpp",
+        "sd-cpp",
+        "stable-diffusion.cpp",
+        "stable-diffusion-cpp",
+        "stable-diffusion-cpp-python",
+        "stable_diffusion_cpp",
+    }:
+        return "sdcpp"
+    if provider in {"openai", "remote"}:
+        return "openai"
+    if provider in _OPENAI_COMPATIBLE_BACKEND_KINDS:
+        return "openai-compatible"
+    return provider
+
+
+def _canonical_provider_for_backend_kind(backend_kind: Optional[str]) -> Optional[str]:
+    kind = _canonical_backend_kind(backend_kind)
+    if kind == "diffusers":
+        return "huggingface"
+    return kind
+
+
+def _canonical_load_id(backend_kind: Optional[str], model_id: Optional[str]) -> str:
+    kind = _canonical_backend_kind(backend_kind) or "unknown"
+    model = str(model_id or "").strip()
+    return f"{kind}/{model}" if model else f"{kind}/default"
+
+
+def _normalize_residency_task(value: Any) -> Optional[str]:
+    raw = str(value or "").strip().lower().replace(" ", "_")
+    if not raw:
+        return None
+    task = _RESIDENCY_TASK_ALIASES.get(raw)
+    if task is None:
+        raise AbstractVisionError(
+            f"Unsupported residency task {value!r}. Use 'text_to_image' or 'image_to_image'."
+        )
+    return task
+
+
 def _has_local_mflux_preset(model_id: str) -> bool:
     if sys.platform != "darwin":
         return False
@@ -410,19 +474,357 @@ class _AbstractVisionCapability:
         self.backend_id = backend_id or type(self).backend_id
         self._backend = None
         self._routed_backends: Dict[tuple[Any, ...], Any] = {}
+        self._state_lock = threading.RLock()
+        self._loaded_models: Dict[tuple[Any, ...], Dict[str, Any]] = {}
         self._active_request_backend: Any = None
+        self._active_request_backend_key: Optional[tuple[Any, ...]] = None
+        self._backend_refcounts: Dict[int, int] = {}
+        self._retired_backends: Dict[int, Any] = {}
 
-    def _activate_request_backend(self, backend: Any) -> Any:
-        previous = self._active_request_backend
-        self._active_request_backend = backend
-        if previous is None or previous is backend:
-            return backend
-        unload = getattr(previous, "unload", None)
+    def _unload_backend(self, backend: Optional[Any]) -> None:
+        if backend is None:
+            return
+        unload = getattr(backend, "unload", None)
         if callable(unload):
             try:
                 unload()
             except Exception:
                 pass
+
+    def _retire_backend_locked(self, backend: Optional[Any]) -> Optional[Any]:
+        if backend is None:
+            return None
+        backend_id = id(backend)
+        if self._backend_refcounts.get(backend_id, 0) > 0:
+            self._retired_backends[backend_id] = backend
+            return None
+        self._retired_backends.pop(backend_id, None)
+        return backend
+
+    def _acquire_backend_snapshot(self, backend: Any) -> None:
+        with self._state_lock:
+            backend_id = id(backend)
+            self._backend_refcounts[backend_id] = self._backend_refcounts.get(backend_id, 0) + 1
+
+    def _release_backend_snapshot(self, backend: Any) -> None:
+        unload_after_lock: Optional[Any] = None
+        with self._state_lock:
+            backend_id = id(backend)
+            remaining = self._backend_refcounts.get(backend_id, 0) - 1
+            if remaining > 0:
+                self._backend_refcounts[backend_id] = remaining
+                return
+            self._backend_refcounts.pop(backend_id, None)
+            if self._active_request_backend is not backend:
+                unload_after_lock = self._retired_backends.pop(backend_id, None)
+        self._unload_backend(unload_after_lock)
+
+    def _resolved_model_for_backend(
+        self,
+        backend: Any,
+        *,
+        backend_kind: Optional[str],
+        requested_model: Optional[str] = None,
+    ) -> Optional[str]:
+        requested = str(requested_model or "").strip()
+        cfg = getattr(backend, "_cfg", None)
+        kind = _canonical_backend_kind(backend_kind)
+        if kind == "diffusers":
+            value = getattr(cfg, "model_id", None) or requested or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID
+            return str(value).strip() or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID
+        if kind == "mflux":
+            value = (
+                getattr(cfg, "model", None)
+                or requested
+                or _owner_cfg(self._owner, "vision_mflux_model")
+                or _env("ABSTRACTVISION_MFLUX_MODEL")
+                or _owner_cfg(self._owner, "vision_model_id")
+                or _env("ABSTRACTVISION_MODEL")
+                or _env("ABSTRACTVISION_MODEL_ID")
+                or _env("ABSTRACTVISION_DIFFUSERS_MODEL_ID")
+            )
+            return str(value).strip() if value is not None else None
+        if kind == "sdcpp":
+            value = getattr(cfg, "model", None) or getattr(cfg, "diffusion_model", None) or requested
+            return str(value).strip() if value is not None else None
+        if kind in {"openai", "openai-compatible"}:
+            value = (
+                getattr(cfg, "model_id", None)
+                or requested
+                or _owner_cfg(self._owner, "vision_model_id")
+                or _env("ABSTRACTVISION_MODEL")
+                or _env("ABSTRACTVISION_MODEL_ID")
+                or _env_first("OPENAI_IMAGE_MODEL_ID", "OPENAI_IMAGE_MODEL")
+            )
+            return str(value).strip() if value is not None else None
+        return requested or None
+
+    def _resolve_backend_binding(self, *, provider: Any = None, model: Any = None) -> Dict[str, Any]:
+        provider_id = str(provider or "").strip().lower().replace("_", "-")
+        model_id = str(model or "").strip()
+        if model_id and "/" in model_id:
+            head, tail = model_id.split("/", 1)
+            head_id = head.strip().lower().replace("_", "-")
+            if head_id == "mflux":
+                provider_id = "mflux"
+                model_id = tail.strip()
+            elif head_id == "mlx":
+                raise AbstractVisionError(
+                    "AbstractVision does not have a generic MLX image backend yet. "
+                    "Use provider/model `mflux/<preset>` for MFLUX-compatible 8-bit MLX models."
+                )
+            elif head_id in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
+                provider_id = "diffusers"
+                model_id = tail.strip()
+            elif head_id in {"openai", "openai-compatible"}:
+                if not provider_id:
+                    provider_id = "openai" if head_id == "openai" else "openai-compatible"
+                model_id = _strip_openai_model_prefixes(model_id)
+        if (
+            model_id
+            and provider_id in {"huggingface", "hf", "diffusers", "hf-diffusers", "mlx"}
+            and (_has_local_mflux_preset(model_id) or _is_known_mflux_model_alias(model_id))
+        ):
+            provider_id = "mflux"
+        if model_id and not provider_id and _has_local_mflux_preset(model_id):
+            provider_id = "mflux"
+        if (
+            not provider_id
+            and model_id.count("/") == 1
+            and not model_id.startswith(("./", "../", "/", "~"))
+            and "://" not in model_id
+        ):
+            provider_id = "mflux" if _has_local_mflux_preset(model_id) else "diffusers"
+        if provider_id == "mlx":
+            raise AbstractVisionError(
+                "AbstractVision does not have a generic MLX image backend yet. "
+                "Use provider 'mflux' for MFLUX-compatible 8-bit MLX models."
+            )
+
+        backend: Any
+        backend_key: tuple[Any, ...]
+        backend_kind: Optional[str]
+        if provider_id in {"mflux", "m-flux"}:
+            backend_kind = "mflux"
+            backend_key = ("mflux", model_id)
+            backend = self._routed_backends.get(backend_key)
+            if backend is None:
+                backend = self._make_mflux_backend(model_id=model_id or None)
+                self._routed_backends[backend_key] = backend
+        elif provider_id in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
+            backend_kind = "diffusers"
+            backend_key = ("diffusers", model_id or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID)
+            backend = self._routed_backends.get(backend_key)
+            if backend is None:
+                backend = self._make_diffusers_backend(model_id=model_id or None)
+                self._routed_backends[backend_key] = backend
+        elif provider_id in {"openai", "openai-compatible", "remote", "proxy"}:
+            backend_kind = "openai-compatible" if provider_id in {"openai-compatible", "proxy"} else "openai"
+            backend_key = ("openai", provider_id, model_id)
+            backend = self._routed_backends.get(backend_key)
+            if backend is None:
+                backend = self._make_openai_backend(model_id=model_id or None, provider_id=provider_id)
+                self._routed_backends[backend_key] = backend
+        else:
+            backend = self._get_backend()
+            configured_kind = (
+                getattr(backend, "backend_kind", None)
+                or getattr(backend, "provider", None)
+                or _owner_cfg(self._owner, "vision_backend")
+                or _env("ABSTRACTVISION_PROVIDER")
+                or _env("ABSTRACTVISION_BACKEND")
+            )
+            backend_kind = _canonical_backend_kind(_provider_id_for_backend(backend) or configured_kind)
+            resolved_model = self._resolved_model_for_backend(
+                backend,
+                backend_kind=backend_kind,
+                requested_model=model_id or None,
+            )
+            backend_key = ("configured", backend_kind or "unknown", resolved_model or "default")
+            return {
+                "backend": backend,
+                "backend_key": backend_key,
+                "backend_kind": backend_kind,
+                "provider": _canonical_provider_for_backend_kind(backend_kind),
+                "model": resolved_model,
+                "load_id": _canonical_load_id(backend_kind, resolved_model),
+                "local_control": backend_kind in _LOCAL_RESIDENCY_BACKEND_KINDS,
+            }
+
+        resolved_model = self._resolved_model_for_backend(
+            backend,
+            backend_kind=backend_kind,
+            requested_model=model_id or None,
+        )
+        return {
+            "backend": backend,
+            "backend_key": backend_key,
+            "backend_kind": backend_kind,
+            "provider": _canonical_provider_for_backend_kind(backend_kind),
+            "model": resolved_model,
+            "load_id": _canonical_load_id(backend_kind, resolved_model),
+            "local_control": backend_kind in _LOCAL_RESIDENCY_BACKEND_KINDS,
+        }
+
+    def _backend_for_request(self, *, provider: Any = None, model: Any = None):
+        return self._resolve_backend_binding(provider=provider, model=model)["backend"]
+
+    def _ensure_local_residency_supported(self, binding: Mapping[str, Any]) -> None:
+        if bool(binding.get("local_control")):
+            return
+        raise AbstractVisionError(
+            "Model residency control is only available for in-process local AbstractVision backends "
+            "('diffusers', 'mflux', and 'sdcpp'). OpenAI-compatible HTTP backends are not controllable "
+            "through this plugin, even when they point to localhost."
+        )
+
+    def _normalize_loaded_filters(self, filters: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+        out = dict(filters or {})
+        task = out.get("task")
+        if task is not None:
+            out["task"] = _normalize_residency_task(task)
+        provider = out.get("provider") or out.get("backend") or out.get("backend_kind")
+        if provider is not None:
+            provider_kind = _canonical_backend_kind(provider)
+            out["_provider_kind"] = provider_kind
+            out["_provider_name"] = _canonical_provider_for_backend_kind(provider_kind)
+        return out
+
+    def _has_loaded_selector(self, filters: Mapping[str, Any]) -> bool:
+        return any(
+            str(filters.get(key) or "").strip()
+            for key in ("provider", "backend", "backend_kind", "model", "load_id", "task")
+        )
+
+    def _match_loaded_record(self, record: Mapping[str, Any], filters: Mapping[str, Any]) -> bool:
+        provider = str(filters.get("_provider_name") or "").strip()
+        provider_kind = str(filters.get("_provider_kind") or "").strip()
+        model = str(filters.get("model") or "").strip()
+        load_id = str(filters.get("load_id") or "").strip()
+        state = str(filters.get("state") or "").strip().lower()
+        task_filter = filters.get("task")
+        resident_filter = filters.get("resident")
+        record_provider = str(record.get("provider") or "").strip()
+        record_backend_kind = str(record.get("backend_kind") or "").strip()
+        if provider and record_provider != provider:
+            return False
+        if provider_kind and record_backend_kind != provider_kind:
+            return False
+        if model and str(record.get("model") or "").strip() != model:
+            return False
+        if load_id and str(record.get("load_id") or "").strip() != load_id:
+            return False
+        if state and str(record.get("state") or "").strip().lower() != state:
+            return False
+        if task_filter is not None:
+            record_tasks = record.get("tasks")
+            if isinstance(record_tasks, list) and record_tasks:
+                if str(task_filter) not in {str(item) for item in record_tasks}:
+                    return False
+            elif str(task_filter) != str(record.get("task") or ""):
+                return False
+        if resident_filter is not None and bool(record.get("resident")) is not bool(resident_filter):
+            return False
+        return True
+
+    def _sorted_loaded_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return sorted(
+            (dict(item) for item in records),
+            key=lambda item: (
+                0 if item.get("resident") else 1,
+                str(item.get("provider") or ""),
+                str(item.get("load_id") or ""),
+            ),
+        )
+
+    def _find_loaded_backends(self, filters: Mapping[str, Any]) -> List[tuple[tuple[Any, ...], Dict[str, Any], Any]]:
+        matches: List[tuple[tuple[Any, ...], Dict[str, Any], Any]] = []
+        with self._state_lock:
+            for backend_key, record in self._loaded_models.items():
+                if not self._match_loaded_record(record, filters):
+                    continue
+                backend = None
+                if self._active_request_backend_key == backend_key:
+                    backend = self._active_request_backend
+                elif backend_key in self._routed_backends:
+                    backend = self._routed_backends.get(backend_key)
+                elif backend_key and backend_key[0] == "configured":
+                    backend = self._backend
+                matches.append((backend_key, dict(record), backend))
+        return matches
+
+    def _record_loaded_model(
+        self,
+        binding: Mapping[str, Any],
+        *,
+        task: Optional[str],
+        resident: bool,
+        source: str,
+        loaded_at: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        now = time.time()
+        backend_key = tuple(binding["backend_key"])
+        with self._state_lock:
+            existing = dict(self._loaded_models.get(backend_key, {}))
+            merged_tasks = {
+                str(item)
+                for item in (existing.get("tasks") or [])
+                if str(item).strip()
+            }
+            if task:
+                merged_tasks.add(str(task))
+            record = {
+                "task": task,
+                "tasks": sorted(merged_tasks),
+                "provider": binding.get("provider"),
+                "model": binding.get("model"),
+                "load_id": binding.get("load_id"),
+                "backend_kind": binding.get("backend_kind"),
+                "scope": "process",
+                "state": "resident" if resident else "active",
+                "resident": bool(resident),
+                "loaded": True,
+                "source": str(source),
+                "loaded_at": (
+                    existing.get("loaded_at")
+                    if existing.get("loaded_at") is not None
+                    else (loaded_at if loaded_at is not None else now)
+                ),
+                "last_used_at": now,
+                "error": None,
+            }
+            if existing.get("resident"):
+                record["resident"] = True
+                record["state"] = "resident"
+                record["source"] = "explicit_preload"
+            if existing.get("task") and record.get("task") is None:
+                record["task"] = existing.get("task")
+            if not record["tasks"] and record.get("task"):
+                record["tasks"] = [str(record["task"])]
+            self._loaded_models[backend_key] = record
+            return dict(record)
+
+    def _remove_loaded_model_locked(self, backend_key: tuple[Any, ...]) -> Optional[Dict[str, Any]]:
+        existing = self._loaded_models.pop(backend_key, None)
+        return dict(existing) if existing is not None else None
+
+    def _activate_request_backend(self, binding: Mapping[str, Any]) -> Any:
+        backend = binding["backend"]
+        backend_key = tuple(binding["backend_key"])
+        unload_after_lock: Optional[Any] = None
+        with self._state_lock:
+            previous = self._active_request_backend
+            previous_key = self._active_request_backend_key
+            self._active_request_backend = backend
+            self._active_request_backend_key = backend_key
+            if previous is None or previous is backend:
+                return backend
+            previous_record = self._loaded_models.get(previous_key or ())
+            if previous_record and bool(previous_record.get("resident")):
+                return backend
+            self._remove_loaded_model_locked(previous_key or ())
+            unload_after_lock = self._retire_backend_locked(previous)
+        self._unload_backend(unload_after_lock)
         return backend
 
     def _make_diffusers_backend(self, *, model_id: Optional[str] = None):
@@ -583,70 +985,6 @@ class _AbstractVisionCapability:
             allow_download=allow_download,
         )
         return MFluxVisionBackend(config=cfg)
-
-    def _backend_for_request(self, *, provider: Any = None, model: Any = None):
-        provider_id = str(provider or "").strip().lower().replace("_", "-")
-        model_id = str(model or "").strip()
-        if model_id and "/" in model_id:
-            head, tail = model_id.split("/", 1)
-            head_id = head.strip().lower().replace("_", "-")
-            if head_id == "mflux":
-                provider_id = "mflux"
-                model_id = tail.strip()
-            elif head_id == "mlx":
-                raise AbstractVisionError(
-                    "AbstractVision does not have a generic MLX image backend yet. "
-                    "Use provider/model `mflux/<preset>` for MFLUX-compatible 8-bit MLX models."
-                )
-            elif head_id in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
-                provider_id = "diffusers"
-                model_id = tail.strip()
-            elif head_id in {"openai", "openai-compatible"}:
-                if not provider_id:
-                    provider_id = "openai" if head_id == "openai" else "openai-compatible"
-                model_id = _strip_openai_model_prefixes(model_id)
-        if (
-            model_id
-            and provider_id in {"huggingface", "hf", "diffusers", "hf-diffusers", "mlx"}
-            and (_has_local_mflux_preset(model_id) or _is_known_mflux_model_alias(model_id))
-        ):
-            provider_id = "mflux"
-        if model_id and not provider_id and _has_local_mflux_preset(model_id):
-            provider_id = "mflux"
-        if (
-            not provider_id
-            and model_id.count("/") == 1
-            and not model_id.startswith(("./", "../", "/", "~"))
-            and "://" not in model_id
-        ):
-            provider_id = "mflux" if _has_local_mflux_preset(model_id) else "diffusers"
-        if provider_id == "mlx":
-            raise AbstractVisionError(
-                "AbstractVision does not have a generic MLX image backend yet. "
-                "Use provider 'mflux' for MFLUX-compatible 8-bit MLX models."
-            )
-        if provider_id in {"mflux", "m-flux"}:
-            key = ("mflux", model_id)
-            backend = self._routed_backends.get(key)
-            if backend is None:
-                backend = self._make_mflux_backend(model_id=model_id or None)
-                self._routed_backends[key] = backend
-            return backend
-        if provider_id in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
-            key = ("diffusers", model_id or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID)
-            backend = self._routed_backends.get(key)
-            if backend is None:
-                backend = self._make_diffusers_backend(model_id=model_id or None)
-                self._routed_backends[key] = backend
-            return backend
-        if provider_id in {"openai", "openai-compatible", "remote", "proxy"}:
-            key = ("openai", provider_id, model_id)
-            backend = self._routed_backends.get(key)
-            if backend is None:
-                backend = self._make_openai_backend(model_id=model_id or None, provider_id=provider_id)
-                self._routed_backends[key] = backend
-            return backend
-        return self._get_backend()
 
     def _get_backend(self):
         if self._backend is not None:
@@ -1037,14 +1375,114 @@ class _AbstractVisionCapability:
     def list_available_models(self, *, task: Optional[str] = None) -> List[Dict[str, Any]]:
         return self.list_provider_models(task=task)
 
+    def load_resident_model(self, request: Mapping[str, Any]) -> Dict[str, Any]:
+        payload = dict(request or {})
+        task = _normalize_residency_task(payload.get("task"))
+        provider = payload.get("provider") or payload.get("backend") or payload.get("backend_kind")
+        model = payload.get("model") or payload.get("load_id")
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        self._ensure_local_residency_supported(binding)
+        backend = binding["backend"]
+        preload = getattr(backend, "preload", None)
+        if callable(preload):
+            preload()
+        loaded_at = time.time()
+        return self._record_loaded_model(
+            binding,
+            task=task,
+            resident=True,
+            source="explicit_preload",
+            loaded_at=loaded_at,
+        )
+
+    def list_loaded_models(self, filters: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
+        filter_map = self._normalize_loaded_filters(filters)
+        with self._state_lock:
+            records = [dict(item) for item in self._loaded_models.values()]
+        filtered = [item for item in records if self._match_loaded_record(item, filter_map)]
+        return self._sorted_loaded_records(filtered)
+
+    def list_resident_models(self, filters: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
+        filter_map = self._normalize_loaded_filters(filters)
+        filter_map["resident"] = True
+        return self.list_loaded_models(filter_map)
+
+    def unload_resident_model(self, request: Mapping[str, Any]) -> Dict[str, Any]:
+        payload = self._normalize_loaded_filters(request)
+        matched = self._find_loaded_backends(payload)
+        unload_after_lock: Optional[Any] = None
+        removed: Optional[Dict[str, Any]] = None
+        if len(matched) > 1:
+            raise AbstractVisionError(
+                "Ambiguous unload request: more than one loaded local model matched. "
+                "Specify `load_id`, or include both provider/backend and model."
+            )
+        if len(matched) == 1:
+            backend_key, matched_record, backend = matched[0]
+            with self._state_lock:
+                removed = self._remove_loaded_model_locked(backend_key)
+                if backend is not None and self._active_request_backend is backend:
+                    self._active_request_backend = None
+                    self._active_request_backend_key = None
+                unload_after_lock = self._retire_backend_locked(backend)
+            self._unload_backend(unload_after_lock)
+            return {
+                "task": matched_record.get("task"),
+                "provider": matched_record.get("provider"),
+                "model": matched_record.get("model"),
+                "load_id": matched_record.get("load_id"),
+                "backend_kind": matched_record.get("backend_kind"),
+                "scope": "process",
+                "state": "unloaded",
+                "resident": False,
+                "loaded": False,
+                "source": matched_record.get("source"),
+                "loaded_at": None,
+                "last_used_at": matched_record.get("last_used_at"),
+                "error": None,
+            }
+
+        if not self._has_loaded_selector(payload):
+            raise AbstractVisionError(
+                "Unload request did not identify a model. Specify `load_id`, or include both "
+                "provider/backend and model."
+            )
+
+        provider = payload.get("provider") or payload.get("backend") or payload.get("backend_kind")
+        model = payload.get("model") or payload.get("load_id")
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        self._ensure_local_residency_supported(binding)
+        return {
+            "task": removed.get("task") if isinstance(removed, dict) else _normalize_residency_task(payload.get("task")),
+            "provider": binding.get("provider"),
+            "model": binding.get("model"),
+            "load_id": binding.get("load_id"),
+            "backend_kind": binding.get("backend_kind"),
+            "scope": "process",
+            "state": "unloaded",
+            "resident": False,
+            "loaded": False,
+            "source": removed.get("source") if isinstance(removed, dict) else None,
+            "loaded_at": None,
+            "last_used_at": removed.get("last_used_at") if isinstance(removed, dict) else None,
+            "error": None,
+        }
+
+    # Aliases for Core route adapters that prefer load/list/unload naming.
+    def load_model(self, request: Mapping[str, Any]) -> Dict[str, Any]:
+        return self.load_resident_model(request)
+
+    def unload_model(self, request: Mapping[str, Any]) -> Dict[str, Any]:
+        return self.unload_resident_model(request)
+
     def t2i(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
         run_id = kwargs.pop("run_id", None)
         tags = kwargs.pop("tags", None)
         provider = kwargs.pop("provider", None)
         model = kwargs.pop("model", None)
-        backend = self._backend_for_request(provider=provider, model=model)
-        backend = self._activate_request_backend(backend)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
         allowed_request_keys = {"negative_prompt", "width", "height", "seed", "steps", "guidance_scale", "extra"}
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
@@ -1061,10 +1499,16 @@ class _AbstractVisionCapability:
             backend=backend,
             store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
         )
-        out = vm.generate_image(str(prompt), **kwargs)
-        if isinstance(out, dict):
-            return out
-        return bytes(getattr(out, "data", b""))
+        self._acquire_backend_snapshot(backend)
+        try:
+            out = vm.generate_image(str(prompt), **kwargs)
+            if binding.get("local_control"):
+                self._record_loaded_model(binding, task="text_to_image", resident=False, source="request")
+            if isinstance(out, dict):
+                return out
+            return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
 
     def i2i(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
@@ -1077,16 +1521,22 @@ class _AbstractVisionCapability:
         mask_b = None
         if mask is not None:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
-        backend = self._backend_for_request(provider=provider, model=model)
-        backend = self._activate_request_backend(backend)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
         vm = VisionManager(
             backend=backend,
             store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
         )
-        out = vm.edit_image(str(prompt), image=image_b, mask=mask_b, **kwargs)
-        if isinstance(out, dict):
-            return out
-        return bytes(getattr(out, "data", b""))
+        self._acquire_backend_snapshot(backend)
+        try:
+            out = vm.edit_image(str(prompt), image=image_b, mask=mask_b, **kwargs)
+            if binding.get("local_control"):
+                self._record_loaded_model(binding, task="image_to_image", resident=False, source="request")
+            if isinstance(out, dict):
+                return out
+            return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
 
     def multi_view_image(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)

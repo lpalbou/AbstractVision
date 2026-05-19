@@ -621,6 +621,310 @@ print("ok")
         self.assertEqual(mflux_backend.unloaded, 1)
         self.assertEqual(diffusers_backend.unloaded, 0)
 
+    def test_abstractcore_plugin_can_preload_list_and_unload_local_models(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeDiffusersBackend:
+            def __init__(self):
+                self.preloaded = 0
+                self.unloaded = 0
+
+            def preload(self):
+                self.preloaded += 1
+
+            def unload(self):
+                self.unloaded += 1
+
+        backend = FakeDiffusersBackend()
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_diffusers_backend", return_value=backend):
+            state = cap.load_resident_model(
+                {
+                    "task": "image_generation",
+                    "provider": "diffusers",
+                    "model": "runwayml/stable-diffusion-v1-5",
+                }
+            )
+            self.assertEqual(state["task"], "text_to_image")
+            self.assertEqual(state["provider"], "huggingface")
+            self.assertEqual(state["backend_kind"], "diffusers")
+            self.assertEqual(state["load_id"], "diffusers/runwayml/stable-diffusion-v1-5")
+            self.assertTrue(state["resident"])
+            self.assertEqual(state["state"], "resident")
+
+            loaded = cap.list_loaded_models()
+            resident = cap.list_resident_models()
+            self.assertEqual(len(loaded), 1)
+            self.assertEqual(len(resident), 1)
+            self.assertEqual(loaded[0]["source"], "explicit_preload")
+            self.assertEqual(cap.list_loaded_models({"provider": "hf"})[0]["backend_kind"], "diffusers")
+            self.assertEqual(cap.list_resident_models({"backend": "diffusers"})[0]["provider"], "huggingface")
+
+            out = cap.unload_resident_model(
+                {
+                    "provider": "diffusers",
+                    "model": "runwayml/stable-diffusion-v1-5",
+                }
+            )
+            self.assertEqual(out["state"], "unloaded")
+            self.assertFalse(out["resident"])
+
+        self.assertEqual(backend.preloaded, 1)
+        self.assertEqual(backend.unloaded, 1)
+        self.assertEqual(cap.list_loaded_models(), [])
+
+    def test_abstractcore_plugin_lists_request_warm_models_and_can_unload_them(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeDiffusersBackend:
+            def __init__(self):
+                self.unloaded = 0
+
+            def generate_image(self, request):
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+            def edit_image(self, request):
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+            def unload(self):
+                self.unloaded += 1
+
+        backend = FakeDiffusersBackend()
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_diffusers_backend", return_value=backend):
+            out = cap.t2i(
+                "a red square",
+                provider="diffusers",
+                model="runwayml/stable-diffusion-v1-5",
+            )
+
+            self.assertTrue(out.startswith(b"\x89PNG"))
+            loaded = cap.list_loaded_models()
+            self.assertEqual(len(loaded), 1)
+            self.assertFalse(loaded[0]["resident"])
+            self.assertEqual(loaded[0]["state"], "active")
+            self.assertEqual(loaded[0]["source"], "request")
+            self.assertEqual(loaded[0]["tasks"], ["text_to_image"])
+
+            out2 = cap.i2i(
+                "edit the square",
+                b"input",
+                provider="diffusers",
+                model="runwayml/stable-diffusion-v1-5",
+            )
+            self.assertTrue(out2.startswith(b"\x89PNG"))
+            loaded_after_edit = cap.list_loaded_models({"task": "i2i"})
+            self.assertEqual(len(loaded_after_edit), 1)
+            self.assertEqual(loaded_after_edit[0]["tasks"], ["image_to_image", "text_to_image"])
+            self.assertEqual(len(cap.list_loaded_models({"task": "text_to_image"})), 1)
+
+            cap.unload_model(
+                {
+                    "provider": "diffusers",
+                    "model": "runwayml/stable-diffusion-v1-5",
+                }
+            )
+
+        self.assertEqual(backend.unloaded, 1)
+        self.assertEqual(cap.list_loaded_models(), [])
+
+    def test_abstractcore_plugin_resident_backend_survives_model_switches(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMFluxBackend:
+            def __init__(self):
+                self.preloaded = 0
+                self.unloaded = 0
+
+            def preload(self):
+                self.preloaded += 1
+
+            def generate_image(self, request):
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={"backend": "mflux"})
+
+            def unload(self):
+                self.unloaded += 1
+
+        class FakeDiffusersBackend:
+            def __init__(self):
+                self.unloaded = 0
+
+            def generate_image(self, request):
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={"backend": "diffusers"})
+
+            def unload(self):
+                self.unloaded += 1
+
+        mflux_backend = FakeMFluxBackend()
+        diffusers_backend = FakeDiffusersBackend()
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_mflux_backend", return_value=mflux_backend):
+            with patch.object(cap, "_make_diffusers_backend", return_value=diffusers_backend):
+                cap.load_resident_model(
+                    {
+                        "task": "text_to_image",
+                        "provider": "mflux",
+                        "model": "flux2-klein-9b",
+                    }
+                )
+                cap.t2i(
+                    "a red square",
+                    provider="diffusers",
+                    model="runwayml/stable-diffusion-v1-5",
+                )
+                cap.t2i(
+                    "a red square",
+                    provider="mflux",
+                    model="flux2-klein-9b",
+                )
+                cap.t2i(
+                    "a red square",
+                    provider="diffusers",
+                    model="runwayml/stable-diffusion-v1-5",
+                )
+
+        self.assertEqual(mflux_backend.preloaded, 1)
+        self.assertEqual(mflux_backend.unloaded, 0)
+        self.assertEqual(diffusers_backend.unloaded, 1)
+
+        loaded = cap.list_loaded_models()
+        resident = cap.list_resident_models()
+        self.assertEqual(len(loaded), 2)
+        self.assertEqual(len(resident), 1)
+        self.assertEqual(resident[0]["load_id"], "mflux/flux2-klein-9b")
+        self.assertTrue(resident[0]["resident"])
+        self.assertIn("diffusers/runwayml/stable-diffusion-v1-5", {item["load_id"] for item in loaded})
+
+    def test_abstractcore_plugin_rejects_ambiguous_unload_requests(self):
+        from abstractvision.errors import AbstractVisionError
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeBackend:
+            def preload(self):
+                return None
+
+        first = FakeBackend()
+        second = FakeBackend()
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_diffusers_backend", side_effect=[first, second]):
+            cap.load_resident_model(
+                {
+                    "task": "text_to_image",
+                    "provider": "diffusers",
+                    "model": "runwayml/stable-diffusion-v1-5",
+                }
+            )
+            cap.load_resident_model(
+                {
+                    "task": "text_to_image",
+                    "provider": "diffusers",
+                    "model": "stabilityai/sdxl-turbo",
+                }
+            )
+            with self.assertRaises(AbstractVisionError) as ctx:
+                cap.unload_resident_model({"task": "text_to_image"})
+
+        self.assertIn("Ambiguous unload request", str(ctx.exception))
+
+    def test_abstractcore_plugin_supports_residency_for_injected_local_backend_when_kind_is_configured(self):
+        from abstractvision.backends.base_backend import VisionBackend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import (
+            GeneratedAsset,
+            ImageEditRequest,
+            ImageGenerationRequest,
+            ImageToVideoRequest,
+            MultiAngleRequest,
+            VideoGenerationRequest,
+        )
+
+        class _InjectedBackend(VisionBackend):
+            def __init__(self):
+                self.preloaded = 0
+                self.unloaded = 0
+
+            def preload(self) -> None:
+                self.preloaded += 1
+
+            def unload(self) -> None:
+                self.unloaded += 1
+
+            def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+
+            def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
+                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+
+            def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
+                raise NotImplementedError
+
+            def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
+                raise NotImplementedError
+
+            def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
+                raise NotImplementedError
+
+        backend = _InjectedBackend()
+
+        class _DummyOwner:
+            def __init__(self):
+                self.config = {
+                    "vision_backend_instance": backend,
+                    "vision_backend": "diffusers",
+                }
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        state = cap.load_resident_model({"task": "text_to_image"})
+        self.assertEqual(state["backend_kind"], "diffusers")
+        self.assertTrue(state["resident"])
+        self.assertEqual(backend.preloaded, 1)
+
+    def test_abstractcore_plugin_rejects_http_backends_for_model_residency(self):
+        from abstractvision.errors import AbstractVisionError
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeOpenAIBackend:
+            pass
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_openai_backend", return_value=FakeOpenAIBackend()):
+            with self.assertRaises(AbstractVisionError) as ctx:
+                cap.load_resident_model(
+                    {
+                        "task": "text_to_image",
+                        "provider": "openai-compatible",
+                        "model": "server/default",
+                    }
+                )
+
+        self.assertIn("only available for in-process local AbstractVision backends", str(ctx.exception))
+
     def test_abstractcore_plugin_default_openai_backend_requires_api_key(self):
         from abstractvision.errors import AbstractVisionError
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability

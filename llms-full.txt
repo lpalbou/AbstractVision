@@ -47,7 +47,7 @@ Maintenance tips:
 
 Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
-- **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md`.
+- **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md` (includes local model residency control for in-process backends).
 - **Inspect provider model catalogs**: use `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, or `llm.vision.list_provider_models(...)`; catalog listing is explicit and does not select the active model.
 - **Inspect local model/task metadata**: use `abstractvision model-catalog`, `abstractvision show-model`, or `GET /v1/vision/models`; `image_to_image` in `task_specs` is the explicit edit-capability signal for local surfaces.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
@@ -2137,6 +2137,45 @@ of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cp
 remain separate local-backend concerns, while MFLUX and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate `~/models` download tree.
 
+### Local Model Residency Control
+
+Core/Gateway hosts can also control in-process local model residency through the same capability
+object:
+
+```python
+llm.vision.load_resident_model(
+    {"task": "text_to_image", "provider": "mflux", "model": "flux2-klein-4b"}
+)
+
+loaded = llm.vision.list_loaded_models()
+resident = llm.vision.list_resident_models()
+
+llm.vision.unload_resident_model(
+    {"provider": "mflux", "model": "flux2-klein-4b"}
+)
+```
+
+Notes:
+
+- this surface is local-only and process-local;
+- it controls only AbstractVision-managed in-process backends (`diffusers`, `mflux`, `sdcpp`);
+- OpenAI/OpenAI-compatible HTTP backends are intentionally rejected here, even on `localhost`,
+  because the plugin cannot honestly control another process's loaded-state.
+
+`list_loaded_models()` reports both explicitly preloaded resident models and transient warm models
+that are currently loaded because of recent local generation requests. `list_resident_models()`
+returns the explicit pinned subset.
+
+Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,
+`resident`, and a `tasks` list of observed task aliases using that loaded backend.
+
+For deterministic unload behavior, prefer:
+
+- `load_id`, or
+- both `provider`/`backend` and `model`.
+
+Broad unload filters that match multiple loaded models are rejected as ambiguous.
+
 ## Shared request normalization
 
 `llm.vision` calls go through `VisionManager`, which applies backend normalization hooks before
@@ -2418,6 +2457,13 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
+
+## 0.3.7 - 2026-05-19
+
+- AbstractCore plugin: add explicit local model residency control for in-process `diffusers`, `mflux`, and `sdcpp` backends through `load_resident_model(...)`, `list_loaded_models(...)`, `list_resident_models(...)`, and `unload_resident_model(...)`, with `load_model(...)` / `unload_model(...)` compatibility aliases for Core route adapters.
+- Residency semantics: preserve explicit resident models across model switches while keeping the previous unload-on-switch behavior for non-resident request-warm backends, and report stable process-local `load_id` / `backend_kind` / `resident` metadata instead of relying on backend private fields.
+- Safety/robustness: reject OpenAI/OpenAI-compatible HTTP backends for residency control even on localhost, normalize provider/task filters consistently, reject ambiguous unload requests, and keep unload behavior deterministic for injected local backends.
+- Tests/docs: expand AbstractCore plugin coverage for local preload/list/unload flows, request-warm loaded-state reporting, task-aware loaded-model filters, injected backend residency, and switch-survival behavior; document the new local residency control surface and regenerate `llms-full.txt`.
 
 ## 0.3.6 - 2026-05-18
 

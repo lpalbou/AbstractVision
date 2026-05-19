@@ -104,6 +104,45 @@ of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cp
 remain separate local-backend concerns, while MFLUX and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate `~/models` download tree.
 
+### Local Model Residency Control
+
+Core/Gateway hosts can also control in-process local model residency through the same capability
+object:
+
+```python
+llm.vision.load_resident_model(
+    {"task": "text_to_image", "provider": "mflux", "model": "flux2-klein-4b"}
+)
+
+loaded = llm.vision.list_loaded_models()
+resident = llm.vision.list_resident_models()
+
+llm.vision.unload_resident_model(
+    {"provider": "mflux", "model": "flux2-klein-4b"}
+)
+```
+
+Notes:
+
+- this surface is local-only and process-local;
+- it controls only AbstractVision-managed in-process backends (`diffusers`, `mflux`, `sdcpp`);
+- OpenAI/OpenAI-compatible HTTP backends are intentionally rejected here, even on `localhost`,
+  because the plugin cannot honestly control another process's loaded-state.
+
+`list_loaded_models()` reports both explicitly preloaded resident models and transient warm models
+that are currently loaded because of recent local generation requests. `list_resident_models()`
+returns the explicit pinned subset.
+
+Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,
+`resident`, and a `tasks` list of observed task aliases using that loaded backend.
+
+For deterministic unload behavior, prefer:
+
+- `load_id`, or
+- both `provider`/`backend` and `model`.
+
+Broad unload filters that match multiple loaded models are rejected as ambiguous.
+
 ## Shared request normalization
 
 `llm.vision` calls go through `VisionManager`, which applies backend normalization hooks before
