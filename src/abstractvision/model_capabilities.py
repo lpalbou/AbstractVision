@@ -52,6 +52,7 @@ class VisionModelCapabilitiesRegistry:
         self._schema_version: str = ""
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._models: Dict[str, VisionModelSpec] = {}
+        self._download_repo_aliases: Dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
@@ -70,6 +71,7 @@ class VisionModelCapabilitiesRegistry:
             raise ValueError("Invalid capability asset: `models` must be an object keyed by model_id.")
 
         parsed: Dict[str, VisionModelSpec] = {}
+        repo_aliases: Dict[str, str] = {}
         for model_id, spec in models.items():
             provider = str(spec.get("provider", "unknown"))
             license_name = str(spec.get("license", "unknown"))
@@ -107,6 +109,7 @@ class VisionModelCapabilitiesRegistry:
                             notes=str(item.get("notes", "") or "").strip(),
                         )
                     )
+                    repo_aliases.setdefault(repo_id.lower(), str(model_id))
 
             tasks_raw = spec.get("tasks", {})
             if not isinstance(tasks_raw, dict):
@@ -136,6 +139,7 @@ class VisionModelCapabilitiesRegistry:
             )
 
         self._models = parsed
+        self._download_repo_aliases = repo_aliases
 
     def list_models(self) -> List[str]:
         return sorted(self._models.keys())
@@ -157,6 +161,9 @@ class VisionModelCapabilitiesRegistry:
         try:
             return self._models[model_id]
         except KeyError as e:
+            alias_target = self._download_repo_aliases.get(str(model_id or "").strip().lower())
+            if alias_target:
+                return self._models[alias_target]
             raise UnknownModelError(f"Unknown vision model id: {model_id}") from e
 
     def supports(self, model_id: str, task: str) -> bool:

@@ -12,6 +12,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 
 - [FAQ](faq.md)
 - [API reference](api.md)
+- [Architecture decisions](adr/README.md)
 - [Backends](reference/backends.md)
 - [Configuration (CLI/REPL env vars + flags)](reference/configuration.md)
 - [Capability registry (`vision_model_capabilities.json`)](reference/capabilities-registry.md)
@@ -35,13 +36,17 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 - `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
 
 Built-in backends implement:
-- **Images**: Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
+- **Images**: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
 - **Video**: OpenAI-compatible HTTP only, and only when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
 If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
 [`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) (loaded by `VisionModelCapabilitiesRegistry` in [`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
+The curation and cross-platform support policy for that registry is governed by
+[ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
 
 ## Internal engineering notes
+
+[`docs/adr/`](adr/) contains durable engineering policy.
 
 [`docs/backlog/`](backlog/) is an internal log (planned work + completion reports). It is not the normative user documentation surface.
 

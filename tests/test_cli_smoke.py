@@ -146,7 +146,8 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("abstractvision model-presets", out)
         self.assertIn("cache-only by default", out)
         self.assertIn("black-forest-labs/FLUX.2-klein-4B", out)
-        self.assertIn("/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]", out)
+        self.assertIn("/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]", out)
+        self.assertIn("abstractvision download-model flux2-klein-base-4b --provider sdcpp", out)
         self.assertIn("/provider-models", out)
         self.assertIn("--negative-prompt", out)
         self.assertNotIn("FLUX.2-klein-9B", out)
@@ -181,6 +182,12 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("flux2-klein-4b", out)
         self.assertNotIn("stable-diffusion-3-medium", out)
 
+    def test_model_presets_rejects_generic_mlx_provider(self):
+        from abstractvision.cli import main
+
+        with self.assertRaisesRegex(SystemExit, "generic MLX image backend"):
+            main(["model-presets", "--provider", "mlx"])
+
     def test_model_catalog_lists_8bit_and_fallback_entries(self):
         from abstractvision.cli import main
 
@@ -191,7 +198,7 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("policy: recommend 8-bit", out)
         self.assertIn("Qwen/Qwen-Image-2512", out)
-        self.assertIn("runwayml/stable-diffusion-v1-5", out)
+        self.assertIn("stable-diffusion-v1-5/stable-diffusion-v1-5", out)
         self.assertIn("baidu/ERNIE-Image", out)
         self.assertIn("stabilityai/stable-diffusion-xl-base-1.0", out)
 
@@ -204,7 +211,7 @@ class TestCliSmoke(unittest.TestCase):
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertIn("black-forest-labs/FLUX.2-klein-4B", out)
-        self.assertIn("runwayml/stable-diffusion-v1-5", out)
+        self.assertIn("stable-diffusion-v1-5/stable-diffusion-v1-5", out)
         self.assertNotIn("Tongyi-MAI/Z-Image-Turbo", out)
         self.assertNotIn("Qwen/Qwen-Image-2512", out)
 
@@ -243,7 +250,7 @@ class TestCliSmoke(unittest.TestCase):
                 rc = main(["download-model", "stable-diffusion", "--provider", "diffusers"])
 
         self.assertEqual(rc, 0)
-        self.assertEqual(calls["repo_id"], "runwayml/stable-diffusion-v1-5")
+        self.assertEqual(calls["repo_id"], "stable-diffusion-v1-5/stable-diffusion-v1-5")
         self.assertEqual(calls["target"], "diffusers")
         self.assertEqual(calls["bits"], 16)
 
@@ -303,6 +310,87 @@ class TestCliSmoke(unittest.TestCase):
                 self.assertIn("models--Qwen--Qwen-Image-2512", model_id)
                 self.assertIn("snapshots", model_id)
                 self.assertFalse(legacy_dir.exists())
+
+    def test_sdcpp_provider_resolves_cached_component_bundle_from_model_key(self):
+        from abstractvision.cli import _build_manager_from_args
+        from abstractvision.model_cache import import_directory_to_hf_cache
+
+        with tempfile.TemporaryDirectory() as cache_td, tempfile.TemporaryDirectory() as src_td:
+            cache_root = Path(cache_td)
+            src_root = Path(src_td)
+
+            main_dir = src_root / "flux-main"
+            main_dir.mkdir(parents=True, exist_ok=True)
+            (main_dir / "flux-2-klein-base-4b-Q8_0.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                main_dir,
+                repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            vae_dir = src_root / "flux-vae"
+            (vae_dir / "vae").mkdir(parents=True, exist_ok=True)
+            (vae_dir / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            import_directory_to_hf_cache(
+                vae_dir,
+                repo_id="black-forest-labs/FLUX.2-klein-base-4B",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            llm_dir = src_root / "qwen3"
+            llm_dir.mkdir(parents=True, exist_ok=True)
+            (llm_dir / "Qwen3-4B-Q4_K_M.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                llm_dir,
+                repo_id="unsloth/Qwen3-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                args = types.SimpleNamespace(
+                    store_dir=None,
+                    provider="sdcpp",
+                    backend=None,
+                    model="flux2-klein-base-4b",
+                    model_id=None,
+                    mflux_model=None,
+                    mflux_base_model=None,
+                    mflux_model_dir=None,
+                    mflux_allow_download=False,
+                    base_url=None,
+                    api_key=None,
+                    timeout_s=300.0,
+                    models_path=None,
+                    images_generations_path="/images/generations",
+                    images_edits_path="/images/edits",
+                    text_to_video_path=None,
+                    image_to_video_path=None,
+                    image_to_video_mode="multipart",
+                    diffusers_device="cpu",
+                    diffusers_torch_dtype=None,
+                    diffusers_allow_download=False,
+                    diffusers_auto_retry_fp32=True,
+                    sdcpp_bin="sd-cli",
+                    sdcpp_model=None,
+                    sdcpp_diffusion_model=None,
+                    sdcpp_vae=None,
+                    sdcpp_llm=None,
+                    sdcpp_llm_vision=None,
+                    sdcpp_extra_args=None,
+                    capabilities_model_id=None,
+                )
+
+                vm = _build_manager_from_args(args)
+                backend = vm.backend
+                cfg = getattr(backend, "_cfg", None)
+                self.assertIsNotNone(cfg)
+                self.assertIsNone(getattr(cfg, "model", None))
+                self.assertTrue(str(getattr(cfg, "diffusion_model", "")).endswith("flux-2-klein-base-4b-Q8_0.gguf"))
+                self.assertTrue(str(getattr(cfg, "vae", "")).endswith("vae/diffusion_pytorch_model.safetensors"))
+                self.assertTrue(str(getattr(cfg, "llm", "")).endswith("Qwen3-4B-Q4_K_M.gguf"))
 
     def test_download_model_selects_8bit_without_network_when_mocked(self):
         from abstractvision.cli import main
@@ -386,6 +474,42 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(calls["max_workers"], 2)
         self.assertIn("/tmp/hf-cache/models--mlx-community--Qwen-Image-2512-8bit/snapshots/abc123", out)
 
+    def test_download_model_sdcpp_prints_resolved_bundle_paths(self):
+        from abstractvision.cli import main
+        from abstractvision.model_downloads import SdcppModelSelection
+
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
+
+        def fake_resolve(name, *, allow_download=False, token=None, max_workers=4):
+            self.assertEqual(name, "flux2-klein-base-4b")
+            self.assertTrue(allow_download)
+            return SdcppModelSelection(
+                key="flux2-klein-base-4b",
+                repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
+                diffusion_model="/tmp/hf-cache/flux-2-klein-base-4b-Q8_0.gguf",
+                vae="/tmp/hf-cache/vae/diffusion_pytorch_model.safetensors",
+                llm="/tmp/hf-cache/Qwen3-4B-Q4_K_M.gguf",
+            )
+
+        buf = io.StringIO()
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with patch("abstractvision.cli.resolve_sdcpp_model_selection", new=fake_resolve):
+                with contextlib.redirect_stdout(buf):
+                    rc = main(["download-model", "flux2-klein-base-4b", "--provider", "sdcpp"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("resolved_diffusion_model: /tmp/hf-cache/flux-2-klein-base-4b-Q8_0.gguf", out)
+        self.assertIn("resolved_vae: /tmp/hf-cache/vae/diffusion_pytorch_model.safetensors", out)
+        self.assertIn("resolved_llm: /tmp/hf-cache/Qwen3-4B-Q4_K_M.gguf", out)
+
+    def test_download_model_rejects_generic_mlx_engine_prefix(self):
+        from abstractvision.cli import main
+
+        with self.assertRaisesRegex(SystemExit, "generic MLX image backend"):
+            main(["download-model", "mlx", "flux2-klein-4b"])
+
     def test_download_model_supports_registry_only_hf_snapshot_preset(self):
         from abstractvision.cli import main
 
@@ -422,10 +546,14 @@ class TestCliSmoke(unittest.TestCase):
                 status_code=403,
             )
 
+        buf = io.StringIO()
+        err = io.StringIO()
         with patch("abstractvision.cli.download_model_preset", new=fake_download):
             with patch("sys.stdin.isatty", return_value=False):
-                with self.assertRaises(SystemExit) as ctx:
-                    main(["download-model", "sd3.5-medium", "--provider", "diffusers"])
+                with contextlib.redirect_stdout(buf):
+                    with contextlib.redirect_stderr(err):
+                        with self.assertRaises(SystemExit) as ctx:
+                            main(["download-model", "sd3.5-medium", "--provider", "diffusers"])
 
         msg = str(ctx.exception)
         self.assertIn("https://huggingface.co/stabilityai/stable-diffusion-3.5-medium", msg)
@@ -450,12 +578,14 @@ class TestCliSmoke(unittest.TestCase):
             return Path("/tmp/hf-cache/models--stabilityai--stable-diffusion-3.5-medium/snapshots/abc123")
 
         buf = io.StringIO()
+        err = io.StringIO()
         with patch.dict("os.environ", {}, clear=True):
             with patch("abstractvision.cli.download_model_preset", new=fake_download):
                 with patch("sys.stdin.isatty", return_value=True):
                     with patch("abstractvision.cli.getpass.getpass", return_value="hf_test_token"):
                         with contextlib.redirect_stdout(buf):
-                            rc = main(["download-model", "sd3.5-medium", "--provider", "diffusers"])
+                            with contextlib.redirect_stderr(err):
+                                rc = main(["download-model", "sd3.5-medium", "--provider", "diffusers"])
 
         self.assertEqual(rc, 0)
         self.assertEqual(calls["tokens"], [None, "hf_test_token"])
@@ -514,6 +644,59 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn('"sdcpp_model": "/models/sd-v1-5.gguf"', out)
         self.assertIn('"sdcpp_diffusion_model": null', out)
         self.assertIn('"model_id": null', out)
+
+    def test_repl_build_manager_resolves_cached_sdcpp_component_bundle_from_model_key(self):
+        from abstractvision.cli import _ReplState, _build_manager_from_state
+        from abstractvision.model_cache import import_directory_to_hf_cache
+
+        with tempfile.TemporaryDirectory() as cache_td, tempfile.TemporaryDirectory() as src_td:
+            cache_root = Path(cache_td)
+            src_root = Path(src_td)
+
+            main_dir = src_root / "flux-main"
+            main_dir.mkdir(parents=True, exist_ok=True)
+            (main_dir / "flux-2-klein-base-4b-Q8_0.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                main_dir,
+                repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            vae_dir = src_root / "flux-vae"
+            (vae_dir / "vae").mkdir(parents=True, exist_ok=True)
+            (vae_dir / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            import_directory_to_hf_cache(
+                vae_dir,
+                repo_id="black-forest-labs/FLUX.2-klein-base-4B",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            llm_dir = src_root / "qwen3"
+            llm_dir.mkdir(parents=True, exist_ok=True)
+            (llm_dir / "Qwen3-4B-Q4_K_M.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                llm_dir,
+                repo_id="unsloth/Qwen3-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                state = _ReplState()
+                state.backend_kind = "sdcpp"
+                state.sdcpp_bin = "sd-cli"
+                state.sdcpp_model = "flux2-klein-base-4b"
+
+                vm = _build_manager_from_state(state)
+                backend = vm.backend
+                cfg = getattr(backend, "_cfg", None)
+                self.assertIsNotNone(cfg)
+                self.assertIsNone(getattr(cfg, "model", None))
+                self.assertTrue(str(getattr(cfg, "diffusion_model", "")).endswith("flux-2-klein-base-4b-Q8_0.gguf"))
+                self.assertTrue(str(getattr(cfg, "vae", "")).endswith("vae/diffusion_pytorch_model.safetensors"))
+                self.assertTrue(str(getattr(cfg, "llm", "")).endswith("Qwen3-4B-Q4_K_M.gguf"))
 
 
 if __name__ == "__main__":

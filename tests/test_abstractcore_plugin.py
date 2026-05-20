@@ -428,6 +428,77 @@ print("ok")
         self.assertEqual(seen["request"].width, 64)
         self.assertEqual(seen["request"].height, 64)
 
+    def test_abstractcore_plugin_resolves_cached_sdcpp_bundle_from_model_key(self):
+        import abstractvision.backends.stable_diffusion_cpp as sdcpp_backend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.model_cache import import_directory_to_hf_cache
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def __init__(self, *, config):
+                seen["config"] = config
+
+            def generate_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+        with tempfile.TemporaryDirectory() as cache_td, tempfile.TemporaryDirectory() as src_td:
+            cache_root = Path(cache_td)
+            src_root = Path(src_td)
+
+            main_dir = src_root / "flux-main"
+            main_dir.mkdir(parents=True, exist_ok=True)
+            (main_dir / "flux-2-klein-base-4b-Q8_0.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                main_dir,
+                repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            vae_dir = src_root / "flux-vae"
+            (vae_dir / "vae").mkdir(parents=True, exist_ok=True)
+            (vae_dir / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            import_directory_to_hf_cache(
+                vae_dir,
+                repo_id="black-forest-labs/FLUX.2-klein-base-4B",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            llm_dir = src_root / "qwen3"
+            llm_dir.mkdir(parents=True, exist_ok=True)
+            (llm_dir / "Qwen3-4B-Q4_K_M.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                llm_dir,
+                repo_id="unsloth/Qwen3-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            class _DummyOwner:
+                config = {
+                    "vision_backend": "sdcpp",
+                    "vision_sdcpp_model": "flux2-klein-base-4b",
+                    "vision_sdcpp_bin": "/opt/sd-cli",
+                }
+
+            with patch.object(sdcpp_backend, "StableDiffusionCppVisionBackend", _FakeBackend):
+                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                    cap = _AbstractVisionCapability(_DummyOwner())
+                    out = cap.t2i("a red square", width=64, height=64)
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        cfg = seen["config"]
+        self.assertIsNone(cfg.model)
+        self.assertTrue(str(cfg.diffusion_model or "").endswith("flux-2-klein-base-4b-Q8_0.gguf"))
+        self.assertTrue(str(cfg.vae or "").endswith("vae/diffusion_pytorch_model.safetensors"))
+        self.assertTrue(str(cfg.llm or "").endswith("Qwen3-4B-Q4_K_M.gguf"))
+        self.assertEqual(cfg.sd_cli_path, "/opt/sd-cli")
+
     def test_abstractcore_plugin_can_select_local_mflux(self):
         import abstractvision.backends.mflux as mflux_backend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -518,7 +589,66 @@ print("ok")
                         out = cap.t2i("a red square", model="black-forest-labs/FLUX.2-klein-9B")
 
         self.assertTrue(out.startswith(b"\x89PNG"))
-        self.assertEqual(seen["config"].model, "black-forest-labs/FLUX.2-klein-9B")
+        self.assertEqual(seen["config"].model, "flux2-klein-9b")
+
+    def test_abstractcore_plugin_canonicalizes_mflux_aliases_for_backend_reuse(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {}
+
+        backend = object()
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_mflux_backend", return_value=backend) as make_backend:
+            first = cap._resolve_backend_binding(
+                provider="mflux",
+                model="black-forest-labs/FLUX.2-klein-9B",
+            )
+            second = cap._resolve_backend_binding(
+                provider="mflux",
+                model="flux2-klein-9b",
+            )
+
+        self.assertIs(first["backend"], backend)
+        self.assertIs(second["backend"], backend)
+        self.assertEqual(first["backend_key"], ("mflux", "flux2-klein-9b"))
+        self.assertEqual(second["backend_key"], ("mflux", "flux2-klein-9b"))
+        self.assertEqual(first["model"], "flux2-klein-9b")
+        self.assertEqual(second["model"], "flux2-klein-9b")
+        self.assertEqual(first["load_id"], "mflux/flux2-klein-9b")
+        self.assertEqual(second["load_id"], "mflux/flux2-klein-9b")
+        self.assertEqual(make_backend.call_count, 1)
+
+    def test_abstractcore_plugin_request_scoped_sdcpp_overrides_configured_backend(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {
+                "vision_backend": "diffusers",
+                "vision_model_id": "runwayml/stable-diffusion-v1-5",
+                "vision_sdcpp_model": "/models/default.gguf",
+                "vision_sdcpp_bin": "/opt/sd-cli",
+            }
+
+        requested_backend = object()
+        configured_backend = object()
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_sdcpp_backend", return_value=requested_backend) as make_sdcpp:
+            with patch.object(cap, "_get_backend", return_value=configured_backend) as get_backend:
+                binding = cap._resolve_backend_binding(
+                    provider="sdcpp",
+                    model="flux2-klein-base-4b",
+                )
+
+        self.assertIs(binding["backend"], requested_backend)
+        self.assertEqual(binding["backend_kind"], "sdcpp")
+        self.assertEqual(binding["provider"], "sdcpp")
+        self.assertEqual(binding["model"], "flux2-klein-base-4b")
+        self.assertEqual(binding["load_id"], "sdcpp/flux2-klein-base-4b")
+        make_sdcpp.assert_called_once_with(model_id="flux2-klein-base-4b")
+        get_backend.assert_not_called()
 
     def test_abstractcore_plugin_reports_mflux_available_from_cache(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability

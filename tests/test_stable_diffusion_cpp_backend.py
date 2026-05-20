@@ -245,7 +245,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("sample_steps"), 12)
         self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("cfg_scale"), 2.5)
 
-    def test_preload_runs_python_warmup_once_per_loaded_model(self):
+    def test_preload_only_loads_python_model_once(self):
         from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
 
         _CountingStableDiffusion.init_calls = 0
@@ -265,14 +265,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
                 backend.preload()
 
         self.assertEqual(_CountingStableDiffusion.init_calls, 1)
-        self.assertEqual(len(_CountingStableDiffusion.generate_calls), 1)
-        warmup = _CountingStableDiffusion.generate_calls[0]
-        self.assertEqual(warmup["prompt"], "abstractvision preload warmup")
-        self.assertEqual(warmup["negative_prompt"], "")
-        self.assertEqual(warmup["width"], 512)
-        self.assertEqual(warmup["height"], 512)
-        self.assertEqual(warmup["sample_steps"], 1)
-        self.assertEqual(warmup["seed"], 0)
+        self.assertEqual(len(_CountingStableDiffusion.generate_calls), 0)
 
     def test_preload_leaves_cli_mode_unchanged(self):
         from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend

@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -42,6 +43,190 @@ class TestModelDownloads(unittest.TestCase):
             require_8bit=False,
         )
         self.assertIn("*.jinja", tuple(preset.allow_patterns or ()))
+
+    def test_generic_mlx_engine_is_rejected_and_flux1_mflux_presets_are_not_curated(self):
+        from abstractvision.model_downloads import find_model_preset, model_presets, normalize_model_engine
+
+        with self.assertRaisesRegex(ValueError, "generic MLX image backend"):
+            normalize_model_engine("mlx")
+        with self.assertRaisesRegex(ValueError, "generic MLX image backend"):
+            find_model_preset("mlx/flux2-klein-4b", target="auto", engine=None, require_8bit=True)
+
+        mflux_keys = {
+            preset.key
+            for preset in model_presets(target="mlx", engine="mflux", include_non_8bit=False)
+        }
+        self.assertNotIn("flux1-dev", mflux_keys)
+        self.assertNotIn("flux1-schnell", mflux_keys)
+
+        with self.assertRaises(ValueError):
+            find_model_preset("flux1-dev", target="mlx", engine="mflux", require_8bit=True)
+
+        preset = find_model_preset("flux1-dev", target="auto", engine=None, require_8bit=False)
+        self.assertEqual((preset.target, preset.engine), ("diffusers", "diffusers"))
+        self.assertEqual(preset.repo_id, "black-forest-labs/FLUX.1-dev")
+
+    def test_resolve_sdcpp_model_selection_uses_cached_component_bundle(self):
+        from abstractvision.model_cache import import_directory_to_hf_cache
+        from abstractvision.model_downloads import resolve_sdcpp_model_selection
+
+        with tempfile.TemporaryDirectory() as cache_td, tempfile.TemporaryDirectory() as src_td:
+            cache_root = Path(cache_td)
+            src_root = Path(src_td)
+
+            main_dir = src_root / "flux-main"
+            main_dir.mkdir(parents=True, exist_ok=True)
+            (main_dir / "flux-2-klein-base-4b-Q8_0.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                main_dir,
+                repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            vae_dir = src_root / "flux-vae"
+            (vae_dir / "vae").mkdir(parents=True, exist_ok=True)
+            (vae_dir / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            import_directory_to_hf_cache(
+                vae_dir,
+                repo_id="black-forest-labs/FLUX.2-klein-base-4B",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            llm_dir = src_root / "qwen3"
+            llm_dir.mkdir(parents=True, exist_ok=True)
+            (llm_dir / "Qwen3-4B-Q4_K_M.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                llm_dir,
+                repo_id="unsloth/Qwen3-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                selection = resolve_sdcpp_model_selection("flux2-klein-base-4b", allow_download=False)
+
+        self.assertIsNone(selection.model)
+        self.assertTrue(str(selection.diffusion_model or "").endswith("flux-2-klein-base-4b-Q8_0.gguf"))
+        self.assertTrue(str(selection.vae or "").endswith("vae/diffusion_pytorch_model.safetensors"))
+        self.assertTrue(str(selection.llm or "").endswith("Qwen3-4B-Q4_K_M.gguf"))
+
+    def test_resolve_sdcpp_model_selection_reports_missing_companion_files_cleanly(self):
+        from abstractvision.model_cache import import_directory_to_hf_cache
+        from abstractvision.model_downloads import resolve_sdcpp_model_selection
+
+        with tempfile.TemporaryDirectory() as cache_td, tempfile.TemporaryDirectory() as src_td:
+            cache_root = Path(cache_td)
+            src_root = Path(src_td)
+            main_dir = src_root / "flux-main"
+            main_dir.mkdir(parents=True, exist_ok=True)
+            (main_dir / "flux-2-klein-base-4b-Q8_0.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                main_dir,
+                repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with self.assertRaises(RuntimeError) as ctx:
+                    resolve_sdcpp_model_selection("flux2-klein-base-4b", allow_download=False)
+
+        self.assertIn("flux2-klein-base-4b", str(ctx.exception))
+        self.assertIn("download-model flux2-klein-base-4b --provider sdcpp", str(ctx.exception))
+
+    def test_resolve_sdcpp_model_selection_supports_legacy_qwen_image_repo_id(self):
+        from abstractvision.model_cache import import_directory_to_hf_cache
+        from abstractvision.model_downloads import resolve_sdcpp_model_selection
+
+        with tempfile.TemporaryDirectory() as cache_td, tempfile.TemporaryDirectory() as src_td:
+            cache_root = Path(cache_td)
+            src_root = Path(src_td)
+
+            main_dir = src_root / "qwen-main"
+            main_dir.mkdir(parents=True, exist_ok=True)
+            (main_dir / "qwen-image-Q8_0.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                main_dir,
+                repo_id="unsloth/Qwen-Image-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            vae_dir = src_root / "qwen-vae"
+            (vae_dir / "vae").mkdir(parents=True, exist_ok=True)
+            (vae_dir / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            import_directory_to_hf_cache(
+                vae_dir,
+                repo_id="Qwen/Qwen-Image",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            llm_dir = src_root / "qwen-vl"
+            llm_dir.mkdir(parents=True, exist_ok=True)
+            (llm_dir / "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                llm_dir,
+                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                selection = resolve_sdcpp_model_selection("unsloth/Qwen-Image-GGUF", allow_download=False)
+
+        self.assertIsNone(selection.model)
+        self.assertTrue(str(selection.diffusion_model or "").endswith("qwen-image-Q8_0.gguf"))
+        self.assertTrue(str(selection.vae or "").endswith("vae/diffusion_pytorch_model.safetensors"))
+        self.assertTrue(str(selection.llm or "").endswith("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"))
+
+    def test_resolve_sdcpp_model_selection_supports_qwen_image_edit_2509_bundle(self):
+        from abstractvision.model_cache import import_directory_to_hf_cache
+        from abstractvision.model_downloads import resolve_sdcpp_model_selection
+
+        with tempfile.TemporaryDirectory() as cache_td, tempfile.TemporaryDirectory() as src_td:
+            cache_root = Path(cache_td)
+            src_root = Path(src_td)
+
+            main_dir = src_root / "qwen-edit-main"
+            main_dir.mkdir(parents=True, exist_ok=True)
+            (main_dir / "qwen-image-edit-2509-Q8_0.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                main_dir,
+                repo_id="unsloth/Qwen-Image-Edit-2509-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            vae_dir = src_root / "qwen-edit-vae"
+            (vae_dir / "vae").mkdir(parents=True, exist_ok=True)
+            (vae_dir / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            import_directory_to_hf_cache(
+                vae_dir,
+                repo_id="Qwen/Qwen-Image-Edit-2509",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            llm_dir = src_root / "qwen-vl"
+            llm_dir.mkdir(parents=True, exist_ok=True)
+            (llm_dir / "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf").write_bytes(b"GGUF")
+            import_directory_to_hf_cache(
+                llm_dir,
+                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                cache_dir=str(cache_root),
+                cleanup_source=False,
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                selection = resolve_sdcpp_model_selection("qwen-image-edit-2509", allow_download=False)
+
+        self.assertIsNone(selection.model)
+        self.assertTrue(str(selection.diffusion_model or "").endswith("qwen-image-edit-2509-Q8_0.gguf"))
+        self.assertTrue(str(selection.vae or "").endswith("vae/diffusion_pytorch_model.safetensors"))
+        self.assertTrue(str(selection.llm or "").endswith("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"))
 
 
 if __name__ == "__main__":

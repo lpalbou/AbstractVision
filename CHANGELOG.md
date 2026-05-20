@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.8 - 2026-05-20
+
+- Model registry/catalog: expand the curated `vision_model_capabilities.json` inventory with more current official or reputable vision model families and cross-platform download variants, tighten provider provenance, remove adapter-only repos from the standalone model catalog, and expose richer model notes / `task_specs` through the CLI catalog surfaces.
+- Apple/MLX semantics: treat `mlx` as a download target rather than a runnable backend, fail fast on generic `mlx` provider/model routing across CLI, playground, and AbstractCore, and limit shipped MFLUX presets/docs to the families the backend actually supports today.
+- GGUF / local-runtime routing: improve stable-diffusion.cpp bundle resolution for curated multi-artifact models and legacy Qwen GGUF repo ids, resolve curated `sdcpp` model keys consistently in both one-shot CLI and REPL paths, and make AbstractCore request-scoped `sdcpp` routing explicit while canonicalizing MFLUX aliases for backend reuse.
+- Docs/policy/tests: add the ADR set and planned backlog items for curated catalog ownership, adapter-aware model graphs, and the long-term native MLX direction; refresh README/reference/FAQ/agent docs; regenerate `llms-full.txt`; and expand regression coverage for catalog aliases, GLM defaults, MFLUX routing, and local backend bundle selection.
+
 ## 0.3.7 - 2026-05-19
 
 - AbstractCore plugin: add explicit local model residency control for in-process `diffusers`, `mflux`, and `sdcpp` backends through `load_resident_model(...)`, `list_loaded_models(...)`, `list_resident_models(...)`, and `unload_resident_model(...)`, with `load_model(...)` / `unload_model(...)` compatibility aliases for Core route adapters.

@@ -11,7 +11,20 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .model_capabilities import VisionModelCapabilitiesRegistry
-from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot, hf_snapshot_is_usable
+from .model_cache import (
+    default_hf_cache_root,
+    default_legacy_model_root,
+    ensure_hf_repo_snapshot,
+    hf_snapshot_is_usable,
+    resolve_hf_repo_snapshot,
+)
+
+
+_GENERIC_MLX_BACKEND_ERROR = (
+    "AbstractVision does not have a generic MLX image backend yet. "
+    "Use `--target mlx` to browse MLX artifacts and `--provider mflux` "
+    "(or `mflux/<preset>`) for MFLUX-compatible 8-bit MLX models."
+)
 
 
 @dataclass(frozen=True)
@@ -203,16 +216,31 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     VisionModelDownloadPreset(
         key="flux2-klein-4b",
         display_name="FLUX.2 klein 4B GGUF Q8_0",
-        repo_id="unsloth/FLUX.2-klein-4B-GGUF",
+        repo_id="leejet/FLUX.2-klein-4B-GGUF",
         target="gguf",
         engine="stable-diffusion.cpp",
         local_dir_name="flux2-klein-4b-q8_0-gguf",
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-4B",
-        source="curated-community-gguf",
+        source="runtime-native-gguf",
         aliases=("flux2-klein-4b", "flux-klein-4b", "klein-4b", "klein4b", "flux4b"),
         allow_patterns=("README.md", "LICENSE*", "flux-2-klein-4b-Q8_0.gguf"),
-        notes="Q8_0 GGUF for stable-diffusion.cpp style runtimes.",
+        notes="Curated Q8_0 GGUF conversion aligned with stable-diffusion.cpp runtime usage.",
+        source_priority=40,
+    ),
+    VisionModelDownloadPreset(
+        key="flux2-klein-base-4b",
+        display_name="FLUX.2 klein base 4B GGUF Q8_0",
+        repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
+        target="gguf",
+        engine="stable-diffusion.cpp",
+        local_dir_name="flux2-klein-base-4b-q8_0-gguf",
+        quantization_bits=8,
+        upstream_repo_id="black-forest-labs/FLUX.2-klein-base-4B",
+        source="runtime-native-gguf",
+        aliases=("flux2-klein-base-4b", "flux-klein-base-4b", "klein-base-4b", "kleinbase4b", "fluxbase4b"),
+        allow_patterns=("README.md", "LICENSE*", "flux-2-klein-base-4b-Q8_0.gguf"),
+        notes="Q8_0 GGUF conversion aligned with stable-diffusion.cpp runtime usage.",
         source_priority=40,
     ),
     VisionModelDownloadPreset(
@@ -289,16 +317,31 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     VisionModelDownloadPreset(
         key="flux2-klein-9b",
         display_name="FLUX.2 klein 9B GGUF Q8_0",
-        repo_id="unsloth/FLUX.2-klein-9B-GGUF",
+        repo_id="leejet/FLUX.2-klein-9B-GGUF",
         target="gguf",
         engine="stable-diffusion.cpp",
         local_dir_name="flux2-klein-9b-q8_0-gguf",
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-9B",
-        source="curated-community-gguf",
+        source="runtime-native-gguf",
         aliases=("flux2-klein-9b", "flux-klein-9b", "klein-9b", "klein9b", "flux9b"),
         allow_patterns=("README.md", "LICENSE*", "flux-2-klein-9b-Q8_0.gguf"),
-        notes="Q8_0 GGUF for stable-diffusion.cpp style runtimes.",
+        notes="Curated Q8_0 GGUF conversion aligned with stable-diffusion.cpp runtime usage.",
+        source_priority=40,
+    ),
+    VisionModelDownloadPreset(
+        key="flux2-klein-base-9b",
+        display_name="FLUX.2 klein base 9B GGUF Q8_0",
+        repo_id="leejet/FLUX.2-klein-base-9B-GGUF",
+        target="gguf",
+        engine="stable-diffusion.cpp",
+        local_dir_name="flux2-klein-base-9b-q8_0-gguf",
+        quantization_bits=8,
+        upstream_repo_id="black-forest-labs/FLUX.2-klein-base-9B",
+        source="runtime-native-gguf",
+        aliases=("flux2-klein-base-9b", "flux-klein-base-9b", "klein-base-9b", "kleinbase9b", "fluxbase9b"),
+        allow_patterns=("README.md", "LICENSE*", "flux-2-klein-base-9b-Q8_0.gguf"),
+        notes="Q8_0 GGUF conversion aligned with stable-diffusion.cpp runtime usage.",
         source_priority=40,
     ),
     VisionModelDownloadPreset(
@@ -315,41 +358,6 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
         notes="#FALLBACK: gated on Hugging Face; requires accepting terms + HF token.",
         source_priority=90,
-    ),
-    VisionModelDownloadPreset(
-        key="flux1-dev",
-        display_name="FLUX.1 dev mflux MLX 8-bit",
-        repo_id="dhairyashil/FLUX.1-dev-mflux-8bit",
-        target="mlx",
-        engine="mflux",
-        local_dir_name="flux1-dev-mlx-8bit",
-        quantization_bits=8,
-        upstream_repo_id="black-forest-labs/FLUX.1-dev",
-        source="curated-community-mflux",
-        aliases=("flux1-dev", "flux-1-dev", "flux.1-dev", "black-forest-labs/FLUX.1-dev"),
-        allow_patterns=_COMMON_MLX_PATTERNS,
-        notes="Community mflux MLX 8-bit conversion for Apple Silicon.",
-        source_priority=30,
-    ),
-    VisionModelDownloadPreset(
-        key="flux1-schnell",
-        display_name="FLUX.1 schnell mflux MLX 8-bit",
-        repo_id="dhairyashil/FLUX.1-schnell-mflux-8bit",
-        target="mlx",
-        engine="mflux",
-        local_dir_name="flux1-schnell-mlx-8bit",
-        quantization_bits=8,
-        upstream_repo_id="black-forest-labs/FLUX.1-schnell",
-        source="curated-community-mflux",
-        aliases=(
-            "flux1-schnell",
-            "flux-1-schnell",
-            "flux.1-schnell",
-            "black-forest-labs/FLUX.1-schnell",
-        ),
-        allow_patterns=_COMMON_MLX_PATTERNS,
-        notes="Community mflux MLX 8-bit conversion for Apple Silicon.",
-        source_priority=30,
     ),
     VisionModelDownloadPreset(
         key="z-image-turbo",
@@ -817,21 +825,6 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source_priority=90,
     ),
     VisionModelDownloadPreset(
-        key="qwen-image-lightning",
-        display_name="Qwen-Image Lightning (Diffusers)",
-        repo_id="lightx2v/Qwen-Image-Lightning",
-        target="diffusers",
-        engine="diffusers",
-        local_dir_name="qwen-image-lightning-diffusers",
-        quantization_bits=16,
-        upstream_repo_id=None,
-        source="community",
-        aliases=("qwen-image-lightning", "lightx2v/Qwen-Image-Lightning"),
-        allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: community Diffusers snapshot (not 8-bit).",
-        source_priority=95,
-    ),
-    VisionModelDownloadPreset(
         key="playground-v2.5",
         display_name="Playground v2.5 1024px aesthetic (Diffusers)",
         repo_id="playgroundai/playground-v2.5-1024px-aesthetic",
@@ -840,13 +833,208 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="playground-v2.5-diffusers",
         quantization_bits=16,
         upstream_repo_id=None,
-        source="community",
+        source="official",
         aliases=("playground-v2.5", "playground-v2.5-1024", "playgroundai/playground-v2.5-1024px-aesthetic"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: community Diffusers snapshot (not 8-bit).",
+        notes="#FALLBACK: official Diffusers snapshot (not 8-bit).",
         source_priority=95,
     ),
 )
+
+
+@dataclass(frozen=True)
+class _SdcppBundleComponentSpec:
+    role: str
+    repo_id: str
+    allow_patterns: Tuple[str, ...]
+    require_weight_files: bool = True
+
+
+@dataclass(frozen=True)
+class _SdcppBundleSpec:
+    mode: str  # "single-file" | "component"
+    model_patterns: Tuple[str, ...]
+    components: Tuple[_SdcppBundleComponentSpec, ...] = ()
+
+
+@dataclass(frozen=True)
+class SdcppModelSelection:
+    key: str
+    repo_id: str
+    model: Optional[str] = None
+    diffusion_model: Optional[str] = None
+    vae: Optional[str] = None
+    llm: Optional[str] = None
+    llm_vision: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+_SDCPP_BUNDLES: Dict[str, _SdcppBundleSpec] = {
+    "flux2-klein-4b": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("flux-2-klein-4b-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="black-forest-labs/FLUX.2-klein-4B",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen3-4B-GGUF",
+                allow_patterns=("Qwen3-4B-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+    "flux2-klein-base-4b": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("flux-2-klein-base-4b-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="black-forest-labs/FLUX.2-klein-base-4B",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen3-4B-GGUF",
+                allow_patterns=("Qwen3-4B-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+    "flux2-klein-9b": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("flux-2-klein-9b-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="black-forest-labs/FLUX.2-klein-9B",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen3-8B-GGUF",
+                allow_patterns=("Qwen3-8B-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+    "flux2-klein-base-9b": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("flux-2-klein-base-9b-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="black-forest-labs/FLUX.2-klein-base-9B",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen3-8B-GGUF",
+                allow_patterns=("Qwen3-8B-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+    "qwen-image": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("qwen-image-2512-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="Qwen/Qwen-Image-2512",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+    "qwen-image-edit": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("qwen-image-edit-2511-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="Qwen/Qwen-Image-Edit-2511",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+    "qwen-image-edit-2509": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=(
+            "qwen-image-edit-2509-Q8_0.gguf",
+            "Qwen-Image-Edit-2509-Q8_0.gguf",
+            "*2509*Q8_0.gguf",
+        ),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="Qwen/Qwen-Image-Edit-2509",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+}
+
+
+_SDCPP_BUNDLES_BY_REPO_ID: Dict[str, _SdcppBundleSpec] = {
+    "unsloth/qwen-image-gguf": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=(
+            "qwen-image-Q8_0.gguf",
+            "Qwen-Image-Q8_0.gguf",
+            "qwen-image*q8_0.gguf",
+            "Qwen-Image*Q8_0.gguf",
+        ),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="Qwen/Qwen-Image",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+    "unsloth/qwen-image-edit-gguf": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=(
+            "qwen-image-edit-Q8_0.gguf",
+            "Qwen-Image-Edit-Q8_0.gguf",
+            "qwen-image-edit*q8_0.gguf",
+            "Qwen-Image-Edit*Q8_0.gguf",
+        ),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="Qwen/Qwen-Image-Edit",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+}
 
 
 def _default_allow_patterns(*, target: str, engine: str) -> Tuple[str, ...]:
@@ -1064,6 +1252,8 @@ def normalize_model_engine(engine: Optional[str]) -> Optional[str]:
     value = str(engine or "").strip().lower()
     if value in {"", "auto", "any", "default", "*"}:
         return None
+    if value == "mlx":
+        raise ValueError(_GENERIC_MLX_BACKEND_ERROR)
     aliases = {
         "stable-diffusion-cpp": "stable-diffusion.cpp",
         "stable_diffusion_cpp": "stable-diffusion.cpp",
@@ -1138,6 +1328,8 @@ def find_model_preset(
 ) -> VisionModelDownloadPreset:
     raw_target = str(target or "auto").strip().lower()
     requested = str(name or "").strip().lower()
+    if requested.startswith("mlx/"):
+        raise ValueError(_GENERIC_MLX_BACKEND_ERROR)
     for prefix in (
         "mflux/",
         "m-flux/",
@@ -1393,6 +1585,152 @@ def download_model_preset(
             "accept its terms first and authenticate with a Hugging Face token."
         )
     return resolved
+
+
+def _find_snapshot_file(snapshot_dir: Path, patterns: Sequence[str]) -> Optional[Path]:
+    snapshot = Path(snapshot_dir).expanduser()
+    for pattern in patterns:
+        try:
+            matches = sorted(path for path in snapshot.glob(str(pattern)) if path.is_file())
+        except Exception:
+            matches = []
+        if matches:
+            return matches[0]
+    return None
+
+
+def _gguf_patterns_for_preset(preset: VisionModelDownloadPreset) -> Tuple[str, ...]:
+    out = tuple(
+        str(pattern)
+        for pattern in tuple(preset.allow_patterns or ())
+        if ".gguf" in str(pattern).lower()
+    )
+    return out or ("*.gguf",)
+
+
+def _sdcpp_bundle_download_hint(name: str) -> str:
+    return f"abstractvision download-model {name} --provider sdcpp"
+
+
+def _resolve_cached_sdcpp_companion(
+    *,
+    requested_name: str,
+    role: str,
+    repo_id: str,
+    allow_patterns: Sequence[str],
+    allow_download: bool,
+    token: Optional[str],
+    max_workers: int,
+) -> Path:
+    cache_root = default_hf_cache_root()
+    snapshot = resolve_hf_repo_snapshot(
+        repo_id,
+        cache_dir=str(cache_root),
+        required_files=tuple(allow_patterns),
+        require_weight_files=True,
+    )
+    if snapshot is None:
+        if not allow_download:
+            raise RuntimeError(
+                f"Missing cached stable-diffusion.cpp companion artifact for {requested_name!r}: "
+                f"{role} from {repo_id!r}. Run `{_sdcpp_bundle_download_hint(requested_name)}` first."
+            )
+        snapshot = download_hf_repo_snapshot(
+            repo_id,
+            token=token,
+            allow_patterns=tuple(allow_patterns),
+            cache_dir=cache_root,
+            max_workers=max(1, int(max_workers)),
+        )
+    resolved = _find_snapshot_file(snapshot, allow_patterns)
+    if resolved is None:
+        raise RuntimeError(
+            f"Cached stable-diffusion.cpp companion artifact for {requested_name!r} is incomplete: "
+            f"{role} from {repo_id!r} is missing one of {tuple(allow_patterns)!r}."
+        )
+    return resolved
+
+
+def resolve_sdcpp_model_selection(
+    name: str,
+    *,
+    allow_download: bool = False,
+    token: Optional[str] = None,
+    max_workers: int = 4,
+) -> SdcppModelSelection:
+    requested = str(name or "").strip()
+    if not requested:
+        raise ValueError("Missing stable-diffusion.cpp model selection.")
+
+    preset = find_model_preset(
+        requested,
+        target="gguf",
+        engine="stable-diffusion.cpp",
+        require_8bit=True,
+    )
+    bundle = _SDCPP_BUNDLES_BY_REPO_ID.get(str(preset.repo_id).strip().lower(), _SDCPP_BUNDLES.get(preset.key))
+    cache_root = default_hf_cache_root()
+
+    required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
+    legacy_dir = default_legacy_model_root() / preset.local_dir_name
+    snapshot = ensure_hf_repo_snapshot(
+        preset.repo_id,
+        source_dir=legacy_dir,
+        cache_dir=str(cache_root),
+        cleanup_source=True,
+        required_files=required_files,
+        require_weight_files=require_weight_files,
+    )
+    if snapshot is None:
+        if not allow_download:
+            raise RuntimeError(
+                f"Missing cached stable-diffusion.cpp model artifact for {requested!r} ({preset.repo_id!r}). "
+                f"Run `{_sdcpp_bundle_download_hint(requested)}` first."
+            )
+        snapshot = download_model_preset(
+            preset,
+            token=token,
+            max_workers=max(1, int(max_workers)),
+        )
+
+    model_patterns = bundle.model_patterns if bundle is not None else _gguf_patterns_for_preset(preset)
+    primary_file = _find_snapshot_file(snapshot, model_patterns)
+    if primary_file is None:
+        raise RuntimeError(
+            f"Cached stable-diffusion.cpp model artifact for {requested!r} is incomplete: "
+            f"{preset.repo_id!r} is missing one of {model_patterns!r}."
+        )
+
+    if bundle is None or bundle.mode == "single-file":
+        return SdcppModelSelection(
+            key=preset.key,
+            repo_id=preset.repo_id,
+            model=str(primary_file),
+        )
+
+    component_values: Dict[str, str] = {"diffusion_model": str(primary_file)}
+    for component in bundle.components:
+        component_values[component.role] = str(
+            _resolve_cached_sdcpp_companion(
+                requested_name=requested,
+                role=component.role,
+                repo_id=component.repo_id,
+                allow_patterns=component.allow_patterns,
+                allow_download=allow_download,
+                token=token,
+                max_workers=max_workers,
+            )
+        )
+
+    return SdcppModelSelection(
+        key=preset.key,
+        repo_id=preset.repo_id,
+        model=None,
+        diffusion_model=component_values.get("diffusion_model"),
+        vae=component_values.get("vae"),
+        llm=component_values.get("llm"),
+        llm_vision=component_values.get("llm_vision"),
+    )
 
 
 def format_model_preset_rows(presets: Sequence[VisionModelDownloadPreset]) -> Iterable[str]:

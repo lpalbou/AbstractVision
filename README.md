@@ -18,6 +18,7 @@ Model-agnostic generative vision API (images, optional video) for Python and the
   - OpenAI-compatible HTTP: [`openai_compatible.py`](src/abstractvision/backends/openai_compatible.py)
   - Local Diffusers: [`huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py)
   - Local stable-diffusion.cpp / GGUF: [`stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
+  - Local MFLUX / MLX bridge for curated Apple Silicon presets: [`mflux.py`](src/abstractvision/backends/mflux.py)
 - CLI for manual testing (`abstractvision cli`, legacy alias: `abstractvision repl`): [`abstractvision`](src/abstractvision/cli.py)
 - Self-contained local Playground UI/API: [`playground/vision_playground.html`](playground/vision_playground.html) (docs: [`playground/README.md`](playground/README.md))
 
@@ -110,6 +111,7 @@ Start here:
 - FAQ: [`docs/faq.md`](docs/faq.md)
 - API reference: [`docs/api.md`](docs/api.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
+- Capability registry + catalog policy: [`docs/reference/capabilities-registry.md`](docs/reference/capabilities-registry.md), [`docs/adr/README.md`](docs/adr/README.md)
 - Docs index: [`docs/README.md`](docs/README.md)
 
 ### First local model (8-bit first)
@@ -126,14 +128,15 @@ pip install "abstractvision[models,mflux]"
 abstractvision model-presets
 abstractvision model-catalog --provider mflux
 # Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
-abstractvision download-model flux1-dev --provider mflux
-abstractvision download-model flux1-schnell --provider mflux
 abstractvision download-model flux2-klein-4b --provider mflux
 abstractvision download-model flux2-klein-9b --provider mflux
 abstractvision download-model qwen-image --provider mflux
 abstractvision download-model z-image-turbo --provider mflux
 abstractvision t2i --provider mflux --model flux2-klein-4b "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 ```
+
+The shipped MFLUX backend currently supports the curated `flux2-klein-4b`,
+`flux2-klein-9b`, `qwen-image`, and `z-image-turbo` preset families.
 
 Stable Diffusion does not currently have a curated MLX 8-bit preset in
 AbstractVision, so full Diffusers downloads remain explicit.
@@ -300,11 +303,12 @@ Current behavior:
 - Model-specific request normalization happens at the API/backend layer, not just in the page. The same MFLUX and GLM parameter corrections therefore apply to the playground, `abstractvision cli`, and AbstractCore.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
-One-shot commands (OpenAI-compatible HTTP backend only):
+One-shot commands default to the OpenAI-compatible HTTP backend, but they also support local providers:
 
 ```bash
 abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"
 abstractvision i2i --base-url http://localhost:1234/v1 --image ./input.png "make it watercolor"
+abstractvision t2i --provider diffusers --model qwen-image "a studio photo of an espresso machine"
 ```
 
 #### Local GGUF via stable-diffusion.cpp
@@ -327,12 +331,19 @@ In the REPL:
 /t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
 ```
 
-FLUX.2-klein-4B GGUF component example:
+Curated FLUX/Qwen GGUF bundle example:
+
+```bash
+abstractvision download-model flux2-klein-base-4b --provider sdcpp
+```
 
 ```text
-/backend sdcpp /path/to/flux-2-klein-4b-Q8_0.gguf /path/to/flux2_ae.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+/backend sdcpp flux2-klein-base-4b /path/to/sd-cli
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
 ```
+
+The package resolves the required VAE and text-encoder companions from the cache automatically for curated `sdcpp`
+model keys. Manual component wiring remains available for advanced cases.
 
 Extra flags are forwarded via `request.extra`. In CLI mode they are forwarded to `sd-cli`; in python bindings mode, keys are mapped to python binding kwargs when supported and unsupported keys are ignored.
 

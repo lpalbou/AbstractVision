@@ -42,6 +42,7 @@ Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvis
 - `OpenAICompatibleVisionBackend` (HTTP)
 - `HuggingFaceDiffusersVisionBackend` (local Diffusers)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
+- `MFluxVisionBackend` (local Apple Silicon MFLUX bridge for curated MLX presets)
 
 Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 

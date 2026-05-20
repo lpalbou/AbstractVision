@@ -1,6 +1,6 @@
-## Task 017: MLX and MFLUX backend strategy
+## Task 017: Native MLX engine beyond MFLUX
 
-**Date**: 2026-05-15  
+**Date**: 2026-05-20
 **Status**: Planned  
 **Priority**: P1  
 
@@ -8,191 +8,247 @@
 
 ## Main goals
 
-- Decide whether AbstractVision should use a native/general MLX image backend, an MFLUX-backed
-  backend, or both for Apple Silicon image generation.
-- Make low-bit Apple Silicon model downloads line up with runtime support, not just cache layout.
-- Ensure Gateway and Flow only advertise local image models that AbstractVision can actually run.
+- Create a true first-class MLX image backend for AbstractVision that can run MLX-packaged vision
+  models on Apple Silicon beyond the subset supported by MFLUX today.
+- Treat MFLUX as the short-term compatibility bridge, not the long-term Apple runtime abstraction.
+- Make MLX a real engine choice in AbstractVision, CLI, playground, and AbstractCore instead of a
+  catalog/download target that is mostly routed through MFLUX-specific rules.
 
 ## Secondary goals
 
-- Keep base `abstractvision` import-light.
-- Keep heavy local runtimes behind optional extras.
-- Preserve the `VisionManager` and AbstractCore capability plugin contracts.
+- Keep base `abstractvision` import-light and local runtimes behind optional extras.
+- Preserve the `VisionManager`, artifact output, and AbstractCore capability-plugin contracts.
+- Keep current MFLUX users working while the native MLX path is introduced incrementally.
 
 ---
 
 ## Context / problem
 
-AbstractVision has curated Apple Silicon download presets for 8-bit image-generation artifacts,
-including FLUX.2 klein and Z-Image-Turbo. The currently practical Apple Silicon artifacts for
-those models are MFLUX-compatible MLX layouts.
+The product goal is broader than “make current MFLUX presets work.” AbstractVision is supposed to
+help users discover, download, and run compatible vision models across machines and runtimes with
+as little manual assembly as possible.
 
-The runtime surface is now split:
+For Apple Silicon, the repo currently has many MLX-flavored download variants and an implemented
+MFLUX backend, but it does **not** have a generic/native MLX backend. That means:
 
-- AbstractVision currently supports OpenAI-compatible HTTP, Hugging Face Diffusers, and
-  stable-diffusion.cpp/GGUF backends.
-- AbstractVision does not currently have a native MLX image backend.
-- AbstractVision has a first MFLUX backend behind the optional `abstractvision[mflux]` extra for
-  FLUX.2 klein and Z-Image-Turbo text-to-image generation.
-- `mflux/...` is the explicit provider/model prefix for MFLUX-compatible models. `mlx/...` must not
-  be treated as Diffusers; generic/native MLX remains a separate future engine decision.
+- MLX is not a true engine in the product today.
+- Apple-local MLX support is limited to what the MFLUX runtime happens to support.
+- Some curated MLX/MFLUX download paths are broader than what the MFLUX backend can actually run.
 
-The original failure mode was that an 8-bit MLX/MFLUX artifact could be downloaded successfully and
-then fail inside an AbstractVision workflow because the workflow routed it to Diffusers. Diffusers
-expects a Diffusers pipeline layout with `model_index.json`; MFLUX layouts use component folders
-such as `transformer`, `text_encoder`, `tokenizer`, and `vae`.
+The correct long-term shape is:
+
+- `mlx` becomes a first-class runtime/backend category in AbstractVision;
+- `mflux` remains an adapter/bridge for the subset of models where it is the practical runtime;
+- model discovery and download surfaces distinguish:
+  - MLX download available;
+  - runnable through MFLUX today;
+  - runnable through native MLX engine;
+  - download-only pending runtime support.
+
+This task exists because Apple-local MLX support should be a real platform capability, not just a
+set of MFLUX-specific exceptions.
+
+## Current code reality
+
+Files and symbols inspected before rewriting this item:
+
+- `src/abstractvision/backends/mflux.py`
+- `src/abstractvision/model_downloads.py`
+- `src/abstractvision/playground_server.py`
+- `src/abstractvision/integrations/abstractcore_plugin.py`
+- `src/abstractvision/assets/vision_model_capabilities.json`
+- `docs/reference/backends.md`
+- `README.md`
+
+What exists today:
+
+- A shipped optional `MFluxVisionBackend` in `src/abstractvision/backends/mflux.py`.
+- Apple-oriented curated download variants that use `target="mlx"` and `engine="mflux"`.
+- AbstractCore routing that explicitly rejects generic `mlx/...` and tells callers to use
+  `mflux/<preset>`.
+- Playground and CLI catalog surfaces that already expose MLX-targeted downloads.
+
+What is still wrong or incomplete:
+
+- Generic MLX is **not** a real backend or provider today; it is still rejected in the plugin.
+- The playground does not fail fast consistently on `mlx/...` model ids and can still default that
+  shape to Diffusers routing.
+- The MFLUX backend supports only a small hard-coded family table, while the curated MLX/MFLUX
+  catalog is broader.
+- There are multiple competing truths for Apple-local support:
+  - registry/download metadata;
+  - hard-coded preset table;
+  - runtime family table in the MFLUX backend;
+  - route-selection logic in CLI/playground/AbstractCore.
 
 ## Constraints
 
-- Do not make MFLUX, Torch, Diffusers, or stable-diffusion.cpp mandatory base dependencies.
-- Do not treat a successful Hugging Face download as proof of runtime compatibility.
+- Do not make MLX, MFLUX, Torch, Diffusers, or stable-diffusion.cpp mandatory base dependencies.
 - Preserve offline generation after models are downloaded.
-- Keep generated images as AbstractVision artifacts so Gateway ledgers and Flow run details stay
-  consistent.
+- Keep generated outputs as AbstractVision artifacts.
+- Keep local runtime imports lazy and avoid model loads at import time.
 - Prefer permissive licensing for new runtime dependencies.
-- Keep errors specific: missing `model_index.json` means "not a Diffusers pipeline", not simply
-  "model missing".
+- Preserve current MFLUX behavior as a compatibility bridge while the native MLX path is built.
+- Follow [ADR 0005](../../adr/0005_curated_capability_registry_and_download_catalog.md) and
+  [ADR 0006](../../adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md):
+  curated download variants should be runnable or clearly marked as download-only /
+  backend-not-supported, and runtime selection must stay explicit.
 
 ---
 
 ## Research, options, and references
 
-- **Current local runtime support**: AbstractVision backend exports OpenAI-compatible,
-  Hugging Face Diffusers, stable-diffusion.cpp, and MFLUX backends. MFLUX is optional and does not
-  import the `mflux` package until the backend loads a model.
+- **Current runtime implementation**:
+  - MFLUX exists today as the only shipped Apple-local MLX-adjacent runtime path.
   - References:
-    - `src/abstractvision/backends/__init__.py`
     - `src/abstractvision/backends/mflux.py`
-- **Current Flow/Gateway routing behavior**: raw Hugging Face-style repo ids and `mlx/...` routed
-  requests can land in the Diffusers backend. That backend requires a Diffusers `model_index.json`.
+    - `src/abstractvision/backends/__init__.py`
+- **Current routing reality**:
+  - CLI, playground, and AbstractCore now fail fast on generic `mlx/...`; only explicit `mflux/...`
+    routing is runnable today on Apple-local MLX-adjacent paths.
   - References:
-    - `src/abstractvision/playground_server.py`
     - `src/abstractvision/integrations/abstractcore_plugin.py`
-    - `src/abstractvision/backends/huggingface_diffusers.py`
-- **Current download preset behavior**: Apple Silicon 8-bit presets specify both artifact target
-  (`target="mlx"`) and runtime engine (`engine="mflux"`). The old `runner` JSON key is kept as a
-  compatibility alias for the first downloader iteration.
+    - `src/abstractvision/playground_server.py`
+    - `src/abstractvision/cli.py`
+- **Current catalog/download reality**:
+  - Apple auto-targeting prefers `mlx`, and current curated Apple-local downloads are represented
+    through `engine="mflux"` presets rather than a true native `mlx` engine.
   - References:
     - `src/abstractvision/model_downloads.py`
-- **Repository manifest check on 2026-05-15**: upstream full-model repos
-  `black-forest-labs/FLUX.2-klein-4B`, `black-forest-labs/FLUX.2-klein-9B`, and
-  `Tongyi-MAI/Z-Image-Turbo` expose `model_index.json` and are Diffusers-style pipeline repos.
-  The 8-bit MLX/MFLUX repos `AITRADER/FLUX2-klein-4B-mlx-8bit`,
-  `deepsweet/FLUX.2-klein-9B-MLX-Q8`, and `carsenk/z-image-turbo-mflux-8bit` do not expose
-  `model_index.json`. BFL's FP8 side-artifact repos checked here also do not expose
-  `model_index.json`, so they should not be treated as standalone Diffusers pipelines without an
-  explicit loader strategy.
-  - References:
-    - `https://huggingface.co/black-forest-labs/FLUX.2-klein-4B/tree/main`
-    - `https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/tree/main`
-    - `https://huggingface.co/Tongyi-MAI/Z-Image-Turbo/tree/main`
+    - `src/abstractvision/assets/vision_model_capabilities.json`
 
-### Option A: Add an MFLUX backend first
+### Option A: Keep MFLUX as the permanent Apple-local answer
 
 Pros:
 
-- Fastest path to make the current FLUX.2 klein and Z-Image-Turbo 8-bit downloads usable from
-  AbstractVision, Gateway, and Flow.
-- Keeps Apple Silicon memory use low.
-- Can be isolated behind an optional extra and lazy imports.
+- Lowest short-term implementation cost.
+- Already integrated into CLI, playground, and AbstractCore.
+- Keeps current Apple 8-bit flows working where supported.
 
 Cons:
 
-- Tied to MFLUX-supported model families.
-- Needs careful subprocess or in-process cancellation and artifact handling.
-- Adds another runtime dependency unless dependency selection is explicit.
+- MLX remains a fake engine category rather than a real runtime.
+- AbstractVision stays bound to MFLUX-supported model families.
+- Hard-coded family/routing special cases will keep expanding.
 
-### Option B: Add a native/general MLX image backend first
+### Option B: Build a native/general MLX backend and keep MFLUX as the bridge
 
 Pros:
 
-- Better long-term fit if it can load real MLX image model layouts from configuration.
-- Avoids binding AbstractVision to only MFLUX-supported architectures.
-- Matches the preference for fewer specialized dependencies.
+- Matches the real product goal: MLX as a first-class local engine on Apple Silicon.
+- Decouples AbstractVision’s Apple strategy from one specialized runtime.
+- Allows the catalog to represent “native MLX runnable” separately from “MFLUX runnable”.
 
 Cons:
 
-- Larger implementation risk.
-- May recreate a large part of Diffusers-style model loading in MLX.
-- Needs proof that enough image model families can be loaded reliably.
+- Higher implementation and integration cost.
+- Needs real feasibility proof across at least one non-MFLUX family.
+- Requires a careful transition plan so current MFLUX users do not regress.
 
-### Option C: Keep only Diffusers and stable-diffusion.cpp for now
+### Option C: Treat MLX as download-only for now and postpone runtime work
 
 Pros:
 
-- No new runtime dependency.
-- Keeps backend surface small.
+- Avoids more short-term runtime complexity.
+- Keeps backend surface smaller.
 
 Cons:
 
-- The Apple Silicon 8-bit MLX presets remain unusable from AbstractVision workflows.
-- Users can download a model through AbstractVision but cannot generate with it through
-  AbstractVision.
+- Fails the product goal for Apple-local MLX execution.
+- Leaves users with downloadable artifacts that are not a first-class runtime path.
+- Pushes more unsupported/manual assembly burden onto callers.
 
 ---
 
 ## Decision
 
-**Chosen approach**: ship MFLUX as the first runnable Apple 8-bit bridge, and keep native/general
-MLX as the preferred long-term strategy if feasibility is good.
+**Chosen approach**: build a true native/general MLX backend for AbstractVision, while keeping
+MFLUX as the short-term bridge and compatibility runtime during the transition.
 
 **Why**:
 
-- The immediate bug is runtime incompatibility, not download failure.
-- The small MFLUX backend makes existing 8-bit Apple artifacts useful through AbstractVision today.
-- A real MLX backend should not be promised until it can load model families without broad,
-  fragile per-model rewrites.
-- The downloader and model catalog must distinguish artifact format from runnable backend.
+- The long-term goal is to handle MLX vision models as a real engine category, not only through
+  MFLUX-specific support tables.
+- MFLUX is good enough as a bridge, but too narrow to be the terminal abstraction for Apple-local
+  model execution.
+- The repo already shows that MLX download variants matter to users; the missing piece is a real
+  engine boundary and runtime support strategy.
+- Truth-alignment work is still required, but only as a prerequisite to shipping a trustworthy MLX
+  engine, not as the end goal of this task.
 
 ---
 
 ## Dependencies
 
 - **ADRs**:
-  - N/A
+  - `docs/adr/0005_curated_capability_registry_and_download_catalog.md`
+  - `docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md`
 - **Backlog tasks**:
+  - Planned: `docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md`
   - Completed: `docs/backlog/completed/007_local_hf_backend_strategy_diffusers.md`
   - Completed: `docs/backlog/completed/013_stable_diffusion_cpp_gguf_backend.md`
   - Completed: `docs/backlog/completed/015_vision_install_profiles_and_pending_defaults.md`
+  - Completed: `docs/backlog/completed/019_best_effort_preload_warmup_for_local_backends.md`
 
 ---
 
 ## Implementation plan
 
-- Update model listing so downloadable presets and runnable backend models are distinct.
-- Make `mlx/...` fail fast with an actionable unsupported-backend error unless a real MLX backend
-  exists.
-- Keep improving the MFLUX backend behind an optional extra, using the existing artifact output
-  path.
-- Evaluate a native/general MLX image backend with at least FLUX.2 klein, Z-Image-Turbo, and one
-  Stable Diffusion family before deciding whether to make it a first-class backend.
-- Add Gateway/Flow model selection metadata so users see only runnable provider/model pairs.
-- Document exact command lines for models that are downloaded but not yet runnable through
-  AbstractVision.
+- Define the native MLX backend boundary:
+  - provider/backend id;
+  - configuration shape;
+  - cache discovery expectations;
+  - supported local model layout requirements.
+- Keep MFLUX as a separate backend/provider during the transition; do not silently collapse `mlx`
+  into `mflux`.
+- Add a first native MLX backend implementation that can load:
+  - at least one non-MFLUX family;
+  - at least one currently curated Apple-local family from configuration rather than from a
+    narrow hard-coded family switchboard.
+- Tighten current runtime truth while the MLX backend is being built:
+  - fail fast on `mlx/...` everywhere until the native backend exists;
+  - stop advertising unsupported MFLUX families as runnable;
+  - keep download-only Apple variants visible only with explicit non-runnable state.
+- Add runtime-state metadata that distinguishes:
+  - cached/downloadable;
+  - runnable through MFLUX;
+  - runnable through native MLX;
+  - download-only.
+- Update CLI, playground, and AbstractCore routing so `mlx` becomes a real backend/provider once
+  the native engine exists.
+- Revisit preset and registry generation so Apple-local download truth does not drift across
+  `_PRESETS`, the registry, and backend family tables.
 
 ---
 
 ## Success criteria
 
-- Apple Silicon 8-bit presets are never silently routed to Diffusers unless they are real
-  Diffusers pipelines with `model_index.json`.
-- The `mlx` provider/model prefix maps to a real backend or emits an actionable unsupported-backend
-  error.
-- At least one local Apple 8-bit image model can be generated through AbstractVision and Gateway
-  without manually calling an external CLI. Initial smoke coverage includes FLUX.2 klein 4B,
-  FLUX.2 klein 9B, and Z-Image-Turbo.
+- AbstractVision has a true native MLX backend/provider beyond MFLUX.
+- Generic `mlx` model/provider selection is a real supported path, not just an error or alias.
+- At least one non-MFLUX family is runnable through the native MLX backend.
+- Apple-local catalog surfaces distinguish native-MLX runnable, MFLUX-runnable, and download-only
+  entries clearly.
+- Unsupported MFLUX-only families are not advertised as runnable.
 - Runtime extras remain optional and base `abstractvision` stays import-light.
-- Docs explain when to choose Diffusers, MFLUX, native MLX, and stable-diffusion.cpp/GGUF.
+- Docs explain when to choose native MLX, MFLUX, Diffusers, and stable-diffusion.cpp/GGUF.
 
 ---
 
 ## Test plan
 
+- `PYTHONPATH=src python -m unittest tests.test_model_downloads -q`
 - `PYTHONPATH=src python -m unittest tests.test_cli_smoke -q`
+- `PYTHONPATH=src python -m unittest tests.test_playground_server -q`
 - `PYTHONPATH=src python -m unittest tests.test_abstractcore_plugin -q`
-- Backend unit tests for unsupported `mlx/...` routing when no MLX backend is installed.
-- Backend smoke test for selected Apple 8-bit models once an MFLUX or MLX backend exists.
-- Manual Gateway/Flow run proving model selection routes to the intended backend.
+- Add dedicated backend tests for:
+  - native MLX backend model loading;
+  - unsupported `mlx/...` routing before engine availability;
+  - supported `mlx/...` routing after engine availability;
+  - separation between MFLUX-runnable and native-MLX-runnable catalog entries.
+- Manual Apple Silicon smoke tests for:
+  - one MFLUX-backed model;
+  - one native-MLX-backed non-MFLUX family;
+  - one download-only MLX entry with a clear non-runnable explanation.
 
 ---
 

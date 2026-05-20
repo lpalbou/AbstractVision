@@ -11,7 +11,6 @@ sys.path.insert(0, str(SRC_DIR))
 ALL_MODELS = [
     "Qwen/Qwen-Image-2512",
     "Qwen/Qwen-Image-Edit-2511",
-    "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA",
     "Wan-AI/Wan2.2-T2V-A14B",
     "tencent/HunyuanVideo-1.5",
     "genmo/mochi-1-preview",
@@ -39,7 +38,8 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         self.assertTrue(reg.supports("Tongyi-MAI/Z-Image-Turbo", "text_to_image"))
 
         self.assertTrue(reg.supports("Qwen/Qwen-Image-Edit-2511", "image_to_image"))
-        self.assertTrue(reg.supports("fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA", "multi_view_image"))
+        self.assertIn("multi_view_image", reg.list_tasks())
+        self.assertEqual(reg.models_for_task("multi_view_image"), [])
 
         self.assertTrue(reg.supports("Wan-AI/Wan2.2-T2V-A14B", "text_to_video"))
         self.assertTrue(reg.supports("tencent/HunyuanVideo-1.5", "text_to_video"))
@@ -54,10 +54,10 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         spec = reg.get("zai-org/GLM-Image")
 
         self.assertIn("image_to_image", spec.tasks)
-        self.assertEqual(spec.tasks["text_to_image"].params["steps"]["default"], 20)
+        self.assertEqual(spec.tasks["text_to_image"].params["steps"]["default"], 50)
         self.assertEqual(spec.tasks["text_to_image"].params["guidance_scale"]["default"], 1.5)
         self.assertEqual(spec.tasks["text_to_image"].params["width"]["multiple_of"], 32)
-        self.assertTrue(spec.tasks["image_to_image"].params["width"]["auto_derived_from_input"])
+        self.assertTrue(spec.tasks["image_to_image"].params["width"]["required"])
 
 
 if __name__ == "__main__":

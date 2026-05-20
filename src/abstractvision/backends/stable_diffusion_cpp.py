@@ -353,22 +353,17 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         self._sd_cli_resolved: Optional[str] = None
         self._py_sd: Any = None
         self._py_model: Any = None
-        self._py_warmed_model_id: Optional[int] = None
         self._py_init_kwargs: Optional[Dict[str, Any]] = None
         self._py_default_generate_kwargs: Optional[Dict[str, Any]] = None
 
     def preload(self) -> None:
         mode = self._select_mode()
         if mode == "python":
-            model = self._ensure_python_model()
-            if self._py_warmed_model_id == id(model):
-                return
-            self._generate_image_python(self._warmup_generation_request())
+            self._ensure_python_model()
 
     def unload(self) -> None:
         # Best-effort: drop python-binding model reference so native memory can be reclaimed.
         self._py_model = None
-        self._py_warmed_model_id = None
         self._py_init_kwargs = None
         self._py_default_generate_kwargs = None
         try:
@@ -469,15 +464,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             t5xxl_path=str(self._cfg.t5xxl or ""),
             **(self._py_init_kwargs or {}),
         )
-        self._py_warmed_model_id = None
         return self._py_model
-
-    def _warmup_generation_request(self) -> ImageGenerationRequest:
-        return ImageGenerationRequest(
-            prompt="abstractvision preload warmup",
-            steps=1,
-            seed=0,
-        )
 
     def _validate_qwen_image_components(self) -> None:
         diffusion_model = str(self._cfg.diffusion_model or "").strip()
@@ -567,7 +554,6 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         images = model.generate_image(**kwargs)
         if not images:
             raise RuntimeError("stable-diffusion.cpp python bindings produced no images.")
-        self._py_warmed_model_id = id(model)
         img0 = images[0]
         buf = BytesIO()
         img0.save(buf, format="PNG")
@@ -743,7 +729,6 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         images = model.generate_image(**kwargs)
         if not images:
             raise RuntimeError("stable-diffusion.cpp python bindings produced no images.")
-        self._py_warmed_model_id = id(model)
         img0 = images[0]
         buf = BytesIO()
         img0.save(buf, format="PNG")

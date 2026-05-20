@@ -475,14 +475,26 @@ abstractvision repl
 If `sd-cli` is already in your `PATH`, you can omit the final `/path/to/sd-cli` argument. If it is not available,
 AbstractVision falls back to `stable-diffusion-cpp-python` when that package is installed, for example through `pip install "abstractvision[sdcpp]"`.
 
-### 6.3 Download the required Qwen Image VAE
+### 6.3 Curated `sdcpp` bundles
+
+For Qwen Image and FLUX GGUF, external users should not have to manually locate a VAE or text encoder.
+Download the curated bundle once, then use the model key everywhere:
 
 ```bash
-curl -L -o ./qwen_image_vae.safetensors \
-  https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
+abstractvision download-model qwen-image --provider sdcpp
+abstractvision download-model flux2-klein-base-4b --provider sdcpp
 ```
 
-### 6.4 Run Qwen Image with `sdcpp` component mode
+AbstractVision resolves the required side artifacts from the Hugging Face cache automatically:
+
+- CLI one-shot: `abstractvision t2i --provider sdcpp --model flux2-klein-base-4b "..."`
+- REPL: `/backend sdcpp flux2-klein-base-4b /path/to/sd-cli`
+- Playground / AbstractCore plugin: set the model key and let the package resolve the cached bundle
+
+If a required companion file is missing, the package now fails early with a precise `download-model ... --provider sdcpp`
+hint instead of starting generation and then failing deep in the runtime.
+
+### 6.4 Run Qwen Image with `sdcpp`
 
 ```bash
 abstractvision repl
@@ -491,7 +503,7 @@ abstractvision repl
 Then:
 
 ```text
-/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf ./qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf /path/to/sd-cli
+/backend sdcpp qwen-image /path/to/sd-cli
 /set width 1024
 /set height 1024
 /t2i "a cinematic photo of a red fox in snow" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
@@ -502,29 +514,26 @@ Any extra `--flag` you pass (like `--sampling-method euler`) is forwarded to the
 - Python bindings mode: keys are mapped to python binding kwargs when supported; unsupported keys are ignored (see [`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
 - Diffusers backend: only forwards kwargs that the pipeline `__call__` accepts; unknown keys are ignored (see [`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
 
-### 6.5 FLUX.2-klein-4B (GGUF) example
+### 6.5 FLUX.2-klein-4B / FLUX.2-klein-base-4B (GGUF) example
 
-Stable-diffusion.cpp supports FLUX.2-klein-4B GGUF when you provide:
+The curated `sdcpp` presets now download the main GGUF plus the required companion artifacts and let you refer to the
+model by key afterward.
 
-- a GGUF diffusion model (e.g. `flux-2-klein-4b-Q8_0.gguf`)
-- the FLUX.2 VAE (safetensors)
-- an LLM text encoder (GGUF), e.g. `Qwen3-4B-Q4_K_M.gguf`
-
-You can download the matching set with:
-
-```bash
-python scripts/download_model_sets.py --set flux2_klein_4b_gguf
-```
-
-Example (REPL):
+Example:
 
 ```text
-/backend sdcpp /path/to/flux-2-klein-4b-Q8_0.gguf /path/to/flux2_ae.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+/backend sdcpp flux2-klein-base-4b /path/to/sd-cli
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
 ```
 
-FLUX.2-dev and Qwen Image GGUF are still documented here as heavier follow-ups, but try the single-file Stable
-Diffusion path or klein-4B first when you are testing a fresh machine.
+Advanced/manual mode is still supported if you want to wire explicit component paths yourself:
+
+```text
+/backend sdcpp /path/to/flux-2-klein-base-4b-Q8_0.gguf /path/to/vae/diffusion_pytorch_model.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+```
+
+FLUX.2-dev and Qwen Image GGUF are still heavier follow-ups, but the single-file Stable Diffusion path or the curated
+klein bundle above should be the first local test on a fresh machine.
 
 ---
 

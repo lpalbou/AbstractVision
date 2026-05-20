@@ -81,14 +81,14 @@ These are engineering estimates, not measured guarantees. CI/unit tests should c
 - Add backend-local warmup bookkeeping so repeated `preload()` calls do not rerun the same warmup unnecessarily.
 - For `mflux`, after model construction, run one minimal valid representative generation on the runtime thread and discard the output.
 - For `diffusers`, keep the current `t2i` focus but run one normalized representative pipeline call and discard the output.
-- For `stable-diffusion.cpp` python mode, run one best-effort representative generation and discard the output; leave CLI mode unchanged.
+- For `stable-diffusion.cpp` python mode, start by testing representative warmup, but keep the backend free to stop at eager model construction if measurement shows full hidden generation is not worth the cost; leave CLI mode unchanged.
 - Add tests that prove `preload()` executes the real generate path once and that the first subsequent user request reuses the already-warmed state.
 
 ## Success criteria
 
 - `preload()` on `mflux` executes a representative generate path, not just model construction.
 - `preload()` on `diffusers` executes a representative `t2i` pipeline call, not just pipeline loading.
-- `preload()` on `stable-diffusion.cpp` python mode executes a representative generate path; CLI mode remains load-only/no-op.
+- `preload()` on `stable-diffusion.cpp` python mode performs the most cost-effective eager preparation that survives into the next request; CLI mode remains load-only/no-op.
 - Repeated `preload()` calls for the same loaded state do not rerun warmup.
 - Existing generation/edit behavior remains intact and the relevant backend tests pass.
 
@@ -108,7 +108,7 @@ Date: 2026-05-20
 
 - `mflux` `preload()` now executes one real deterministic text-to-image warmup on the existing runtime thread and remembers warm state by `_model_key`, so repeated preload calls do not rerun the same work.
 - `huggingface_diffusers` `preload()` still targets the common `t2i` pipeline, but it now runs a real warmup inference once per loaded pipeline object and serializes preload/generate/edit behind a backend-local `RLock`.
-- `stable_diffusion_cpp` python mode now performs one real warmup generate during `preload()` and remembers warm state per loaded python model; CLI mode remains unchanged because it has no persistent in-process state to warm.
+- `stable_diffusion_cpp` python mode was initially implemented with a real warmup generate during `preload()`, but follow-up measurement showed that eager model construction captures the useful gain more cleanly. The final behavior is load-only `preload()` for python mode; CLI mode remains unchanged because it has no persistent in-process state to warm.
 - `PlaygroundState.load_model()` now preloads the replacement backend before swapping active state, so a warmup failure no longer drops the previously active model.
 
 ### Files And Symbols Touched
@@ -127,7 +127,6 @@ Date: 2026-05-20
   - `HuggingFaceDiffusersVisionBackend._warmup_generation_request()`
 - `src/abstractvision/backends/stable_diffusion_cpp.py`
   - `StableDiffusionCppVisionBackend.preload()`
-  - `StableDiffusionCppVisionBackend._warmup_generation_request()`
   - `StableDiffusionCppVisionBackend._generate_image_python()`
   - `StableDiffusionCppVisionBackend.generate_image_with_progress()`
 - `src/abstractvision/playground_server.py`
@@ -176,25 +175,36 @@ Measured medians:
   - preload call: `16.618s`
   - first request after preload: `6.787s`
   - first-request latency improvement after preload: `59.7%`
+- `stable-diffusion.cpp` python mode
+  - model stack: `leejet/FLUX.2-klein-base-4B-GGUF` (`Q8_0`) + official `black-forest-labs/FLUX.2-klein-base-4B` VAE + `unsloth/Qwen3-4B-GGUF` (`Q4_K_M`)
+  - backend/runtime: `stable-diffusion-cpp-python 0.4.5`, CPU backend on this machine
+  - benchmark shape: `256x256`, `steps=1`, Euler, fresh subprocesses
+  - final shipped `preload()` median: `2.432s`
+  - cold first request median: `27.321s`
+  - first request after `preload()` median: `24.753s`
+  - first-request latency improvement after `preload()`: `9.4%`
+  - deeper comparison showed that this gain comes from eager model construction; an experimental hidden full-warmup variant was worse operationally at about `49.511s` preload and `25.723s` first request after preload
 
 Interpretation:
 
 - `preload()` does not reduce total `preload + first request` wall time; it shifts expensive one-time work out of the first user-visible request.
 - `mflux` now lands in the expected “large win” class and materially validates the implementation direction.
 - `diffusers` improved more than originally estimated on this machine and model, which suggests this backend had more first-inference one-time work than the earlier code-only estimate implied.
+- `stable-diffusion.cpp` python mode now has measured validation too, but the gain is modest and comes almost entirely from eager model construction. A hidden full warmup generation made `preload()` much more expensive without improving the next request enough to justify it.
 
 ### Outcome Against Estimates
 
 - `mflux`: the implementation now warms the real in-process generate path using backend-default dimensions and model-default steps/guidance, which is the strongest practical move available in the current architecture.
 - `diffusers`: the implementation now warms one real `t2i` pipeline call using backend/model defaults, which should reduce first-request latency for long-lived workers without expanding the public API.
-- `stable-diffusion.cpp` python mode: the implementation now warms one real python-binding generate path; CLI mode remains correctly untouched.
+- `stable-diffusion.cpp` python mode: follow-up measurement showed the useful benefit is eager model construction, not hidden representative generation. The final implementation keeps load-only `preload()` for python mode and still shows a measured `9.4%` first-request reduction on a real FLUX.2 component stack; CLI mode remains correctly untouched.
 
 ### Residual Risks And Limits
 
-- The unit tests prove that `preload()` now executes the real generate path and that repeated preload calls do not repeat the work for the same loaded state. Real benchmark examples now exist for `mflux` and `diffusers` on this machine, but not yet for `stable-diffusion.cpp`.
+- The unit tests prove the current backend-specific preload behavior and that repeated preload calls remain safe. Real benchmark examples now exist for `mflux`, `diffusers`, and `stable-diffusion.cpp` python mode on this machine.
 - `huggingface_diffusers` warmup intentionally targets only the common `t2i` path. It does not separately warm `i2i`, `inpaint`, LoRA-specific, or Rapid-AIO-specific variants during preload.
 - Warmup remains best-effort. It improves the first matching request, but it is not a promise that every later request shape or backend-specific variant is fully hot.
-- `stable-diffusion.cpp` python-mode benchmarking is still unmeasured here because no compatible local image GGUF model was present on this machine.
+- The `stable-diffusion.cpp` number above is for python-binding CPU mode. CLI mode still has no meaningful persistent warm state in the current architecture, so the benchmark does not change the earlier conclusion that CLI warmup remains effectively unsupported.
+- The `stable-diffusion.cpp` benchmark also used an official Black Forest Labs FLUX.2 VAE side artifact rather than a Comfy-hosted VAE, which confirms that this FLUX.2 component stack does not require a Comfy-specific VAE source.
 - Installing `mflux` for measurement upgraded the local Python environment's `numpy` and `pillow` versions to satisfy `mflux` runtime requirements. AbstractVision's tested slice still passed afterward, but the shared interpreter now reports dependency conflicts with `digital-article-backend`.
 
 ### Post-Completion Insights

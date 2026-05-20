@@ -24,6 +24,14 @@ AbstractVision stands on the shoulders of excellent open-source projects and com
 
 - **stable-diffusion.cpp** (upstream project that provides `sd-cli` and the core GGUF runtime wrapped by the bindings): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
 
+## Referenced model/component publishers
+
+- **Comfy-Org** (component artifacts referenced by docs and download helpers for `stable-diffusion.cpp` examples, notably Qwen Image and FLUX.2 VAE files): [`docs/getting-started.md`](docs/getting-started.md), [`scripts/download_model_sets.py`](scripts/download_model_sets.py)
+- **Black Forest Labs** (official FLUX.2 upstream weights and side artifacts referenced by the capability registry and local-backend docs): [`src/abstractvision/assets/vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json), [`docs/getting-started.md`](docs/getting-started.md)
+- **Qwen** (official Qwen Image / Qwen Image Edit upstream weights referenced by the capability registry and `stable-diffusion.cpp` component-mode docs): [`src/abstractvision/assets/vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json), [`docs/getting-started.md`](docs/getting-started.md)
+- **Unsloth** (community GGUF conversions and companion encoder files referenced by the capability registry and some GGUF download presets): [`src/abstractvision/assets/vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json), [`scripts/download_model_sets.py`](scripts/download_model_sets.py)
+- **leejet** (stable-diffusion.cpp maintainer-published runtime and GGUF conversions referenced by the `sdcpp` backend docs and GGUF download presets): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py), [`scripts/download_model_sets.py`](scripts/download_model_sets.py)
+
 ## Optional integrations
 
 - **AbstractCore** (tool integration helpers + capability plugin): [`src/abstractvision/integrations/`](src/abstractvision/integrations/) (optional dependency in [`pyproject.toml`](pyproject.toml))

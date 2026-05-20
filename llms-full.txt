@@ -23,6 +23,9 @@ Included files:
 - `docs/reference/backends.md`
 - `docs/reference/configuration.md`
 - `docs/reference/capabilities-registry.md`
+- `docs/adr/README.md`
+- `docs/adr/0005_curated_capability_registry_and_download_catalog.md`
+- `docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md`
 - `docs/reference/artifacts.md`
 - `docs/reference/abstractcore-integration.md`
 - `playground/README.md`
@@ -35,7 +38,7 @@ Included files:
 --- 8< --- FILE: llms.txt --- 8< ---
 # AbstractVision
 
-> Model-agnostic generative vision API (images, optional video) with a capability registry, artifact-ref outputs, and backends for OpenAI-compatible HTTP, Diffusers, and stable-diffusion.cpp.
+> Model-agnostic generative vision API (images, optional video) with a capability registry, artifact-ref outputs, and backends for OpenAI-compatible HTTP, Diffusers, stable-diffusion.cpp, and MFLUX.
 
 This repository’s current source of truth is the code under `src/abstractvision/` (docs in `docs/`).
 
@@ -50,6 +53,7 @@ Agent quickstart (choose the path that matches your goal):
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md` (includes local model residency control for in-process backends).
 - **Inspect provider model catalogs**: use `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, or `llm.vision.list_provider_models(...)`; catalog listing is explicit and does not select the active model.
 - **Inspect local model/task metadata**: use `abstractvision model-catalog`, `abstractvision show-model`, or `GET /v1/vision/models`; `image_to_image` in `task_specs` is the explicit edit-capability signal for local surfaces.
+- **Need the model curation policy**: read `docs/reference/capabilities-registry.md`, `docs/adr/0005_curated_capability_registry_and_download_catalog.md`, and `docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
 - **Need local Diffusers**: install `abstractvision[diffusers]`, set `ABSTRACTVISION_BACKEND=diffusers`, pre-download `runwayml/stable-diffusion-v1-5`, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
 
@@ -72,6 +76,9 @@ Reality checks (current shipped behavior, anchored in code):
 - [docs/reference/backends.md](docs/reference/backends.md): backend support matrix + config notes
 - [docs/reference/configuration.md](docs/reference/configuration.md): CLI/REPL commands + `ABSTRACTVISION_*` env vars
 - [docs/reference/capabilities-registry.md](docs/reference/capabilities-registry.md): capability registry format + usage
+- [docs/adr/README.md](docs/adr/README.md): ADR index for durable engineering policy
+- [docs/adr/0005_curated_capability_registry_and_download_catalog.md](docs/adr/0005_curated_capability_registry_and_download_catalog.md): packaged capability registry and cache-backed model catalog policy
+- [docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md](docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md): explicit runtime selection, cache-only defaults, and network-use policy
 - [docs/reference/artifacts.md](docs/reference/artifacts.md): artifact refs + stores
 - [docs/reference/abstractcore-integration.md](docs/reference/abstractcore-integration.md): AbstractCore plugin + tool helpers
 - [playground/README.md](playground/README.md): self-contained local web UI/API served by `abstractvision playground`
@@ -136,6 +143,7 @@ Model-agnostic generative vision API (images, optional video) for Python and the
   - OpenAI-compatible HTTP: [`openai_compatible.py`](src/abstractvision/backends/openai_compatible.py)
   - Local Diffusers: [`huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py)
   - Local stable-diffusion.cpp / GGUF: [`stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
+  - Local MFLUX / MLX bridge for curated Apple Silicon presets: [`mflux.py`](src/abstractvision/backends/mflux.py)
 - CLI for manual testing (`abstractvision cli`, legacy alias: `abstractvision repl`): [`abstractvision`](src/abstractvision/cli.py)
 - Self-contained local Playground UI/API: [`playground/vision_playground.html`](playground/vision_playground.html) (docs: [`playground/README.md`](playground/README.md))
 
@@ -228,6 +236,7 @@ Start here:
 - FAQ: [`docs/faq.md`](docs/faq.md)
 - API reference: [`docs/api.md`](docs/api.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
+- Capability registry + catalog policy: [`docs/reference/capabilities-registry.md`](docs/reference/capabilities-registry.md), [`docs/adr/README.md`](docs/adr/README.md)
 - Docs index: [`docs/README.md`](docs/README.md)
 
 ### First local model (8-bit first)
@@ -244,14 +253,15 @@ pip install "abstractvision[models,mflux]"
 abstractvision model-presets
 abstractvision model-catalog --provider mflux
 # Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
-abstractvision download-model flux1-dev --provider mflux
-abstractvision download-model flux1-schnell --provider mflux
 abstractvision download-model flux2-klein-4b --provider mflux
 abstractvision download-model flux2-klein-9b --provider mflux
 abstractvision download-model qwen-image --provider mflux
 abstractvision download-model z-image-turbo --provider mflux
 abstractvision t2i --provider mflux --model flux2-klein-4b "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 ```
+
+The shipped MFLUX backend currently supports the curated `flux2-klein-4b`,
+`flux2-klein-9b`, `qwen-image`, and `z-image-turbo` preset families.
 
 Stable Diffusion does not currently have a curated MLX 8-bit preset in
 AbstractVision, so full Diffusers downloads remain explicit.
@@ -418,11 +428,12 @@ Current behavior:
 - Model-specific request normalization happens at the API/backend layer, not just in the page. The same MFLUX and GLM parameter corrections therefore apply to the playground, `abstractvision cli`, and AbstractCore.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
-One-shot commands (OpenAI-compatible HTTP backend only):
+One-shot commands default to the OpenAI-compatible HTTP backend, but they also support local providers:
 
 ```bash
 abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"
 abstractvision i2i --base-url http://localhost:1234/v1 --image ./input.png "make it watercolor"
+abstractvision t2i --provider diffusers --model qwen-image "a studio photo of an espresso machine"
 ```
 
 #### Local GGUF via stable-diffusion.cpp
@@ -445,12 +456,19 @@ In the REPL:
 /t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
 ```
 
-FLUX.2-klein-4B GGUF component example:
+Curated FLUX/Qwen GGUF bundle example:
+
+```bash
+abstractvision download-model flux2-klein-base-4b --provider sdcpp
+```
 
 ```text
-/backend sdcpp /path/to/flux-2-klein-4b-Q8_0.gguf /path/to/flux2_ae.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+/backend sdcpp flux2-klein-base-4b /path/to/sd-cli
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
 ```
+
+The package resolves the required VAE and text-encoder companions from the cache automatically for curated `sdcpp`
+model keys. Manual component wiring remains available for advanced cases.
 
 Extra flags are forwarded via `request.extra`. In CLI mode they are forwarded to `sd-cli`; in python bindings mode, keys are mapped to python binding kwargs when supported and unsupported keys are ignored.
 
@@ -519,6 +537,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 
 - [FAQ](faq.md)
 - [API reference](api.md)
+- [Architecture decisions](adr/README.md)
 - [Backends](reference/backends.md)
 - [Configuration (CLI/REPL env vars + flags)](reference/configuration.md)
 - [Capability registry (`vision_model_capabilities.json`)](reference/capabilities-registry.md)
@@ -542,13 +561,17 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 - `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
 
 Built-in backends implement:
-- **Images**: Diffusers, stable-diffusion.cpp, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
+- **Images**: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
 - **Video**: OpenAI-compatible HTTP only, and only when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
 If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
 [`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) (loaded by `VisionModelCapabilitiesRegistry` in [`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
+The curation and cross-platform support policy for that registry is governed by
+[ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
 
 ## Internal engineering notes
+
+[`docs/adr/`](adr/) contains durable engineering policy.
 
 [`docs/backlog/`](backlog/) is an internal log (planned work + completion reports). It is not the normative user documentation surface.
 
@@ -1039,14 +1062,26 @@ abstractvision repl
 If `sd-cli` is already in your `PATH`, you can omit the final `/path/to/sd-cli` argument. If it is not available,
 AbstractVision falls back to `stable-diffusion-cpp-python` when that package is installed, for example through `pip install "abstractvision[sdcpp]"`.
 
-### 6.3 Download the required Qwen Image VAE
+### 6.3 Curated `sdcpp` bundles
+
+For Qwen Image and FLUX GGUF, external users should not have to manually locate a VAE or text encoder.
+Download the curated bundle once, then use the model key everywhere:
 
 ```bash
-curl -L -o ./qwen_image_vae.safetensors \
-  https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
+abstractvision download-model qwen-image --provider sdcpp
+abstractvision download-model flux2-klein-base-4b --provider sdcpp
 ```
 
-### 6.4 Run Qwen Image with `sdcpp` component mode
+AbstractVision resolves the required side artifacts from the Hugging Face cache automatically:
+
+- CLI one-shot: `abstractvision t2i --provider sdcpp --model flux2-klein-base-4b "..."`
+- REPL: `/backend sdcpp flux2-klein-base-4b /path/to/sd-cli`
+- Playground / AbstractCore plugin: set the model key and let the package resolve the cached bundle
+
+If a required companion file is missing, the package now fails early with a precise `download-model ... --provider sdcpp`
+hint instead of starting generation and then failing deep in the runtime.
+
+### 6.4 Run Qwen Image with `sdcpp`
 
 ```bash
 abstractvision repl
@@ -1055,7 +1090,7 @@ abstractvision repl
 Then:
 
 ```text
-/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf ./qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf /path/to/sd-cli
+/backend sdcpp qwen-image /path/to/sd-cli
 /set width 1024
 /set height 1024
 /t2i "a cinematic photo of a red fox in snow" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
@@ -1066,29 +1101,26 @@ Any extra `--flag` you pass (like `--sampling-method euler`) is forwarded to the
 - Python bindings mode: keys are mapped to python binding kwargs when supported; unsupported keys are ignored (see [`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
 - Diffusers backend: only forwards kwargs that the pipeline `__call__` accepts; unknown keys are ignored (see [`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
 
-### 6.5 FLUX.2-klein-4B (GGUF) example
+### 6.5 FLUX.2-klein-4B / FLUX.2-klein-base-4B (GGUF) example
 
-Stable-diffusion.cpp supports FLUX.2-klein-4B GGUF when you provide:
+The curated `sdcpp` presets now download the main GGUF plus the required companion artifacts and let you refer to the
+model by key afterward.
 
-- a GGUF diffusion model (e.g. `flux-2-klein-4b-Q8_0.gguf`)
-- the FLUX.2 VAE (safetensors)
-- an LLM text encoder (GGUF), e.g. `Qwen3-4B-Q4_K_M.gguf`
-
-You can download the matching set with:
-
-```bash
-python scripts/download_model_sets.py --set flux2_klein_4b_gguf
-```
-
-Example (REPL):
+Example:
 
 ```text
-/backend sdcpp /path/to/flux-2-klein-4b-Q8_0.gguf /path/to/flux2_ae.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+/backend sdcpp flux2-klein-base-4b /path/to/sd-cli
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
 ```
 
-FLUX.2-dev and Qwen Image GGUF are still documented here as heavier follow-ups, but try the single-file Stable
-Diffusion path or klein-4B first when you are testing a fresh machine.
+Advanced/manual mode is still supported if you want to wire explicit component paths yourself:
+
+```text
+/backend sdcpp /path/to/flux-2-klein-base-4b-Q8_0.gguf /path/to/vae/diffusion_pytorch_model.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+```
+
+FLUX.2-dev and Qwen Image GGUF are still heavier follow-ups, but the single-file Stable Diffusion path or the curated
+klein bundle above should be the first local test on a fresh machine.
 
 ---
 
@@ -1162,6 +1194,7 @@ Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvis
 - `OpenAICompatibleVisionBackend` (HTTP)
 - `HuggingFaceDiffusersVisionBackend` (local Diffusers)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
+- `MFluxVisionBackend` (local Apple Silicon MFLUX bridge for curated MLX presets)
 
 Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 
@@ -1312,6 +1345,7 @@ See also:
 - Getting started: [docs/getting-started.md](getting-started.md)
 - API reference: [docs/api.md](api.md)
 - FAQ: [docs/faq.md](faq.md)
+- ADR index: [docs/adr/README.md](adr/README.md)
 - Backends: [docs/reference/backends.md](reference/backends.md)
 - Capability registry: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
 - Artifacts: [docs/reference/artifacts.md](reference/artifacts.md)
@@ -1346,6 +1380,8 @@ It is not the owner of “LLM image/video input attachments” (multimodal input
   - Implementations live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/).
 - **Capability registry**: [`VisionModelCapabilitiesRegistry`](../src/abstractvision/model_capabilities.py)
   - Loads packaged data: [`vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json).
+  - Governs the model catalog, task metadata, and curated download surfaces as a product surface,
+    not just as incidental documentation metadata. See [ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
 - **Artifact outputs**: [`MediaStore`](../src/abstractvision/artifacts.py), [`LocalAssetStore`](../src/abstractvision/artifacts.py), [`RuntimeArtifactStoreAdapter`](../src/abstractvision/artifacts.py)
   - Artifact ref helper: `is_artifact_ref()` (see [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py)).
 - **CLI/REPL**: `abstractvision` entrypoint ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py))
@@ -1390,10 +1426,24 @@ The public API includes `text_to_video`, `image_to_video`, and `multi_view_image
   - OpenAI-compatible HTTP backend ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
   - Diffusers backend ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
   - stable-diffusion.cpp backend ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
+  - MFLUX backend for curated Apple Silicon MLX presets ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py))
 - Video is supported **only** by the OpenAI-compatible backend, and only when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).
 - No built-in backend implements `multi_view_image` yet (they raise `CapabilityNotSupportedError` in `generate_angles(...)`).
 
 For a detailed support matrix and configuration options, see [docs/reference/backends.md](reference/backends.md).
+
+## Catalog and compatibility policy
+
+AbstractVision treats model discovery, curated downloads, and runtime compatibility as part of the
+product surface:
+
+- the registry is global and platform-neutral;
+- host-specific recommendation happens later in catalog or preset selection;
+- one parent model family may expose multiple engine-specific variants;
+- official upstream repos are preferred, with curated community ports used only when they provide
+  the best runtime-native artifact for a target engine.
+
+That policy is defined in [ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
 
 ## AbstractCore plugin flow (framework integration)
 
@@ -1497,9 +1547,9 @@ After that works, `black-forest-labs/FLUX.2-klein-4B` is the recommended next lo
 
 ## Does `abstractvision t2i` run locally?
 
-`abstractvision t2i` / `abstractvision i2i` are one-shot helpers for the **OpenAI-compatible HTTP backend** ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+Yes. `abstractvision t2i` / `abstractvision i2i` default to the OpenAI-compatible HTTP backend, but they also support local providers through `--provider diffusers`, `--provider mflux`, or `--provider sdcpp` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
 
-For local generation, use `abstractvision repl` with `/backend diffusers ...` or `/backend sdcpp ...`.
+For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mflux ...`, or `/backend sdcpp ...`.
 
 ## Where do generated outputs go?
 
@@ -1616,7 +1666,7 @@ See also:
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. |
 | MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
-| stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components. |
+| stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
 - `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
@@ -1727,12 +1777,11 @@ Model presets:
   - `abstractvision model-catalog --provider mflux` (add `--all` for full fallback list)
   - Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
 - Download a curated 8-bit preset into the Hugging Face cache (legacy `~/models` trees auto-migrate when encountered):
-  - `abstractvision download-model flux1-dev --provider mflux`
-  - `abstractvision download-model flux1-schnell --provider mflux`
   - `abstractvision download-model flux2-klein-4b --provider mflux`
   - `abstractvision download-model flux2-klein-9b --provider mflux`
   - `abstractvision download-model qwen-image --provider mflux`
   - `abstractvision download-model z-image-turbo --provider mflux`
+- Current shipped backend coverage is limited to those curated MFLUX families: `flux2-klein-4b`, `flux2-klein-9b`, `qwen-image`, and `z-image-turbo`.
 
 Config/env:
 - `ABSTRACTVISION_PROVIDER=mflux` (alias: `ABSTRACTVISION_BACKEND=mflux`)
@@ -1765,8 +1814,10 @@ Notes:
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means **CPU-only**, so FLUX/Qwen-class models can be extremely slow.
 - The optional python binding is constrained below `0.4.6` because that sdist
   currently misses vendored CMake files needed by native Linux builds.
-- Interactive CLI selection supports both `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]` and
+- Interactive CLI selection supports both `/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]` and
   `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`.
+- One-shot CLI, playground, and the AbstractCore plugin can also accept curated `sdcpp` model keys such as
+  `flux2-klein-base-4b` or `qwen-image` after `abstractvision download-model ... --provider sdcpp`.
 - Python code and AbstractCore plugin configuration can also pass component paths such as `clip_l`, `clip_g`, `t5xxl`, `llm_vision`, plus `extra_args`, `timeout_s`, and `cwd`.
 
 Code pointers:
@@ -1813,7 +1864,7 @@ Inside `abstractvision cli`:
 - `/provider-models [--task text_to_image] [--json]` — query the configured OpenAI-compatible provider catalog
 - `/backend mflux <preset_or_local_path> [base_model]`
 - `/backend diffusers <model_id_or_path> [device] [torch_dtype]`
-- `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]`
+- `/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]`
 - `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`
 
 Run `/help` in the interactive CLI to see the full command list (generated by `_repl_help()` in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)).
@@ -1882,12 +1933,18 @@ Playground-only Diffusers vars:
 ### stable-diffusion.cpp backend
 
 - `ABSTRACTVISION_SDCPP_BIN` — `sd-cli` path/name (default: `sd-cli`)
-- `ABSTRACTVISION_SDCPP_MODEL` — optional full-model path for single-file Stable Diffusion checkpoints/GGUF (alternative to component mode)
+- `ABSTRACTVISION_SDCPP_MODEL` — optional curated model key or single-file model path. For curated keys such as `flux2-klein-base-4b` or `qwen-image`, AbstractVision resolves cached VAE/LLM companions automatically.
 - `ABSTRACTVISION_SDCPP_DIFFUSION_MODEL` — GGUF diffusion model path
 - `ABSTRACTVISION_SDCPP_VAE` — VAE safetensors path (required for component-mode models like Qwen Image GGUF and FLUX.2 GGUF)
 - `ABSTRACTVISION_SDCPP_LLM` — text encoder path (often GGUF; required for component-mode models like Qwen Image GGUF and FLUX.2 GGUF)
 - `ABSTRACTVISION_SDCPP_LLM_VISION` — optional vision encoder GGUF path
 - `ABSTRACTVISION_SDCPP_EXTRA_ARGS` — extra `sd-cli` flags (string, split like a shell)
+
+Curated bundle flow:
+- `abstractvision download-model flux2-klein-base-4b --provider sdcpp`
+- `abstractvision t2i --provider sdcpp --model flux2-klein-base-4b "a studio photo of an espresso machine"`
+
+This keeps the UX simple for external users: the package owns the bundle map and resolves side artifacts from the cache.
 
 Tip:
 - If you want **Metal** acceleration on macOS (Apple Silicon), install a Metal-capable `sd-cli` binary from
@@ -1898,7 +1955,8 @@ Tip:
 --- 8< --- FILE: docs/reference/capabilities-registry.md --- 8< ---
 # Capability registry (`vision_model_capabilities.json`)
 
-AbstractVision keeps a single packaged “source of truth” for what models can do:
+AbstractVision keeps a single packaged “source of truth” for what model families can do and how
+AbstractVision understands their downloadable runtime variants:
 
 - Asset: [`../../src/abstractvision/assets/vision_model_capabilities.json`](../../src/abstractvision/assets/vision_model_capabilities.json)
 - Loader + validator: `VisionModelCapabilitiesRegistry` / `validate_capabilities_json()` in [`../../src/abstractvision/model_capabilities.py`](../../src/abstractvision/model_capabilities.py)
@@ -1906,6 +1964,25 @@ AbstractVision keeps a single packaged “source of truth” for what models can
 See also:
 - CLI/REPL inspection commands: [docs/reference/configuration.md](configuration.md)
 - Backends (execution reality): [docs/reference/backends.md](backends.md)
+- ADR policy: [docs/adr/0005_curated_capability_registry_and_download_catalog.md](../adr/0005_curated_capability_registry_and_download_catalog.md)
+
+## Policy boundary
+
+The registry is not just descriptive metadata. In this repo it is the authoritative compatibility
+inventory that feeds:
+
+- model discovery;
+- task and parameter introspection;
+- curated download surfacing;
+- backend request normalization.
+
+Under [ADR 0005](../adr/0005_curated_capability_registry_and_download_catalog.md), this inventory is:
+
+- global rather than host-specific;
+- organized around parent model families with engine-specific download variants;
+- official-upstream-first, with clearly labeled community ports only when they are the best
+  runtime-native choice for a target engine;
+- explicit about download-only or backend-not-supported states.
 
 ## What the registry is used for
 
@@ -1922,6 +1999,20 @@ See also:
 Important:
 - The registry describes **model capability intent**.
 - Your configured backend still needs to implement the task at runtime (see backend support matrix in [docs/reference/backends.md](backends.md)).
+
+## Curation rules
+
+When editing the registry:
+
+- keep one parent entry per real model family;
+- keep host-specific or engine-specific artifacts in `downloads`, not as duplicated top-level
+  model entries;
+- prefer official upstream repos;
+- use community repos only for runtime-native artifacts such as GGUF or MLX ports when no
+  official equivalent exists;
+- do not promote adapter-only or component-only repos as standalone curated models unless the
+  runtime can orchestrate them as first-class flows;
+- mark non-runnable local entries explicitly when the backend is not shipped yet.
 
 ## Minimal Python usage
 
@@ -1973,10 +2064,257 @@ Some models include a `downloads` list to document what AbstractVision considers
 - `repo_id`: Hugging Face repo id to download
 - optional `source`, `notes`
 
-This metadata is descriptive; the curated preset list printed by `abstractvision model-catalog` remains the practical “what can I download” view.
+This metadata is descriptive, but in this repo it is maintained to align with the curated
+download surfaces exposed by `abstractvision model-catalog`, `abstractvision model-presets`, and
+`abstractvision download-model`.
 
 In this repo, we keep `downloads` entries aligned with the curated preset table (`model_downloads._PRESETS`) so `abstractvision show-model` and the docs can reliably describe what the CLI can download.
+That alignment is intentionally user-facing: if a variant is curated for download, it should have
+clear provenance, a realistic runtime target, and a documented readiness story.
 --- >8 --- END FILE: docs/reference/capabilities-registry.md --- >8 ---
+
+--- 8< --- FILE: docs/adr/README.md --- 8< ---
+# ADRs
+
+This directory records durable engineering policy for `abstractvision`.
+
+## Accepted
+
+- [ADR 0003: Keep the base package lightweight and make local runtimes explicit](0003_lightweight_base_package_and_explicit_runtime_extras.md)
+  Base installs stay dependency-light; heavy local runtimes and model-download helpers remain optional extras.
+- [ADR 0004: Keep the orchestrator thin and make model semantics backend-owned](0004_thin_orchestrator_and_backend_owned_model_semantics.md)
+  `VisionManager` delegates; backend normalization and runtime-specific behavior stay in the backend/package layer.
+- [ADR 0005: Own a curated capability registry and cache-backed model catalog](0005_curated_capability_registry_and_download_catalog.md)
+  The packaged registry and curated download surfaces are product-facing compatibility contracts, not incidental metadata.
+- [ADR 0006: Keep runtime selection explicit and operator-controlled](0006_operator_control_configuration_precedence_and_explicit_network_use.md)
+  Config precedence, cache-only defaults, and model selection must stay explicit across CLI, playground, and AbstractCore.
+- [ADR 0007: Disclose fallbacks and degraded modes explicitly](0007_explicit_fallback_and_degraded_mode_disclosure.md)
+  Fallbacks that change provenance, quality, or runtime behavior must be surfaced rather than hidden.
+- [ADR 0008: Require validation and evidence-based change reporting](0008_validation_and_evidence_based_change_reporting.md)
+  Backend, catalog, and performance claims need reproducible checks and clear measured-versus-estimated reporting.
+- [ADR 0009: Keep docs, backlog, and ADRs code-first](0009_code_first_docs_backlog_and_adr_discipline.md)
+  Code is the operational source of truth; durable policy lives here, and execution history lives in `docs/backlog/`.
+
+## Superseded
+
+- [ADR 0001: AbstractVision owns the curated cross-platform model catalog and compatibility layer](0001_curated_cross_platform_model_catalog.md)
+  Superseded by ADR 0005 and ADR 0006.
+- [ADR 0002: Vision overlays and adapter composition are package-owned](0002_vision_overlays_and_adapter_composition_are_package_owned.md)
+  Superseded by ADR 0004.
+
+## Working Rules
+
+- Use ADRs for durable engineering policy that should constrain future changes.
+- Use `docs/backlog/` for planning state, implementation history, and completion reports.
+- When code, docs, backlog, and ADRs drift, fix the drift explicitly instead of relying on chat history.
+--- >8 --- END FILE: docs/adr/README.md --- >8 ---
+
+--- 8< --- FILE: docs/adr/0005_curated_capability_registry_and_download_catalog.md --- 8< ---
+# ADR 0005: Own a curated capability registry and cache-backed model catalog
+
+Status: Accepted.
+
+## Context
+
+AbstractVision does more than expose a generic image API. It also ships a packaged registry,
+download presets, model-catalog commands, and compatibility-oriented docs. Users therefore treat
+the registry and catalog as product surfaces, not as incidental internal metadata.
+
+The failure mode is predictable when this policy is left implicit:
+
+- host-specific ports crowd out the real parent model family;
+- catalog entries imply local support that the backend does not actually provide;
+- official upstream weights, runtime-native community conversions, and raw side artifacts get
+  mixed together without clear provenance;
+- users must manually assemble hidden companion files after following a “curated” flow.
+
+The current code already has the ingredients for a better contract:
+
+- [`vision_model_capabilities.json`](../../src/abstractvision/assets/vision_model_capabilities.json)
+  is packaged and validated;
+- [`model_downloads.py`](../../src/abstractvision/model_downloads.py) drives curated download
+  surfaces and host-aware selection;
+- curated `sdcpp` bundle resolution now maps model keys to their required companion artifacts.
+
+## Decision
+
+AbstractVision owns a curated, package-level compatibility inventory and download surface.
+
+The rules are:
+
+1. The packaged capability registry is the authoritative source of truth for parent model families,
+   task metadata, and curated download variants.
+2. The registry stays global and platform-neutral. Host-specific recommendation belongs in catalog
+   and preset selection logic, not in the model-family inventory itself.
+3. Each real model family should have one parent entry. Engine-specific variants, quantizations,
+   and runtime-native ports belong under that family.
+4. Official upstream repositories are preferred. Community repositories are allowed only when they
+   provide the best runtime-native artifact for a supported engine, and they must carry clear
+   provenance notes.
+5. Curated user flows must minimize undocumented manual assembly. If a curated local runtime path
+   needs companion artifacts such as VAE or encoder files, AbstractVision should own the mapping
+   and resolution for that flow.
+6. Readiness claims must match shipped backend reality. Catalog-only or download-only entries are
+   allowed, but they must be labeled honestly.
+7. The registry and curated download surface must stay aligned. A curated model path should have a
+   realistic runtime story, not just a repo id.
+
+## Consequences
+
+### Positive
+
+- Users get a clearer discovery and download story.
+- Parent families, runtime-native ports, and side artifacts are modeled more honestly.
+- The package can keep improving local UX without turning the registry into an unstructured repo
+  dump.
+
+### Negative
+
+- Curating the catalog becomes an explicit maintenance obligation.
+- Adding new model families requires provenance review and runtime validation work.
+- Some attractive community artifacts must stay out of the curated path until the runtime story is
+  honest.
+
+### Neutral
+
+- This ADR does not require every model family to support every engine.
+- Download-only entries can still exist when that is the truthful state.
+
+## Enforcement
+
+- Reviewers should reject registry or preset changes that:
+  - duplicate a model family as host-specific top-level entries;
+  - promote side artifacts or adapters as standalone curated models without first-class runtime
+    orchestration;
+  - claim runtime readiness without a matching backend path or explicit limitation;
+  - use a community artifact without explaining why it is the right runtime-native choice.
+- Changes to curated local flows must update both code and user-facing docs in the same pass.
+- When a curated `sdcpp` or similar component-based path is added, the package should prefer
+  package-owned bundle resolution over manual operator assembly.
+
+## Validation
+
+- Load and validate the packaged registry from a repo checkout.
+- Verify representative `model-catalog`, `model-presets`, and `show-model` output.
+- For changed curated download paths, verify the preset resolves the intended artifact and that the
+  resulting runtime flow is either runnable or explicitly marked as not yet runnable.
+- Add or keep focused tests for cache-backed bundle resolution when curated local flows depend on
+  companion artifacts.
+
+## Backlog links
+
+- [docs/backlog/completed/003_hf_model_landscape_and_capability_registry.md](../backlog/completed/003_hf_model_landscape_and_capability_registry.md)
+- [docs/backlog/completed/004_capability_schema_and_validation.md](../backlog/completed/004_capability_schema_and_validation.md)
+- [docs/backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md](../backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md)
+- [docs/backlog/completed/019_best_effort_preload_warmup_for_local_backends.md](../backlog/completed/019_best_effort_preload_warmup_for_local_backends.md)
+- [docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md](../backlog/planned/020_adapter_aware_model_graph_and_catalog.md)
+
+## Related
+
+- [docs/reference/capabilities-registry.md](../reference/capabilities-registry.md)
+- [docs/architecture.md](../architecture.md)
+- [src/abstractvision/model_capabilities.py](../../src/abstractvision/model_capabilities.py)
+- [src/abstractvision/model_downloads.py](../../src/abstractvision/model_downloads.py)
+- [src/abstractvision/assets/vision_model_capabilities.json](../../src/abstractvision/assets/vision_model_capabilities.json)
+--- >8 --- END FILE: docs/adr/0005_curated_capability_registry_and_download_catalog.md --- >8 ---
+
+--- 8< --- FILE: docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md --- 8< ---
+# ADR 0006: Keep runtime selection explicit and operator-controlled
+
+Status: Accepted.
+
+## Context
+
+AbstractVision can be driven through Python, CLI/REPL, playground, and AbstractCore. Those surfaces
+all combine defaults, environment variables, explicit arguments, and backend-specific behavior. The
+package also has multiple paths that could silently change operator intent if left unchecked:
+
+- runtime backend selection;
+- provider model ids;
+- cache-only versus download-enabled local behavior;
+- provider catalog inspection versus actual model selection;
+- curated bundle resolution for component-based local models.
+
+The current code already has good instincts here:
+
+- local Diffusers and MFLUX default to cache-only behavior;
+- provider catalogs are inspection-only;
+- AbstractCore owner config is read before env vars;
+- curated `sdcpp` keys resolve cached companion files and fail clearly when they are missing.
+
+That behavior needs to become durable policy.
+
+## Decision
+
+AbstractVision keeps runtime-affecting choices explicit and operator-controlled.
+
+The rules are:
+
+1. Caller-supplied config for a surface takes precedence over ambient environment variables, and
+   ambient environment variables take precedence over baked defaults.
+2. In the AbstractCore plugin, `owner.config` is authoritative over `ABSTRACTVISION_*` and related
+   environment aliases.
+3. Provider model catalogs are explicit inspection only. AbstractVision must not silently select or
+   switch image models based on `/models` responses.
+4. Local runtime downloads are opt-in. Cache-backed or pre-downloaded behavior remains the default
+   unless the operator explicitly enables downloads or runs `download-model`.
+5. Curated model keys are allowed for local flows when the package can resolve them to explicit
+   cached artifacts. Missing required artifacts must fail early with an actionable message.
+6. Legacy aliases and compatibility shims may exist, but they must remain documented and auditable.
+7. No surface should silently change backend, network, or download behavior in a way that surprises
+   an operator who did not explicitly ask for it.
+
+## Consequences
+
+### Positive
+
+- Operators can reason about backend selection and network use more reliably.
+- Cache-only local workflows stay predictable.
+- Curated local flows become simpler without hiding what files are actually being used.
+
+### Negative
+
+- Some convenience shortcuts remain intentionally unavailable if they would hide important operator
+  choices.
+- Config docs and tests must keep pace with precedence rules.
+
+### Neutral
+
+- This ADR still allows smart defaults, as long as those defaults do not silently perform material
+  new work such as downloading weights or switching to a different provider model.
+
+## Enforcement
+
+- Reviewers should reject new automatic model-selection behavior driven only by provider catalogs.
+- Reviewers should reject runtime downloads enabled by default for local backends unless a future
+  ADR changes that policy.
+- Config precedence changes must update the docs and tests in the same pass.
+- Error messages for missing curated local components must stay actionable and point back to the
+  supported download or configuration path.
+
+## Validation
+
+- Keep CLI, playground, and AbstractCore tests passing for config precedence and cache-only local
+  behavior.
+- Verify provider model listing remains inspection-only.
+- Verify curated local key resolution either resolves explicit cached files or fails with a precise
+  remediation hint.
+
+## Backlog links
+
+- [docs/backlog/completed/014_lightweight_openai_compatible_packaging.md](../backlog/completed/014_lightweight_openai_compatible_packaging.md)
+- [docs/backlog/completed/015_vision_install_profiles_and_pending_defaults.md](../backlog/completed/015_vision_install_profiles_and_pending_defaults.md)
+- [docs/backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md](../backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md)
+- [docs/backlog/completed/018_capability_residency_hooks.md](../backlog/completed/018_capability_residency_hooks.md)
+
+## Related
+
+- [docs/reference/configuration.md](../reference/configuration.md)
+- [docs/reference/abstractcore-integration.md](../reference/abstractcore-integration.md)
+- [src/abstractvision/cli.py](../../src/abstractvision/cli.py)
+- [src/abstractvision/playground_server.py](../../src/abstractvision/playground_server.py)
+- [src/abstractvision/integrations/abstractcore_plugin.py](../../src/abstractvision/integrations/abstractcore_plugin.py)
+--- >8 --- END FILE: docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md --- >8 ---
 
 --- 8< --- FILE: docs/reference/artifacts.md --- 8< ---
 # Artifacts (artifact refs + stores)
@@ -2060,7 +2398,7 @@ Current behavior:
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
 - Local MFLUX (Apple Silicon): install `abstractvision[mflux]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mflux`. Download an 8-bit MLX/MFLUX preset with `abstractvision download-model flux2-klein-4b --provider mflux` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed model ids such as `mflux/flux2-klein-4b`.
-- stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure a model path. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
+- stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure either a model path or a curated model key such as `flux2-klein-base-4b`. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 - Gateway/Core should pass process-level config or `owner.config` and report readiness; they should not mutate AbstractVision environment variables per request.
 
@@ -2072,7 +2410,7 @@ Key config keys (owner.config):
 - `vision_base_url` / `vision_api_key` (OpenAI or compatible HTTP)
 - `vision_mflux_model` / `vision_mflux_base_model` / `vision_mflux_quantize` / `vision_mflux_allow_download` (MFLUX)
 - `vision_model_dir` (legacy preset import root used by MFLUX compatibility/migration helpers; new downloads land in the Hugging Face cache)
-- `vision_sdcpp_model` / `vision_sdcpp_diffusion_model` / `vision_sdcpp_bin` (stable-diffusion.cpp)
+- `vision_sdcpp_model` / `vision_sdcpp_diffusion_model` / `vision_sdcpp_bin` (stable-diffusion.cpp; `vision_sdcpp_model` may be a curated model key such as `flux2-klein-base-4b`)
 - `vision_sdcpp_vae` / `vision_sdcpp_llm` / `vision_sdcpp_llm_vision` / `vision_sdcpp_clip_l` / `vision_sdcpp_clip_g` / `vision_sdcpp_t5xxl` / `vision_sdcpp_extra_args` (stable-diffusion.cpp component mode)
 - `vision_timeout_s` (optional)
 - `vision_models_path` (optional provider catalog path; default `/models`)
@@ -2162,8 +2500,8 @@ Notes:
 - OpenAI/OpenAI-compatible HTTP backends are intentionally rejected here, even on `localhost`,
   because the plugin cannot honestly control another process's loaded-state.
 
-`list_loaded_models()` reports both explicitly preloaded resident models and transient warm models
-that are currently loaded because of recent local generation requests. `list_resident_models()`
+`list_loaded_models()` reports both explicitly preloaded resident models and transient currently
+loaded local models from recent generation requests. `list_resident_models()`
 returns the explicit pinned subset.
 
 Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,
@@ -2328,6 +2666,7 @@ Core entrypoints:
 - [`docs/architecture.md`](docs/architecture.md)
 - [`docs/api.md`](docs/api.md)
 - [`docs/faq.md`](docs/faq.md)
+- [`docs/adr/README.md`](docs/adr/README.md)
 
 Doc hygiene checklist:
 - Commands are copy/pastable.
@@ -2346,6 +2685,16 @@ Validator + loader:
 
 Checklist:
 - Add/update the model entry in the JSON.
+- Keep the model family platform-neutral; add engine-specific artifacts as download variants rather
+  than as host-specific duplicate models.
+- Prefer official upstream repos. Use community repos only when they provide the best runtime-native
+  artifact for a target engine and label them clearly.
+- Do not treat adapters or component artifacts as standalone curated models unless the runtime path
+  is first-class.
+- Keep the change aligned with
+  [ADR 0005](docs/adr/0005_curated_capability_registry_and_download_catalog.md),
+  [ADR 0006](docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md),
+  and [docs/reference/capabilities-registry.md](docs/reference/capabilities-registry.md).
 - Run the unit tests (they validate schema + coverage).
 - Sanity check CLI output:
   - `abstractvision show-model <model_id>`
@@ -2442,6 +2791,14 @@ AbstractVision stands on the shoulders of excellent open-source projects and com
 
 - **stable-diffusion.cpp** (upstream project that provides `sd-cli` and the core GGUF runtime wrapped by the bindings): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
 
+## Referenced model/component publishers
+
+- **Comfy-Org** (component artifacts referenced by docs and download helpers for `stable-diffusion.cpp` examples, notably Qwen Image and FLUX.2 VAE files): [`docs/getting-started.md`](docs/getting-started.md), [`scripts/download_model_sets.py`](scripts/download_model_sets.py)
+- **Black Forest Labs** (official FLUX.2 upstream weights and side artifacts referenced by the capability registry and local-backend docs): [`src/abstractvision/assets/vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json), [`docs/getting-started.md`](docs/getting-started.md)
+- **Qwen** (official Qwen Image / Qwen Image Edit upstream weights referenced by the capability registry and `stable-diffusion.cpp` component-mode docs): [`src/abstractvision/assets/vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json), [`docs/getting-started.md`](docs/getting-started.md)
+- **Unsloth** (community GGUF conversions and companion encoder files referenced by the capability registry and some GGUF download presets): [`src/abstractvision/assets/vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json), [`scripts/download_model_sets.py`](scripts/download_model_sets.py)
+- **leejet** (stable-diffusion.cpp maintainer-published runtime and GGUF conversions referenced by the `sdcpp` backend docs and GGUF download presets): [`src/abstractvision/backends/stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py), [`scripts/download_model_sets.py`](scripts/download_model_sets.py)
+
 ## Optional integrations
 
 - **AbstractCore** (tool integration helpers + capability plugin): [`src/abstractvision/integrations/`](src/abstractvision/integrations/) (optional dependency in [`pyproject.toml`](pyproject.toml))
@@ -2457,6 +2814,13 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
+
+## 0.3.8 - 2026-05-20
+
+- Model registry/catalog: expand the curated `vision_model_capabilities.json` inventory with more current official or reputable vision model families and cross-platform download variants, tighten provider provenance, remove adapter-only repos from the standalone model catalog, and expose richer model notes / `task_specs` through the CLI catalog surfaces.
+- Apple/MLX semantics: treat `mlx` as a download target rather than a runnable backend, fail fast on generic `mlx` provider/model routing across CLI, playground, and AbstractCore, and limit shipped MFLUX presets/docs to the families the backend actually supports today.
+- GGUF / local-runtime routing: improve stable-diffusion.cpp bundle resolution for curated multi-artifact models and legacy Qwen GGUF repo ids, resolve curated `sdcpp` model keys consistently in both one-shot CLI and REPL paths, and make AbstractCore request-scoped `sdcpp` routing explicit while canonicalizing MFLUX aliases for backend reuse.
+- Docs/policy/tests: add the ADR set and planned backlog items for curated catalog ownership, adapter-aware model graphs, and the long-term native MLX direction; refresh README/reference/FAQ/agent docs; regenerate `llms-full.txt`; and expand regression coverage for catalog aliases, GLM defaults, MFLUX routing, and local backend bundle selection.
 
 ## 0.3.7 - 2026-05-19
 

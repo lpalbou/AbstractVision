@@ -65,9 +65,9 @@ After that works, `black-forest-labs/FLUX.2-klein-4B` is the recommended next lo
 
 ## Does `abstractvision t2i` run locally?
 
-`abstractvision t2i` / `abstractvision i2i` are one-shot helpers for the **OpenAI-compatible HTTP backend** ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+Yes. `abstractvision t2i` / `abstractvision i2i` default to the OpenAI-compatible HTTP backend, but they also support local providers through `--provider diffusers`, `--provider mflux`, or `--provider sdcpp` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
 
-For local generation, use `abstractvision repl` with `/backend diffusers ...` or `/backend sdcpp ...`.
+For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mflux ...`, or `/backend sdcpp ...`.
 
 ## Where do generated outputs go?
 

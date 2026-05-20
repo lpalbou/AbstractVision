@@ -440,6 +440,18 @@ def _is_known_mflux_model_alias(model_id: str) -> bool:
         return False
 
 
+def _canonical_mflux_model_id(model_id: Optional[str]) -> Optional[str]:
+    s = str(model_id or "").strip()
+    if not s:
+        return None
+    try:
+        from ..model_downloads import find_model_preset
+
+        return str(find_model_preset(s, target="mlx", engine="mflux", require_8bit=True).key)
+    except Exception:
+        return s
+
+
 def _read_bytes_from_path(path: Union[str, Path]) -> bytes:
     p = Path(str(path)).expanduser()
     return p.read_bytes()
@@ -600,6 +612,8 @@ class _AbstractVisionCapability:
                 "AbstractVision does not have a generic MLX image backend yet. "
                 "Use provider 'mflux' for MFLUX-compatible 8-bit MLX models."
             )
+        if provider_id in {"mflux", "m-flux"}:
+            model_id = _canonical_mflux_model_id(model_id)
 
         backend: Any
         backend_key: tuple[Any, ...]
@@ -617,6 +631,19 @@ class _AbstractVisionCapability:
             backend = self._routed_backends.get(backend_key)
             if backend is None:
                 backend = self._make_diffusers_backend(model_id=model_id or None)
+                self._routed_backends[backend_key] = backend
+        elif provider_id in {
+            "sdcpp",
+            "sd-cpp",
+            "stable-diffusion.cpp",
+            "stable-diffusion-cpp",
+            "stable_diffusion_cpp",
+        }:
+            backend_kind = "sdcpp"
+            backend_key = ("sdcpp", model_id or "default")
+            backend = self._routed_backends.get(backend_key)
+            if backend is None:
+                backend = self._make_sdcpp_backend(model_id=model_id or None)
                 self._routed_backends[backend_key] = backend
         elif provider_id in {"openai", "openai-compatible", "remote", "proxy"}:
             backend_kind = "openai-compatible" if provider_id in {"openai-compatible", "proxy"} else "openai"
@@ -961,6 +988,7 @@ class _AbstractVisionCapability:
                 or _env("ABSTRACTVISION_DIFFUSERS_MODEL_ID")
             )
         )
+        resolved_model = _canonical_mflux_model_id(str(resolved_model) if resolved_model else None)
         base_model = _owner_cfg(self._owner, "vision_mflux_base_model") or _env(
             "ABSTRACTVISION_MFLUX_BASE_MODEL"
         )
@@ -985,6 +1013,75 @@ class _AbstractVisionCapability:
             allow_download=allow_download,
         )
         return MFluxVisionBackend(config=cfg)
+
+    def _make_sdcpp_backend(self, *, model_id: Optional[str] = None):
+        model = (
+            str(model_id).strip()
+            if isinstance(model_id, str) and str(model_id).strip()
+            else (_owner_cfg(self._owner, "vision_sdcpp_model") or _env("ABSTRACTVISION_SDCPP_MODEL"))
+        )
+        diffusion_model = _owner_cfg(self._owner, "vision_sdcpp_diffusion_model") or _env(
+            "ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"
+        )
+        if not model and not diffusion_model:
+            raise AbstractVisionError(
+                "Missing stable-diffusion.cpp model configuration. Set vision_sdcpp_model, "
+                "vision_sdcpp_diffusion_model, ABSTRACTVISION_SDCPP_MODEL, or ABSTRACTVISION_SDCPP_DIFFUSION_MODEL."
+            )
+
+        from ..backends.stable_diffusion_cpp import (
+            StableDiffusionCppBackendConfig,
+            StableDiffusionCppVisionBackend,
+        )
+        from ..model_downloads import resolve_sdcpp_model_selection
+
+        vae = _owner_cfg(self._owner, "vision_sdcpp_vae") or _env("ABSTRACTVISION_SDCPP_VAE")
+        llm = _owner_cfg(self._owner, "vision_sdcpp_llm") or _env("ABSTRACTVISION_SDCPP_LLM")
+        llm_vision = _owner_cfg(self._owner, "vision_sdcpp_llm_vision") or _env("ABSTRACTVISION_SDCPP_LLM_VISION")
+        extra_args = _owner_cfg(self._owner, "vision_sdcpp_extra_args") or _env(
+            "ABSTRACTVISION_SDCPP_EXTRA_ARGS"
+        )
+        resolved_sdcpp = None
+        if model and not any((diffusion_model, vae, llm, llm_vision)):
+            try:
+                model_path = Path(str(model)).expanduser()
+            except Exception:
+                model_path = None
+            if model_path is None or not model_path.exists():
+                try:
+                    resolved_sdcpp = resolve_sdcpp_model_selection(str(model), allow_download=False)
+                except ValueError:
+                    resolved_sdcpp = None
+                except RuntimeError as e:
+                    raise AbstractVisionError(str(e)) from e
+
+        cfg = StableDiffusionCppBackendConfig(
+            sd_cli_path=_owner_cfg(self._owner, "vision_sdcpp_bin")
+            or _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli")
+            or "sd-cli",
+            model=resolved_sdcpp.model if resolved_sdcpp is not None else (str(model) if model else None),
+            diffusion_model=(
+                resolved_sdcpp.diffusion_model
+                if resolved_sdcpp is not None
+                else (str(diffusion_model) if diffusion_model else None)
+            ),
+            vae=resolved_sdcpp.vae if resolved_sdcpp is not None else vae,
+            llm=resolved_sdcpp.llm if resolved_sdcpp is not None else llm,
+            llm_vision=resolved_sdcpp.llm_vision if resolved_sdcpp is not None else llm_vision,
+            clip_l=_owner_cfg(self._owner, "vision_sdcpp_clip_l")
+            or _env("ABSTRACTVISION_SDCPP_CLIP_L"),
+            clip_g=_owner_cfg(self._owner, "vision_sdcpp_clip_g")
+            or _env("ABSTRACTVISION_SDCPP_CLIP_G"),
+            t5xxl=_owner_cfg(self._owner, "vision_sdcpp_t5xxl")
+            or _env("ABSTRACTVISION_SDCPP_T5XXL"),
+            extra_args=tuple(shlex.split(str(extra_args))) if extra_args else (),
+            timeout_s=float(
+                _owner_cfg(self._owner, "vision_timeout_s")
+                or _env("ABSTRACTVISION_TIMEOUT_S", "3600")
+                or "3600"
+            ),
+        )
+        return StableDiffusionCppVisionBackend(config=cfg)
 
     def _get_backend(self):
         if self._backend is not None:
@@ -1069,50 +1166,7 @@ class _AbstractVisionCapability:
             return self._backend
 
         if backend_kind == "sdcpp":
-            model = _owner_cfg(self._owner, "vision_sdcpp_model") or _env(
-                "ABSTRACTVISION_SDCPP_MODEL"
-            )
-            diffusion_model = _owner_cfg(self._owner, "vision_sdcpp_diffusion_model") or _env(
-                "ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"
-            )
-            if not model and not diffusion_model:
-                raise AbstractVisionError(
-                    "Missing stable-diffusion.cpp model configuration. Set vision_sdcpp_model, "
-                    "vision_sdcpp_diffusion_model, ABSTRACTVISION_SDCPP_MODEL, or ABSTRACTVISION_SDCPP_DIFFUSION_MODEL."
-                )
-
-            from ..backends.stable_diffusion_cpp import (
-                StableDiffusionCppBackendConfig,
-                StableDiffusionCppVisionBackend,
-            )
-
-            extra_args = _owner_cfg(self._owner, "vision_sdcpp_extra_args") or _env(
-                "ABSTRACTVISION_SDCPP_EXTRA_ARGS"
-            )
-            cfg = StableDiffusionCppBackendConfig(
-                sd_cli_path=_owner_cfg(self._owner, "vision_sdcpp_bin")
-                or _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli")
-                or "sd-cli",
-                model=str(model) if model else None,
-                diffusion_model=str(diffusion_model) if diffusion_model else None,
-                vae=_owner_cfg(self._owner, "vision_sdcpp_vae") or _env("ABSTRACTVISION_SDCPP_VAE"),
-                llm=_owner_cfg(self._owner, "vision_sdcpp_llm") or _env("ABSTRACTVISION_SDCPP_LLM"),
-                llm_vision=_owner_cfg(self._owner, "vision_sdcpp_llm_vision")
-                or _env("ABSTRACTVISION_SDCPP_LLM_VISION"),
-                clip_l=_owner_cfg(self._owner, "vision_sdcpp_clip_l")
-                or _env("ABSTRACTVISION_SDCPP_CLIP_L"),
-                clip_g=_owner_cfg(self._owner, "vision_sdcpp_clip_g")
-                or _env("ABSTRACTVISION_SDCPP_CLIP_G"),
-                t5xxl=_owner_cfg(self._owner, "vision_sdcpp_t5xxl")
-                or _env("ABSTRACTVISION_SDCPP_T5XXL"),
-                extra_args=tuple(shlex.split(str(extra_args))) if extra_args else (),
-                timeout_s=float(
-                    _owner_cfg(self._owner, "vision_timeout_s")
-                    or _env("ABSTRACTVISION_TIMEOUT_S", "3600")
-                    or "3600"
-                ),
-            )
-            self._backend = StableDiffusionCppVisionBackend(config=cfg)
+            self._backend = self._make_sdcpp_backend()
             return self._backend
 
         if backend_kind == "mflux":

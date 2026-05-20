@@ -10,6 +10,7 @@ See also:
 - Getting started: [docs/getting-started.md](getting-started.md)
 - API reference: [docs/api.md](api.md)
 - FAQ: [docs/faq.md](faq.md)
+- ADR index: [docs/adr/README.md](adr/README.md)
 - Backends: [docs/reference/backends.md](reference/backends.md)
 - Capability registry: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
 - Artifacts: [docs/reference/artifacts.md](reference/artifacts.md)
@@ -44,6 +45,8 @@ It is not the owner of “LLM image/video input attachments” (multimodal input
   - Implementations live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/).
 - **Capability registry**: [`VisionModelCapabilitiesRegistry`](../src/abstractvision/model_capabilities.py)
   - Loads packaged data: [`vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json).
+  - Governs the model catalog, task metadata, and curated download surfaces as a product surface,
+    not just as incidental documentation metadata. See [ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
 - **Artifact outputs**: [`MediaStore`](../src/abstractvision/artifacts.py), [`LocalAssetStore`](../src/abstractvision/artifacts.py), [`RuntimeArtifactStoreAdapter`](../src/abstractvision/artifacts.py)
   - Artifact ref helper: `is_artifact_ref()` (see [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py)).
 - **CLI/REPL**: `abstractvision` entrypoint ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py))
@@ -88,10 +91,24 @@ The public API includes `text_to_video`, `image_to_video`, and `multi_view_image
   - OpenAI-compatible HTTP backend ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
   - Diffusers backend ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
   - stable-diffusion.cpp backend ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
+  - MFLUX backend for curated Apple Silicon MLX presets ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py))
 - Video is supported **only** by the OpenAI-compatible backend, and only when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).
 - No built-in backend implements `multi_view_image` yet (they raise `CapabilityNotSupportedError` in `generate_angles(...)`).
 
 For a detailed support matrix and configuration options, see [docs/reference/backends.md](reference/backends.md).
+
+## Catalog and compatibility policy
+
+AbstractVision treats model discovery, curated downloads, and runtime compatibility as part of the
+product surface:
+
+- the registry is global and platform-neutral;
+- host-specific recommendation happens later in catalog or preset selection;
+- one parent model family may expose multiple engine-specific variants;
+- official upstream repos are preferred, with curated community ports used only when they provide
+  the best runtime-native artifact for a target engine.
+
+That policy is defined in [ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
 
 ## AbstractCore plugin flow (framework integration)
 

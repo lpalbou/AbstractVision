@@ -276,7 +276,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
             ImageGenerationRequest(prompt="fox", width=513, height=510)
         )
 
-        self.assertEqual(normalized.steps, 20)
+        self.assertEqual(normalized.steps, 50)
         self.assertEqual(normalized.guidance_scale, 1.5)
         self.assertEqual(normalized.width, 544)
         self.assertEqual(normalized.height, 512)
@@ -314,10 +314,10 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         )
         normalized = backend.normalize_image_edit_request(ImageEditRequest(prompt="watercolor", image=image_bytes))
 
-        self.assertEqual(normalized.steps, 20)
+        self.assertEqual(normalized.steps, 50)
         self.assertEqual(normalized.guidance_scale, 1.5)
-        self.assertEqual(normalized.extra.get("width"), 544)
-        self.assertEqual(normalized.extra.get("height"), 512)
+        self.assertIsNone(normalized.extra.get("width"))
+        self.assertIsNone(normalized.extra.get("height"))
 
     def test_generate_image_maps_common_params(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend

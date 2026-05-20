@@ -38,6 +38,7 @@ from .model_downloads import (
     normalize_model_target,
     resolve_hf_token,
     resolve_model_target_and_engine,
+    resolve_sdcpp_model_selection,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
 from .vision_manager import VisionManager
@@ -47,6 +48,14 @@ DEFAULT_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
 DEFAULT_DIFFUSERS_DEVICE = "auto"
 DEFAULT_T2I_WIDTH = 512
 DEFAULT_T2I_HEIGHT = 512
+
+
+def _generic_mlx_backend_error() -> str:
+    return (
+        "AbstractVision does not have a generic MLX image backend yet. "
+        "Use `--target mlx` to browse MLX artifacts and `--provider mflux` "
+        "(or `mflux/<preset>`) for MFLUX-compatible 8-bit MLX models."
+    )
 
 
 def _env(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -154,6 +163,7 @@ def _split_provider_prefix(model: Optional[str]) -> Tuple[Optional[str], Optiona
         "diffusers",
         "huggingface",
         "hf",
+        "mlx",
         "mflux",
         "m-flux",
         "sdcpp",
@@ -213,11 +223,15 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
         _env("ABSTRACTVISION_MFLUX_MODEL"),
     )
     prefix_provider, unprefixed_model = _split_provider_prefix(model_value)
+    if prefix_provider == "mlx":
+        raise SystemExit(_generic_mlx_backend_error())
     if prefix_provider and not str(getattr(args, "provider", "") or "").strip():
         provider_kind = prefix_provider
     if unprefixed_model is not None:
         model_value = unprefixed_model
 
+    if provider_kind == "mlx":
+        raise SystemExit(_generic_mlx_backend_error())
     if provider_kind == "mflux":
         backend = MFluxVisionBackend(
             config=MFluxBackendConfig(
@@ -246,14 +260,33 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
             )
         )
     elif provider_kind in {"sdcpp", "stable-diffusion.cpp", "stable-diffusion-cpp", "stable_diffusion_cpp"}:
+        sdcpp_model = str(model_value or getattr(args, "sdcpp_model", None) or "") or None
+        sdcpp_diffusion_model = str(getattr(args, "sdcpp_diffusion_model", None) or "") or None
+        sdcpp_vae = str(getattr(args, "sdcpp_vae", None) or "") or None
+        sdcpp_llm = str(getattr(args, "sdcpp_llm", None) or "") or None
+        sdcpp_llm_vision = str(getattr(args, "sdcpp_llm_vision", None) or "") or None
+        resolved_sdcpp = None
+        if sdcpp_model and not any((sdcpp_diffusion_model, sdcpp_vae, sdcpp_llm, sdcpp_llm_vision)):
+            candidate_path = Path(str(sdcpp_model)).expanduser()
+            if not candidate_path.exists():
+                try:
+                    resolved_sdcpp = resolve_sdcpp_model_selection(str(sdcpp_model), allow_download=False)
+                except ValueError:
+                    resolved_sdcpp = None
+                except RuntimeError as e:
+                    raise SystemExit(str(e)) from e
         backend = StableDiffusionCppVisionBackend(
             config=StableDiffusionCppBackendConfig(
                 sd_cli_path=str(getattr(args, "sdcpp_bin", None) or "sd-cli"),
-                model=str(model_value) if model_value else str(getattr(args, "sdcpp_model", None) or "") or None,
-                diffusion_model=str(getattr(args, "sdcpp_diffusion_model", None) or "") or None,
-                vae=str(getattr(args, "sdcpp_vae", None) or "") or None,
-                llm=str(getattr(args, "sdcpp_llm", None) or "") or None,
-                llm_vision=str(getattr(args, "sdcpp_llm_vision", None) or "") or None,
+                model=(resolved_sdcpp.model if resolved_sdcpp is not None else sdcpp_model),
+                diffusion_model=(
+                    resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else sdcpp_diffusion_model or None
+                ),
+                vae=resolved_sdcpp.vae if resolved_sdcpp is not None else sdcpp_vae or None,
+                llm=resolved_sdcpp.llm if resolved_sdcpp is not None else sdcpp_llm or None,
+                llm_vision=(
+                    resolved_sdcpp.llm_vision if resolved_sdcpp is not None else sdcpp_llm_vision or None
+                ),
                 extra_args=tuple(
                     shlex.split(str(getattr(args, "sdcpp_extra_args", "") or ""))
                     if getattr(args, "sdcpp_extra_args", None)
@@ -368,18 +401,27 @@ def _cmd_model_presets(args: argparse.Namespace) -> int:
     all_flag = bool(getattr(args, "all", False))
     include_non_8bit = all_flag
     include_all_targets = bool(getattr(args, "all_targets", False))
-    resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
-    selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets)
+    try:
+        resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
+        selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets)
+        presets = model_presets(
+            target=target,
+            engine=engine,
+            include_non_8bit=include_non_8bit,
+            include_all_targets=include_all_targets,
+        )
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
     # Diffusers artifacts are typically full snapshots; treat them as opt-in when
     # listing, but don't force an 8-bit-only view that would otherwise be empty.
     if not include_non_8bit and resolved_target in {"diffusers", "hf-snapshot"}:
         include_non_8bit = True
-    presets = model_presets(
-        target=target,
-        engine=engine,
-        include_non_8bit=include_non_8bit,
-        include_all_targets=include_all_targets,
-    )
+        presets = model_presets(
+            target=target,
+            engine=engine,
+            include_non_8bit=include_non_8bit,
+            include_all_targets=include_all_targets,
+        )
     if bool(getattr(args, "json", False)):
         _print_json([p.to_dict() for p in presets])
         return 0
@@ -428,16 +470,22 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     engine = str(getattr(args, "engine", "auto") or "auto")
     include_non_8bit = bool(getattr(args, "all", False))
     include_all_targets = bool(getattr(args, "all_targets", False))
-    resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
-    selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets)
+    try:
+        resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
+        selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets)
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
 
     reg = VisionModelCapabilitiesRegistry()
-    presets = model_presets(
-        target=target,
-        engine=engine,
-        include_non_8bit=True,
-        include_all_targets=include_all_targets,
-    )
+    try:
+        presets = model_presets(
+            target=target,
+            engine=engine,
+            include_non_8bit=True,
+            include_all_targets=include_all_targets,
+        )
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
     if not include_non_8bit:
         # Recommended view: include 8-bit presets, plus a best-effort fallback
         # for any key/target/engine group that lacks an 8-bit artifact.
@@ -496,7 +544,21 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                     "model_id": model_id,
                     "provider": spec.provider if spec else "unknown",
                     "license": spec.license if spec else "unknown",
+                    "notes": spec.notes if spec else "",
                     "tasks": sorted(spec.tasks.keys()) if spec else [],
+                    "task_specs": (
+                        {
+                            task_name: {
+                                "inputs": list(task_spec.inputs),
+                                "outputs": list(task_spec.outputs),
+                                "params": dict(task_spec.params),
+                                "requires": dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None,
+                            }
+                            for task_name, task_spec in sorted(spec.tasks.items())
+                        }
+                        if spec
+                        else {}
+                    ),
                     "downloads": matching,
                 }
             )
@@ -537,24 +599,30 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
             return candidate
         return None
 
-    normalized_engine = normalize_model_engine(engine)
-    if len(names) >= 2:
-        prefix_engine = _maybe_engine_prefix(names[0])
-        if prefix_engine is not None and (normalized_engine is None or normalized_engine == prefix_engine):
-            engine = prefix_engine
-            normalized_engine = prefix_engine
-            names = names[1:]
-    if len(names) == 1:
-        solo_engine = _maybe_engine_prefix(names[0])
-        if solo_engine is not None and (normalized_engine is None or normalized_engine == solo_engine):
-            raise SystemExit(
-                f"Missing model name after engine prefix {names[0]!r}. "
-                f"List presets with: abstractvision model-presets --provider {names[0]}"
-            )
+    try:
+        normalized_engine = normalize_model_engine(engine)
+        if len(names) >= 2:
+            prefix_engine = _maybe_engine_prefix(names[0])
+            if prefix_engine is not None and (normalized_engine is None or normalized_engine == prefix_engine):
+                engine = prefix_engine
+                normalized_engine = prefix_engine
+                names = names[1:]
+        if len(names) == 1:
+            solo_engine = _maybe_engine_prefix(names[0])
+            if solo_engine is not None and (normalized_engine is None or normalized_engine == solo_engine):
+                raise SystemExit(
+                    f"Missing model name after engine prefix {names[0]!r}. "
+                    f"List presets with: abstractvision model-presets --provider {names[0]}"
+                )
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
     if not names:
         raise SystemExit("Missing model name. Use `abstractvision model-presets` to list curated presets.")
 
-    selected_target, _selected_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    try:
+        selected_target, _selected_engine = resolve_model_target_and_engine(target=target, engine=engine)
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
     model_dir = Path(str(args.model_dir)).expanduser() if getattr(args, "model_dir", None) else None
     results: List[Dict[str, Any]] = []
     json_mode = bool(getattr(args, "json", False))
@@ -651,9 +719,36 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
 
         item = preset.to_dict()
         item["snapshot_dir"] = str(path)
+        if preset.engine == "stable-diffusion.cpp":
+            resolved = resolve_sdcpp_model_selection(
+                preset.key,
+                allow_download=True,
+                token=cli_token,
+                max_workers=int(getattr(args, "max_workers", 4) or 4),
+            )
+            item.update(
+                {
+                    "resolved_model": resolved.model,
+                    "resolved_diffusion_model": resolved.diffusion_model,
+                    "resolved_vae": resolved.vae,
+                    "resolved_llm": resolved.llm,
+                    "resolved_llm_vision": resolved.llm_vision,
+                }
+            )
         results.append(item)
         if not json_mode:
             print(f"snapshot_dir: {path}")
+            if preset.engine == "stable-diffusion.cpp":
+                if item.get("resolved_model"):
+                    print(f"resolved_model: {item['resolved_model']}")
+                if item.get("resolved_diffusion_model"):
+                    print(f"resolved_diffusion_model: {item['resolved_diffusion_model']}")
+                if item.get("resolved_vae"):
+                    print(f"resolved_vae: {item['resolved_vae']}")
+                if item.get("resolved_llm"):
+                    print(f"resolved_llm: {item['resolved_llm']}")
+                if item.get("resolved_llm_vision"):
+                    print(f"resolved_llm_vision: {item['resolved_llm_vision']}")
 
     if json_mode:
         _print_json(results[0] if len(results) == 1 else results)
@@ -794,9 +889,9 @@ def _repl_help() -> str:
         "  /backend diffusers <model_id_or_path> [device] [torch_dtype]\n"
         "      default model: runwayml/stable-diffusion-v1-5\n"
         "      cache-only by default; set ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1 to permit downloads\n"
-        "  /backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]\n"
+        "  /backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]\n"
         "  /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]\n"
-        "      single-model mode is best for small Stable Diffusion checkpoints; component mode is for Qwen/FLUX GGUF\n"
+        "      use a cached model key for curated Qwen/FLUX bundles; component mode remains available for explicit wiring\n"
         "  /backend mflux <preset_or_local_path> [base_model]\n"
         "      Apple Silicon MFLUX engine for 8-bit MLX presets (requires abstractvision[mflux])\n"
         "\n"
@@ -831,6 +926,11 @@ def _repl_help() -> str:
         "  # stable-diffusion.cpp single-model path, preferably with an sd-cli binary for GPU acceleration\n"
         "  /backend sdcpp /path/to/sd-v1-5.gguf /path/to/sd-cli\n"
         "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
+        "\n"
+        "  # Curated stable-diffusion.cpp bundle path for FLUX/Qwen-class models\n"
+        "  abstractvision download-model flux2-klein-base-4b --provider sdcpp\n"
+        "  /backend sdcpp flux2-klein-base-4b /path/to/sd-cli\n"
+        "  /t2i \"a product photo of a matte black espresso machine\" --steps 4 --guidance-scale 1.0 --open\n"
         "\n"
         "Tip: typing plain text runs /t2i with that prompt.\n"
     )
@@ -1022,14 +1122,29 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             state._cached_backend = backend
             state._cached_backend_key = backend_key
     elif backend_kind in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
+        sdcpp_model = str(state.sdcpp_model) if state.sdcpp_model else None
+        sdcpp_diffusion_model = str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None
+        sdcpp_vae = str(state.sdcpp_vae) if state.sdcpp_vae else None
+        sdcpp_llm = str(state.sdcpp_llm) if state.sdcpp_llm else None
+        sdcpp_llm_vision = str(state.sdcpp_llm_vision) if state.sdcpp_llm_vision else None
+        resolved_sdcpp = None
+        if sdcpp_model and not any((sdcpp_diffusion_model, sdcpp_vae, sdcpp_llm, sdcpp_llm_vision)):
+            candidate_path = Path(str(sdcpp_model)).expanduser()
+            if not candidate_path.exists():
+                try:
+                    resolved_sdcpp = resolve_sdcpp_model_selection(str(sdcpp_model), allow_download=False)
+                except ValueError:
+                    resolved_sdcpp = None
+                except RuntimeError as e:
+                    raise ValueError(str(e)) from e
         backend_key = (
             "sdcpp",
             str(state.sdcpp_bin),
-            str(state.sdcpp_model) if state.sdcpp_model else None,
-            str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None,
-            str(state.sdcpp_vae) if state.sdcpp_vae else None,
-            str(state.sdcpp_llm) if state.sdcpp_llm else None,
-            str(state.sdcpp_llm_vision) if state.sdcpp_llm_vision else None,
+            resolved_sdcpp.model if resolved_sdcpp is not None else sdcpp_model,
+            resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else sdcpp_diffusion_model,
+            resolved_sdcpp.vae if resolved_sdcpp is not None else sdcpp_vae,
+            resolved_sdcpp.llm if resolved_sdcpp is not None else sdcpp_llm,
+            resolved_sdcpp.llm_vision if resolved_sdcpp is not None else sdcpp_llm_vision,
             str(state.sdcpp_extra_args) if state.sdcpp_extra_args else None,
         )
         if state._cached_backend is not None and state._cached_backend_key == backend_key:
@@ -1037,11 +1152,13 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
         else:
             cfg = StableDiffusionCppBackendConfig(
                 sd_cli_path=str(state.sdcpp_bin),
-                model=str(state.sdcpp_model) if state.sdcpp_model else None,
-                diffusion_model=str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None,
-                vae=str(state.sdcpp_vae) if state.sdcpp_vae else None,
-                llm=str(state.sdcpp_llm) if state.sdcpp_llm else None,
-                llm_vision=str(state.sdcpp_llm_vision) if state.sdcpp_llm_vision else None,
+                model=resolved_sdcpp.model if resolved_sdcpp is not None else sdcpp_model,
+                diffusion_model=(
+                    resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else sdcpp_diffusion_model
+                ),
+                vae=resolved_sdcpp.vae if resolved_sdcpp is not None else sdcpp_vae,
+                llm=resolved_sdcpp.llm if resolved_sdcpp is not None else sdcpp_llm,
+                llm_vision=resolved_sdcpp.llm_vision if resolved_sdcpp is not None else sdcpp_llm_vision,
                 extra_args=shlex.split(str(state.sdcpp_extra_args)) if state.sdcpp_extra_args else (),
             )
             backend = StableDiffusionCppVisionBackend(config=cfg)
@@ -1072,7 +1189,7 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
     elif not backend_kind:
         raise ValueError(
             "Backend is not configured. Use /backend openai <base_url>, "
-            "/backend mflux <preset_or_path>, /backend diffusers <model_id_or_path>, or /backend sdcpp <model_path>."
+            "/backend mflux <preset_or_path>, /backend diffusers <model_id_or_path>, or /backend sdcpp <model_key_or_path>."
         )
     else:
         raise ValueError(f"Unknown backend kind: {backend_kind!r} (expected 'openai', 'mflux', 'diffusers', or 'sdcpp')")
@@ -1200,7 +1317,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     print(
                         "Usage: /backend openai <base_url> [api_key] [model_id]  OR  "
                         "/backend diffusers <model_id_or_path> [device] [torch_dtype]  OR  "
-                        "/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]  OR  "
+                        "/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]  OR  "
                         "/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]  OR  "
                         "/backend mflux <preset_or_local_path> [base_model]"
                     )
@@ -1236,7 +1353,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 if kind == "sdcpp":
                     if len(args) < 2:
                         print(
-                            "Usage: /backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]  OR  "
+                            "Usage: /backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]  OR  "
                             "/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]"
                         )
                         continue
@@ -1261,11 +1378,17 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     if len(args) < 2:
                         print("Usage: /backend mflux <preset_or_local_path> [base_model]")
                         continue
+                    if str(args[1] or "").strip().lower().startswith("mlx/"):
+                        print(_generic_mlx_backend_error())
+                        continue
                     state.backend_kind = "mflux"
                     state.mflux_model = args[1]
                     state.mflux_base_model = args[2] if len(args) >= 3 else None
                     state.model_id = args[1]
                     print("ok")
+                    continue
+                if kind == "mlx":
+                    print(_generic_mlx_backend_error())
                     continue
                 print("Unknown backend kind. Use: openai | mflux | diffusers | sdcpp")
                 continue
@@ -1494,7 +1617,7 @@ def build_parser() -> argparse.ArgumentParser:
             "diffusers",
             "transformers",
         ],
-        help="Runtime provider/engine filter (default: any for the selected target).",
+        help="Runtime provider/engine filter (default: any for the selected target). Use --target mlx rather than --provider mlx.",
     )
     presets.add_argument("--all", action="store_true", help="Also show explicit non-8-bit fallbacks.")
     presets.add_argument("--all-targets", action="store_true", help="Show presets for every target.")
@@ -1537,7 +1660,7 @@ def build_parser() -> argparse.ArgumentParser:
             "diffusers",
             "transformers",
         ],
-        help="Runtime provider/engine filter (default: any for the selected target).",
+        help="Runtime provider/engine filter (default: any for the selected target). Use --target mlx rather than --provider mlx.",
     )
     catalog.add_argument("--all", action="store_true", help="Also include explicit non-8-bit fallbacks.")
     catalog.add_argument("--all-targets", action="store_true", help="Show downloadable presets for every target.")
@@ -1584,7 +1707,7 @@ def build_parser() -> argparse.ArgumentParser:
             "diffusers",
             "transformers",
         ],
-        help="Runtime provider/engine filter (default: any for the selected target).",
+        help="Runtime provider/engine filter (default: any for the selected target). Use --target mlx rather than --provider mlx.",
     )
     dl.add_argument(
         "--model-dir",
@@ -1627,7 +1750,10 @@ def build_parser() -> argparse.ArgumentParser:
             "--backend",
             dest="provider",
             default=None,
-            help="Provider/backend: openai, openai-compatible, diffusers, sdcpp, or mflux.",
+            help=(
+                "Provider/backend: openai, openai-compatible, diffusers, sdcpp, or mflux. "
+                "Use --target mlx for MLX artifacts; generic provider 'mlx' is not supported."
+            ),
         )
         ap.add_argument(
             "--model",
@@ -1677,7 +1803,11 @@ def build_parser() -> argparse.ArgumentParser:
 
         # stable-diffusion.cpp provider config.
         ap.add_argument("--sdcpp-bin", default=_env("ABSTRACTVISION_SDCPP_BIN", "sd-cli"), help="Path to sd-cli (default: sd-cli).")
-        ap.add_argument("--sdcpp-model", default=_env("ABSTRACTVISION_SDCPP_MODEL"), help="stable-diffusion.cpp single-model path (overrides --model).")
+        ap.add_argument(
+            "--sdcpp-model",
+            default=_env("ABSTRACTVISION_SDCPP_MODEL"),
+            help="stable-diffusion.cpp model key or single-model path (overrides --model).",
+        )
         ap.add_argument("--sdcpp-diffusion-model", default=_env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"), help="stable-diffusion.cpp diffusion_model path (GGUF).")
         ap.add_argument("--sdcpp-vae", default=_env("ABSTRACTVISION_SDCPP_VAE"), help="stable-diffusion.cpp VAE path (safetensors).")
         ap.add_argument("--sdcpp-llm", default=_env("ABSTRACTVISION_SDCPP_LLM"), help="stable-diffusion.cpp LLM path (GGUF).")

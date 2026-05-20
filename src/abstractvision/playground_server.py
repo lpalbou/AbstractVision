@@ -27,7 +27,7 @@ from .model_cache import (
     framework_hf_cache_roots,
     incomplete_hf_model_sources,
 )
-from .model_downloads import catalog_target_scope, local_model_profile, model_presets
+from .model_downloads import catalog_target_scope, local_model_profile, model_presets, resolve_sdcpp_model_selection
 from .types import GeneratedAsset, ImageEditRequest, ImageGenerationRequest
 
 DEFAULT_PLAYGROUND_HOST = "127.0.0.1"
@@ -118,6 +118,7 @@ def _known_prefix(model_id: str) -> Tuple[Optional[str], str]:
         "diffusers",
         "huggingface",
         "hf",
+        "mlx",
         "mflux",
         "sdcpp",
         "stable-diffusion.cpp",
@@ -150,6 +151,11 @@ def normalize_model_id_for_backend(model_id: str) -> Tuple[str, Optional[str]]:
     prefix, rest = _known_prefix(s)
     if prefix in {"diffusers", "huggingface", "hf"}:
         return "diffusers", DEFAULT_DIFFUSERS_MODEL_ID if _is_default_alias(rest) else rest
+    if prefix == "mlx":
+        raise ValueError(
+            "AbstractVision does not have a generic MLX image backend yet. "
+            "Use `mflux/<preset>` for MFLUX-compatible 8-bit MLX models."
+        )
     if prefix == "mflux":
         return "mflux", None if _is_default_alias(rest) else rest
     if prefix in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
@@ -893,13 +899,27 @@ class PlaygroundState:
             )
 
             explicit_model = str(backend_model_id).strip() if backend_model_id else None
+            explicit_diffusion_model = None if explicit_model else self.config.sdcpp_diffusion_model
+            explicit_vae = None if explicit_model else self.config.sdcpp_vae
+            explicit_llm = None if explicit_model else self.config.sdcpp_llm
+            explicit_llm_vision = None if explicit_model else self.config.sdcpp_llm_vision
+            resolved_sdcpp = None
+            if explicit_model and not any((explicit_diffusion_model, explicit_vae, explicit_llm, explicit_llm_vision)):
+                candidate_path = Path(str(explicit_model)).expanduser()
+                if not candidate_path.exists():
+                    try:
+                        resolved_sdcpp = resolve_sdcpp_model_selection(str(explicit_model), allow_download=False)
+                    except ValueError:
+                        resolved_sdcpp = None
             cfg = StableDiffusionCppBackendConfig(
                 sd_cli_path=str(self.config.sdcpp_bin),
-                model=explicit_model or self.config.sdcpp_model,
-                diffusion_model=None if explicit_model else self.config.sdcpp_diffusion_model,
-                vae=None if explicit_model else self.config.sdcpp_vae,
-                llm=None if explicit_model else self.config.sdcpp_llm,
-                llm_vision=None if explicit_model else self.config.sdcpp_llm_vision,
+                model=resolved_sdcpp.model if resolved_sdcpp is not None else (explicit_model or self.config.sdcpp_model),
+                diffusion_model=(
+                    resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else explicit_diffusion_model
+                ),
+                vae=resolved_sdcpp.vae if resolved_sdcpp is not None else explicit_vae,
+                llm=resolved_sdcpp.llm if resolved_sdcpp is not None else explicit_llm,
+                llm_vision=resolved_sdcpp.llm_vision if resolved_sdcpp is not None else explicit_llm_vision,
                 extra_args=(
                     shlex.split(str(self.config.sdcpp_extra_args))
                     if self.config.sdcpp_extra_args

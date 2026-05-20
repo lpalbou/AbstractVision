@@ -24,11 +24,17 @@ class TestPlaygroundServer(unittest.TestCase):
             ("diffusers", "runwayml/stable-diffusion-v1-5"),
         )
         self.assertEqual(normalize_model_id_for_backend("diffusers/default")[0], "diffusers")
+        self.assertEqual(
+            normalize_model_id_for_backend("mlx-community/Qwen-Image-2512-8bit"),
+            ("diffusers", "mlx-community/Qwen-Image-2512-8bit"),
+        )
         self.assertEqual(normalize_model_id_for_backend("mflux/flux2-klein-4b"), ("mflux", "flux2-klein-4b"))
         self.assertEqual(normalize_model_id_for_backend("sdcpp/default"), ("sdcpp", None))
         self.assertEqual(
             normalize_model_id_for_backend("openai-compatible/dall-e-3"), ("openai", "dall-e-3")
         )
+        with self.assertRaisesRegex(ValueError, "generic MLX image backend"):
+            normalize_model_id_for_backend("mlx/flux2-klein-4b")
 
     def test_loads_raw_huggingface_model_id_without_provider_prefix(self):
         import abstractvision.backends.huggingface_diffusers as hf_backend
@@ -57,11 +63,11 @@ class TestPlaygroundServer(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             with patch.dict("os.environ", {"HF_HUB_CACHE": td}, clear=True):
                 cache = Path(td)
-                snap = cache / "models--runwayml--stable-diffusion-v1-5" / "snapshots" / "abc123"
+                snap = cache / "models--stable-diffusion-v1-5--stable-diffusion-v1-5" / "snapshots" / "abc123"
                 (snap / "unet").mkdir(parents=True)
                 (snap / "model_index.json").write_text("{}", encoding="utf-8")
                 (snap / "unet" / "diffusion_pytorch_model.safetensors").write_bytes(b"x")
-                refs = cache / "models--runwayml--stable-diffusion-v1-5" / "refs"
+                refs = cache / "models--stable-diffusion-v1-5--stable-diffusion-v1-5" / "refs"
                 refs.mkdir(parents=True, exist_ok=True)
                 (refs / "main").write_text("abc123", encoding="utf-8")
 
@@ -75,9 +81,9 @@ class TestPlaygroundServer(unittest.TestCase):
                 out = state.list_models()
 
         models = {m["id"]: m for m in out["models"]}
-        self.assertIn("runwayml/stable-diffusion-v1-5", models)
-        self.assertTrue(models["runwayml/stable-diffusion-v1-5"]["cached"])
-        self.assertIn("configured cache", models["runwayml/stable-diffusion-v1-5"]["cached_in"])
+        self.assertIn("stable-diffusion-v1-5/stable-diffusion-v1-5", models)
+        self.assertTrue(models["stable-diffusion-v1-5/stable-diffusion-v1-5"]["cached"])
+        self.assertIn("configured cache", models["stable-diffusion-v1-5/stable-diffusion-v1-5"]["cached_in"])
 
     def test_lists_cached_mflux_registry_variants(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
@@ -222,7 +228,7 @@ class TestPlaygroundServer(unittest.TestCase):
 
         glm = next(m for m in out["models"] if m["id"] == "zai-org/GLM-Image")
         self.assertIn("image_to_image", glm["task_specs"])
-        self.assertEqual(glm["task_specs"]["text_to_image"]["params"]["steps"]["default"], 20)
+        self.assertEqual(glm["task_specs"]["text_to_image"]["params"]["steps"]["default"], 50)
         self.assertEqual(glm["task_specs"]["text_to_image"]["params"]["guidance_scale"]["default"], 1.5)
 
         ernie = next(m for m in out["models"] if m["id"] == "baidu/ERNIE-Image-Turbo")

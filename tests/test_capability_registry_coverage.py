@@ -26,7 +26,10 @@ class TestCapabilityRegistryCoverage(unittest.TestCase):
         from abstractvision import VisionModelCapabilitiesRegistry
 
         reg = VisionModelCapabilitiesRegistry()
+        placeholder_tasks = {"multi_view_image"}
         for task in reg.list_tasks():
+            if task in placeholder_tasks:
+                continue
             models = reg.models_for_task(task)
             self.assertGreater(len(models), 0, msg=f"Task {task!r} has no supporting models")
 

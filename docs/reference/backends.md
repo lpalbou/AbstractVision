@@ -14,7 +14,7 @@ See also:
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. |
 | MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
-| stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components. |
+| stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
 - `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
@@ -125,12 +125,11 @@ Model presets:
   - `abstractvision model-catalog --provider mflux` (add `--all` for full fallback list)
   - Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
 - Download a curated 8-bit preset into the Hugging Face cache (legacy `~/models` trees auto-migrate when encountered):
-  - `abstractvision download-model flux1-dev --provider mflux`
-  - `abstractvision download-model flux1-schnell --provider mflux`
   - `abstractvision download-model flux2-klein-4b --provider mflux`
   - `abstractvision download-model flux2-klein-9b --provider mflux`
   - `abstractvision download-model qwen-image --provider mflux`
   - `abstractvision download-model z-image-turbo --provider mflux`
+- Current shipped backend coverage is limited to those curated MFLUX families: `flux2-klein-4b`, `flux2-klein-9b`, `qwen-image`, and `z-image-turbo`.
 
 Config/env:
 - `ABSTRACTVISION_PROVIDER=mflux` (alias: `ABSTRACTVISION_BACKEND=mflux`)
@@ -163,8 +162,10 @@ Notes:
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means **CPU-only**, so FLUX/Qwen-class models can be extremely slow.
 - The optional python binding is constrained below `0.4.6` because that sdist
   currently misses vendored CMake files needed by native Linux builds.
-- Interactive CLI selection supports both `/backend sdcpp <model.gguf|model.safetensors> [sd_cli_path]` and
+- Interactive CLI selection supports both `/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]` and
   `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`.
+- One-shot CLI, playground, and the AbstractCore plugin can also accept curated `sdcpp` model keys such as
+  `flux2-klein-base-4b` or `qwen-image` after `abstractvision download-model ... --provider sdcpp`.
 - Python code and AbstractCore plugin configuration can also pass component paths such as `clip_l`, `clip_g`, `t5xxl`, `llm_vision`, plus `extra_args`, `timeout_s`, and `cwd`.
 
 Code pointers:

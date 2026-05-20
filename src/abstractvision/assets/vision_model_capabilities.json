@@ -132,15 +132,6 @@
         },
         {
           "key": "flux1-dev",
-          "engine": "mflux",
-          "target": "mlx",
-          "bits": 8,
-          "repo_id": "dhairyashil/FLUX.1-dev-mflux-8bit",
-          "source": "curated-community-mflux",
-          "notes": "Community mflux MLX 8-bit conversion for Apple Silicon."
-        },
-        {
-          "key": "flux1-dev",
           "engine": "diffusers-component",
           "target": "fp8",
           "bits": 8,
@@ -196,15 +187,6 @@
           "repo_id": "black-forest-labs/FLUX.1-schnell",
           "source": "official",
           "notes": "Official Diffusers snapshot (full model weights)."
-        },
-        {
-          "key": "flux1-schnell",
-          "engine": "mflux",
-          "target": "mlx",
-          "bits": 8,
-          "repo_id": "dhairyashil/FLUX.1-schnell-mflux-8bit",
-          "source": "curated-community-mflux",
-          "notes": "Community mflux MLX 8-bit conversion for Apple Silicon."
         }
       ],
       "tasks": {
@@ -641,55 +623,6 @@
         }
       }
     },
-    "black-forest-labs/FLUX.1-Redux-dev": {
-      "provider": "huggingface",
-      "license": "flux-1-dev-non-commercial-license",
-      "notes": "FLUX.1 Redux dev (Diffusers: FluxPriorReduxPipeline). Image-variation adapter for FLUX.1 base models; download is a snapshot of adapter weights, not a standalone pipeline.",
-      "downloads": [
-        {
-          "key": "flux1-redux-dev",
-          "engine": "diffusers",
-          "target": "hf-snapshot",
-          "bits": 16,
-          "repo_id": "black-forest-labs/FLUX.1-Redux-dev",
-          "source": "official",
-          "notes": "Official adapter snapshot; pair with black-forest-labs/FLUX.1-dev or another compatible FLUX.1 base model."
-        }
-      ],
-      "tasks": {
-        "image_to_image": {
-          "inputs": [
-            "image",
-            "text_optional"
-          ],
-          "outputs": [
-            "image"
-          ],
-          "requires": {
-            "base_model_id": "black-forest-labs/FLUX.1-dev",
-            "backend": "not_supported"
-          },
-          "params": {
-            "prompt": {
-              "required": false,
-              "supported": false
-            },
-            "image": {
-              "required": true
-            },
-            "steps": {
-              "required": false
-            },
-            "guidance_scale": {
-              "required": false
-            },
-            "seed": {
-              "required": false
-            }
-          }
-        }
-      }
-    },
     "black-forest-labs/FLUX.2-klein-4B": {
       "provider": "huggingface",
       "license": "apache-2.0",
@@ -727,9 +660,9 @@
           "engine": "stable-diffusion.cpp",
           "target": "gguf",
           "bits": 8,
-          "repo_id": "unsloth/FLUX.2-klein-4B-GGUF",
-          "source": "curated-community-gguf",
-          "notes": "GGUF quantizations for stable-diffusion.cpp runtimes (prefer Q8_0 for quality)."
+          "repo_id": "leejet/FLUX.2-klein-4B-GGUF",
+          "source": "runtime-native-gguf",
+          "notes": "Q8_0 GGUF conversion aligned with stable-diffusion.cpp runtime usage."
         }
       ],
       "tasks": {
@@ -845,9 +778,9 @@
           "engine": "stable-diffusion.cpp",
           "target": "gguf",
           "bits": 8,
-          "repo_id": "unsloth/FLUX.2-klein-base-4B-GGUF",
-          "source": "curated-community-gguf",
-          "notes": "Community GGUF quantizations; prefer Q8_0 for quality."
+          "repo_id": "leejet/FLUX.2-klein-base-4B-GGUF",
+          "source": "runtime-native-gguf",
+          "notes": "Q8_0 GGUF conversion aligned with stable-diffusion.cpp runtime usage."
         }
       ],
       "tasks": {
@@ -959,9 +892,9 @@
           "engine": "stable-diffusion.cpp",
           "target": "gguf",
           "bits": 8,
-          "repo_id": "unsloth/FLUX.2-klein-9B-GGUF",
-          "source": "curated-community-gguf",
-          "notes": "GGUF quantizations for stable-diffusion.cpp runtimes (prefer Q8_0 for quality)."
+          "repo_id": "leejet/FLUX.2-klein-9B-GGUF",
+          "source": "runtime-native-gguf",
+          "notes": "Q8_0 GGUF conversion aligned with stable-diffusion.cpp runtime usage."
         }
       ],
       "tasks": {
@@ -1043,8 +976,17 @@
     "black-forest-labs/FLUX.2-klein-base-9B": {
       "provider": "huggingface",
       "license": "flux-non-commercial-license",
-      "notes": "FLUX 2 klein base (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official higher-capacity edit-capable base model; prefer the FP8 side artifact on GPU when possible.",
+      "notes": "FLUX 2 klein base (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official higher-capacity edit-capable base model; use a modern released Diffusers build. Plain text negative_prompt is not exposed by the pipeline.",
       "downloads": [
+        {
+          "key": "flux2-klein-base-9b",
+          "engine": "mflux",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AITRADER/FLUX2-klein-base-9B-mlx-8bit",
+          "source": "curated-community-mlx",
+          "notes": "Community MLX 8-bit conversion for Apple Silicon."
+        },
         {
           "key": "flux2-klein-base-9b",
           "engine": "diffusers",
@@ -1062,6 +1004,15 @@
           "repo_id": "black-forest-labs/FLUX.2-klein-base-9b-fp8",
           "source": "official",
           "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline)."
+        },
+        {
+          "key": "flux2-klein-base-9b",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "leejet/FLUX.2-klein-base-9B-GGUF",
+          "source": "curated-community-gguf",
+          "notes": "Curated GGUF quantizations built for stable-diffusion.cpp runtimes (prefer Q8_0 for quality)."
         }
       ],
       "tasks": {
@@ -1077,7 +1028,8 @@
               "required": true
             },
             "negative_prompt": {
-              "required": false
+              "required": false,
+              "supported": false
             },
             "width": {
               "required": false
@@ -1086,10 +1038,12 @@
               "required": false
             },
             "steps": {
-              "required": false
+              "required": false,
+              "default": 50
             },
             "guidance_scale": {
-              "required": false
+              "required": false,
+              "default": 4.0
             },
             "seed": {
               "required": false
@@ -1115,67 +1069,16 @@
               "required": false
             },
             "negative_prompt": {
-              "required": false
+              "required": false,
+              "supported": false
             },
             "steps": {
-              "required": false
+              "required": false,
+              "default": 50
             },
             "guidance_scale": {
-              "required": false
-            },
-            "seed": {
-              "required": false
-            }
-          }
-        }
-      }
-    },
-    "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA": {
-      "provider": "huggingface",
-      "license": "apache-2.0",
-      "notes": "LoRA adapter used with a compatible base (typically Qwen-Image-Edit-2511) to generate multiple angles.",
-      "downloads": [
-        {
-          "key": "qwen-image-edit-multiple-angles-lora",
-          "engine": "diffusers",
-          "target": "hf-snapshot",
-          "bits": 16,
-          "repo_id": "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA",
-          "source": "community",
-          "notes": "Adapter snapshot only; pair with Qwen/Qwen-Image-Edit-2511."
-        }
-      ],
-      "tasks": {
-        "multi_view_image": {
-          "inputs": [
-            "text",
-            "image_optional"
-          ],
-          "outputs": [
-            "image[]"
-          ],
-          "requires": {
-            "base_model_id": "Qwen/Qwen-Image-Edit-2511",
-            "backend": "not_supported"
-          },
-          "params": {
-            "prompt": {
-              "required": true
-            },
-            "reference_image": {
-              "required": false
-            },
-            "angles": {
-              "required": false
-            },
-            "negative_prompt": {
-              "required": false
-            },
-            "steps": {
-              "required": false
-            },
-            "guidance_scale": {
-              "required": false
+              "required": false,
+              "default": 4.0
             },
             "seed": {
               "required": false
@@ -1360,19 +1263,19 @@
         }
       }
     },
-    "lightx2v/Qwen-Image-Lightning": {
+    "playgroundai/playground-v2-1024px-aesthetic": {
       "provider": "huggingface",
-      "license": "apache-2.0",
-      "notes": "Community Qwen Image adapter bundle. The repo is not a standalone Diffusers pipeline; retrieve it as a Hugging Face snapshot and pair it with a compatible Qwen/Qwen-Image base model.",
+      "license": "playground-v2-community",
+      "notes": "Playground v2 (Diffusers). Official 1024px aesthetic SDXL-family model; upstream recommends guidance_scale around 3.0.",
       "downloads": [
         {
-          "key": "qwen-image-lightning",
+          "key": "playground-v2",
           "engine": "diffusers",
-          "target": "hf-snapshot",
+          "target": "diffusers",
           "bits": 16,
-          "repo_id": "lightx2v/Qwen-Image-Lightning",
-          "source": "community",
-          "notes": "Community adapter snapshot only; pair with Qwen/Qwen-Image."
+          "repo_id": "playgroundai/playground-v2-1024px-aesthetic",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full model weights)."
         }
       ],
       "tasks": {
@@ -1400,14 +1303,12 @@
               "required": false
             },
             "guidance_scale": {
-              "required": false
+              "required": false,
+              "default": 3.0
             },
             "seed": {
               "required": false
             }
-          },
-          "requires": {
-            "base_model_id": "Qwen/Qwen-Image"
           }
         }
       }
@@ -2106,7 +2007,7 @@
     "stabilityai/sd-turbo": {
       "provider": "huggingface",
       "license": "stabilityai-ai-community",
-      "notes": "Stable Diffusion Turbo (Diffusers). Fast distilled checkpoint that supports both text-to-image and image-to-image.",
+      "notes": "Stable Diffusion Turbo (Diffusers). Fast distilled checkpoint that supports both text-to-image and image-to-image. Upstream recommends single-step generation with guidance_scale=0.0 and 512x512 images.",
       "downloads": [
         {
           "key": "sd-turbo",
@@ -2116,6 +2017,15 @@
           "repo_id": "stabilityai/sd-turbo",
           "source": "official",
           "notes": "Official Diffusers snapshot (full model weights)."
+        },
+        {
+          "key": "sd-turbo",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "Green-Sky/SD-Turbo-GGUF",
+          "source": "curated-community-gguf",
+          "notes": "Curated GGUF conversion for stable-diffusion.cpp. The repo tracks stabilityai/sd-turbo and documents Q8_0 plus sd.cpp-oriented settings."
         }
       ],
       "tasks": {
@@ -2140,10 +2050,12 @@
               "required": false
             },
             "steps": {
-              "required": false
+              "required": false,
+              "default": 1
             },
             "guidance_scale": {
-              "required": false
+              "required": false,
+              "default": 0.0
             },
             "seed": {
               "required": false
@@ -2183,8 +2095,8 @@
     },
     "stabilityai/sdxl-turbo": {
       "provider": "huggingface",
-      "license": "stabilityai-ai-community",
-      "notes": "SDXL Turbo (Diffusers). Optimized for very low step counts and supports both text-to-image and image-to-image.",
+      "license": "sai-nc-community",
+      "notes": "SDXL Turbo (Diffusers). Optimized for very low step counts and supports both text-to-image and image-to-image. Upstream recommends single-step generation with guidance_scale=0.0 and 512x512 images.",
       "downloads": [
         {
           "key": "sdxl-turbo",
@@ -2194,6 +2106,95 @@
           "repo_id": "stabilityai/sdxl-turbo",
           "source": "official",
           "notes": "Official Diffusers snapshot (full model weights)."
+        },
+        {
+          "key": "sdxl-turbo",
+          "engine": "stable-diffusion.cpp",
+          "target": "gguf",
+          "bits": 8,
+          "repo_id": "OlegSkutte/sdxl-turbo-GGUF",
+          "source": "curated-community-gguf",
+          "notes": "Curated GGUF conversion for stable-diffusion.cpp. The repo tracks stabilityai/sdxl-turbo and documents 512x512, 1-step, and TAESDXL-oriented settings."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false,
+              "default": 1
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 0.0
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "stabilityai/stable-cascade": {
+      "provider": "huggingface",
+      "license": "stable-cascade-nc-community",
+      "notes": "Stable Cascade (Diffusers: StableCascadeCombinedPipeline). Official Stability AI release that combines prior and decoder stages in one Diffusers repo. Upstream examples use separate prior and decoder guidance/step settings, so treat the combined pipeline defaults as model-specific rather than SDXL-style.",
+      "downloads": [
+        {
+          "key": "stable-cascade",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/stable-cascade",
+          "source": "official",
+          "notes": "Official Diffusers snapshot (full combined pipeline)."
         }
       ],
       "tasks": {
@@ -2227,7 +2228,25 @@
               "required": false
             }
           }
-        },
+        }
+      }
+    },
+    "stabilityai/stable-diffusion-x4-upscaler": {
+      "provider": "huggingface",
+      "license": "openrail++",
+      "notes": "Stable Diffusion x4 Upscaler (Diffusers: StableDiffusionUpscalePipeline). Official text-guided 4x upscaler; cataloged as image-to-image because it requires a low-resolution input image.",
+      "downloads": [
+        {
+          "key": "sd-x4-upscaler",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "stabilityai/stable-diffusion-x4-upscaler",
+          "source": "official",
+          "notes": "Official Diffusers snapshot."
+        }
+      ],
+      "tasks": {
         "image_to_image": {
           "inputs": [
             "image",
@@ -2244,6 +2263,9 @@
               "required": true
             },
             "negative_prompt": {
+              "required": false
+            },
+            "noise_level": {
               "required": false
             },
             "steps": {
@@ -3401,6 +3423,200 @@
             },
             "guidance_scale": {
               "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Kwai-Kolors/Kolors-diffusers": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Kolors (Diffusers: KolorsPipeline). Official bilingual Chinese/English text-to-image model from Kuaishou. Upstream recommends the default Euler scheduler with guidance_scale=5.0 and 50 steps; image-to-image is also supported through the KolorsImg2ImgPipeline.",
+      "downloads": [
+        {
+          "key": "kolors",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Kwai-Kolors/Kolors-diffusers",
+          "source": "official",
+          "notes": "Official Diffusers snapshot."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false,
+              "default": 50
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 5.0
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false,
+              "default": 50
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 5.0
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS": {
+      "provider": "huggingface",
+      "license": "openrail++",
+      "notes": "PixArt-Sigma 1024px checkpoint (Diffusers: PixArtSigmaPipeline). Official Diffusers release for 1024px text-to-image generation.",
+      "downloads": [
+        {
+          "key": "pixart-sigma-xl-1024",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+          "source": "official",
+          "notes": "Official Diffusers snapshot."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 1024
+            },
+            "height": {
+              "required": false,
+              "default": 1024
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "Alpha-VLLM/Lumina-Image-2.0": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Lumina-Image 2.0 (Diffusers: Lumina2Pipeline). Official Diffusers release for the 2B flow-based diffusion transformer; upstream examples use 1024x1024, 50 steps, guidance_scale=4.0, cfg_trunc_ratio=0.25, and cfg_normalization=True.",
+      "downloads": [
+        {
+          "key": "lumina-image-2.0",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "Alpha-VLLM/Lumina-Image-2.0",
+          "source": "official",
+          "notes": "Official Diffusers snapshot."
+        }
+      ],
+      "tasks": {
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 1024
+            },
+            "height": {
+              "required": false,
+              "default": 1024
+            },
+            "steps": {
+              "required": false,
+              "default": 50
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 4.0
+            },
+            "cfg_trunc_ratio": {
+              "required": false,
+              "default": 0.25
+            },
+            "cfg_normalization": {
+              "required": false,
+              "default": true
             },
             "seed": {
               "required": false

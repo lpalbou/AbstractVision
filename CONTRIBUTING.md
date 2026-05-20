@@ -48,6 +48,7 @@ Core entrypoints:
 - [`docs/architecture.md`](docs/architecture.md)
 - [`docs/api.md`](docs/api.md)
 - [`docs/faq.md`](docs/faq.md)
+- [`docs/adr/README.md`](docs/adr/README.md)
 
 Doc hygiene checklist:
 - Commands are copy/pastable.
@@ -66,6 +67,16 @@ Validator + loader:
 
 Checklist:
 - Add/update the model entry in the JSON.
+- Keep the model family platform-neutral; add engine-specific artifacts as download variants rather
+  than as host-specific duplicate models.
+- Prefer official upstream repos. Use community repos only when they provide the best runtime-native
+  artifact for a target engine and label them clearly.
+- Do not treat adapters or component artifacts as standalone curated models unless the runtime path
+  is first-class.
+- Keep the change aligned with
+  [ADR 0005](docs/adr/0005_curated_capability_registry_and_download_catalog.md),
+  [ADR 0006](docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md),
+  and [docs/reference/capabilities-registry.md](docs/reference/capabilities-registry.md).
 - Run the unit tests (they validate schema + coverage).
 - Sanity check CLI output:
   - `abstractvision show-model <model_id>`
