@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/proposed/2026-05-19_capability_residency_hooks/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/proposed/2026-05-20_true_image_warmup_semantics/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>Proposed: Capability-level residency hooks for warm image models - AbstractVision</title>
+        <title>Proposed: True Warmup Semantics For Resident Local Image Backends - AbstractVision</title>
       
     
     
@@ -64,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#proposed-capability-level-residency-hooks-for-warm-image-models" class="md-skip">
+        <a href="#proposed-true-warmup-semantics-for-resident-local-image-backends" class="md-skip">
           Skip to content
         </a>
       
@@ -100,7 +100,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Proposed: Capability-level residency hooks for warm image models
+              Proposed: True Warmup Semantics For Resident Local Image Backends
             
           </span>
         </div>
@@ -591,17 +591,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#evaluation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Evaluation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#problem" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -625,10 +614,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#request-normalization" class="md-nav__link">
+  <a href="#1-keep-residency-semantics-stable" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Request normalization
+        1. Keep residency semantics stable
       
     </span>
   </a>
@@ -636,10 +625,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#public-state-shape" class="md-nav__link">
+  <a href="#2-extend-load_resident_model-with-optional-warmup-intent" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Public state shape
+        2. Extend load_resident_model() with optional warmup intent
       
     </span>
   </a>
@@ -647,10 +636,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#internal-design" class="md-nav__link">
+  <a href="#3-make-warmup-backend-owned-not-plugin-invented" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Internal design
+        3. Make warmup backend-owned, not plugin-invented
       
     </span>
   </a>
@@ -658,10 +647,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#generation-interaction" class="md-nav__link">
+  <a href="#4-keep-warmup-reporting-additive-and-nested" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Generation interaction
+        4. Keep warmup reporting additive and nested
       
     </span>
   </a>
@@ -669,10 +658,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#listing-semantics" class="md-nav__link">
+  <a href="#5-initial-engine-scope-mflux-first" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Listing semantics
+        5. Initial engine scope: MFLUX first
       
     </span>
   </a>
@@ -680,10 +669,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#http-backends" class="md-nav__link">
+  <a href="#6-request-driven-warming-should-be-reflected-when-the-backend-can-prove-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        HTTP backends
+        6. Request-driven warming should be reflected when the backend can prove it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-warmup-must-use-the-same-lifetime-protections-as-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Warmup must use the same lifetime protections as generation
       
     </span>
   </a>
@@ -692,17 +692,6 @@
         
       </ul>
     </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#worker-compatibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Worker Compatibility
-      
-    </span>
-  </a>
   
 </li>
       
@@ -759,214 +748,206 @@
   
 
 
-<h1 id="proposed-capability-level-residency-hooks-for-warm-image-models">Proposed: Capability-level residency hooks for warm image models<a class="headerlink" href="#proposed-capability-level-residency-hooks-for-warm-image-models" title="Permanent link">&para;</a></h1>
+<h1 id="proposed-true-warmup-semantics-for-resident-local-image-backends">Proposed: True Warmup Semantics For Resident Local Image Backends<a class="headerlink" href="#proposed-true-warmup-semantics-for-resident-local-image-backends" title="Permanent link">&para;</a></h1>
 <h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Created: 2026-05-19</li>
-<li>Status: Implemented in 0.3.7</li>
+<li>Created: 2026-05-20</li>
+<li>Status: Proposed</li>
 <li>Priority: P1</li>
 </ul>
 <h2 id="current-code-reality">Current Code Reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
-<p>AbstractVision already has most of the low-level primitives needed for model residency:</p>
+<p><code>abstractvision</code> already has a real local residency surface:</p>
 <ul>
-<li><code>VisionBackend.preload()</code> and <code>VisionBackend.unload()</code> exist on the shared backend contract;</li>
-<li><code>MFluxVisionBackend</code>, <code>HuggingFaceDiffusersVisionBackend</code>, and <code>StableDiffusionCppVisionBackend</code>
-  implement best-effort preload/unload behavior;</li>
-<li>the AbstractCore plugin caches routed backends in <code>_routed_backends</code>;</li>
-<li>repeated requests for the same provider/model within one long-lived
-  <code>_AbstractVisionCapability</code> instance already reuse the same backend object, so same-model warm
-  reuse exists implicitly today;</li>
-<li>the plugin already exposes <code>list_provider_models()</code> / <code>list_available_models()</code>, but that is
-  provider catalog discovery, not resident-model listing;</li>
-<li><code>PlaygroundState</code> already has explicit <code>load_model()</code>, <code>active_snapshot()</code>, and <code>unload_active()</code>
-  for a single active model in the local playground surface.</li>
+<li><code>load_resident_model(...)</code></li>
+<li>backend <code>preload()</code></li>
+<li><code>list_loaded_models()</code> / <code>list_resident_models()</code></li>
+<li>explicit unload</li>
 </ul>
-<p>What is still missing is a stable capability-level control surface that AbstractCore can use to
-preload, inspect, and unload image models intentionally.</p>
-<h2 id="evaluation">Evaluation<a class="headerlink" href="#evaluation" title="Permanent link">&para;</a></h2>
-<p>This proposal is useful, especially for:</p>
+<p>That work shipped in 0.3.7 and should remain the control plane for “keep this backend loaded in
+this process”.</p>
+<p>What it does <strong>not</strong> guarantee is a truly warmed first inference.</p>
 <ul>
-<li>long-lived Core worker processes that want deterministic warm local image models;</li>
-<li>local backends with expensive first-load cost (<code>mflux</code>, <code>diffusers</code>, <code>sdcpp</code>);</li>
-<li>operational control and debugging (<code>loaded_at</code>, <code>last_used_at</code>, explicit unload).</li>
+<li>the shared <code>VisionBackend.preload()</code> contract is best-effort eager load/prepare;</li>
+<li><code>resident=true</code> currently means pinned/loaded in-process, not “next request is hot”;</li>
+<li>MFLUX is the clearest gap: <code>preload()</code> stops at model construction, while the real
+  width/height-bearing path still happens on first generation;</li>
+<li>Diffusers and <code>stable-diffusion.cpp</code> also should not be assumed “hot” just because <code>preload()</code>
+  ran.</li>
 </ul>
-<p>The current gap is narrower than “AbstractVision cannot keep models warm”:</p>
-<ul>
-<li>warm reuse for the same model already happens implicitly inside a single capability instance;</li>
-<li>the real missing piece is explicit control and honest observability across requests and model
-  switches.</li>
-</ul>
-<p>The original proposal is directionally correct, but it needs tightening:</p>
-<ul>
-<li><code>_routed_backends</code> alone is not enough to answer “what is resident?” because a cached backend may
-  already have been <code>unload()</code>ed;</li>
-<li>the plugin currently unloads the previous backend when generation switches to a different
-  backend/model, so a preload-only API would be undone unless the switch behavior also changes;</li>
-<li>the example task and model ids do not match current AbstractVision terminology
-  (<code>text_to_image</code> / <code>image_to_image</code>, and real image model ids such as <code>flux2-klein-4b</code>);</li>
-<li>exposing an internal <code>cache_key</code> as part of the public API would be brittle;</li>
-<li>allowing arbitrary per-request backend options such as <code>device</code>, <code>dtype</code>, or <code>quantize</code> in the
-  first version would conflict with current backend-construction and cache-key semantics.</li>
-</ul>
+<p>So there are two distinct semantics:</p>
+<ol>
+<li>process-local residency / loaded state</li>
+<li>true warmup for one backend instance and one representative request signature</li>
+</ol>
+<p>The package should expose both when it can do so honestly.</p>
 <h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
-<p>Core wants generic <code>/acore/models/load</code>, <code>/acore/models/loaded</code>, and <code>/acore/models/unload</code>
-behavior across modalities. For image generation, Core should not:</p>
+<p>The current residency contract is useful, but it conflates “loaded” with “warmed” if callers or
+docs over-interpret it.</p>
+<p>The main goal of this follow-up is:</p>
 <ul>
-<li>reach into AbstractVision private plugin fields;</li>
-<li>guess whether a cached backend object is still loaded;</li>
-<li>depend on provider catalog listing as a proxy for warm model state.</li>
+<li>achieve proper, engine-aware warmup when that is actually possible;</li>
+<li>report the real capability semantics cleanly so callers can tell what is only resident vs what is
+  truly warmed.</li>
 </ul>
-<p>Without an explicit plugin-owned residency surface:</p>
+<p>The proposal must stay narrow:</p>
 <ul>
-<li>loaded state remains implicit and process-private;</li>
-<li>Core cannot reliably list which local image models are intentionally kept warm;</li>
-<li>a model preloaded for one request may be unloaded on the next model switch;</li>
-<li>long-lived worker processes cannot expose a clean, serializable residency contract.</li>
+<li>no replacement of the residency API;</li>
+<li>no vague “hotness” marketing language;</li>
+<li>no claim that every local backend can provide the same warmup guarantees.</li>
 </ul>
 <h2 id="recommended-proposal">Recommended Proposal<a class="headerlink" href="#recommended-proposal" title="Permanent link">&para;</a></h2>
-<p>Add explicit residency hooks to the AbstractVision AbstractCore capability object:</p>
-<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_resident_model</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span> <span class="o">...</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">list_resident_models</span><span class="p">(</span><span class="n">filters</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span> <span class="o">...</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">unload_resident_model</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span> <span class="o">...</span>
-</code></pre></div>
-<p>These methods should be public plugin methods that Core calls through the same capability object it
-already uses for generation and provider-catalog discovery.</p>
-<h3 id="request-normalization">Request normalization<a class="headerlink" href="#request-normalization" title="Permanent link">&para;</a></h3>
-<p>The first pass should accept only the fields that AbstractVision can key reliably today:</p>
+<h3 id="1-keep-residency-semantics-stable">1. Keep residency semantics stable<a class="headerlink" href="#1-keep-residency-semantics-stable" title="Permanent link">&para;</a></h3>
+<p>Do not change the meaning of:</p>
+<ul>
+<li><code>resident</code></li>
+<li><code>state</code></li>
+<li><code>load_id</code></li>
+<li><code>backend_kind</code></li>
+<li>current unload behavior</li>
+</ul>
+<p>This item is a narrow follow-up to the completed residency work, not a redesign of it.</p>
+<h3 id="2-extend-load_resident_model-with-optional-warmup-intent">2. Extend <code>load_resident_model()</code> with optional warmup intent<a class="headerlink" href="#2-extend-load_resident_model-with-optional-warmup-intent" title="Permanent link">&para;</a></h3>
+<p>Keep the current preload-only path as the default.</p>
+<ul>
+<li>omitting <code>warmup_request</code> means preload-only residency;</li>
+<li>when <code>warmup_request</code> is present, v1 still targets <code>text_to_image</code> only and should reject
+  <code>image_to_image</code> warmup;</li>
+<li><code>warmup_request: {}</code> means “run the backend's default representative text-to-image warmup
+  profile”;</li>
+<li>backends may optionally accept a very small bounded request shape in v1, for example:</li>
+</ul>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-4b&quot;</span>
+<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-9b&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;warmup_request&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;width&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;height&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
+<span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Notes:</p>
+<p>Do not expose prompt, seed, format, arbitrary <code>extra</code>, or backend construction overrides through
+this public warmup input.</p>
+<h3 id="3-make-warmup-backend-owned-not-plugin-invented">3. Make warmup backend-owned, not plugin-invented<a class="headerlink" href="#3-make-warmup-backend-owned-not-plugin-invented" title="Permanent link">&para;</a></h3>
+<p>The plugin should not invent a second hidden generation API with fake prompts or ad hoc request
+rules.</p>
+<p>Instead, add an optional backend-owned true-warmup hook for local engines, for example:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">warmup_text_to_image</span><span class="p">(</span><span class="o">...</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VisionWarmupResult</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>The exact symbol can change, but the contract should be:</p>
 <ul>
-<li><code>task</code> may be accepted for Core protocol alignment and validation, but it should not be part of
-  the residency identity in v1 because current local backends use the same loaded weights for both
-  <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>routed ids such as <code>mflux/flux2-klein-4b</code> or raw Diffusers ids such as
-  <code>runwayml/stable-diffusion-v1-5</code> may still be accepted as convenience input, but the plugin
-  should normalize them to one canonical <code>load_id</code>;</li>
-<li>do not add per-request backend-config overrides such as <code>device</code>, <code>dtype</code>, or <code>quantize</code> in v1.
-  Those are currently process/config driven, and supporting them correctly would require changing
-  backend construction and cache-key semantics. That can be a follow-up only if Core proves it
-  needs multiple resident variants of the same model in one process.</li>
+<li>the backend decides what work is required to make one normalized text-to-image signature truly
+  warm;</li>
+<li>the backend may internally execute a representative inference and discard the output, or use a
+  stronger equivalent mechanism if it can prove the same or better result;</li>
+<li>the backend returns structured warmup result data, including the canonical warmed signature and
+  support status it actually exercised;</li>
+<li>the plugin only orchestrates lifecycle, records the result, and exposes it through the existing
+  resident-model surface.</li>
 </ul>
-<h3 id="public-state-shape">Public state shape<a class="headerlink" href="#public-state-shape" title="Permanent link">&para;</a></h3>
-<p>Return stable API fields, not plugin-internal tuple keys:</p>
+<p>This keeps “true warmup” tied to the engine that actually knows whether retained benefit is real.</p>
+<h3 id="4-keep-warmup-reporting-additive-and-nested">4. Keep warmup reporting additive and nested<a class="headerlink" href="#4-keep-warmup-reporting-additive-and-nested" title="Permanent link">&para;</a></h3>
+<p>Do not replace the current loaded-model record.</p>
+<p>Add a nested <code>warmup</code> object only:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;load_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux/flux2-klein-4b&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;backend_kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;process&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;resident&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;resident&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;explicit_preload&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;loaded_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;last_used_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="nt">&quot;warmup&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;support&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;unsupported|signature_exact&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cold|ready|failed&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;signature&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;width&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;height&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;explicit|request&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;attempted_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Keep any backend cache key internal to the plugin.</p>
-<h3 id="internal-design">Internal design<a class="headerlink" href="#internal-design" title="Permanent link">&para;</a></h3>
-<p>The plugin should keep using <code>_routed_backends</code> as the backend object cache. It should not add a
-second backend-object cache.</p>
-<p>It should add a separate residency metadata sidecar, for example:</p>
+<p>Rules:</p>
 <ul>
-<li><code>_resident_models: dict[backend_key, ResidentModelRecord]</code></li>
-<li><code>_active_request_backend_key: Optional[backend_key]</code></li>
-<li>a small lock around residency state</li>
-<li>if concurrent generation/unload is expected, the same refcount/retire pattern already used by
-  <code>PlaygroundState</code></li>
+<li><code>support=unsupported</code> means this backend/mode cannot honestly report true warmup readiness;</li>
+<li><code>support=signature_exact</code> means the backend asserts retained benefit for exactly the recorded
+  canonical signature on this resident backend instance;</li>
+<li><code>state=ready</code> applies only to the recorded signature, not to all future request shapes;</li>
+<li><code>state=failed</code> does not roll back residency;</li>
+<li>warmup metadata must be cleared when the resident backend instance is unloaded or recreated.</li>
 </ul>
-<p>The key distinction is:</p>
+<p>The keys inside <code>signature</code> are backend-defined but must be JSON-safe and stable within that backend
+family. MFLUX should at minimum include <code>task</code>, <code>width</code>, and <code>height</code>, and may include other
+normalized backend-relevant fields only if they materially affect retained warmness.</p>
+<h3 id="5-initial-engine-scope-mflux-first">5. Initial engine scope: MFLUX first<a class="headerlink" href="#5-initial-engine-scope-mflux-first" title="Permanent link">&para;</a></h3>
+<p>V1 true warmup should be restricted to engines that can honestly retain benefit <strong>and</strong> serialize
+execution safely.</p>
+<p>Initial target:</p>
 <ul>
-<li><code>_routed_backends</code> answers “which backend objects have been constructed?”</li>
-<li><code>_resident_models</code> answers “which models are intentionally kept warm right now?”</li>
+<li><code>mflux</code>: yes, initial <code>signature_exact</code> target</li>
 </ul>
-<p>If both the playground and plugin continue to grow residency behavior, extract a small
-package-owned helper after the first plugin implementation rather than duplicating the state machine
-twice.</p>
-<h3 id="generation-interaction">Generation interaction<a class="headerlink" href="#generation-interaction" title="Permanent link">&para;</a></h3>
-<p><code>load_resident_model()</code> should:</p>
+<p>Remain preload-only / unsupported in v1:</p>
 <ul>
-<li>resolve the same backend key used by generation;</li>
-<li>call backend-native <code>preload()</code>;</li>
-<li>record <code>loaded_at</code> and <code>last_used_at</code>;</li>
-<li>not generate an image.</li>
+<li><code>diffusers</code>: until a safe execution-serialization story and retained-benefit measurement exist</li>
+<li><code>stable-diffusion.cpp</code> CLI mode: unsupported, because each request shells out to a fresh process</li>
+<li><code>stable-diffusion.cpp</code> python mode: defer until retained warm benefit and execution safety are
+  proven</li>
 </ul>
-<p><code>t2i()</code> / <code>i2i()</code> should:</p>
+<p>This is intentionally narrower than “all local backends”. The package should not claim parity where
+it cannot yet defend the semantics.</p>
+<h3 id="6-request-driven-warming-should-be-reflected-when-the-backend-can-prove-it">6. Request-driven warming should be reflected when the backend can prove it<a class="headerlink" href="#6-request-driven-warming-should-be-reflected-when-the-backend-can-prove-it" title="Permanent link">&para;</a></h3>
+<p>If a backend with <code>signature_exact</code> support completes a real ordinary local request successfully,
+the loaded-model record should update the same nested <code>warmup</code> object with:</p>
 <ul>
-<li>preserve today’s same-model reuse behavior;</li>
-<li>update <code>last_used_at</code> for resident entries;</li>
-<li>stop auto-unloading a backend on model switch if that backend was explicitly loaded as resident;</li>
-<li>continue auto-unloading non-resident backends on switch so current memory behavior remains
-  conservative by default.</li>
+<li><code>source: "request"</code></li>
+<li>the exact canonical signature that was actually exercised</li>
 </ul>
-<p>This is the main adjustment missing from the original proposal. Without it, a successful preload
-would be undone as soon as the next request activates a different backend.</p>
-<h3 id="listing-semantics">Listing semantics<a class="headerlink" href="#listing-semantics" title="Permanent link">&para;</a></h3>
-<p>Expose two views:</p>
+<p>This keeps reporting honest after a real first inference, not only after explicit warmup.</p>
+<h3 id="7-warmup-must-use-the-same-lifetime-protections-as-generation">7. Warmup must use the same lifetime protections as generation<a class="headerlink" href="#7-warmup-must-use-the-same-lifetime-protections-as-generation" title="Permanent link">&para;</a></h3>
+<p>Even though v1 can stay synchronous from the caller's perspective, internal coordination still
+matters.</p>
+<p>Implementation constraints:</p>
 <ul>
-<li><code>list_loaded_models()</code> for all plugin-visible local loaded models in the current process;</li>
-<li><code>list_resident_models()</code> for the explicit pinned subset.</li>
-</ul>
-<p>That distinction is useful because AbstractVision already has opportunistic same-model warm reuse for
-the active backend, even when a model was not explicitly preloaded.</p>
-<p><code>list_loaded_models()</code> / <code>list_resident_models()</code> should report plugin-owned, process-local state
-only.</p>
-<p>It should not inspect backend private fields such as <code>_model</code>, <code>_pipelines</code>, or <code>_py_model</code> to
-guess whether a backend is loaded. A later optional backend hook such as <code>residency_info()</code> can be
-added only if plugin-owned metadata proves insufficient.</p>
-<h3 id="http-backends">HTTP backends<a class="headerlink" href="#http-backends" title="Permanent link">&para;</a></h3>
-<p>OpenAI/OpenAI-compatible HTTP backends should be out of scope for this surface, even when the
-endpoint is on <code>localhost</code>.</p>
-<ul>
-<li><code>load_resident_model()</code> / <code>unload_resident_model()</code> should fail clearly for HTTP backends;</li>
-<li><code>list_loaded_models()</code> / <code>list_resident_models()</code> should report only in-process local backends
-  controlled by this plugin.</li>
-</ul>
-<p>This keeps the contract honest. AbstractVision can control its own local backend objects; it cannot
-prove or orchestrate model residency inside another server process over a generic OpenAI-shaped API.</p>
-<h2 id="worker-compatibility">Worker Compatibility<a class="headerlink" href="#worker-compatibility" title="Permanent link">&para;</a></h2>
-<p>The residency hooks should work inside a long-lived worker process, but the contract should be
-explicitly scoped:</p>
-<ul>
-<li>residency is process-local, not cluster-global;</li>
-<li>responses must be deterministic and JSON-serializable;</li>
-<li>AbstractVision owns model-residency reporting, not worker lifecycle or orchestration policy.</li>
+<li>warmup must participate in the same backend lifetime/refcount protections as generation;</li>
+<li>warmup must <strong>not</strong> be implemented by reusing the public <code>t2i()</code> request path, because that would
+  mutate active-routing state and request bookkeeping;</li>
+<li>warmup needs a private operation/load-generation token so stale completions cannot write <code>ready</code>
+  or <code>failed</code> metadata onto a record that was unloaded or replaced mid-flight;</li>
+<li>repeated identical warmups should single-flight per resident backend instance when practical;</li>
+<li>warmup must not persist artifacts or create extra loaded-model records.</li>
 </ul>
 <h2 id="non-goals">Non-Goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li>No cross-process or cluster-wide residency registry in v1.</li>
-<li>No attempt to pin models inside remote providers that expose only OpenAI-compatible inference.</li>
-<li>No automatic model selection from provider catalogs.</li>
-<li>No <code>VisionManager</code> public API expansion in the first pass.</li>
+<li>No redesign of the completed residency API.</li>
+<li>No top-level <code>warm_level</code>.</li>
+<li>No <code>prepared</code> middle state.</li>
+<li>No schema replacement for loaded-model records.</li>
+<li>No <code>image_to_image</code> warmup in v1.</li>
+<li>No prompt/seed/format/raw-extra public warmup payload.</li>
+<li>No promise that every local backend will eventually support true warmup.</li>
+<li>No claim that <code>resident=true</code> means a generic hot first request.</li>
 </ul>
 <h2 id="success-criteria">Success Criteria<a class="headerlink" href="#success-criteria" title="Permanent link">&para;</a></h2>
 <ul>
-<li>AbstractCore can warm a local AbstractVision model without private-field reach-through.</li>
-<li>AbstractCore can inspect both explicitly resident models and transient currently loaded local
-  models.</li>
-<li>AbstractCore can list explicitly resident image models with stable provider/model/load metadata.</li>
-<li>Explicitly resident models survive generation requests that switch to other models until they are
-  unloaded.</li>
-<li>Non-resident models keep the current unload-on-switch behavior.</li>
-<li>OpenAI-compatible HTTP backends are rejected for residency control rather than being reported as
-  falsely resident.</li>
-<li>The implementation does not depend on backend private fields to report residency.</li>
+<li><code>load_resident_model()</code> without <code>warmup_request</code> preserves the current preload-only behavior.</li>
+<li>The package can distinguish “resident” from “true warmed” semantics clearly.</li>
+<li>MFLUX can warm one representative text-to-image signature and report it honestly.</li>
+<li>Warmup readiness is tied to the recorded signature and resident backend instance, not to a vague
+  model-global “hot” flag.</li>
+<li>Warmup failure leaves the model resident and reports failure explicitly.</li>
+<li>Warmup metadata is cleared on unload/recreation and is not left behind by stale completions.</li>
+<li>Unsupported engines continue to expose residency only, without pretending to have true warmup.</li>
 </ul>
 <h2 id="validation-ideas">Validation Ideas<a class="headerlink" href="#validation-ideas" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Unit tests for residency request normalization and canonical <code>load_id</code> generation.</li>
-<li>Plugin tests that repeated same-model generation still reuses the same backend object.</li>
-<li>Plugin tests that request-driven warm local backends appear in <code>list_loaded_models()</code>.</li>
-<li>Plugin tests that an explicitly resident backend is not unloaded when another model is generated.</li>
-<li>Plugin tests that <code>unload_resident_model()</code> clears metadata and calls <code>unload()</code>.</li>
-<li>Plugin tests that OpenAI-compatible HTTP backends are rejected for residency control.</li>
-<li>If concurrency is supported, tests that in-flight generation is not unloaded mid-request.</li>
+<li>Keep the existing residency plugin tests as compatibility guards.</li>
+<li>Add plugin tests that preload-only residency leaves <code>warmup.state=cold</code> or no successful warmup
+  recorded.</li>
+<li>Add plugin tests that explicit warmup updates the resident record without storing artifacts.</li>
+<li>Add plugin tests that warmup failure returns a still-resident model plus explicit failure
+  metadata.</li>
+<li>Add plugin tests that unload/reload clears previous warmup metadata.</li>
+<li>Add MFLUX tests proving preload-only does not hit the real generation path, while true warmup
+  does.</li>
+<li>Add MFLUX tests proving the backend returns the canonical warmed signature it actually exercised.</li>
+<li>Add concurrency tests for unload/reload races so stale warmup completions cannot resurrect or
+  overwrite old metadata.</li>
 </ul>
 
 

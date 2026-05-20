@@ -10,26 +10,24 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/adr/0004_thin_orchestrator_and_backend_owned_model_semantics/">
       
       
-      
-        <link rel="next" href="getting-started/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>AbstractVision</title>
+        <title>ADR 0004: Keep the orchestrator thin and make model semantics backend-owned - AbstractVision</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
       
 
@@ -48,7 +46,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -66,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#abstractvision-documentation" class="md-skip">
+        <a href="#adr-0004-keep-the-orchestrator-thin-and-make-model-semantics-backend-owned" class="md-skip">
           Skip to content
         </a>
       
@@ -82,7 +80,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+    <a href="../.." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -102,7 +100,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              ADR 0004: Keep the orchestrator thin and make model semantics backend-owned
             
           </span>
         </div>
@@ -192,7 +190,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+    <a href="../.." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -219,37 +217,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -265,92 +236,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#start-here-new-users" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Start here (new users)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick reference
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#abstractframework-ecosystem" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        AbstractFramework ecosystem
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#current-implementation-status-as-shipped" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Current implementation status (as shipped)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#internal-engineering-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Internal engineering notes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#project" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Project
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -362,7 +247,7 @@
   
   
     <li class="md-nav__item">
-      <a href="getting-started/" class="md-nav__link">
+      <a href="../../getting-started/" class="md-nav__link">
         
   
   
@@ -389,7 +274,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/" class="md-nav__link">
+      <a href="../../api/" class="md-nav__link">
         
   
   
@@ -416,7 +301,7 @@
   
   
     <li class="md-nav__item">
-      <a href="architecture/" class="md-nav__link">
+      <a href="../../architecture/" class="md-nav__link">
         
   
   
@@ -443,7 +328,7 @@
   
   
     <li class="md-nav__item">
-      <a href="faq/" class="md-nav__link">
+      <a href="../../faq/" class="md-nav__link">
         
   
   
@@ -517,7 +402,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/configuration/" class="md-nav__link">
+      <a href="../../reference/configuration/" class="md-nav__link">
         
   
   
@@ -545,7 +430,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/backends/" class="md-nav__link">
+      <a href="../../reference/backends/" class="md-nav__link">
         
   
   
@@ -573,7 +458,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/artifacts/" class="md-nav__link">
+      <a href="../../reference/artifacts/" class="md-nav__link">
         
   
   
@@ -601,7 +486,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/capabilities-registry/" class="md-nav__link">
+      <a href="../../reference/capabilities-registry/" class="md-nav__link">
         
   
   
@@ -629,7 +514,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/abstractcore-integration/" class="md-nav__link">
+      <a href="../../reference/abstractcore-integration/" class="md-nav__link">
         
   
   
@@ -684,10 +569,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#start-here-new-users" class="md-nav__link">
+  <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start here (new users)
+        Context
       
     </span>
   </a>
@@ -695,10 +580,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
+  <a href="#decision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick reference
+        Decision
       
     </span>
   </a>
@@ -706,10 +591,60 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#abstractframework-ecosystem" class="md-nav__link">
+  <a href="#consequences" class="md-nav__link">
     <span class="md-ellipsis">
       
-        AbstractFramework ecosystem
+        Consequences
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Consequences">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#positive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Positive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#negative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Negative
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#neutral" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Neutral
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#enforcement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enforcement
       
     </span>
   </a>
@@ -717,10 +652,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#current-implementation-status-as-shipped" class="md-nav__link">
+  <a href="#validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current implementation status (as shipped)
+        Validation
       
     </span>
   </a>
@@ -728,10 +663,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#internal-engineering-notes" class="md-nav__link">
+  <a href="#backlog-links" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Internal engineering notes
+        Backlog links
       
     </span>
   </a>
@@ -739,10 +674,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#project" class="md-nav__link">
+  <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Project
+        Related
       
     </span>
   </a>
@@ -769,53 +704,87 @@
   
 
 
-<h1 id="abstractvision-documentation">AbstractVision documentation<a class="headerlink" href="#abstractvision-documentation" title="Permanent link">&para;</a></h1>
-<p>This folder contains the user-facing documentation for <code>abstractvision</code>.</p>
-<h2 id="start-here-new-users">Start here (new users)<a class="headerlink" href="#start-here-new-users" title="Permanent link">&para;</a></h2>
-<p>1) <a href="../README.md">Project overview + quickstart</a><br />
-2) <a href="getting-started/">Getting started</a> (first image with Stable Diffusion 1.5; then klein-4B, GGUF, OpenAI-compatible HTTP, Playground)
-3) <a href="architecture/">Architecture</a> (how the pieces fit together)</p>
-<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<h1 id="adr-0004-keep-the-orchestrator-thin-and-make-model-semantics-backend-owned">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned<a class="headerlink" href="#adr-0004-keep-the-orchestrator-thin-and-make-model-semantics-backend-owned" title="Permanent link">&para;</a></h1>
+<p>Status: Accepted.</p>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>AbstractVision exposes several public surfaces: Python API, CLI/REPL, playground, and AbstractCore
+plugin integration. Those surfaces all touch the same runtime families, but they should not each
+reinvent model-specific rules.</p>
+<p>The current code is already moving toward a clean boundary:</p>
 <ul>
-<li><a href="faq/">FAQ</a></li>
-<li><a href="api/">API reference</a></li>
-<li><a href="adr/">Architecture decisions</a></li>
-<li><a href="reference/backends/">Backends</a></li>
-<li><a href="reference/configuration/">Configuration (CLI/REPL env vars + flags)</a></li>
-<li><a href="reference/capabilities-registry/">Capability registry (<code>vision_model_capabilities.json</code>)</a></li>
-<li><a href="reference/artifacts/">Artifacts (artifact refs + stores)</a></li>
-<li><a href="reference/abstractcore-integration/">AbstractCore integration (capability plugin + tools)</a></li>
-<li>Agent-oriented docs: <a href="../llms.txt"><code>../llms.txt</code></a> and <a href="../llms-full.txt"><code>../llms-full.txt</code></a></li>
+<li><a href="../../src/abstractvision/vision_manager.py"><code>VisionManager</code></a> stays thin and delegates execution;</li>
+<li>backends expose <code>normalize_image_generation_request(...)</code> and
+  <code>normalize_image_edit_request(...)</code>;</li>
+<li>the CLI, playground, and AbstractCore plugin route requests through that shared backend-owned
+  normalization path;</li>
+<li>residency and preload behavior are package/backend concerns, not AbstractCore-native semantics.</li>
 </ul>
-<h2 id="abstractframework-ecosystem">AbstractFramework ecosystem<a class="headerlink" href="#abstractframework-ecosystem" title="Permanent link">&para;</a></h2>
-<p>AbstractVision is part of the <strong>AbstractFramework</strong> ecosystem and is designed to compose with:</p>
+<p>Without a durable rule, model-specific constraints, overlay behavior, component assembly, or
+warmup/residency semantics will drift across surfaces and become inconsistent.</p>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p>AbstractVision keeps orchestration thin and treats model/runtime semantics as backend-owned package
+behavior.</p>
+<p>The rules are:</p>
+<ol>
+<li><code>VisionManager</code> owns request construction, optional capability gating, artifact storage, and
+   backend delegation. It does not become the place where model-family rules are reimplemented.</li>
+<li>Model-specific request normalization belongs in backend code, optionally using packaged registry
+   metadata as input.</li>
+<li>CLI, playground, and AbstractCore integration must go through the backend-owned normalization
+   and execution path instead of encoding their own copies of model rules.</li>
+<li>Overlay, adapter, component-bundle, preload, and local-residency semantics remain
+   <code>abstractvision</code> package responsibilities. AbstractCore may orchestrate them, but it must not
+   become their source of truth.</li>
+<li>The capability registry describes model intent and packaged metadata. Runtime support is still
+   decided by the configured backend.</li>
+</ol>
+<h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
+<h3 id="positive">Positive<a class="headerlink" href="#positive" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>AbstractFramework</strong> (project hub): <a href="https://github.com/lpalbou/AbstractFramework">https://github.com/lpalbou/AbstractFramework</a></li>
-<li><strong>AbstractCore</strong> (orchestration + tool calling): <a href="https://github.com/lpalbou/abstractcore">https://github.com/lpalbou/abstractcore</a></li>
-<li><strong>AbstractRuntime</strong> (runtime services, including artifact storage): <a href="https://github.com/lpalbou/abstractruntime">https://github.com/lpalbou/abstractruntime</a></li>
+<li>Model-specific behavior stays consistent across Python, CLI, playground, and AbstractCore.</li>
+<li>Runtime-specific fixes land close to the backend code that actually implements them.</li>
+<li>Package-level semantics remain easier to test end-to-end.</li>
 </ul>
-<h2 id="current-implementation-status-as-shipped">Current implementation status (as shipped)<a class="headerlink" href="#current-implementation-status-as-shipped" title="Permanent link">&para;</a></h2>
-<p>Public API surface: <a href="../src/abstractvision/vision_manager.py"><code>VisionManager</code></a> exposes:
-- <code>generate_image</code> (<code>text_to_image</code>), <code>edit_image</code> (<code>image_to_image</code>)
-- <code>generate_video</code> (<code>text_to_video</code>), <code>image_to_video</code> (<code>image_to_video</code>) (backend-dependent)
-- <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
-<p>Built-in backends implement:
-- <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Video</strong>: OpenAI-compatible HTTP only, and only when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
-<p>If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
-<a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>../src/abstractvision/assets/vision_model_capabilities.json</code></a> (loaded by <code>VisionModelCapabilitiesRegistry</code> in <a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>).
-The curation and cross-platform support policy for that registry is governed by
-<a href="adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005</a>.</p>
-<h2 id="internal-engineering-notes">Internal engineering notes<a class="headerlink" href="#internal-engineering-notes" title="Permanent link">&para;</a></h2>
-<p><a href="adr/"><code>docs/adr/</code></a> contains durable engineering policy.</p>
-<p><a href="backlog/"><code>docs/backlog/</code></a> is an internal log (planned work + completion reports). It is not the normative user documentation surface.</p>
-<h2 id="project">Project<a class="headerlink" href="#project" title="Permanent link">&para;</a></h2>
+<h3 id="negative">Negative<a class="headerlink" href="#negative" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Release notes: <a href="../CHANGELOG.md"><code>CHANGELOG.md</code></a></li>
-<li>Contributing: <a href="../CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a></li>
-<li>Security: <a href="../SECURITY.md"><code>SECURITY.md</code></a></li>
-<li>License: <a href="../LICENSE"><code>LICENSE</code></a></li>
-<li>Acknowledgments: <a href="../ACKNOWLEDGMENTS.md"><code>ACKNOWLEDGMENTS.md</code></a></li>
+<li>Backends carry more responsibility for normalization and compatibility logic.</li>
+<li>Public surfaces must resist the temptation to add their own “small” model-specific shortcuts.</li>
+</ul>
+<h3 id="neutral">Neutral<a class="headerlink" href="#neutral" title="Permanent link">&para;</a></h3>
+<ul>
+<li>This ADR does not force every backend to support every task.</li>
+<li>This ADR allows backend-owned evolution as new model families or adapter shapes appear.</li>
+</ul>
+<h2 id="enforcement">Enforcement<a class="headerlink" href="#enforcement" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Reviewers should reject model-specific parameter hacks added only in the CLI, playground, or
+  AbstractCore plugin when the same rule should live in the backend path.</li>
+<li>New runtime-family semantics must identify the authoritative layer explicitly.</li>
+<li>If a cross-surface contract changes, the change must update every surface that delegates into it
+  and must update the docs in the same pass.</li>
+</ul>
+<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Keep manager, CLI, playground, and AbstractCore tests passing for shared normalization behavior.</li>
+<li>When adding model-specific constraints, add at least one backend-level test and one surface-level
+  integration check when feasible.</li>
+<li>Verify that observed behavior matches backend reality rather than only registry metadata.</li>
+</ul>
+<h2 id="backlog-links">Backlog links<a class="headerlink" href="#backlog-links" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../backlog/completed/005_core_api_tasks_and_abstractions/">docs/backlog/completed/005_core_api_tasks_and_abstractions.md</a></li>
+<li><a href="../../backlog/completed/016_abstractcore_plugin_catalog_discovery_surface/">docs/backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md</a></li>
+<li><a href="../../backlog/completed/018_capability_residency_hooks/">docs/backlog/completed/018_capability_residency_hooks.md</a></li>
+<li><a href="../../backlog/completed/019_best_effort_preload_warmup_for_local_backends/">docs/backlog/completed/019_best_effort_preload_warmup_for_local_backends.md</a></li>
+<li><a href="../../backlog/planned/020_adapter_aware_model_graph_and_catalog/">docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md</a></li>
+</ul>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../architecture/">docs/architecture.md</a></li>
+<li><a href="../../reference/backends/">docs/reference/backends.md</a></li>
+<li><a href="../../src/abstractvision/vision_manager.py">src/abstractvision/vision_manager.py</a></li>
+<li><a href="../../src/abstractvision/backends/base_backend.py">src/abstractvision/backends/base_backend.py</a></li>
+<li><a href="../../src/abstractvision/integrations/abstractcore_plugin.py">src/abstractvision/integrations/abstractcore_plugin.py</a></li>
 </ul>
 
 
@@ -872,10 +841,10 @@ The curation and cross-platform support policy for that registry is governed by
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

@@ -10,26 +10,24 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/adr/0003_lightweight_base_package_and_explicit_runtime_extras/">
       
       
-      
-        <link rel="next" href="getting-started/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>AbstractVision</title>
+        <title>ADR 0003: Keep the base package lightweight and make local runtimes explicit - AbstractVision</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
       
 
@@ -48,7 +46,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -66,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#abstractvision-documentation" class="md-skip">
+        <a href="#adr-0003-keep-the-base-package-lightweight-and-make-local-runtimes-explicit" class="md-skip">
           Skip to content
         </a>
       
@@ -82,7 +80,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+    <a href="../.." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -102,7 +100,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              ADR 0003: Keep the base package lightweight and make local runtimes explicit
             
           </span>
         </div>
@@ -192,7 +190,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+    <a href="../.." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -219,37 +217,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -265,92 +236,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#start-here-new-users" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Start here (new users)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick reference
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#abstractframework-ecosystem" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        AbstractFramework ecosystem
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#current-implementation-status-as-shipped" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Current implementation status (as shipped)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#internal-engineering-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Internal engineering notes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#project" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Project
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -362,7 +247,7 @@
   
   
     <li class="md-nav__item">
-      <a href="getting-started/" class="md-nav__link">
+      <a href="../../getting-started/" class="md-nav__link">
         
   
   
@@ -389,7 +274,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/" class="md-nav__link">
+      <a href="../../api/" class="md-nav__link">
         
   
   
@@ -416,7 +301,7 @@
   
   
     <li class="md-nav__item">
-      <a href="architecture/" class="md-nav__link">
+      <a href="../../architecture/" class="md-nav__link">
         
   
   
@@ -443,7 +328,7 @@
   
   
     <li class="md-nav__item">
-      <a href="faq/" class="md-nav__link">
+      <a href="../../faq/" class="md-nav__link">
         
   
   
@@ -517,7 +402,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/configuration/" class="md-nav__link">
+      <a href="../../reference/configuration/" class="md-nav__link">
         
   
   
@@ -545,7 +430,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/backends/" class="md-nav__link">
+      <a href="../../reference/backends/" class="md-nav__link">
         
   
   
@@ -573,7 +458,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/artifacts/" class="md-nav__link">
+      <a href="../../reference/artifacts/" class="md-nav__link">
         
   
   
@@ -601,7 +486,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/capabilities-registry/" class="md-nav__link">
+      <a href="../../reference/capabilities-registry/" class="md-nav__link">
         
   
   
@@ -629,7 +514,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/abstractcore-integration/" class="md-nav__link">
+      <a href="../../reference/abstractcore-integration/" class="md-nav__link">
         
   
   
@@ -684,10 +569,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#start-here-new-users" class="md-nav__link">
+  <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start here (new users)
+        Context
       
     </span>
   </a>
@@ -695,10 +580,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
+  <a href="#decision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick reference
+        Decision
       
     </span>
   </a>
@@ -706,10 +591,60 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#abstractframework-ecosystem" class="md-nav__link">
+  <a href="#consequences" class="md-nav__link">
     <span class="md-ellipsis">
       
-        AbstractFramework ecosystem
+        Consequences
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Consequences">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#positive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Positive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#negative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Negative
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#neutral" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Neutral
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#enforcement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enforcement
       
     </span>
   </a>
@@ -717,10 +652,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#current-implementation-status-as-shipped" class="md-nav__link">
+  <a href="#validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current implementation status (as shipped)
+        Validation
       
     </span>
   </a>
@@ -728,10 +663,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#internal-engineering-notes" class="md-nav__link">
+  <a href="#backlog-links" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Internal engineering notes
+        Backlog links
       
     </span>
   </a>
@@ -739,10 +674,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#project" class="md-nav__link">
+  <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Project
+        Related
       
     </span>
   </a>
@@ -769,53 +704,87 @@
   
 
 
-<h1 id="abstractvision-documentation">AbstractVision documentation<a class="headerlink" href="#abstractvision-documentation" title="Permanent link">&para;</a></h1>
-<p>This folder contains the user-facing documentation for <code>abstractvision</code>.</p>
-<h2 id="start-here-new-users">Start here (new users)<a class="headerlink" href="#start-here-new-users" title="Permanent link">&para;</a></h2>
-<p>1) <a href="../README.md">Project overview + quickstart</a><br />
-2) <a href="getting-started/">Getting started</a> (first image with Stable Diffusion 1.5; then klein-4B, GGUF, OpenAI-compatible HTTP, Playground)
-3) <a href="architecture/">Architecture</a> (how the pieces fit together)</p>
-<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<h1 id="adr-0003-keep-the-base-package-lightweight-and-make-local-runtimes-explicit">ADR 0003: Keep the base package lightweight and make local runtimes explicit<a class="headerlink" href="#adr-0003-keep-the-base-package-lightweight-and-make-local-runtimes-explicit" title="Permanent link">&para;</a></h1>
+<p>Status: Accepted.</p>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p><code>abstractvision</code> serves very different environments: remote OpenAI-compatible hosts, local CLI
+users, playground users, and AbstractCore plugin hosts. Those environments should not all pay the
+dependency and platform cost of local Torch, Diffusers, GGUF bindings, Apple-only MLX stacks, or
+model download helpers.</p>
+<p>The current code already reflects this pressure:</p>
 <ul>
-<li><a href="faq/">FAQ</a></li>
-<li><a href="api/">API reference</a></li>
-<li><a href="adr/">Architecture decisions</a></li>
-<li><a href="reference/backends/">Backends</a></li>
-<li><a href="reference/configuration/">Configuration (CLI/REPL env vars + flags)</a></li>
-<li><a href="reference/capabilities-registry/">Capability registry (<code>vision_model_capabilities.json</code>)</a></li>
-<li><a href="reference/artifacts/">Artifacts (artifact refs + stores)</a></li>
-<li><a href="reference/abstractcore-integration/">AbstractCore integration (capability plugin + tools)</a></li>
-<li>Agent-oriented docs: <a href="../llms.txt"><code>../llms.txt</code></a> and <a href="../llms-full.txt"><code>../llms-full.txt</code></a></li>
+<li>base package dependencies are empty in <a href="../../pyproject.toml"><code>pyproject.toml</code></a>;</li>
+<li>local runtimes live behind optional extras such as <code>diffusers</code>, <code>sdcpp</code>, <code>mflux</code>, and <code>models</code>;</li>
+<li>heavy backend modules are imported lazily;</li>
+<li>tests already guard import-light behavior for plugin registration and package import.</li>
 </ul>
-<h2 id="abstractframework-ecosystem">AbstractFramework ecosystem<a class="headerlink" href="#abstractframework-ecosystem" title="Permanent link">&para;</a></h2>
-<p>AbstractVision is part of the <strong>AbstractFramework</strong> ecosystem and is designed to compose with:</p>
+<p>Without a durable rule, future work can quietly reintroduce heavy default dependencies, eager local
+runtime imports, or package startup behavior that breaks lightweight remote deployments.</p>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p>AbstractVision keeps the base install lightweight and treats local inference stacks as explicit
+operator choices.</p>
+<p>The rules are:</p>
+<ol>
+<li><code>pip install abstractvision</code> must remain usable for the shared API, registry, artifacts, CLI,
+   and OpenAI-compatible HTTP backend without installing local inference runtimes.</li>
+<li>Heavy local runtimes and helpers stay behind explicit extras:</li>
+<li><code>diffusers</code> for Torch/Diffusers</li>
+<li><code>sdcpp</code> for <code>stable-diffusion-cpp-python</code></li>
+<li><code>mflux</code> for Apple Silicon MLX/MFLUX</li>
+<li><code>models</code> for Hugging Face download helpers</li>
+<li>Backend modules that depend on heavy optional packages must stay lazily imported.</li>
+<li>AbstractCore integration must remain lazy. AbstractVision must not require AbstractCore to be
+   installed just to import the base package.</li>
+<li>New optional runtime families must follow the same pattern unless the user explicitly accepts a
+   heavier base package design in a future ADR.</li>
+</ol>
+<h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
+<h3 id="positive">Positive<a class="headerlink" href="#positive" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>AbstractFramework</strong> (project hub): <a href="https://github.com/lpalbou/AbstractFramework">https://github.com/lpalbou/AbstractFramework</a></li>
-<li><strong>AbstractCore</strong> (orchestration + tool calling): <a href="https://github.com/lpalbou/abstractcore">https://github.com/lpalbou/abstractcore</a></li>
-<li><strong>AbstractRuntime</strong> (runtime services, including artifact storage): <a href="https://github.com/lpalbou/abstractruntime">https://github.com/lpalbou/abstractruntime</a></li>
+<li>Remote-only and plugin-host installs stay small and portable.</li>
+<li>Local runtime failures stay opt-in instead of breaking every install.</li>
+<li>Packaging intent remains easy to explain in docs and tests.</li>
 </ul>
-<h2 id="current-implementation-status-as-shipped">Current implementation status (as shipped)<a class="headerlink" href="#current-implementation-status-as-shipped" title="Permanent link">&para;</a></h2>
-<p>Public API surface: <a href="../src/abstractvision/vision_manager.py"><code>VisionManager</code></a> exposes:
-- <code>generate_image</code> (<code>text_to_image</code>), <code>edit_image</code> (<code>image_to_image</code>)
-- <code>generate_video</code> (<code>text_to_video</code>), <code>image_to_video</code> (<code>image_to_video</code>) (backend-dependent)
-- <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
-<p>Built-in backends implement:
-- <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Video</strong>: OpenAI-compatible HTTP only, and only when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
-<p>If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
-<a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>../src/abstractvision/assets/vision_model_capabilities.json</code></a> (loaded by <code>VisionModelCapabilitiesRegistry</code> in <a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>).
-The curation and cross-platform support policy for that registry is governed by
-<a href="adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005</a>.</p>
-<h2 id="internal-engineering-notes">Internal engineering notes<a class="headerlink" href="#internal-engineering-notes" title="Permanent link">&para;</a></h2>
-<p><a href="adr/"><code>docs/adr/</code></a> contains durable engineering policy.</p>
-<p><a href="backlog/"><code>docs/backlog/</code></a> is an internal log (planned work + completion reports). It is not the normative user documentation surface.</p>
-<h2 id="project">Project<a class="headerlink" href="#project" title="Permanent link">&para;</a></h2>
+<h3 id="negative">Negative<a class="headerlink" href="#negative" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Release notes: <a href="../CHANGELOG.md"><code>CHANGELOG.md</code></a></li>
-<li>Contributing: <a href="../CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a></li>
-<li>Security: <a href="../SECURITY.md"><code>SECURITY.md</code></a></li>
-<li>License: <a href="../LICENSE"><code>LICENSE</code></a></li>
-<li>Acknowledgments: <a href="../ACKNOWLEDGMENTS.md"><code>ACKNOWLEDGMENTS.md</code></a></li>
+<li>Contributors must keep optional-import boundaries clean.</li>
+<li>Docs and errors must keep explaining which extra a user needs for a given local backend.</li>
+</ul>
+<h3 id="neutral">Neutral<a class="headerlink" href="#neutral" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Convenience extras such as <code>local</code>, <code>all</code>, and platform bundles may still exist.</li>
+<li>This ADR does not prevent stronger local-runtime integrations; it only requires them to stay
+  explicit.</li>
+</ul>
+<h2 id="enforcement">Enforcement<a class="headerlink" href="#enforcement" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Reviewers should reject new unconditional heavy dependencies in <code>[project].dependencies</code>.</li>
+<li>Reviewers should reject eager imports of Diffusers, Torch, <code>stable_diffusion_cpp</code>, <code>mflux</code>, or
+  similar local runtime modules from the base package import path.</li>
+<li>Contributor docs must continue to describe runtime extras explicitly.</li>
+<li>New local backends must document their extra and missing-dependency hint paths in the same change.</li>
+</ul>
+<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Keep import-light tests passing, especially:</li>
+<li>package import without heavy backend imports</li>
+<li>AbstractCore plugin registration without heavy runtime imports</li>
+<li>Keep packaging metadata aligned with the documented extras.</li>
+<li>Verify docs still describe the lightweight base install and explicit extras accurately.</li>
+</ul>
+<h2 id="backlog-links">Backlog links<a class="headerlink" href="#backlog-links" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../backlog/completed/012_packaging_extras_and_release_hygiene/">docs/backlog/completed/012_packaging_extras_and_release_hygiene.md</a></li>
+<li><a href="../../backlog/completed/014_lightweight_openai_compatible_packaging/">docs/backlog/completed/014_lightweight_openai_compatible_packaging.md</a></li>
+<li><a href="../../backlog/completed/015_vision_install_profiles_and_pending_defaults/">docs/backlog/completed/015_vision_install_profiles_and_pending_defaults.md</a></li>
+</ul>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../README.md">README.md</a></li>
+<li><a href="../../getting-started/">docs/getting-started.md</a></li>
+<li><a href="../../reference/backends/">docs/reference/backends.md</a></li>
+<li><a href="../../pyproject.toml">pyproject.toml</a></li>
+<li><a href="../../tests/test_abstractcore_plugin.py">tests/test_abstractcore_plugin.py</a></li>
 </ul>
 
 
@@ -872,10 +841,10 @@ The curation and cross-platform support policy for that registry is governed by
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

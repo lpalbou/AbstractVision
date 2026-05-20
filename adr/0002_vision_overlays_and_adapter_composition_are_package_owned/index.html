@@ -10,26 +10,24 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/adr/0002_vision_overlays_and_adapter_composition_are_package_owned/">
       
       
-      
-        <link rel="next" href="getting-started/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>AbstractVision</title>
+        <title>0002 vision overlays and adapter composition are package owned - AbstractVision</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
       
 
@@ -48,7 +46,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -66,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#abstractvision-documentation" class="md-skip">
+        <a href="#adr-0002-vision-overlays-and-adapter-composition-are-package-owned" class="md-skip">
           Skip to content
         </a>
       
@@ -82,7 +80,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+    <a href="../.." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -102,7 +100,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              0002 vision overlays and adapter composition are package owned
             
           </span>
         </div>
@@ -192,7 +190,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+    <a href="../.." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -219,37 +217,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -265,92 +236,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#start-here-new-users" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Start here (new users)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick reference
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#abstractframework-ecosystem" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        AbstractFramework ecosystem
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#current-implementation-status-as-shipped" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Current implementation status (as shipped)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#internal-engineering-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Internal engineering notes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#project" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Project
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -362,7 +247,7 @@
   
   
     <li class="md-nav__item">
-      <a href="getting-started/" class="md-nav__link">
+      <a href="../../getting-started/" class="md-nav__link">
         
   
   
@@ -389,7 +274,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/" class="md-nav__link">
+      <a href="../../api/" class="md-nav__link">
         
   
   
@@ -416,7 +301,7 @@
   
   
     <li class="md-nav__item">
-      <a href="architecture/" class="md-nav__link">
+      <a href="../../architecture/" class="md-nav__link">
         
   
   
@@ -443,7 +328,7 @@
   
   
     <li class="md-nav__item">
-      <a href="faq/" class="md-nav__link">
+      <a href="../../faq/" class="md-nav__link">
         
   
   
@@ -517,7 +402,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/configuration/" class="md-nav__link">
+      <a href="../../reference/configuration/" class="md-nav__link">
         
   
   
@@ -545,7 +430,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/backends/" class="md-nav__link">
+      <a href="../../reference/backends/" class="md-nav__link">
         
   
   
@@ -573,7 +458,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/artifacts/" class="md-nav__link">
+      <a href="../../reference/artifacts/" class="md-nav__link">
         
   
   
@@ -601,7 +486,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/capabilities-registry/" class="md-nav__link">
+      <a href="../../reference/capabilities-registry/" class="md-nav__link">
         
   
   
@@ -629,7 +514,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/abstractcore-integration/" class="md-nav__link">
+      <a href="../../reference/abstractcore-integration/" class="md-nav__link">
         
   
   
@@ -674,8 +559,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -684,10 +567,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#start-here-new-users" class="md-nav__link">
+  <a href="#adr-0002-vision-overlays-and-adapter-composition-are-package-owned" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start here (new users)
+        ADR 0002: Vision overlays and adapter composition are package-owned
       
     </span>
   </a>
@@ -695,10 +578,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
+  <a href="#note" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick reference
+        Note
       
     </span>
   </a>
@@ -706,10 +589,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#abstractframework-ecosystem" class="md-nav__link">
+  <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
-        AbstractFramework ecosystem
+        Context
       
     </span>
   </a>
@@ -717,32 +600,110 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#current-implementation-status-as-shipped" class="md-nav__link">
+  <a href="#decision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current implementation status (as shipped)
+        Decision
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Decision">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-vision-overlaysadapters-are-owned-by-abstractvision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1) Vision overlays/adapters are owned by abstractvision
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#internal-engineering-notes" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#2-abstractcore-may-orchestrate-but-must-not-define-vision-adapter-semantics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Internal engineering notes
+        2) abstractcore may orchestrate, but must not define vision adapter semantics
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#project" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#3-catalogs-must-distinguish-runnable-models-from-adapter-style-artifacts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Project
+        3) Catalogs must distinguish runnable models from adapter-style artifacts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-package-facing-api-should-become-explicit-over-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4) Package-facing API should become explicit over time
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Consequences">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#positive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Positive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#negative-risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Negative / Risks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
       
     </span>
   </a>
@@ -769,53 +730,95 @@
   
 
 
-<h1 id="abstractvision-documentation">AbstractVision documentation<a class="headerlink" href="#abstractvision-documentation" title="Permanent link">&para;</a></h1>
-<p>This folder contains the user-facing documentation for <code>abstractvision</code>.</p>
-<h2 id="start-here-new-users">Start here (new users)<a class="headerlink" href="#start-here-new-users" title="Permanent link">&para;</a></h2>
-<p>1) <a href="../README.md">Project overview + quickstart</a><br />
-2) <a href="getting-started/">Getting started</a> (first image with Stable Diffusion 1.5; then klein-4B, GGUF, OpenAI-compatible HTTP, Playground)
-3) <a href="architecture/">Architecture</a> (how the pieces fit together)</p>
-<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+  <h1>0002 vision overlays and adapter composition are package owned</h1>
+
+<h2 id="adr-0002-vision-overlays-and-adapter-composition-are-package-owned">ADR 0002: Vision overlays and adapter composition are package-owned<a class="headerlink" href="#adr-0002-vision-overlays-and-adapter-composition-are-package-owned" title="Permanent link">&para;</a></h2>
+<p><strong>Date</strong>: 2026-05-20<br />
+<strong>Status</strong>: Superseded by ADR 0004</p>
+<hr />
+<h2 id="note">Note<a class="headerlink" href="#note" title="Permanent link">&para;</a></h2>
+<p>This ADR captured one package boundary correctly, but it was too narrow and too implementation-led
+to serve as the repo baseline. Keep it for history only. The active rule now lives in
+<a href="../0004_thin_orchestrator_and_backend_owned_model_semantics/">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned</a>.</p>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p><code>abstractvision</code> already has real backend-level overlay and adapter behavior, but it is not yet
+documented as a durable package boundary.</p>
+<p>Current code reality:</p>
 <ul>
-<li><a href="faq/">FAQ</a></li>
-<li><a href="api/">API reference</a></li>
-<li><a href="adr/">Architecture decisions</a></li>
-<li><a href="reference/backends/">Backends</a></li>
-<li><a href="reference/configuration/">Configuration (CLI/REPL env vars + flags)</a></li>
-<li><a href="reference/capabilities-registry/">Capability registry (<code>vision_model_capabilities.json</code>)</a></li>
-<li><a href="reference/artifacts/">Artifacts (artifact refs + stores)</a></li>
-<li><a href="reference/abstractcore-integration/">AbstractCore integration (capability plugin + tools)</a></li>
-<li>Agent-oriented docs: <a href="../llms.txt"><code>../llms.txt</code></a> and <a href="../llms-full.txt"><code>../llms-full.txt</code></a></li>
+<li>The Diffusers backend parses LoRA-like overlay payloads from request data and applies them inside
+  the backend implementation (<code>src/abstractvision/backends/huggingface_diffusers.py</code>).</li>
+<li>The MFLUX backend already has backend-owned LoRA inputs in its config/runtime path
+  (<code>src/abstractvision/backends/mflux.py</code>).</li>
+<li>Local residency is already package-owned through the AbstractCore plugin integration
+  (<code>src/abstractvision/integrations/abstractcore_plugin.py</code>).</li>
+<li>The model/catalog backlog already distinguishes parent models, variants, and adapter-style
+  artifacts as a package concern (<code>docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md</code>).</li>
 </ul>
-<h2 id="abstractframework-ecosystem">AbstractFramework ecosystem<a class="headerlink" href="#abstractframework-ecosystem" title="Permanent link">&para;</a></h2>
-<p>AbstractVision is part of the <strong>AbstractFramework</strong> ecosystem and is designed to compose with:</p>
+<p>At the same time, <code>abstractcore</code> treats vision as a capability plugin boundary, not as a native
+text-provider family. That means Core should not become the source of truth for backend-specific
+vision overlay semantics.</p>
+<p>Without an ADR here, future work can drift in two bad directions:</p>
 <ul>
-<li><strong>AbstractFramework</strong> (project hub): <a href="https://github.com/lpalbou/AbstractFramework">https://github.com/lpalbou/AbstractFramework</a></li>
-<li><strong>AbstractCore</strong> (orchestration + tool calling): <a href="https://github.com/lpalbou/abstractcore">https://github.com/lpalbou/abstractcore</a></li>
-<li><strong>AbstractRuntime</strong> (runtime services, including artifact storage): <a href="https://github.com/lpalbou/abstractruntime">https://github.com/lpalbou/abstractruntime</a></li>
+<li>presenting adapter artifacts as if they were standalone runnable vision models;</li>
+<li>pushing backend-specific overlay rules up into <code>abstractcore</code>, where they will be less accurate
+  and harder to maintain.</li>
 </ul>
-<h2 id="current-implementation-status-as-shipped">Current implementation status (as shipped)<a class="headerlink" href="#current-implementation-status-as-shipped" title="Permanent link">&para;</a></h2>
-<p>Public API surface: <a href="../src/abstractvision/vision_manager.py"><code>VisionManager</code></a> exposes:
-- <code>generate_image</code> (<code>text_to_image</code>), <code>edit_image</code> (<code>image_to_image</code>)
-- <code>generate_video</code> (<code>text_to_video</code>), <code>image_to_video</code> (<code>image_to_video</code>) (backend-dependent)
-- <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
-<p>Built-in backends implement:
-- <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Video</strong>: OpenAI-compatible HTTP only, and only when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
-<p>If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
-<a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>../src/abstractvision/assets/vision_model_capabilities.json</code></a> (loaded by <code>VisionModelCapabilitiesRegistry</code> in <a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>).
-The curation and cross-platform support policy for that registry is governed by
-<a href="adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005</a>.</p>
-<h2 id="internal-engineering-notes">Internal engineering notes<a class="headerlink" href="#internal-engineering-notes" title="Permanent link">&para;</a></h2>
-<p><a href="adr/"><code>docs/adr/</code></a> contains durable engineering policy.</p>
-<p><a href="backlog/"><code>docs/backlog/</code></a> is an internal log (planned work + completion reports). It is not the normative user documentation surface.</p>
-<h2 id="project">Project<a class="headerlink" href="#project" title="Permanent link">&para;</a></h2>
+<hr />
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<h3 id="1-vision-overlaysadapters-are-owned-by-abstractvision">1) Vision overlays/adapters are owned by <code>abstractvision</code><a class="headerlink" href="#1-vision-overlaysadapters-are-owned-by-abstractvision" title="Permanent link">&para;</a></h3>
+<p>Selection, validation, compatibility, and application of vision overlays remain package-owned.</p>
+<p>This includes, for example:</p>
 <ul>
-<li>Release notes: <a href="../CHANGELOG.md"><code>CHANGELOG.md</code></a></li>
-<li>Contributing: <a href="../CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a></li>
-<li>Security: <a href="../SECURITY.md"><code>SECURITY.md</code></a></li>
-<li>License: <a href="../LICENSE"><code>LICENSE</code></a></li>
-<li>Acknowledgments: <a href="../ACKNOWLEDGMENTS.md"><code>ACKNOWLEDGMENTS.md</code></a></li>
+<li>LoRA overlays for Diffusers-like backends;</li>
+<li>backend-specific overlay inputs such as MFLUX LoRA paths/scales;</li>
+<li>future adapter-style artifacts that require a specific parent model or backend family.</li>
+</ul>
+<h3 id="2-abstractcore-may-orchestrate-but-must-not-define-vision-adapter-semantics">2) <code>abstractcore</code> may orchestrate, but must not define vision adapter semantics<a class="headerlink" href="#2-abstractcore-may-orchestrate-but-must-not-define-vision-adapter-semantics" title="Permanent link">&para;</a></h3>
+<p>When <code>abstractvision</code> is used through AbstractCore, Core may forward package-owned overlay payloads
+and residency selectors, but it must not become the source of truth for:</p>
+<ul>
+<li>what counts as a valid overlay payload;</li>
+<li>what parent model a vision adapter requires;</li>
+<li>whether a backend can honor one overlay or many;</li>
+<li>how overlay application is cached, fused, or unloaded.</li>
+</ul>
+<h3 id="3-catalogs-must-distinguish-runnable-models-from-adapter-style-artifacts">3) Catalogs must distinguish runnable models from adapter-style artifacts<a class="headerlink" href="#3-catalogs-must-distinguish-runnable-models-from-adapter-style-artifacts" title="Permanent link">&para;</a></h3>
+<p>A vision adapter artifact is not a first-class standalone model unless a backend can truly execute it
+as one.</p>
+<p>The package should keep separating:</p>
+<ul>
+<li>parent model family metadata;</li>
+<li>runtime/download variants;</li>
+<li>adapter or side artifacts that depend on a compatible parent.</li>
+</ul>
+<h3 id="4-package-facing-api-should-become-explicit-over-time">4) Package-facing API should become explicit over time<a class="headerlink" href="#4-package-facing-api-should-become-explicit-over-time" title="Permanent link">&para;</a></h3>
+<p>The current <code>extra</code> / <code>loras*</code> request path is acceptable as an implementation bridge, but the
+longer-term package contract should move toward an explicit overlay surface owned by <code>abstractvision</code>.</p>
+<p>That can be a first-class <code>overlays</code> field, equivalent request metadata, or another package-local
+contract, but the contract should live here rather than in Core.</p>
+<hr />
+<h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
+<h3 id="positive">Positive<a class="headerlink" href="#positive" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Backend-specific overlay behavior stays close to the code that actually implements it.</li>
+<li>The package can model parent-model requirements honestly instead of flattening adapters into fake
+  standalone models.</li>
+<li>AbstractCore integration stays simpler and more accurate.</li>
+</ul>
+<h3 id="negative-risks">Negative / Risks<a class="headerlink" href="#negative-risks" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The capability API exposed through AbstractCore remains somewhat asymmetric relative to text.</li>
+<li>Some current overlay behavior is still implicit (<code>extra</code>-driven) and needs cleanup before the
+  package contract feels fully explicit.</li>
+</ul>
+<hr />
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
+<li><code>src/abstractvision/backends/mflux.py</code></li>
+<li><code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
+<li><code>docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md</code></li>
+<li><code>docs/reference/abstractcore-integration.md</code></li>
 </ul>
 
 
@@ -872,10 +875,10 @@ The curation and cross-platform support policy for that registry is governed by
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

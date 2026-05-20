@@ -10,13 +10,9 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/reference/capabilities-registry/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/adr/0001_curated_cross_platform_model_catalog/">
       
       
-        <link rel="prev" href="../artifacts/">
-      
-      
-        <link rel="next" href="../abstractcore-integration/">
       
       
         
@@ -27,7 +23,7 @@
     
     
       
-        <title>Capabilities Registry - AbstractVision</title>
+        <title>ADR 0001: AbstractVision Owns The Curated Cross-Platform Model Catalog And Compatibility Layer - AbstractVision</title>
       
     
     
@@ -68,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#capability-registry-vision_model_capabilitiesjson" class="md-skip">
+        <a href="#adr-0001-abstractvision-owns-the-curated-cross-platform-model-catalog-and-compatibility-layer" class="md-skip">
           Skip to content
         </a>
       
@@ -104,7 +100,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Capabilities Registry
+              ADR 0001: AbstractVision Owns The Curated Cross-Platform Model Catalog And Compatibility Layer
             
           </span>
         </div>
@@ -356,20 +352,18 @@
       
   
   
-    
   
   
-  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
           <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
@@ -390,7 +384,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -408,7 +402,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../configuration/" class="md-nav__link">
+      <a href="../../reference/configuration/" class="md-nav__link">
         
   
   
@@ -436,7 +430,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../backends/" class="md-nav__link">
+      <a href="../../reference/backends/" class="md-nav__link">
         
   
   
@@ -464,7 +458,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../artifacts/" class="md-nav__link">
+      <a href="../../reference/artifacts/" class="md-nav__link">
         
   
   
@@ -489,37 +483,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Capabilities Registry
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../reference/capabilities-registry/" class="md-nav__link">
         
   
   
@@ -535,98 +502,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#policy-boundary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Policy boundary
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-the-registry-is-used-for" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What the registry is used for
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#curation-rules" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Curation rules
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#minimal-python-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Minimal Python usage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#json-shape-high-level" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        JSON shape (high level)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="JSON shape (high level)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#downloads-optional" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Downloads (optional)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -639,7 +514,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../abstractcore-integration/" class="md-nav__link">
+      <a href="../../reference/abstractcore-integration/" class="md-nav__link">
         
   
   
@@ -694,10 +569,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#policy-boundary" class="md-nav__link">
+  <a href="#status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Policy boundary
+        Status
       
     </span>
   </a>
@@ -705,10 +580,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-the-registry-is-used-for" class="md-nav__link">
+  <a href="#note" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What the registry is used for
+        Note
       
     </span>
   </a>
@@ -716,10 +591,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#curation-rules" class="md-nav__link">
+  <a href="#dates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Curation rules
+        Dates
       
     </span>
   </a>
@@ -727,10 +602,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#minimal-python-usage" class="md-nav__link">
+  <a href="#areas-affected" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Minimal Python usage
+        Areas affected
       
     </span>
   </a>
@@ -738,22 +613,88 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#json-shape-high-level" class="md-nav__link">
+  <a href="#authority-owner" class="md-nav__link">
     <span class="md-ellipsis">
       
-        JSON shape (high level)
+        Authority owner
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="JSON shape (high level)">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adoption-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adoption state
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Consequences">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#downloads-optional" class="md-nav__link">
+  <a href="#positive" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Downloads (optional)
+        Positive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#negative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Negative
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#neutral" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Neutral
       
     </span>
   </a>
@@ -762,6 +703,50 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#enforcement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enforcement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backlog-links" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backlog links
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
   
 </li>
       
@@ -785,112 +770,166 @@
   
 
 
-<h1 id="capability-registry-vision_model_capabilitiesjson">Capability registry (<code>vision_model_capabilities.json</code>)<a class="headerlink" href="#capability-registry-vision_model_capabilitiesjson" title="Permanent link">&para;</a></h1>
-<p>AbstractVision keeps a single packaged “source of truth” for what model families can do and how
-AbstractVision understands their downloadable runtime variants:</p>
+<h1 id="adr-0001-abstractvision-owns-the-curated-cross-platform-model-catalog-and-compatibility-layer">ADR 0001: AbstractVision Owns The Curated Cross-Platform Model Catalog And Compatibility Layer<a class="headerlink" href="#adr-0001-abstractvision-owns-the-curated-cross-platform-model-catalog-and-compatibility-layer" title="Permanent link">&para;</a></h1>
+<h2 id="status">Status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h2>
+<p>Superseded by ADR 0005 and ADR 0006</p>
+<h2 id="note">Note<a class="headerlink" href="#note" title="Permanent link">&para;</a></h2>
+<p>This ADR captured the first attempt at catalog policy before the repo had a broader ADR baseline.
+Keep it for history only. The active rules now live in:</p>
 <ul>
-<li>Asset: <a href="../../src/abstractvision/assets/vision_model_capabilities.json"><code>../../src/abstractvision/assets/vision_model_capabilities.json</code></a></li>
-<li>Loader + validator: <code>VisionModelCapabilitiesRegistry</code> / <code>validate_capabilities_json()</code> in <a href="../../src/abstractvision/model_capabilities.py"><code>../../src/abstractvision/model_capabilities.py</code></a></li>
+<li><a href="../0005_curated_capability_registry_and_download_catalog/">ADR 0005: Own a curated capability registry and cache-backed model catalog</a></li>
+<li><a href="../0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006: Keep runtime selection explicit and operator-controlled</a></li>
 </ul>
-<p>See also:
-- CLI/REPL inspection commands: <a href="../configuration/">docs/reference/configuration.md</a>
-- Backends (execution reality): <a href="../backends/">docs/reference/backends.md</a>
-- ADR policy: <a href="../../adr/0005_curated_capability_registry_and_download_catalog/">docs/adr/0005_curated_capability_registry_and_download_catalog.md</a></p>
-<h2 id="policy-boundary">Policy boundary<a class="headerlink" href="#policy-boundary" title="Permanent link">&para;</a></h2>
-<p>The registry is not just descriptive metadata. In this repo it is the authoritative compatibility
-inventory that feeds:</p>
+<h2 id="dates">Dates<a class="headerlink" href="#dates" title="Permanent link">&para;</a></h2>
 <ul>
-<li>model discovery;</li>
-<li>task and parameter introspection;</li>
-<li>curated download surfacing;</li>
-<li>backend request normalization.</li>
+<li>Proposed: 2026-05-20</li>
+<li>Accepted: 2026-05-20</li>
 </ul>
-<p>Under <a href="../../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005</a>, this inventory is:</p>
+<h2 id="areas-affected">Areas affected<a class="headerlink" href="#areas-affected" title="Permanent link">&para;</a></h2>
 <ul>
-<li>global rather than host-specific;</li>
-<li>organized around parent model families with engine-specific download variants;</li>
-<li>official-upstream-first, with clearly labeled community ports only when they are the best
-  runtime-native choice for a target engine;</li>
-<li>explicit about download-only or backend-not-supported states.</li>
+<li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+<li><code>src/abstractvision/model_downloads.py</code></li>
+<li><code>src/abstractvision/cli.py</code></li>
+<li><code>src/abstractvision/backends/</code></li>
+<li><code>src/abstractvision/integrations/abstractcore.py</code></li>
+<li>user-facing catalog, download, and runtime selection docs</li>
 </ul>
-<h2 id="what-the-registry-is-used-for">What the registry is used for<a class="headerlink" href="#what-the-registry-is-used-for" title="Permanent link">&para;</a></h2>
+<h2 id="authority-owner">Authority owner<a class="headerlink" href="#authority-owner" title="Permanent link">&para;</a></h2>
+<p>AbstractVision maintainers</p>
+<h2 id="adoption-state">Adoption state<a class="headerlink" href="#adoption-state" title="Permanent link">&para;</a></h2>
+<p>Accepted for all new model inventory and runtime integration work.</p>
+<p>Current code only partially conforms:
+- the capability registry and curated downloader already exist;
+- host-aware target selection already exists;
+- some registry entries are catalog-only because the local backend is not implemented yet;
+- adapter-aware orchestration is not first-class yet.</p>
+<p>This ADR is therefore binding immediately for new work and is also an adoption target for the
+remaining drift.</p>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>AbstractFramework needs one stable place where users can discover compatible vision models, inspect
+their task parameters, download the right artifact for their machine, and then run that model
+through AbstractVision or AbstractCore without repo-specific guesswork.</p>
+<p>Without an explicit policy, the registry drifts toward an inventory dump:
+- host-specific bias leaks into the source of truth;
+- standalone models, component artifacts, and adapters get conflated;
+- catalog entries can imply local support that the runtime does not actually implement;
+- users must manually assemble base models, adapters, or runtime-specific ports after using the
+  catalog or downloader.</p>
+<p>The product goal is different: when AbstractVision exposes a model family or downloadable runtime
+variant, that surface should reduce integration effort rather than shift the burden to the user.</p>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p>AbstractVision owns the curated, cross-platform compatibility inventory for the vision models it
+surfaces through AbstractFramework.</p>
+<p>That ownership includes:
+- maintaining the compatible model list;
+- maintaining task metadata, parameter defaults, and model-specific constraints;
+- maintaining curated download metadata for supported engines and artifact formats;
+- maintaining the runtime normalization and compatibility work needed to make supported variants
+  usable across Apple Silicon, NVIDIA GPU, AMD-capable GPU stacks, CPU/GGUF, and remote runtimes
+  when practical.</p>
+<p>The following rules now apply:</p>
+<ol>
+<li><code>vision_model_capabilities.json</code> is the authoritative source of truth for parent model families,
+   task metadata, and downloadable variants.</li>
+<li>The registry is global and platform-neutral. Host-specific recommendation belongs in selection
+   logic such as <code>model-catalog</code> or <code>download-model</code>, not in the model inventory itself.</li>
+<li>Each real model family should have one parent entry. Engine-specific artifacts, quantizations,
+   and runtime-native ports belong under that parent as downloadable variants.</li>
+<li>Official upstream repositories are preferred. Community repositories are allowed only when they
+   provide a runtime-native or engine-specific artifact that has no official equivalent, and they
+   must be labeled clearly with provenance and notes.</li>
+<li>Adapter-only, component-only, or base-model-dependent repositories must not be promoted as
+   standalone curated models unless AbstractVision has first-class orchestration for that shape.</li>
+<li>If a model is cataloged but not runnable through a shipped backend, that limitation must be
+   explicit in the registry and surfaced as a download-only or backend-not-supported state.</li>
+<li>If a downloadable model variant is presented as a curated user path, the intended flow is:
+   install the documented runtime extra, use <code>abstractvision model-catalog</code> or <code>download-model</code>,
+   and then run the model through AbstractVision or AbstractCore without undocumented manual
+   assembly steps. Known prerequisites such as provider tokens, gated-license acceptance, or
+   runtime package installation are allowed, but hidden repo spelunking is not.</li>
+<li>When compatibility gaps are primarily caused by our abstraction layer rather than by the
+   upstream model, we should prefer rewriting our backend, downloader, or integration code to make
+   the model usable across supported OS and hardware combinations instead of documenting permanent
+   workarounds.</li>
+<li>AbstractCore integration must consume the same curated compatibility truth and must not expose
+   parameters, adapters, or ready-to-run claims that the actual runtime path cannot honor.</li>
+</ol>
+<h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
+<h3 id="positive">Positive<a class="headerlink" href="#positive" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Discovery</strong>: list known task keys and model ids.</li>
-<li><strong>Optional safety gating</strong>:</li>
-<li><code>VisionManager(model_id=..., registry=...)</code> will fail fast if the model doesn’t support a task (<a href="../../src/abstractvision/vision_manager.py"><code>../../src/abstractvision/vision_manager.py</code></a>).</li>
-<li>The CLI/REPL can enforce gating via <code>--capabilities-model-id</code> (CLI) or <code>/cap-model</code> (REPL).</li>
-<li><strong>Task-aware UI/catalog metadata</strong>:</li>
-<li><code>image_to_image</code> in a model’s <code>tasks</code> map is the explicit “this model supports edits” signal.</li>
-<li>The playground API surfaces that structured metadata as <code>task_specs</code> so local tooling can enable edit-only flows without re-encoding model rules elsewhere.</li>
-<li><strong>Request normalization hints</strong>:</li>
-<li>additive parameter metadata such as <code>default</code>, <code>const</code>, <code>min</code>, <code>multiple_of</code>, <code>supported</code>, and <code>auto_derived_from_input</code> can be consumed by backends to keep model-specific defaults and constraints in one packaged source of truth.</li>
+<li>Users get a simpler model discovery and download path.</li>
+<li>The registry becomes a product surface rather than an unstructured repo list.</li>
+<li>Apple Silicon, GPU, GGUF, and remote runtime support can be compared under one parent model
+  instead of being scattered across unrelated entries.</li>
+<li>Future backend or AbstractCore work has a clear bar for what “supported” means.</li>
 </ul>
-<p>Important:
-- The registry describes <strong>model capability intent</strong>.
-- Your configured backend still needs to implement the task at runtime (see backend support matrix in <a href="../backends/">docs/reference/backends.md</a>).</p>
-<h2 id="curation-rules">Curation rules<a class="headerlink" href="#curation-rules" title="Permanent link">&para;</a></h2>
-<p>When editing the registry:</p>
+<h3 id="negative">Negative<a class="headerlink" href="#negative" title="Permanent link">&para;</a></h3>
 <ul>
-<li>keep one parent entry per real model family;</li>
-<li>keep host-specific or engine-specific artifacts in <code>downloads</code>, not as duplicated top-level
-  model entries;</li>
-<li>prefer official upstream repos;</li>
-<li>use community repos only for runtime-native artifacts such as GGUF or MLX ports when no
-  official equivalent exists;</li>
-<li>do not promote adapter-only or component-only repos as standalone curated models unless the
-  runtime can orchestrate them as first-class flows;</li>
-<li>mark non-runnable local entries explicitly when the backend is not shipped yet.</li>
+<li>Maintaining the registry becomes an explicit engineering obligation, not opportunistic metadata.</li>
+<li>Some tempting Hugging Face repos will need to stay out of the curated catalog until runtime
+  orchestration exists.</li>
+<li>New model additions require more research, provenance review, and smoke validation.</li>
+<li>Cross-platform support may require backend rewrites instead of doc-only patches.</li>
 </ul>
-<h2 id="minimal-python-usage">Minimal Python usage<a class="headerlink" href="#minimal-python-usage" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">VisionModelCapabilitiesRegistry</span>
-
-<span class="n">reg</span> <span class="o">=</span> <span class="n">VisionModelCapabilitiesRegistry</span><span class="p">()</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">schema_version</span><span class="p">())</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">list_tasks</span><span class="p">())</span>
-
-<span class="k">assert</span> <span class="n">reg</span><span class="o">.</span><span class="n">supports</span><span class="p">(</span><span class="s2">&quot;runwayml/stable-diffusion-v1-5&quot;</span><span class="p">,</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">models_for_task</span><span class="p">(</span><span class="s2">&quot;text_to_image&quot;</span><span class="p">))</span>
-</code></pre></div>
-<h2 id="json-shape-high-level">JSON shape (high level)<a class="headerlink" href="#json-shape-high-level" title="Permanent link">&para;</a></h2>
-<p>The validator enforces a “soft schema”:</p>
+<h3 id="neutral">Neutral<a class="headerlink" href="#neutral" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Top-level keys:</li>
-<li><code>schema_version</code></li>
-<li><code>tasks</code> (keyed by task name; includes human descriptions)</li>
-<li><code>models</code> (keyed by model id)</li>
-<li>Each model entry includes:</li>
-<li><code>provider</code> (string)</li>
-<li><code>license</code> (string; informational)</li>
-<li>optional <code>downloads</code> (list of downloadable artifacts; informational metadata used by <code>abstractvision show-model</code>)</li>
-<li><code>tasks</code> (map of task name → task spec)</li>
-<li>Each task spec includes:</li>
-<li><code>inputs</code>, <code>outputs</code> (lists of strings)</li>
-<li><code>params</code> (object where each param has <code>required: bool</code>, plus additive fields)</li>
-<li>optional <code>requires</code> for dependencies like <code>base_model_id</code></li>
+<li>Download-only and remote-only entries can still exist, but they must be marked clearly.</li>
+<li>This ADR does not require every vision model family to support every engine.</li>
+<li>This ADR does not require local video runtime support today.</li>
 </ul>
-<p>Examples of additive <code>params</code> metadata used in this repo:
-- <code>default</code>: backend fills a missing value
-- <code>const</code>: backend forces a model-specific fixed value
-- <code>min</code>: backend clamps the value upward
-- <code>multiple_of</code>: backend rounds dimensions to a required multiple
-- <code>supported: false</code>: backend drops an unsupported optional parameter
-- <code>auto_derived_from_input: true</code>: image-edit backends can infer a missing size from the input image</p>
-<h3 id="downloads-optional">Downloads (optional)<a class="headerlink" href="#downloads-optional" title="Permanent link">&para;</a></h3>
-<p>Some models include a <code>downloads</code> list to document what AbstractVision considers “downloadable” for common engines:</p>
+<h2 id="enforcement">Enforcement<a class="headerlink" href="#enforcement" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>key</code>: the canonical short name used in <code>model-presets</code> / <code>download-model</code> (e.g. <code>qwen-image</code>, <code>flux2-klein-4b</code>)</li>
-<li><code>engine</code>: <code>mflux</code>, <code>diffusers</code>, <code>stable-diffusion.cpp</code>, ...</li>
-<li><code>target</code>: <code>mlx</code>, <code>diffusers</code>, <code>gguf</code>, ...</li>
-<li><code>bits</code>: typically <code>8</code> (quantized) or <code>16</code> (full snapshot)</li>
-<li><code>repo_id</code>: Hugging Face repo id to download</li>
-<li>optional <code>source</code>, <code>notes</code></li>
+<li>Changes to <code>vision_model_capabilities.json</code>, <code>model_downloads.py</code>, catalog selection, or
+  AbstractCore model surfacing must follow this ADR.</li>
+<li>New model families must be added as parent entries with child download variants; do not create
+  host-specific top-level duplicates when a parent family already exists.</li>
+<li>Reviewers should reject entries that:</li>
+<li>prefer a host-specific port over the official upstream family in the source of truth;</li>
+<li>present an adapter or component as a standalone curated model;</li>
+<li>claim runtime readiness without a matching backend path or explicit limitation marker;</li>
+<li>add community repos without a clear reason they are the best runtime-native choice.</li>
+<li>Contributor-facing docs must keep the curation rules visible in:</li>
+<li><code>docs/reference/capabilities-registry.md</code></li>
+<li><code>CONTRIBUTING.md</code></li>
+<li>the ADR index in <code>docs/adr/README.md</code></li>
+<li>When runtime behavior changes, AbstractCore integration and the catalog/download docs must be
+  updated in the same pass.</li>
 </ul>
-<p>This metadata is descriptive, but in this repo it is maintained to align with the curated
-download surfaces exposed by <code>abstractvision model-catalog</code>, <code>abstractvision model-presets</code>, and
-<code>abstractvision download-model</code>.</p>
-<p>In this repo, we keep <code>downloads</code> entries aligned with the curated preset table (<code>model_downloads._PRESETS</code>) so <code>abstractvision show-model</code> and the docs can reliably describe what the CLI can download.
-That alignment is intentionally user-facing: if a variant is curated for download, it should have
-clear provenance, a realistic runtime target, and a documented readiness story.</p>
+<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Load the registry from the repo checkout:</li>
+<li><code>PYTHONPATH=src python - &lt;&lt;'PY'</code>
+    <code>from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry</code>
+    <code>VisionModelCapabilitiesRegistry()</code>
+    <code>print("ok")</code>
+    <code>PY</code></li>
+<li>Verify catalog output from the repo checkout:</li>
+<li><code>PYTHONPATH=src python -m abstractvision.cli model-catalog --json</code></li>
+<li>Verify representative model inspection:</li>
+<li><code>PYTHONPATH=src python -m abstractvision.cli show-model &lt;model_id&gt;</code></li>
+<li>For any changed curated download path, verify the helper resolves the intended preset or catalog
+  entry for the relevant engine and target.</li>
+<li>When backend or AbstractCore behavior changes, run at least one end-to-end smoke path for each
+  touched runtime family where feasible.</li>
+</ul>
+<h2 id="backlog-links">Backlog links<a class="headerlink" href="#backlog-links" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Related completed groundwork:</li>
+<li><a href="../../backlog/completed/003_hf_model_landscape_and_capability_registry/"><code>docs/backlog/completed/003_hf_model_landscape_and_capability_registry.md</code></a></li>
+<li><a href="../../backlog/completed/016_abstractcore_plugin_catalog_discovery_surface/"><code>docs/backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md</code></a></li>
+<li>Open adoption and adjacent work:</li>
+<li><a href="../../backlog/planned/017_mlx_mflux_backend_strategy/"><code>docs/backlog/planned/017_mlx_mflux_backend_strategy.md</code></a></li>
+<li><a href="../../backlog/planned/020_adapter_aware_model_graph_and_catalog/"><code>docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md</code></a></li>
+</ul>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../reference/capabilities-registry/">Capability registry reference</a></li>
+<li><a href="../../architecture/">Architecture</a></li>
+<li><a href="../../src/abstractvision/model_capabilities.py"><code>src/abstractvision/model_capabilities.py</code></a></li>
+<li><a href="../../src/abstractvision/model_downloads.py"><code>src/abstractvision/model_downloads.py</code></a></li>
+<li><a href="../../src/abstractvision/cli.py"><code>src/abstractvision/cli.py</code></a></li>
+<li><a href="../../src/abstractvision/integrations/abstractcore.py"><code>src/abstractvision/integrations/abstractcore.py</code></a></li>
+</ul>
 
 
 

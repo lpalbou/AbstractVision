@@ -790,7 +790,7 @@
 <td>stable-diffusion.cpp (local GGUF/checkpoints)</td>
 <td><a href="../../src/abstractvision/backends/stable_diffusion_cpp.py"><code>stable_diffusion_cpp.py</code></a></td>
 <td><code>text_to_image</code>, <code>image_to_image</code></td>
-<td>Uses external <code>sd-cli</code> if present, else <code>abstractvision[sdcpp]</code> python bindings. Start with single-file Stable Diffusion models; Qwen/FLUX GGUF may need VAE + LLM components.</td>
+<td>Uses external <code>sd-cli</code> if present, else <code>abstractvision[sdcpp]</code> python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache.</td>
 </tr>
 </tbody>
 </table>
@@ -883,12 +883,11 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
   - <code>abstractvision model-catalog --provider mflux</code> (add <code>--all</code> for full fallback list)
   - Tip: <code>--provider mflux</code> implies <code>--target mlx</code> (you usually set one or the other).
 - Download a curated 8-bit preset into the Hugging Face cache (legacy <code>~/models</code> trees auto-migrate when encountered):
-  - <code>abstractvision download-model flux1-dev --provider mflux</code>
-  - <code>abstractvision download-model flux1-schnell --provider mflux</code>
   - <code>abstractvision download-model flux2-klein-4b --provider mflux</code>
   - <code>abstractvision download-model flux2-klein-9b --provider mflux</code>
   - <code>abstractvision download-model qwen-image --provider mflux</code>
-  - <code>abstractvision download-model z-image-turbo --provider mflux</code></p>
+  - <code>abstractvision download-model z-image-turbo --provider mflux</code>
+- Current shipped backend coverage is limited to those curated MFLUX families: <code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>qwen-image</code>, and <code>z-image-turbo</code>.</p>
 <p>Config/env:
 - <code>ABSTRACTVISION_PROVIDER=mflux</code> (alias: <code>ABSTRACTVISION_BACKEND=mflux</code>)
 - <code>ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b</code> (or routed ids like <code>mflux/flux2-klein-4b</code>)
@@ -913,8 +912,10 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means <strong>CPU-only</strong>, so FLUX/Qwen-class models can be extremely slow.
 - The optional python binding is constrained below <code>0.4.6</code> because that sdist
   currently misses vendored CMake files needed by native Linux builds.
-- Interactive CLI selection supports both <code>/backend sdcpp &lt;model.gguf|model.safetensors&gt; [sd_cli_path]</code> and
+- Interactive CLI selection supports both <code>/backend sdcpp &lt;model_key|model.gguf|model.safetensors&gt; [sd_cli_path]</code> and
   <code>/backend sdcpp &lt;diffusion_model.gguf&gt; &lt;vae.safetensors&gt; &lt;llm.gguf&gt; [sd_cli_path]</code>.
+- One-shot CLI, playground, and the AbstractCore plugin can also accept curated <code>sdcpp</code> model keys such as
+  <code>flux2-klein-base-4b</code> or <code>qwen-image</code> after <code>abstractvision download-model ... --provider sdcpp</code>.
 - Python code and AbstractCore plugin configuration can also pass component paths such as <code>clip_l</code>, <code>clip_g</code>, <code>t5xxl</code>, <code>llm_vision</code>, plus <code>extra_args</code>, <code>timeout_s</code>, and <code>cwd</code>.</p>
 <p>Code pointers:
 - Config: <code>StableDiffusionCppBackendConfig</code> (<a href="../../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)

@@ -1066,8 +1066,8 @@ abstractvision<span class="w"> </span>repl
 <p>After that works, <code>black-forest-labs/FLUX.2-klein-4B</code> is the recommended next local test for a newer non-gated model
 (it currently requires Diffusers from source).</p>
 <h2 id="does-abstractvision-t2i-run-locally">Does <code>abstractvision t2i</code> run locally?<a class="headerlink" href="#does-abstractvision-t2i-run-locally" title="Permanent link">&para;</a></h2>
-<p><code>abstractvision t2i</code> / <code>abstractvision i2i</code> are one-shot helpers for the <strong>OpenAI-compatible HTTP backend</strong> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
-<p>For local generation, use <code>abstractvision repl</code> with <code>/backend diffusers ...</code> or <code>/backend sdcpp ...</code>.</p>
+<p>Yes. <code>abstractvision t2i</code> / <code>abstractvision i2i</code> default to the OpenAI-compatible HTTP backend, but they also support local providers through <code>--provider diffusers</code>, <code>--provider mflux</code>, or <code>--provider sdcpp</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
+<p>For interactive local generation, use <code>abstractvision cli</code> (legacy alias: <code>abstractvision repl</code>) with <code>/backend diffusers ...</code>, <code>/backend mflux ...</code>, or <code>/backend sdcpp ...</code>.</p>
 <h2 id="where-do-generated-outputs-go">Where do generated outputs go?<a class="headerlink" href="#where-do-generated-outputs-go" title="Permanent link">&para;</a></h2>
 <p>It depends on whether you configured a store:</p>
 <ul>

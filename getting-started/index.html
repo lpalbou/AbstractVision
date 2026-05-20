@@ -500,10 +500,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#63-download-the-required-qwen-image-vae" class="md-nav__link">
+  <a href="#63-curated-sdcpp-bundles" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6.3 Download the required Qwen Image VAE
+        6.3 Curated sdcpp bundles
       
     </span>
   </a>
@@ -511,10 +511,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#64-run-qwen-image-with-sdcpp-component-mode" class="md-nav__link">
+  <a href="#64-run-qwen-image-with-sdcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6.4 Run Qwen Image with sdcpp component mode
+        6.4 Run Qwen Image with sdcpp
       
     </span>
   </a>
@@ -522,10 +522,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#65-flux2-klein-4b-gguf-example" class="md-nav__link">
+  <a href="#65-flux2-klein-4b-flux2-klein-base-4b-gguf-example" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6.5 FLUX.2-klein-4B (GGUF) example
+        6.5 FLUX.2-klein-4B / FLUX.2-klein-base-4B (GGUF) example
       
     </span>
   </a>
@@ -1064,10 +1064,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#63-download-the-required-qwen-image-vae" class="md-nav__link">
+  <a href="#63-curated-sdcpp-bundles" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6.3 Download the required Qwen Image VAE
+        6.3 Curated sdcpp bundles
       
     </span>
   </a>
@@ -1075,10 +1075,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#64-run-qwen-image-with-sdcpp-component-mode" class="md-nav__link">
+  <a href="#64-run-qwen-image-with-sdcpp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6.4 Run Qwen Image with sdcpp component mode
+        6.4 Run Qwen Image with sdcpp
       
     </span>
   </a>
@@ -1086,10 +1086,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#65-flux2-klein-4b-gguf-example" class="md-nav__link">
+  <a href="#65-flux2-klein-4b-flux2-klein-base-4b-gguf-example" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6.5 FLUX.2-klein-4B (GGUF) example
+        6.5 FLUX.2-klein-4B / FLUX.2-klein-base-4B (GGUF) example
       
     </span>
   </a>
@@ -1573,15 +1573,25 @@ install <code>sd-cli</code> and re-run in CLI mode.</p>
 </code></pre></div>
 <p>If <code>sd-cli</code> is already in your <code>PATH</code>, you can omit the final <code>/path/to/sd-cli</code> argument. If it is not available,
 AbstractVision falls back to <code>stable-diffusion-cpp-python</code> when that package is installed, for example through <code>pip install "abstractvision[sdcpp]"</code>.</p>
-<h3 id="63-download-the-required-qwen-image-vae">6.3 Download the required Qwen Image VAE<a class="headerlink" href="#63-download-the-required-qwen-image-vae" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-L<span class="w"> </span>-o<span class="w"> </span>./qwen_image_vae.safetensors<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors
+<h3 id="63-curated-sdcpp-bundles">6.3 Curated <code>sdcpp</code> bundles<a class="headerlink" href="#63-curated-sdcpp-bundles" title="Permanent link">&para;</a></h3>
+<p>For Qwen Image and FLUX GGUF, external users should not have to manually locate a VAE or text encoder.
+Download the curated bundle once, then use the model key everywhere:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download-model<span class="w"> </span>qwen-image<span class="w"> </span>--provider<span class="w"> </span>sdcpp
+abstractvision<span class="w"> </span>download-model<span class="w"> </span>flux2-klein-base-4b<span class="w"> </span>--provider<span class="w"> </span>sdcpp
 </code></pre></div>
-<h3 id="64-run-qwen-image-with-sdcpp-component-mode">6.4 Run Qwen Image with <code>sdcpp</code> component mode<a class="headerlink" href="#64-run-qwen-image-with-sdcpp-component-mode" title="Permanent link">&para;</a></h3>
+<p>AbstractVision resolves the required side artifacts from the Hugging Face cache automatically:</p>
+<ul>
+<li>CLI one-shot: <code>abstractvision t2i --provider sdcpp --model flux2-klein-base-4b "..."</code></li>
+<li>REPL: <code>/backend sdcpp flux2-klein-base-4b /path/to/sd-cli</code></li>
+<li>Playground / AbstractCore plugin: set the model key and let the package resolve the cached bundle</li>
+</ul>
+<p>If a required companion file is missing, the package now fails early with a precise <code>download-model ... --provider sdcpp</code>
+hint instead of starting generation and then failing deep in the runtime.</p>
+<h3 id="64-run-qwen-image-with-sdcpp">6.4 Run Qwen Image with <code>sdcpp</code><a class="headerlink" href="#64-run-qwen-image-with-sdcpp" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>repl
 </code></pre></div>
 <p>Then:</p>
-<div class="highlight"><pre><span></span><code>/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf ./qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf /path/to/sd-cli
+<div class="highlight"><pre><span></span><code>/backend sdcpp qwen-image /path/to/sd-cli
 /set width 1024
 /set height 1024
 /t2i &quot;a cinematic photo of a red fox in snow&quot; --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
@@ -1590,22 +1600,18 @@ AbstractVision falls back to <code>stable-diffusion-cpp-python</code> when that 
 - CLI mode: forwarded to <code>sd-cli</code>
 - Python bindings mode: keys are mapped to python binding kwargs when supported; unsupported keys are ignored (see <a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)
 - Diffusers backend: only forwards kwargs that the pipeline <code>__call__</code> accepts; unknown keys are ignored (see <a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>)</p>
-<h3 id="65-flux2-klein-4b-gguf-example">6.5 FLUX.2-klein-4B (GGUF) example<a class="headerlink" href="#65-flux2-klein-4b-gguf-example" title="Permanent link">&para;</a></h3>
-<p>Stable-diffusion.cpp supports FLUX.2-klein-4B GGUF when you provide:</p>
-<ul>
-<li>a GGUF diffusion model (e.g. <code>flux-2-klein-4b-Q8_0.gguf</code>)</li>
-<li>the FLUX.2 VAE (safetensors)</li>
-<li>an LLM text encoder (GGUF), e.g. <code>Qwen3-4B-Q4_K_M.gguf</code></li>
-</ul>
-<p>You can download the matching set with:</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </span>--set<span class="w"> </span>flux2_klein_4b_gguf
-</code></pre></div>
-<p>Example (REPL):</p>
-<div class="highlight"><pre><span></span><code>/backend sdcpp /path/to/flux-2-klein-4b-Q8_0.gguf /path/to/flux2_ae.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+<h3 id="65-flux2-klein-4b-flux2-klein-base-4b-gguf-example">6.5 FLUX.2-klein-4B / FLUX.2-klein-base-4B (GGUF) example<a class="headerlink" href="#65-flux2-klein-4b-flux2-klein-base-4b-gguf-example" title="Permanent link">&para;</a></h3>
+<p>The curated <code>sdcpp</code> presets now download the main GGUF plus the required companion artifacts and let you refer to the
+model by key afterward.</p>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code>/backend sdcpp flux2-klein-base-4b /path/to/sd-cli
 /t2i &quot;a product photo of a matte black espresso machine&quot; --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
 </code></pre></div>
-<p>FLUX.2-dev and Qwen Image GGUF are still documented here as heavier follow-ups, but try the single-file Stable
-Diffusion path or klein-4B first when you are testing a fresh machine.</p>
+<p>Advanced/manual mode is still supported if you want to wire explicit component paths yourself:</p>
+<div class="highlight"><pre><span></span><code>/backend sdcpp /path/to/flux-2-klein-base-4b-Q8_0.gguf /path/to/vae/diffusion_pytorch_model.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli
+</code></pre></div>
+<p>FLUX.2-dev and Qwen Image GGUF are still heavier follow-ups, but the single-file Stable Diffusion path or the curated
+klein bundle above should be the first local test on a fresh machine.</p>
 <hr />
 <h2 id="7-web-ui-testing-optional-playground">7) Web UI testing (optional): Playground<a class="headerlink" href="#7-web-ui-testing-optional-playground" title="Permanent link">&para;</a></h2>
 <p>This repo includes a self-contained web UI and local API server. It is owned by

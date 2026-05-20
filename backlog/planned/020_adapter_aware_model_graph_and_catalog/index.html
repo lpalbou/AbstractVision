@@ -1,0 +1,1237 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Model-agnostic generative vision abstractions for image and video workflows.">
+      
+      
+      
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/planned/020_adapter_aware_model_graph_and_catalog/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Planned: Model family, component, and overlay graph for catalog and curated local flows - AbstractVision</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#planned-model-family-component-and-overlay-graph-for-catalog-and-curated-local-flows" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AbstractVision
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Planned: Model family, component, and overlay graph for catalog and curated local flows
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AbstractVision
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Artifacts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/capabilities-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/abstractcore-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AbstractCore Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adr-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADR status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-code-reality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current code reality
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-we-want-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What we want to do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision boundaries
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Decision boundaries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-required-components-are-not-overlays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Required components are not overlays
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-optional-overlays-are-not-standalone-model-families" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Optional overlays are not standalone model families
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-package-owned-local-composition-is-allowed-when-the-package-can-keep-it-honest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Package-owned local composition is allowed when the package can keep it honest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-backend-owned-overlay-semantics-must-stay-backend-owned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Backend-owned overlay semantics must stay backend-owned
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-tool-exposure-is-conditional-not-automatic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Tool exposure is conditional, not automatic
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suggested-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suggested implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Suggested implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-make-the-taxonomy-explicit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: make the taxonomy explicit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-align-curated-local-flows-with-the-taxonomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: align curated local flows with the taxonomy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-expose-overlays-only-where-runtime-support-already-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: expose overlays only where runtime support already exists
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-evaluate-higher-level-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4: evaluate higher-level surfaces
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dependencies-and-related-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies and related tasks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-outcomes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected outcomes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guidance-for-the-implementing-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guidance for the implementing agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="planned-model-family-component-and-overlay-graph-for-catalog-and-curated-local-flows">Planned: Model family, component, and overlay graph for catalog and curated local flows<a class="headerlink" href="#planned-model-family-component-and-overlay-graph-for-catalog-and-curated-local-flows" title="Permanent link">&para;</a></h1>
+<h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Created: 2026-05-20</li>
+<li>Status: Planned</li>
+<li>Priority: P1</li>
+<li>Completed: N/A</li>
+</ul>
+<h2 id="adr-status">ADR status<a class="headerlink" href="#adr-status" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Governing ADRs:</li>
+<li><a href="../../../adr/0004_thin_orchestrator_and_backend_owned_model_semantics/">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned</a></li>
+<li><a href="../../../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005: Own a curated capability registry and cache-backed model catalog</a></li>
+<li><a href="../../../adr/0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006: Keep runtime selection explicit and operator-controlled</a></li>
+<li><a href="../../../adr/0007_explicit_fallback_and_degraded_mode_disclosure/">ADR 0007: Disclose fallbacks and degraded modes explicitly</a></li>
+<li><a href="../../../adr/0008_validation_and_evidence_based_change_reporting/">ADR 0008: Require validation and evidence-based change reporting</a></li>
+<li><a href="../../../adr/0009_code_first_docs_backlog_and_adr_discipline/">ADR 0009: Keep docs, backlog, and ADRs code-first</a></li>
+<li>ADR impact: None for the initial implementation if the work stays within the existing package-owned
+  boundaries above. If implementation pressure requires a new cross-backend overlay contract or a
+  materially different catalog authority boundary, revise ADR 0004 and/or ADR 0005 before closure.</li>
+</ul>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>AbstractVision now has a useful capability registry, a useful curated downloader, and a clearer
+package policy baseline. What it still lacks is a clean taxonomy for the artifacts it surfaces.</p>
+<p>The current planning problem is not “support adapters somehow.” It is more specific:</p>
+<ul>
+<li>external users should not need to understand internal side artifacts such as VAE or encoder files
+  when a curated local flow exists;</li>
+<li>adapter-like repos must not be presented as standalone runnable models when the runtime cannot
+  actually execute them that way;</li>
+<li>catalog, downloader, CLI, playground, and AbstractCore surfaces should agree on what is a full
+  model, what is a required component, and what is an optional overlay.</li>
+</ul>
+<p>The 2026-05-20 review surfaced the exact ambiguity to fix:</p>
+<ul>
+<li><code>stable-diffusion.cpp</code> component stacks such as FLUX/Qwen require side artifacts like VAE and
+  LLM/encoder files, but those are required components, not adapters;</li>
+<li>Diffusers LoRA and MFLUX LoRA inputs are optional overlays, not full model families;</li>
+<li>some Hugging Face repos look like “models” in an inventory pass but are really overlays or
+  base-model-dependent attachments, for example:</li>
+<li><code>lightx2v/Qwen-Image-Lightning</code></li>
+<li><code>fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA</code></li>
+<li><code>black-forest-labs/FLUX.1-Redux-dev</code></li>
+</ul>
+<p>Those entries were removed from the curated registry the same day because the current product
+surface does not yet model them honestly enough.</p>
+<h2 id="current-code-reality">Current code reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
+<p>Files and symbols re-checked before revising this item:</p>
+<ul>
+<li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+<li><code>src/abstractvision/model_capabilities.py</code></li>
+<li><code>src/abstractvision/model_downloads.py</code></li>
+<li><code>src/abstractvision/vision_manager.py</code></li>
+<li><code>src/abstractvision/types.py</code></li>
+<li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
+<li><code>src/abstractvision/backends/mflux.py</code></li>
+<li><code>src/abstractvision/cli.py</code></li>
+<li><code>src/abstractvision/integrations/abstractcore.py</code></li>
+<li><code>docs/getting-started.md</code></li>
+</ul>
+<p>What is already implemented:</p>
+<ul>
+<li>The registry schema supports <code>models -&gt; downloads[] -&gt; tasks</code>.</li>
+<li><code>download-model</code>, <code>model-presets</code>, and <code>model-catalog</code> already expose a package-owned curated
+  surface on top of the registry plus <code>_PRESETS</code>.</li>
+<li><code>stable-diffusion.cpp</code> now has a package-owned curated bundle path via
+  <code>resolve_sdcpp_model_selection(...)</code>, which resolves required cached companion artifacts for keys
+  such as <code>flux2-klein-base-4b</code> and <code>qwen-image</code>.</li>
+<li>Diffusers already has real overlay behavior:</li>
+<li><code>_parse_loras()</code></li>
+<li><code>_apply_loras()</code></li>
+<li>documented <code>loras_json</code> and <code>rapid_aio_repo</code> request-extra flows</li>
+<li>MFLUX already has backend-level <code>lora_paths</code> / <code>lora_scales</code> config support.</li>
+<li><code>ImageGenerationRequest</code> and <code>ImageEditRequest</code> already include <code>extra</code>, so the package has a
+  low-level carrier for backend-owned overlay metadata.</li>
+</ul>
+<p>What is missing or brittle:</p>
+<ul>
+<li>The registry has no first-class distinction between:</li>
+<li>parent model family</li>
+<li>runtime variant</li>
+<li>required component</li>
+<li>optional overlay</li>
+<li><code>VisionManager</code> gates only on task names. It does not interpret <code>task.requires</code>, and current
+  shipped JSON does not yet exercise <code>base_model_id</code> as a real runtime contract.</li>
+<li><code>_PRESETS</code> and curated bundle logic still encode important catalog truth in code rather than in a
+  clearer package data model.</li>
+<li>AbstractCore tools expose fixed prompt/image/mask parameters only. They do not expose package-
+  owned overlay composition or typed <code>extra</code> inputs.</li>
+<li>The current docs show working Diffusers overlay examples, but the catalog cannot yet tell a user
+  whether a repo is a standalone model, a required component, or an overlay attachment.</li>
+<li><code>multi_view_image</code> exists as a task key, but no shipped backend currently implements it, so LoRA
+  repos that imply multi-view behavior must not be cataloged as if they were runnable tasks.</li>
+</ul>
+<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
+<p>The current registry and download surfaces are still too flat. They are good at listing model ids
+and repo ids, but they are not yet a clean graph of:</p>
+<ul>
+<li>parent model families;</li>
+<li>runtime-specific variants;</li>
+<li>required components that must be assembled for one runtime path;</li>
+<li>optional overlays that only make sense with a compatible parent backend/model;</li>
+<li>runtime-ready versus download-only versus unsupported states.</li>
+</ul>
+<p>That makes the curated catalog less honest than it should be and pushes too much repo knowledge
+back onto the user.</p>
+<h2 id="what-we-want-to-do">What we want to do<a class="headerlink" href="#what-we-want-to-do" title="Permanent link">&para;</a></h2>
+<p>Introduce an explicit package-owned artifact taxonomy and use it to improve:</p>
+<ul>
+<li><code>vision_model_capabilities.json</code></li>
+<li><code>model-catalog</code></li>
+<li><code>model-presets</code></li>
+<li><code>download-model</code></li>
+<li>curated local runtime resolution</li>
+<li>overlay-aware generation surfaces where the backend already supports them</li>
+</ul>
+<p>The first goal is not “generic adapter orchestration.” The first goal is to stop confusing model
+families, required components, and optional overlays.</p>
+<h2 id="why">Why<a class="headerlink" href="#why" title="Permanent link">&para;</a></h2>
+<p>Users are not asking for a raw list of Hugging Face repos. They want reliable answers to:</p>
+<ul>
+<li>what model family this is;</li>
+<li>what I can run now;</li>
+<li>what I can only download;</li>
+<li>what extra components are silently required for this runtime;</li>
+<li>whether a repo is a full model, a required component, or an optional overlay.</li>
+</ul>
+<p>Without a clearer graph, the registry keeps drifting toward an inventory dump instead of a product
+surface for discovery, download, and execution.</p>
+<h2 id="decision-boundaries">Decision boundaries<a class="headerlink" href="#decision-boundaries" title="Permanent link">&para;</a></h2>
+<h3 id="1-required-components-are-not-overlays">1. Required components are not overlays<a class="headerlink" href="#1-required-components-are-not-overlays" title="Permanent link">&para;</a></h3>
+<p>VAE, text encoders, vision encoders, and similar side artifacts that are mandatory for a runtime
+path belong in a required-component category. They should not be modeled as adapters.</p>
+<h3 id="2-optional-overlays-are-not-standalone-model-families">2. Optional overlays are not standalone model families<a class="headerlink" href="#2-optional-overlays-are-not-standalone-model-families" title="Permanent link">&para;</a></h3>
+<p>LoRA, lightning/distilled transformer overrides, redux-style priors, and similar attachments should
+not be promoted as first-class runnable models unless a shipped backend can really execute them as
+such.</p>
+<h3 id="3-package-owned-local-composition-is-allowed-when-the-package-can-keep-it-honest">3. Package-owned local composition is allowed when the package can keep it honest<a class="headerlink" href="#3-package-owned-local-composition-is-allowed-when-the-package-can-keep-it-honest" title="Permanent link">&para;</a></h3>
+<p>The existing <code>sdcpp</code> bundle resolver proves that AbstractVision can own required-component
+resolution for curated flows. That pattern should be extended deliberately, not hidden.</p>
+<h3 id="4-backend-owned-overlay-semantics-must-stay-backend-owned">4. Backend-owned overlay semantics must stay backend-owned<a class="headerlink" href="#4-backend-owned-overlay-semantics-must-stay-backend-owned" title="Permanent link">&para;</a></h3>
+<p>This task must not invent a fake generic cross-backend adapter runtime if Diffusers and MFLUX need
+different semantics. A shared package surface is acceptable only if it preserves backend truth.</p>
+<h3 id="5-tool-exposure-is-conditional-not-automatic">5. Tool exposure is conditional, not automatic<a class="headerlink" href="#5-tool-exposure-is-conditional-not-automatic" title="Permanent link">&para;</a></h3>
+<p>AbstractCore tool surfaces should expose overlay-aware inputs only after the package has a clean,
+typed, package-owned contract for them. The current fixed-parameter tools are safer than exposing
+aspirational generic adapter knobs.</p>
+<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Keep one clear parent entry per real model family.</li>
+<li>Represent engine/format-specific runnable downloads as runtime variants, not as independent model
+  families.</li>
+<li>Represent required side artifacts explicitly and separately from optional overlays.</li>
+<li>Preserve direct HF repo metadata where useful, but stop presenting overlays as if they were
+  standalone runnable models.</li>
+<li>Surface runtime state clearly:</li>
+<li>runnable now</li>
+<li>curated local flow with package-owned required components</li>
+<li>download-only</li>
+<li>remote-only</li>
+<li>overlay-only</li>
+<li>requires unsupported backend work</li>
+<li>Keep curated local flows seamless where the package already owns the mapping.</li>
+<li>Expose overlay-aware generation only where a shipped backend already supports it, and reject it
+  clearly elsewhere.</li>
+<li>Keep offline usage after download.</li>
+<li>Preserve backward compatibility where practical, or add an explicit compatibility layer if the
+  registry schema evolves.</li>
+</ul>
+<h2 id="suggested-implementation">Suggested implementation<a class="headerlink" href="#suggested-implementation" title="Permanent link">&para;</a></h2>
+<h3 id="phase-1-make-the-taxonomy-explicit">Phase 1: make the taxonomy explicit<a class="headerlink" href="#phase-1-make-the-taxonomy-explicit" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add an additive artifact-role model that can distinguish:</li>
+<li>parent model family</li>
+<li>runtime variant</li>
+<li>required component</li>
+<li>optional overlay</li>
+<li>Prefer an additive schema evolution or compatibility translation layer over a risky big-bang
+  rewrite.</li>
+<li>Document source/provenance per artifact role:</li>
+<li>official</li>
+<li>runtime-native community</li>
+<li>fallback community</li>
+</ul>
+<h3 id="phase-2-align-curated-local-flows-with-the-taxonomy">Phase 2: align curated local flows with the taxonomy<a class="headerlink" href="#phase-2-align-curated-local-flows-with-the-taxonomy" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Move current special-case bundle knowledge toward package data where practical.</li>
+<li>Treat <code>sdcpp</code> FLUX/Qwen bundle resolution as the first concrete example of package-owned required
+  component assembly.</li>
+<li>Keep errors actionable when required cached components are missing.</li>
+</ul>
+<h3 id="phase-3-expose-overlays-only-where-runtime-support-already-exists">Phase 3: expose overlays only where runtime support already exists<a class="headerlink" href="#phase-3-expose-overlays-only-where-runtime-support-already-exists" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Diffusers:</li>
+<li>formalize the currently documented LoRA and Rapid-AIO request-extra paths</li>
+<li>decide whether to keep them as explicit <code>extra</code> conventions or introduce a typed package-owned
+    overlay field</li>
+<li>MFLUX:</li>
+<li>decide whether current config-only LoRA support should stay config-bound or also become
+    request-level when the runtime semantics are clear</li>
+<li>Do not promise cross-backend overlay parity if the runtimes are materially different.</li>
+</ul>
+<h3 id="phase-4-evaluate-higher-level-surfaces">Phase 4: evaluate higher-level surfaces<a class="headerlink" href="#phase-4-evaluate-higher-level-surfaces" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Update CLI and catalog output so overlays are not mistaken for runnable models.</li>
+<li>Only extend <code>integrations/abstractcore.py</code> after the package-owned overlay surface is explicit
+  enough to expose safely.</li>
+<li>Add early rejection paths when a user selects an overlay without a compatible parent/runtime.</li>
+</ul>
+<h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
+<p>Included:</p>
+<ul>
+<li>capability/download taxonomy work for model families versus variants versus required components
+  versus overlays;</li>
+<li>downloader and catalog alignment with that taxonomy;</li>
+<li>curated local-flow improvement where the package can already own required-component resolution;</li>
+<li>overlay-aware generation surface design for backends that already support overlays;</li>
+<li>clear rejection behavior for unsupported overlay/runtime combinations.</li>
+</ul>
+<h2 id="non-goals">Non-goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Implement every overlay or adapter family immediately.</li>
+<li>Treat VAE/encoders as user-managed details in curated flows that the package can own.</li>
+<li>Build a generic “adapter engine” abstraction that hides runtime-specific semantics.</li>
+<li>Expose overlay parameters through AbstractCore tools before the package-facing contract is clean.</li>
+<li>Reclassify every historical repo in one risky pass without a compatibility strategy.</li>
+<li>Ship local video runtime work as part of this item.</li>
+</ul>
+<h2 id="dependencies-and-related-tasks">Dependencies and related tasks<a class="headerlink" href="#dependencies-and-related-tasks" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Completed: <a href="../../completed/003_hf_model_landscape_and_capability_registry/">003_hf_model_landscape_and_capability_registry.md</a></li>
+<li>Completed: <a href="../../completed/004_capability_schema_and_validation/">004_capability_schema_and_validation.md</a></li>
+<li>Completed: <a href="../../completed/011_abstractcore_tool_integration_and_artifact_refs/">011_abstractcore_tool_integration_and_artifact_refs.md</a></li>
+<li>Completed: <a href="../../completed/016_abstractcore_plugin_catalog_discovery_surface/">016_abstractcore_plugin_catalog_discovery_surface.md</a></li>
+<li>Completed: <a href="../../completed/019_best_effort_preload_warmup_for_local_backends/">019_best_effort_preload_warmup_for_local_backends.md</a></li>
+<li>Planned: <a href="../017_mlx_mflux_backend_strategy/">017_mlx_mflux_backend_strategy.md</a></li>
+<li>Docs reference: <a href="../../../getting-started/">docs/getting-started.md</a></li>
+</ul>
+<h2 id="expected-outcomes">Expected outcomes<a class="headerlink" href="#expected-outcomes" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The curated registry no longer confuses parent model families, required components, and overlays.</li>
+<li>Curated local component-based flows such as <code>sdcpp</code> are modeled as package-owned required
+  component assembly rather than as hidden repo trivia.</li>
+<li><code>model-catalog</code> and <code>download-model</code> can tell a user whether an artifact is runnable, download-
+  only, a required component, or an optional overlay.</li>
+<li>Overlay-aware generation is either clearly supported end to end for a backend/model path or
+  clearly rejected with an actionable error.</li>
+<li>AbstractCore integration does not advertise overlay composition beyond what the package can
+  really honor.</li>
+</ul>
+<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>PYTHONPATH=src python - &lt;&lt;'PY'</code>
+  <code>from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry</code>
+  <code>VisionModelCapabilitiesRegistry()</code>
+  <code>print("ok")</code>
+  <code>PY</code></li>
+<li><code>PYTHONPATH=src python -m abstractvision.cli model-catalog --json</code></li>
+<li><code>PYTHONPATH=src python -m abstractvision.cli model-presets --all-targets --all --json</code></li>
+<li><code>PYTHONPATH=src python -m abstractvision.cli show-model &lt;model_id&gt;</code></li>
+<li>Add tests for:</li>
+<li>additive artifact-role validation</li>
+<li>catalog/download rendering for parent models versus components versus overlays</li>
+<li>curated required-component resolution for at least one component-based local flow</li>
+<li>overlay-aware request acceptance and rejection for Diffusers and MFLUX where applicable</li>
+<li>AbstractCore tool exposure staying aligned with the supported overlay contract</li>
+<li>Manual smoke checks:</li>
+<li>one Diffusers LoRA path</li>
+<li>one curated <code>sdcpp</code> component bundle path</li>
+<li>one MFLUX overlay path only if request-level overlay support is actually added</li>
+</ul>
+<h2 id="progress-checklist">Progress checklist<a class="headerlink" href="#progress-checklist" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] Define the minimal additive taxonomy for parent families, runtime variants, required components, and overlays.</li>
+<li>[ ] Decide whether the schema evolves directly or through a compatibility translation layer.</li>
+<li>[ ] Move at least one existing component-based curated flow onto the clearer taxonomy.</li>
+<li>[ ] Update catalog/download output so overlays are not shown as standalone runnable models.</li>
+<li>[ ] Decide the package-owned overlay input contract for backends that already support overlays.</li>
+<li>[ ] Add tests and docs for runnable versus download-only versus component versus overlay states.</li>
+</ul>
+<h2 id="guidance-for-the-implementing-agent">Guidance for the implementing agent<a class="headerlink" href="#guidance-for-the-implementing-agent" title="Permanent link">&para;</a></h2>
+<p>Re-check the current code before implementing anything. Favor a small explicit taxonomy over a
+clever graph rewrite. Keep required components and optional overlays separate. Do not preserve
+adapter entries as fake standalone models just because the old JSON format was permissive. Treat
+seamless curated local flows as a UX feature the package should own when it has enough knowledge to
+do so honestly.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

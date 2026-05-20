@@ -784,7 +784,7 @@
 - Legacy <code>abstractvision:openai-compatible</code>: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set.
 - Local MFLUX (Apple Silicon): install <code>abstractvision[mflux]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mflux</code>. Download an 8-bit MLX/MFLUX preset with <code>abstractvision download-model flux2-klein-4b --provider mflux</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed model ids such as <code>mflux/flux2-klein-4b</code>.
-- stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure a model path. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
+- stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure either a model path or a curated model key such as <code>flux2-klein-base-4b</code>. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.
 - Gateway/Core should pass process-level config or <code>owner.config</code> and report readiness; they should not mutate AbstractVision environment variables per request.</p>
 <p>Key config keys (owner.config):
@@ -795,7 +795,7 @@
 - <code>vision_base_url</code> / <code>vision_api_key</code> (OpenAI or compatible HTTP)
 - <code>vision_mflux_model</code> / <code>vision_mflux_base_model</code> / <code>vision_mflux_quantize</code> / <code>vision_mflux_allow_download</code> (MFLUX)
 - <code>vision_model_dir</code> (legacy preset import root used by MFLUX compatibility/migration helpers; new downloads land in the Hugging Face cache)
-- <code>vision_sdcpp_model</code> / <code>vision_sdcpp_diffusion_model</code> / <code>vision_sdcpp_bin</code> (stable-diffusion.cpp)
+- <code>vision_sdcpp_model</code> / <code>vision_sdcpp_diffusion_model</code> / <code>vision_sdcpp_bin</code> (stable-diffusion.cpp; <code>vision_sdcpp_model</code> may be a curated model key such as <code>flux2-klein-base-4b</code>)
 - <code>vision_sdcpp_vae</code> / <code>vision_sdcpp_llm</code> / <code>vision_sdcpp_llm_vision</code> / <code>vision_sdcpp_clip_l</code> / <code>vision_sdcpp_clip_g</code> / <code>vision_sdcpp_t5xxl</code> / <code>vision_sdcpp_extra_args</code> (stable-diffusion.cpp component mode)
 - <code>vision_timeout_s</code> (optional)
 - <code>vision_models_path</code> (optional provider catalog path; default <code>/models</code>)
@@ -864,8 +864,8 @@ object:</p>
 <li>OpenAI/OpenAI-compatible HTTP backends are intentionally rejected here, even on <code>localhost</code>,
   because the plugin cannot honestly control another process's loaded-state.</li>
 </ul>
-<p><code>list_loaded_models()</code> reports both explicitly preloaded resident models and transient warm models
-that are currently loaded because of recent local generation requests. <code>list_resident_models()</code>
+<p><code>list_loaded_models()</code> reports both explicitly preloaded resident models and transient currently
+loaded local models from recent generation requests. <code>list_resident_models()</code>
 returns the explicit pinned subset.</p>
 <p>Each loaded-model entry includes stable routing metadata such as <code>load_id</code>, <code>backend_kind</code>,
 <code>resident</code>, and a <code>tasks</code> list of observed task aliases using that loaded backend.</p>

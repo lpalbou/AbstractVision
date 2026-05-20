@@ -431,6 +431,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#catalog-and-compatibility-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalog and compatibility policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#abstractcore-plugin-flow-framework-integration" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -774,6 +785,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#catalog-and-compatibility-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalog and compatibility policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#abstractcore-plugin-flow-framework-integration" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -824,6 +846,7 @@ text→image, image→image (and optionally video when a backend supports it).</
 - Getting started: <a href="../getting-started/">docs/getting-started.md</a>
 - API reference: <a href="../api/">docs/api.md</a>
 - FAQ: <a href="../faq/">docs/faq.md</a>
+- ADR index: <a href="../adr/">docs/adr/README.md</a>
 - Backends: <a href="../reference/backends/">docs/reference/backends.md</a>
 - Capability registry: <a href="../reference/capabilities-registry/">docs/reference/capabilities-registry.md</a>
 - Artifacts: <a href="../reference/artifacts/">docs/reference/artifacts.md</a>
@@ -852,6 +875,8 @@ text→image, image→image (and optionally video when a backend supports it).</
 <li>Implementations live in <a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>.</li>
 <li><strong>Capability registry</strong>: <a href="../src/abstractvision/model_capabilities.py"><code>VisionModelCapabilitiesRegistry</code></a></li>
 <li>Loads packaged data: <a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>vision_model_capabilities.json</code></a>.</li>
+<li>Governs the model catalog, task metadata, and curated download surfaces as a product surface,
+    not just as incidental documentation metadata. See <a href="../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005</a>.</li>
 <li><strong>Artifact outputs</strong>: <a href="../src/abstractvision/artifacts.py"><code>MediaStore</code></a>, <a href="../src/abstractvision/artifacts.py"><code>LocalAssetStore</code></a>, <a href="../src/abstractvision/artifacts.py"><code>RuntimeArtifactStoreAdapter</code></a></li>
 <li>Artifact ref helper: <code>is_artifact_ref()</code> (see <a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>).</li>
 <li><strong>CLI/REPL</strong>: <code>abstractvision</code> entrypoint (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>)</li>
@@ -887,10 +912,22 @@ text→image, image→image (and optionally video when a backend supports it).</
 <li>OpenAI-compatible HTTP backend (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>)</li>
 <li>Diffusers backend (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>)</li>
 <li>stable-diffusion.cpp backend (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)</li>
+<li>MFLUX backend for curated Apple Silicon MLX presets (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>)</li>
 <li>Video is supported <strong>only</strong> by the OpenAI-compatible backend, and only when <code>text_to_video_path</code> / <code>image_to_video_path</code> are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>).</li>
 <li>No built-in backend implements <code>multi_view_image</code> yet (they raise <code>CapabilityNotSupportedError</code> in <code>generate_angles(...)</code>).</li>
 </ul>
 <p>For a detailed support matrix and configuration options, see <a href="../reference/backends/">docs/reference/backends.md</a>.</p>
+<h2 id="catalog-and-compatibility-policy">Catalog and compatibility policy<a class="headerlink" href="#catalog-and-compatibility-policy" title="Permanent link">&para;</a></h2>
+<p>AbstractVision treats model discovery, curated downloads, and runtime compatibility as part of the
+product surface:</p>
+<ul>
+<li>the registry is global and platform-neutral;</li>
+<li>host-specific recommendation happens later in catalog or preset selection;</li>
+<li>one parent model family may expose multiple engine-specific variants;</li>
+<li>official upstream repos are preferred, with curated community ports used only when they provide
+  the best runtime-native artifact for a target engine.</li>
+</ul>
+<p>That policy is defined in <a href="../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005</a>.</p>
 <h2 id="abstractcore-plugin-flow-framework-integration">AbstractCore plugin flow (framework integration)<a class="headerlink" href="#abstractcore-plugin-flow-framework-integration" title="Permanent link">&para;</a></h2>
 <p>AbstractVision can be discovered by AbstractCore via an entry point:
 <code>[project.entry-points."abstractcore.capabilities_plugins"]</code> in <a href="../pyproject.toml"><code>../pyproject.toml</code></a>.</p>
