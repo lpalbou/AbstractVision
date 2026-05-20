@@ -353,18 +353,22 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         self._sd_cli_resolved: Optional[str] = None
         self._py_sd: Any = None
         self._py_model: Any = None
+        self._py_warmed_model_id: Optional[int] = None
         self._py_init_kwargs: Optional[Dict[str, Any]] = None
         self._py_default_generate_kwargs: Optional[Dict[str, Any]] = None
 
     def preload(self) -> None:
-        # Best-effort: in python-binding mode, construct the model eagerly.
         mode = self._select_mode()
         if mode == "python":
-            self._ensure_python_model()
+            model = self._ensure_python_model()
+            if self._py_warmed_model_id == id(model):
+                return
+            self._generate_image_python(self._warmup_generation_request())
 
     def unload(self) -> None:
         # Best-effort: drop python-binding model reference so native memory can be reclaimed.
         self._py_model = None
+        self._py_warmed_model_id = None
         self._py_init_kwargs = None
         self._py_default_generate_kwargs = None
         try:
@@ -465,7 +469,15 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             t5xxl_path=str(self._cfg.t5xxl or ""),
             **(self._py_init_kwargs or {}),
         )
+        self._py_warmed_model_id = None
         return self._py_model
+
+    def _warmup_generation_request(self) -> ImageGenerationRequest:
+        return ImageGenerationRequest(
+            prompt="abstractvision preload warmup",
+            steps=1,
+            seed=0,
+        )
 
     def _validate_qwen_image_components(self) -> None:
         diffusion_model = str(self._cfg.diffusion_model or "").strip()
@@ -505,6 +517,74 @@ class StableDiffusionCppVisionBackend(VisionBackend):
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
         return self.generate_image_with_progress(request, progress_callback=None)
+
+    def _generate_image_python(
+        self,
+        request: ImageGenerationRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        model = self._ensure_python_model()
+        kwargs = dict(self._py_default_generate_kwargs or {})
+        kwargs.update(
+            {
+                "prompt": str(request.prompt),
+                "negative_prompt": str(request.negative_prompt or ""),
+            }
+        )
+
+        if progress_callback is not None:
+            zero_based: Dict[str, Optional[bool]] = {"v": None}
+
+            def _pcb(*args: Any, **_kw: Any) -> bool:
+                try:
+                    step = int(args[0]) if len(args) >= 1 else 0
+                    total = int(args[1]) if len(args) >= 2 else None
+                    if zero_based["v"] is None:
+                        zero_based["v"] = (step == 0)
+                    if zero_based["v"]:
+                        step = step + 1
+                    progress_callback(step, total)
+                except Exception:
+                    pass
+                return True
+
+            kwargs["progress_callback"] = _pcb
+
+        if request.width is not None:
+            kwargs["width"] = int(request.width)
+        if request.height is not None:
+            kwargs["height"] = int(request.height)
+        if request.steps is not None:
+            kwargs["sample_steps"] = int(request.steps)
+        if request.guidance_scale is not None:
+            kwargs["cfg_scale"] = float(request.guidance_scale)
+        if request.seed is not None:
+            kwargs["seed"] = int(request.seed)
+
+        kwargs.update(_extra_to_python_generate_kwargs(request.extra))
+        kwargs = _filter_generate_kwargs(model, kwargs)
+
+        images = model.generate_image(**kwargs)
+        if not images:
+            raise RuntimeError("stable-diffusion.cpp python bindings produced no images.")
+        self._py_warmed_model_id = id(model)
+        img0 = images[0]
+        buf = BytesIO()
+        img0.save(buf, format="PNG")
+        data = buf.getvalue()
+        mime = _sniff_mime_type(data)
+        return GeneratedAsset(
+            media_type="image",
+            data=data,
+            mime_type=mime,
+            metadata={
+                "source": "stable-diffusion.cpp",
+                "mode": "python",
+                "python_package": getattr(self._py_sd, "__version__", None),
+                "model": self._cfg.model,
+                "diffusion_model": self._cfg.diffusion_model,
+            },
+        )
 
     def generate_image_with_progress(
         self,
@@ -553,67 +633,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                     },
                 )
 
-        model = self._ensure_python_model()
-        kwargs = dict(self._py_default_generate_kwargs or {})
-        kwargs.update(
-            {
-                "prompt": str(request.prompt),
-                "negative_prompt": str(request.negative_prompt or ""),
-            }
-        )
-
-        if progress_callback is not None:
-            zero_based: Dict[str, Optional[bool]] = {"v": None}
-
-            def _pcb(*args: Any, **_kw: Any) -> bool:
-                try:
-                    step = int(args[0]) if len(args) >= 1 else 0
-                    total = int(args[1]) if len(args) >= 2 else None
-                    if zero_based["v"] is None:
-                        zero_based["v"] = (step == 0)
-                    if zero_based["v"]:
-                        step = step + 1
-                    progress_callback(step, total)
-                except Exception:
-                    pass
-                return True
-
-            kwargs["progress_callback"] = _pcb
-
-        if request.width is not None:
-            kwargs["width"] = int(request.width)
-        if request.height is not None:
-            kwargs["height"] = int(request.height)
-        if request.steps is not None:
-            kwargs["sample_steps"] = int(request.steps)
-        if request.guidance_scale is not None:
-            kwargs["cfg_scale"] = float(request.guidance_scale)
-        if request.seed is not None:
-            kwargs["seed"] = int(request.seed)
-
-        kwargs.update(_extra_to_python_generate_kwargs(request.extra))
-        kwargs = _filter_generate_kwargs(model, kwargs)
-
-        images = model.generate_image(**kwargs)
-        if not images:
-            raise RuntimeError("stable-diffusion.cpp python bindings produced no images.")
-        img0 = images[0]
-        buf = BytesIO()
-        img0.save(buf, format="PNG")
-        data = buf.getvalue()
-        mime = _sniff_mime_type(data)
-        return GeneratedAsset(
-            media_type="image",
-            data=data,
-            mime_type=mime,
-            metadata={
-                "source": "stable-diffusion.cpp",
-                "mode": "python",
-                "python_package": getattr(self._py_sd, "__version__", None),
-                "model": self._cfg.model,
-                "diffusion_model": self._cfg.diffusion_model,
-            },
-        )
+        return self._generate_image_python(request, progress_callback)
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         return self.edit_image_with_progress(request, progress_callback=None)
@@ -723,6 +743,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         images = model.generate_image(**kwargs)
         if not images:
             raise RuntimeError("stable-diffusion.cpp python bindings produced no images.")
+        self._py_warmed_model_id = id(model)
         img0 = images[0]
         buf = BytesIO()
         img0.save(buf, format="PNG")

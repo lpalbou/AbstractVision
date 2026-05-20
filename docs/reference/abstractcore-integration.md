@@ -129,8 +129,8 @@ Notes:
 - OpenAI/OpenAI-compatible HTTP backends are intentionally rejected here, even on `localhost`,
   because the plugin cannot honestly control another process's loaded-state.
 
-`list_loaded_models()` reports both explicitly preloaded resident models and transient warm models
-that are currently loaded because of recent local generation requests. `list_resident_models()`
+`list_loaded_models()` reports both explicitly preloaded resident models and transient currently
+loaded local models from recent generation requests. `list_resident_models()`
 returns the explicit pinned subset.
 
 Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,

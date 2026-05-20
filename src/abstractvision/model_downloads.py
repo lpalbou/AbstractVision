@@ -64,6 +64,7 @@ _COMMON_DIFFUSERS_PATTERNS = (
     "*.json",
     "*.jinja",
     "*.md",
+    "*.model",
     "*.txt",
     "*.yaml",
     "LICENSE*",
@@ -511,14 +512,21 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     VisionModelDownloadPreset(
         key="stable-diffusion",
         display_name="Stable Diffusion v1.5 (Diffusers)",
-        repo_id="runwayml/stable-diffusion-v1-5",
+        repo_id="stable-diffusion-v1-5/stable-diffusion-v1-5",
         target="diffusers",
         engine="diffusers",
         local_dir_name="stable-diffusion-v1-5-diffusers",
         quantization_bits=16,
         upstream_repo_id=None,
         source="official",
-        aliases=("stable-diffusion", "sd", "sd15", "stable-diffusion-v1-5", "runwayml/stable-diffusion-v1-5"),
+        aliases=(
+            "stable-diffusion",
+            "sd",
+            "sd15",
+            "stable-diffusion-v1-5",
+            "runwayml/stable-diffusion-v1-5",
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+        ),
         allow_patterns=_STABLE_DIFFUSION_DIFFUSERS_PATTERNS,
         notes=(
             "#FALLBACK: this is a full Diffusers snapshot (not 8-bit). "
@@ -544,7 +552,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     VisionModelDownloadPreset(
         key="sd1.5-inpaint",
         display_name="Stable Diffusion v1.5 Inpainting (Diffusers)",
-        repo_id="runwayml/stable-diffusion-inpainting",
+        repo_id="stable-diffusion-v1-5/stable-diffusion-inpainting",
         target="diffusers",
         engine="diffusers",
         local_dir_name="stable-diffusion-inpainting-diffusers",
@@ -556,6 +564,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "sd15-inpaint",
             "stable-diffusion-inpainting",
             "runwayml/stable-diffusion-inpainting",
+            "stable-diffusion-v1-5/stable-diffusion-inpainting",
         ),
         allow_patterns=_STABLE_DIFFUSION_DIFFUSERS_PATTERNS,
         notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",

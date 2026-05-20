@@ -4,6 +4,7 @@ import io
 import inspect
 import os
 import hashlib
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -644,8 +645,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
     def __init__(self, *, config: HuggingFaceDiffusersBackendConfig):
         self._cfg = config
+        self._backend_lock = threading.RLock()
         self._pipelines: Dict[str, Any] = {}
         self._call_params: Dict[str, Optional[set[str]]] = {}
+        self._warmed_pipeline_ids: Dict[str, int] = {}
         self._fused_lora_signature: Dict[str, Optional[str]] = {}
         self._rapid_transformer_key: Optional[str] = None
         self._rapid_transformer: Any = None
@@ -682,14 +685,22 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return self._resolved_device
 
     def preload(self) -> None:
-        # Best-effort: preload the most common pipeline.
-        self._get_or_load_pipeline("t2i")
+        with self._backend_lock:
+            pipe = self._get_or_load_pipeline("t2i")
+            if self._is_pipeline_warm("t2i", pipe):
+                return
+            self.generate_image(self._warmup_generation_request())
 
     def unload(self) -> None:
+        with self._backend_lock:
+            self._unload_locked()
+
+    def _unload_locked(self) -> None:
         # Best-effort: release pipelines and GPU cache.
         pipes = list(self._pipelines.values())
         self._pipelines.clear()
         self._call_params.clear()
+        self._warmed_pipeline_ids.clear()
         self._fused_lora_signature.clear()
         self._rapid_transformer_key = None
         self._rapid_transformer = None
@@ -741,6 +752,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             return reg.get(model_id).tasks.get(str(task))
         except Exception:
             return None
+
+    def _warmup_generation_request(self) -> ImageGenerationRequest:
+        return ImageGenerationRequest(
+            prompt="abstractvision preload warmup",
+            steps=1,
+            seed=0,
+        )
 
     def _normalize_int_param(
         self,
@@ -1646,9 +1664,22 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         _ensure_pipeline_chat_templates(pipe, snapshot_dir=template_snapshot, model_id=str(self._cfg.model_id or ""))
         _maybe_cast_pipe_modules_to_dtype(pipe, dtype=torch_dtype)
         _maybe_upcast_vae_for_mps(torch, pipe, device)
+        self._set_pipeline(kind, pipe)
+        return pipe
+
+    def _set_pipeline(self, kind: str, pipe: Any) -> Any:
+        current = self._pipelines.get(kind)
+        if current is not pipe:
+            self._warmed_pipeline_ids.pop(kind, None)
         self._pipelines[kind] = pipe
         self._call_params[kind] = _call_param_names(getattr(pipe, "__call__", None))
         return pipe
+
+    def _is_pipeline_warm(self, kind: str, pipe: Any) -> bool:
+        return self._warmed_pipeline_ids.get(kind) == id(pipe)
+
+    def _mark_pipeline_warm(self, kind: str, pipe: Any) -> None:
+        self._warmed_pipeline_ids[kind] = id(pipe)
 
     def _pil_from_bytes(self, data: bytes):
         Image = _lazy_import_pil()
@@ -1832,8 +1863,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     continue
 
             _maybe_upcast_vae_for_mps(torch, pipe2, device)
-            self._pipelines[kind] = pipe2
-            self._call_params[kind] = _call_param_names(getattr(pipe2, "__call__", None))
+            self._set_pipeline(kind, pipe2)
 
             try:
                 call_kwargs = dict(kwargs)
@@ -1881,8 +1911,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 return None
 
         _maybe_upcast_vae_for_mps(torch, pipe_fp32, device)
-        self._pipelines[kind] = pipe_fp32
-        self._call_params[kind] = _call_param_names(getattr(pipe_fp32, "__call__", None))
+        self._set_pipeline(kind, pipe_fp32)
 
         call_kwargs = dict(kwargs)
         if progress_callback is not None:
@@ -1906,116 +1935,119 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         request: ImageGenerationRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
-        pipe = self._get_or_load_pipeline("t2i")
-        call_params = self._call_params.get("t2i")
-        total_steps = int(request.steps) if request.steps is not None else None
+        with self._backend_lock:
+            pipe = self._get_or_load_pipeline("t2i")
+            call_params = self._call_params.get("t2i")
+            total_steps = int(request.steps) if request.steps is not None else None
 
-        torch_dtype = getattr(pipe, "dtype", None)
-        if torch_dtype is None:
-            torch = _lazy_import_torch()
-            device = self._effective_device(torch)
-            torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, device)
-        rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
-        lora_sig = self._apply_loras(kind="t2i", pipe=pipe, extra=request.extra)
+            torch_dtype = getattr(pipe, "dtype", None)
+            if torch_dtype is None:
+                torch = _lazy_import_torch()
+                device = self._effective_device(torch)
+                torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, device)
+            rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
+            lora_sig = self._apply_loras(kind="t2i", pipe=pipe, extra=request.extra)
 
-        kwargs: Dict[str, Any] = {
-            "prompt": request.prompt,
-        }
-        if request.negative_prompt is not None:
-            kwargs["negative_prompt"] = request.negative_prompt
-        if request.width is not None:
-            kwargs["width"] = int(request.width)
-        if request.height is not None:
-            kwargs["height"] = int(request.height)
-        if request.steps is not None:
-            kwargs["num_inference_steps"] = int(request.steps)
-        if request.guidance_scale is not None:
-            if call_params is not None and "true_cfg_scale" in call_params:
-                kwargs["true_cfg_scale"] = float(request.guidance_scale)
-                # Some pipelines (e.g. Qwen Image) only enable CFG when a `negative_prompt`
-                # is provided (even an empty one). Make `guidance_scale` behave consistently.
-                if request.negative_prompt is None and (call_params is None or "negative_prompt" in call_params):
-                    kwargs["negative_prompt"] = " "
-            else:
-                kwargs["guidance_scale"] = float(request.guidance_scale)
-        gen = self._seed_generator(request.seed)
-        if gen is not None:
-            kwargs["generator"] = gen
+            kwargs: Dict[str, Any] = {
+                "prompt": request.prompt,
+            }
+            if request.negative_prompt is not None:
+                kwargs["negative_prompt"] = request.negative_prompt
+            if request.width is not None:
+                kwargs["width"] = int(request.width)
+            if request.height is not None:
+                kwargs["height"] = int(request.height)
+            if request.steps is not None:
+                kwargs["num_inference_steps"] = int(request.steps)
+            if request.guidance_scale is not None:
+                if call_params is not None and "true_cfg_scale" in call_params:
+                    kwargs["true_cfg_scale"] = float(request.guidance_scale)
+                    # Some pipelines (e.g. Qwen Image) only enable CFG when a `negative_prompt`
+                    # is provided (even an empty one). Make `guidance_scale` behave consistently.
+                    if request.negative_prompt is None and (call_params is None or "negative_prompt" in call_params):
+                        kwargs["negative_prompt"] = " "
+                else:
+                    kwargs["guidance_scale"] = float(request.guidance_scale)
+            gen = self._seed_generator(request.seed)
+            if gen is not None:
+                kwargs["generator"] = gen
 
-        kwargs.update(_forward_extra_kwargs(request.extra, call_params=call_params))
+            kwargs.update(_forward_extra_kwargs(request.extra, call_params=call_params))
 
-        try:
-            call_kwargs = dict(kwargs)
-            if progress_callback is not None:
-                call_kwargs["__abstractvision_progress_callback"] = progress_callback
-                call_kwargs["__abstractvision_progress_total_steps"] = total_steps
-            out, had_invalid_cast = self._pipe_call(pipe, call_kwargs)
-        except Exception as e:
-            out2 = self._maybe_retry_on_dtype_mismatch(
-                kind="t2i",
-                pipe=pipe,
-                kwargs=kwargs,
-                error=e,
-                progress_callback=progress_callback,
-                total_steps=total_steps,
-            )
-            if out2 is None:
-                raise
-            out, had_invalid_cast = out2, False
-        retried_fp32 = False
-        images = getattr(out, "images", None)
-        if not isinstance(images, list) or not images:
-            raise ValueError("Diffusers pipeline returned no images")
-        if self._is_probably_all_black_image(images[0]):
-            out2 = self._maybe_retry_fp32_on_invalid_output(
-                kind="t2i",
-                pipe=pipe,
-                kwargs=kwargs,
-                progress_callback=progress_callback,
-                total_steps=total_steps,
-            )
-            if out2 is not None:
-                out = out2
-                retried_fp32 = True
-                images = getattr(out, "images", None)
-                if not isinstance(images, list) or not images:
-                    raise ValueError("Diffusers pipeline returned no images")
-        if self._is_probably_all_black_image(images[0]):
-            raise ValueError(
-                "Diffusers produced an all-black image output. "
-                + (
-                    "An automatic fp32 retry was attempted and it still produced an all-black image. "
-                    if retried_fp32
-                    else "Try setting torch_dtype=float32. "
+            try:
+                call_kwargs = dict(kwargs)
+                if progress_callback is not None:
+                    call_kwargs["__abstractvision_progress_callback"] = progress_callback
+                    call_kwargs["__abstractvision_progress_total_steps"] = total_steps
+                out, had_invalid_cast = self._pipe_call(pipe, call_kwargs)
+            except Exception as e:
+                out2 = self._maybe_retry_on_dtype_mismatch(
+                    kind="t2i",
+                    pipe=pipe,
+                    kwargs=kwargs,
+                    error=e,
+                    progress_callback=progress_callback,
+                    total_steps=total_steps,
                 )
-                + "Try increasing steps, adjusting guidance_scale, or use the stable-diffusion.cpp backend."
-            )
-        png = self._png_bytes(images[0])
-        meta = {"source": "diffusers", "model_id": self._cfg.model_id}
-        if rapid_repo:
-            meta["rapid_aio_repo"] = rapid_repo
-        if lora_sig:
-            meta["lora_signature"] = lora_sig
-        if retried_fp32:
-            meta["retried_fp32"] = True
-        if had_invalid_cast:
-            meta["had_invalid_cast_warning"] = True
-        try:
+                if out2 is None:
+                    raise
+                out, had_invalid_cast = out2, False
+            retried_fp32 = False
+            images = getattr(out, "images", None)
+            if not isinstance(images, list) or not images:
+                raise ValueError("Diffusers pipeline returned no images")
+            if self._is_probably_all_black_image(images[0]):
+                out2 = self._maybe_retry_fp32_on_invalid_output(
+                    kind="t2i",
+                    pipe=pipe,
+                    kwargs=kwargs,
+                    progress_callback=progress_callback,
+                    total_steps=total_steps,
+                )
+                if out2 is not None:
+                    out = out2
+                    retried_fp32 = True
+                    images = getattr(out, "images", None)
+                    if not isinstance(images, list) or not images:
+                        raise ValueError("Diffusers pipeline returned no images")
+            if self._is_probably_all_black_image(images[0]):
+                raise ValueError(
+                    "Diffusers produced an all-black image output. "
+                    + (
+                        "An automatic fp32 retry was attempted and it still produced an all-black image. "
+                        if retried_fp32
+                        else "Try setting torch_dtype=float32. "
+                    )
+                    + "Try increasing steps, adjusting guidance_scale, or use the stable-diffusion.cpp backend."
+                )
             current_pipe = self._pipelines.get("t2i", pipe)
-            dtype = getattr(current_pipe, "dtype", None)
-            device = getattr(current_pipe, "device", None)
-            if dtype is not None:
-                meta["dtype"] = str(dtype)
-            if device is not None:
-                meta["device"] = str(device)
-        except Exception:
-            pass
-        return GeneratedAsset(
-            media_type="image",
-            data=png,
-            mime_type="image/png",
-            metadata=meta,
-        )
+            self._mark_pipeline_warm("t2i", current_pipe)
+            png = self._png_bytes(images[0])
+            meta = {"source": "diffusers", "model_id": self._cfg.model_id}
+            if rapid_repo:
+                meta["rapid_aio_repo"] = rapid_repo
+            if lora_sig:
+                meta["lora_signature"] = lora_sig
+            if retried_fp32:
+                meta["retried_fp32"] = True
+            if had_invalid_cast:
+                meta["had_invalid_cast_warning"] = True
+            try:
+                current_pipe = self._pipelines.get("t2i", pipe)
+                dtype = getattr(current_pipe, "dtype", None)
+                device = getattr(current_pipe, "device", None)
+                if dtype is not None:
+                    meta["dtype"] = str(dtype)
+                if device is not None:
+                    meta["device"] = str(device)
+            except Exception:
+                pass
+            return GeneratedAsset(
+                media_type="image",
+                data=png,
+                mime_type="image/png",
+                metadata=meta,
+            )
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         return self.edit_image_with_progress(request, progress_callback=None)
@@ -2025,119 +2057,122 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         request: ImageEditRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
-        if request.mask is not None:
-            pipe = self._get_or_load_pipeline("inpaint")
-            call_params = self._call_params.get("inpaint")
-            kind = "inpaint"
-        else:
-            pipe = self._get_or_load_pipeline("i2i")
-            call_params = self._call_params.get("i2i")
-            kind = "i2i"
-
-        total_steps = int(request.steps) if request.steps is not None else None
-
-        torch_dtype = getattr(pipe, "dtype", None)
-        if torch_dtype is None:
-            torch = _lazy_import_torch()
-            device = self._effective_device(torch)
-            torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, device)
-        rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
-        lora_sig = self._apply_loras(kind=kind, pipe=pipe, extra=request.extra)
-
-        img = self._pil_from_bytes(request.image)
-        kwargs: Dict[str, Any] = {"prompt": request.prompt, "image": img}
-        if request.mask is not None:
-            kwargs["mask_image"] = self._pil_from_bytes(request.mask)
-        if request.negative_prompt is not None:
-            kwargs["negative_prompt"] = request.negative_prompt
-        if request.steps is not None:
-            kwargs["num_inference_steps"] = int(request.steps)
-        if request.guidance_scale is not None:
-            if call_params is not None and "true_cfg_scale" in call_params:
-                kwargs["true_cfg_scale"] = float(request.guidance_scale)
-                if request.negative_prompt is None and (call_params is None or "negative_prompt" in call_params):
-                    kwargs["negative_prompt"] = " "
+        with self._backend_lock:
+            if request.mask is not None:
+                pipe = self._get_or_load_pipeline("inpaint")
+                call_params = self._call_params.get("inpaint")
+                kind = "inpaint"
             else:
-                kwargs["guidance_scale"] = float(request.guidance_scale)
-        gen = self._seed_generator(request.seed)
-        if gen is not None:
-            kwargs["generator"] = gen
+                pipe = self._get_or_load_pipeline("i2i")
+                call_params = self._call_params.get("i2i")
+                kind = "i2i"
 
-        kwargs.update(_forward_extra_kwargs(request.extra, call_params=call_params))
+            total_steps = int(request.steps) if request.steps is not None else None
 
-        try:
-            call_kwargs = dict(kwargs)
-            if progress_callback is not None:
-                call_kwargs["__abstractvision_progress_callback"] = progress_callback
-                call_kwargs["__abstractvision_progress_total_steps"] = total_steps
-            out, had_invalid_cast = self._pipe_call(pipe, call_kwargs)
-        except Exception as e:
-            out2 = self._maybe_retry_on_dtype_mismatch(
-                kind=kind,
-                pipe=pipe,
-                kwargs=kwargs,
-                error=e,
-                progress_callback=progress_callback,
-                total_steps=total_steps,
-            )
-            if out2 is None:
-                raise
-            out, had_invalid_cast = out2, False
-        retried_fp32 = False
-        images = getattr(out, "images", None)
-        if not isinstance(images, list) or not images:
-            raise ValueError("Diffusers pipeline returned no images")
-        if self._is_probably_all_black_image(images[0]):
-            kind = "inpaint" if request.mask is not None else "i2i"
-            out2 = self._maybe_retry_fp32_on_invalid_output(
-                kind=kind,
-                pipe=pipe,
-                kwargs=kwargs,
-                progress_callback=progress_callback,
-                total_steps=total_steps,
-            )
-            if out2 is not None:
-                out = out2
-                retried_fp32 = True
-                images = getattr(out, "images", None)
-                if not isinstance(images, list) or not images:
-                    raise ValueError("Diffusers pipeline returned no images")
-        if self._is_probably_all_black_image(images[0]):
-            raise ValueError(
-                "Diffusers produced an all-black image output. "
-                + (
-                    "An automatic fp32 retry was attempted and it still produced an all-black image. "
-                    if retried_fp32
-                    else "Try setting torch_dtype=bfloat16 (recommended on MPS) or torch_dtype=float32. "
+            torch_dtype = getattr(pipe, "dtype", None)
+            if torch_dtype is None:
+                torch = _lazy_import_torch()
+                device = self._effective_device(torch)
+                torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, device)
+            rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
+            lora_sig = self._apply_loras(kind=kind, pipe=pipe, extra=request.extra)
+
+            img = self._pil_from_bytes(request.image)
+            kwargs: Dict[str, Any] = {"prompt": request.prompt, "image": img}
+            if request.mask is not None:
+                kwargs["mask_image"] = self._pil_from_bytes(request.mask)
+            if request.negative_prompt is not None:
+                kwargs["negative_prompt"] = request.negative_prompt
+            if request.steps is not None:
+                kwargs["num_inference_steps"] = int(request.steps)
+            if request.guidance_scale is not None:
+                if call_params is not None and "true_cfg_scale" in call_params:
+                    kwargs["true_cfg_scale"] = float(request.guidance_scale)
+                    if request.negative_prompt is None and (call_params is None or "negative_prompt" in call_params):
+                        kwargs["negative_prompt"] = " "
+                else:
+                    kwargs["guidance_scale"] = float(request.guidance_scale)
+            gen = self._seed_generator(request.seed)
+            if gen is not None:
+                kwargs["generator"] = gen
+
+            kwargs.update(_forward_extra_kwargs(request.extra, call_params=call_params))
+
+            try:
+                call_kwargs = dict(kwargs)
+                if progress_callback is not None:
+                    call_kwargs["__abstractvision_progress_callback"] = progress_callback
+                    call_kwargs["__abstractvision_progress_total_steps"] = total_steps
+                out, had_invalid_cast = self._pipe_call(pipe, call_kwargs)
+            except Exception as e:
+                out2 = self._maybe_retry_on_dtype_mismatch(
+                    kind=kind,
+                    pipe=pipe,
+                    kwargs=kwargs,
+                    error=e,
+                    progress_callback=progress_callback,
+                    total_steps=total_steps,
                 )
-                + "Try increasing steps, adjusting guidance_scale, or use the stable-diffusion.cpp backend."
-            )
-        png = self._png_bytes(images[0])
-        meta = {"source": "diffusers", "model_id": self._cfg.model_id}
-        if rapid_repo:
-            meta["rapid_aio_repo"] = rapid_repo
-        if lora_sig:
-            meta["lora_signature"] = lora_sig
-        if retried_fp32:
-            meta["retried_fp32"] = True
-        if had_invalid_cast:
-            meta["had_invalid_cast_warning"] = True
-        try:
+                if out2 is None:
+                    raise
+                out, had_invalid_cast = out2, False
+            retried_fp32 = False
+            images = getattr(out, "images", None)
+            if not isinstance(images, list) or not images:
+                raise ValueError("Diffusers pipeline returned no images")
+            if self._is_probably_all_black_image(images[0]):
+                kind = "inpaint" if request.mask is not None else "i2i"
+                out2 = self._maybe_retry_fp32_on_invalid_output(
+                    kind=kind,
+                    pipe=pipe,
+                    kwargs=kwargs,
+                    progress_callback=progress_callback,
+                    total_steps=total_steps,
+                )
+                if out2 is not None:
+                    out = out2
+                    retried_fp32 = True
+                    images = getattr(out, "images", None)
+                    if not isinstance(images, list) or not images:
+                        raise ValueError("Diffusers pipeline returned no images")
+            if self._is_probably_all_black_image(images[0]):
+                raise ValueError(
+                    "Diffusers produced an all-black image output. "
+                    + (
+                        "An automatic fp32 retry was attempted and it still produced an all-black image. "
+                        if retried_fp32
+                        else "Try setting torch_dtype=bfloat16 (recommended on MPS) or torch_dtype=float32. "
+                    )
+                    + "Try increasing steps, adjusting guidance_scale, or use the stable-diffusion.cpp backend."
+                )
             current_pipe = self._pipelines.get(kind, pipe)
-            dtype = getattr(current_pipe, "dtype", None)
-            device = getattr(current_pipe, "device", None)
-            if dtype is not None:
-                meta["dtype"] = str(dtype)
-            if device is not None:
-                meta["device"] = str(device)
-        except Exception:
-            pass
-        return GeneratedAsset(
-            media_type="image",
-            data=png,
-            mime_type="image/png",
-            metadata=meta,
-        )
+            self._mark_pipeline_warm(kind, current_pipe)
+            png = self._png_bytes(images[0])
+            meta = {"source": "diffusers", "model_id": self._cfg.model_id}
+            if rapid_repo:
+                meta["rapid_aio_repo"] = rapid_repo
+            if lora_sig:
+                meta["lora_signature"] = lora_sig
+            if retried_fp32:
+                meta["retried_fp32"] = True
+            if had_invalid_cast:
+                meta["had_invalid_cast_warning"] = True
+            try:
+                current_pipe = self._pipelines.get(kind, pipe)
+                dtype = getattr(current_pipe, "dtype", None)
+                device = getattr(current_pipe, "device", None)
+                if dtype is not None:
+                    meta["dtype"] = str(dtype)
+                if device is not None:
+                    meta["device"] = str(device)
+            except Exception:
+                pass
+            return GeneratedAsset(
+                media_type="image",
+                data=png,
+                mime_type="image/png",
+                metadata=meta,
+            )
 
     def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
         raise CapabilityNotSupportedError("HuggingFaceDiffusersVisionBackend does not implement multi-view generation.")

@@ -86,6 +86,18 @@ class _ThreadAwareFlux2:
         return _Generated()
 
 
+class _CountingFlux2:
+    init_calls = 0
+    generate_calls = []
+
+    def __init__(self, **kwargs):
+        _CountingFlux2.init_calls += 1
+
+    def generate_image(self, **kwargs):
+        _CountingFlux2.generate_calls.append(dict(kwargs))
+        return _Generated()
+
+
 class TestMFluxVisionBackend(unittest.TestCase):
     def _make_model_dir(self, root: Path, name: str) -> Path:
         model_dir = root / name
@@ -370,6 +382,35 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertNotEqual(_ThreadAwareFlux2.init_thread, caller_thread)
         self.assertNotEqual(_ThreadAwareFlux2.generate_thread, result["caller_thread"])
         self.assertEqual(_ThreadAwareFlux2.init_thread, _ThreadAwareFlux2.generate_thread)
+
+    def test_preload_runs_generate_warmup_once_per_loaded_model(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        _CountingFlux2.init_calls = 0
+        _CountingFlux2.generate_calls = []
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AITRADER/FLUX2-klein-4B-mlx-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="flux2-klein-4b", default_width=320, default_height=192)
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(_FakeModelConfig, _CountingFlux2, _FakeZImage),
+                ):
+                    backend.preload()
+                    backend.preload()
+
+        self.assertEqual(_CountingFlux2.init_calls, 1)
+        self.assertEqual(len(_CountingFlux2.generate_calls), 1)
+        warmup = _CountingFlux2.generate_calls[0]
+        self.assertEqual(warmup["prompt"], "abstractvision preload warmup")
+        self.assertEqual(warmup["width"], 320)
+        self.assertEqual(warmup["height"], 192)
+        self.assertEqual(warmup["num_inference_steps"], 4)
+        self.assertEqual(warmup["guidance"], 1.0)
+        self.assertEqual(warmup["seed"], 0)
 
 
 if __name__ == "__main__":

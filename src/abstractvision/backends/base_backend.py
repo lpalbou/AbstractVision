@@ -64,7 +64,7 @@ class VisionBackend(ABC):
         return ()
 
     def preload(self) -> None:
-        """Best-effort: load model weights into memory for faster first inference."""
+        """Best-effort eager load/prepare; does not guarantee a fully warmed first inference."""
         return None
 
     def unload(self) -> None:

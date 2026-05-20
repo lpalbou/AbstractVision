@@ -531,6 +531,45 @@ class TestPlaygroundServer(unittest.TestCase):
         self.assertEqual(snap["state"], "succeeded")
         self.assertEqual(state.active_snapshot()["model_id"], "mflux/qwen-image")
 
+    def test_load_model_keeps_existing_backend_when_preload_fails(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+
+        class ExistingBackend:
+            def __init__(self):
+                self.unloaded = False
+
+            def unload(self):
+                self.unloaded = True
+
+        class FailingBackend:
+            def __init__(self):
+                self.unloaded = False
+
+            def preload(self):
+                raise RuntimeError("warmup failed")
+
+            def unload(self):
+                self.unloaded = True
+
+        state = PlaygroundState(PlaygroundServerConfig(default_model_id=""))
+        existing = ExistingBackend()
+        replacement = FailingBackend()
+        state._active_backend = existing
+        state._active_backend_kind = "diffusers"
+        state._active_model_id = "runwayml/stable-diffusion-v1-5"
+        state._active_loaded_at = 123.0
+
+        with patch.object(state, "_build_backend", return_value=replacement):
+            with self.assertRaisesRegex(RuntimeError, "warmup failed"):
+                state.load_model("mflux/flux2-klein-9b")
+
+        active = state.active_snapshot()
+        self.assertIsNotNone(active)
+        self.assertEqual(active["model_id"], "runwayml/stable-diffusion-v1-5")
+        self.assertEqual(active["backend"], "diffusers")
+        self.assertFalse(existing.unloaded)
+        self.assertTrue(replacement.unloaded)
+
     def test_generation_job_uses_backend_snapshot_if_active_model_changes(self):
         import abstractvision.playground_server as playground_server
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState

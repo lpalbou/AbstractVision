@@ -16,6 +16,44 @@ PNG_1X1 = base64.b64decode(
 )
 
 
+class _FakePythonImage:
+    def save(self, fp, format=None):  # noqa: A002
+        fp.write(PNG_1X1)
+
+
+class _CountingStableDiffusion:
+    init_calls = 0
+    generate_calls = []
+
+    def __init__(self, **kwargs):
+        _CountingStableDiffusion.init_calls += 1
+
+    def generate_image(
+        self,
+        prompt,
+        negative_prompt="",
+        width=512,
+        height=512,
+        cfg_scale=7.0,
+        sample_steps=20,
+        seed=42,
+        sample_method="default",
+    ):
+        _CountingStableDiffusion.generate_calls.append(
+            {
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "width": width,
+                "height": height,
+                "cfg_scale": cfg_scale,
+                "sample_steps": sample_steps,
+                "seed": seed,
+                "sample_method": sample_method,
+            }
+        )
+        return [_FakePythonImage()]
+
+
 class TestStableDiffusionCppVisionBackend(unittest.TestCase):
     def test_generate_image_builds_cmd_and_reads_output(self):
         from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
@@ -206,6 +244,51 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("sample_method"), "euler")
         self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("sample_steps"), 12)
         self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("cfg_scale"), 2.5)
+
+    def test_preload_runs_python_warmup_once_per_loaded_model(self):
+        from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+
+        _CountingStableDiffusion.init_calls = 0
+        _CountingStableDiffusion.generate_calls = []
+        fake_mod = types.SimpleNamespace(__version__="0.0.0", StableDiffusion=_CountingStableDiffusion)
+
+        backend = StableDiffusionCppVisionBackend(
+            config=StableDiffusionCppBackendConfig(
+                sd_cli_path="sd-cli",
+                diffusion_model="model.gguf",
+            )
+        )
+
+        with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}):
+            with patch("abstractvision.backends.stable_diffusion_cpp.shutil.which", return_value=None):
+                backend.preload()
+                backend.preload()
+
+        self.assertEqual(_CountingStableDiffusion.init_calls, 1)
+        self.assertEqual(len(_CountingStableDiffusion.generate_calls), 1)
+        warmup = _CountingStableDiffusion.generate_calls[0]
+        self.assertEqual(warmup["prompt"], "abstractvision preload warmup")
+        self.assertEqual(warmup["negative_prompt"], "")
+        self.assertEqual(warmup["width"], 512)
+        self.assertEqual(warmup["height"], 512)
+        self.assertEqual(warmup["sample_steps"], 1)
+        self.assertEqual(warmup["seed"], 0)
+
+    def test_preload_leaves_cli_mode_unchanged(self):
+        from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+
+        backend = StableDiffusionCppVisionBackend(
+            config=StableDiffusionCppBackendConfig(
+                sd_cli_path="sd-cli",
+                diffusion_model="model.gguf",
+            )
+        )
+
+        with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"):
+            with patch("abstractvision.backends.stable_diffusion_cpp.subprocess.run") as run_mock:
+                backend.preload()
+
+        run_mock.assert_not_called()
 
 
 if __name__ == "__main__":

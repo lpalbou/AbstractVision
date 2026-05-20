@@ -781,24 +781,29 @@ class PlaygroundState:
         backend_kind, backend_model_id = normalize_model_id_for_backend(requested)
 
         backend = self._build_backend(backend_kind, backend_model_id)
-        unload_after_lock: Optional[Any] = None
-        with self._active_lock:
-            old = self._active_backend
-            self._active_backend = None
-            self._active_backend_kind = None
-            self._active_model_id = None
-            self._active_loaded_at = None
-            unload_after_lock = self._retire_backend_locked(old)
-
-            preload = getattr(backend, "preload", None)
+        preload = getattr(backend, "preload", None)
+        try:
             if callable(preload):
                 preload()
+        except Exception:
+            self._unload_backend(backend)
+            raise
 
-            self._active_backend = backend
-            self._active_backend_kind = backend_kind
-            self._active_model_id = requested
-            self._active_loaded_at = time.time()
-            out = {"ok": True, "active": self.active_snapshot()}
+        unload_after_lock: Optional[Any] = None
+        backend_to_unload: Optional[Any] = None
+        with self._active_lock:
+            if self._same_requested_model(requested):
+                backend_to_unload = backend
+                out = {"ok": True, "active": self.active_snapshot()}
+            else:
+                old = self._active_backend
+                self._active_backend = backend
+                self._active_backend_kind = backend_kind
+                self._active_model_id = requested
+                self._active_loaded_at = time.time()
+                unload_after_lock = self._retire_backend_locked(old)
+                out = {"ok": True, "active": self.active_snapshot()}
+        self._unload_backend(backend_to_unload)
         self._unload_backend(unload_after_lock)
         return out
 

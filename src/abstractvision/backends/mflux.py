@@ -570,6 +570,7 @@ class MFluxVisionBackend(VisionBackend):
         self._cfg = config
         self._model: Any = None
         self._model_key: Optional[Tuple[Any, ...]] = None
+        self._warmed_model_key: Optional[Tuple[Any, ...]] = None
         self._resolved_model_path: Optional[str] = None
         self._resolved_base_model: Optional[str] = None
         self._runtime_lock = threading.Lock()
@@ -626,6 +627,7 @@ class MFluxVisionBackend(VisionBackend):
     def _unload_impl(self) -> None:
         self._model = None
         self._model_key = None
+        self._warmed_model_key = None
         self._resolved_model_path = None
         self._resolved_base_model = None
         try:
@@ -642,7 +644,7 @@ class MFluxVisionBackend(VisionBackend):
         self._run_on_runtime_thread(self._unload_impl)
 
     def preload(self) -> None:
-        self._run_on_runtime_thread(self._ensure_model_impl)
+        self._run_on_runtime_thread(self._preload_impl)
 
     def get_capabilities(self) -> VisionBackendCapabilities:
         return VisionBackendCapabilities(
@@ -852,9 +854,24 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["lora_scales"] = [float(x) for x in self._cfg.lora_scales]
         self._model = cls(**kwargs)
         self._model_key = key
+        self._warmed_model_key = None
         self._resolved_model_path = model_path
         self._resolved_base_model = base_model
         return self._model, model_def
+
+    def _warmup_request(self, model_def: _MFluxModelDef) -> ImageGenerationRequest:
+        return ImageGenerationRequest(
+            prompt="abstractvision preload warmup",
+            steps=int(model_def.default_steps),
+            guidance_scale=model_def.default_guidance,
+            seed=0,
+        )
+
+    def _preload_impl(self) -> None:
+        _model, model_def = self._ensure_model_impl()
+        if self._model_key is not None and self._warmed_model_key == self._model_key:
+            return
+        self._generate_impl(self._warmup_request(model_def))
 
     def _resolved_model_def(self) -> _MFluxModelDef:
         _model_path, base_model = self._resolve_model()
@@ -954,6 +971,8 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["image_strength"] = float(image_strength if image_strength is not None else extra.pop("image_strength", 0.4))
 
         generated = model.generate_image(**kwargs)
+        if self._model_key is not None:
+            self._warmed_model_key = self._model_key
         pil_image = getattr(generated, "image", generated)
         buf = BytesIO()
         pil_image.save(buf, format="PNG")

@@ -1,8 +1,9 @@
-# Proposed: Capability-level residency hooks for warm image models
+# Completed: Capability-level residency hooks for warm image models
 
 ## Metadata
 - Created: 2026-05-19
-- Status: Implemented in 0.3.7
+- Status: Completed
+- Completed: 2026-05-19
 - Priority: P1
 
 ## Current Code Reality
@@ -236,3 +237,87 @@ explicitly scoped:
 - Plugin tests that `unload_resident_model()` clears metadata and calls `unload()`.
 - Plugin tests that OpenAI-compatible HTTP backends are rejected for residency control.
 - If concurrency is supported, tests that in-flight generation is not unloaded mid-request.
+
+## Completion Report
+
+Date: 2026-05-19
+
+### Summary
+
+- Added explicit process-local residency control to the AbstractCore plugin through
+  `load_resident_model()`, `list_loaded_models()`, `list_resident_models()`, and
+  `unload_resident_model()`.
+- Preserved conservative unload-on-switch behavior for non-resident local backends while keeping
+  explicitly resident backends loaded across model switches.
+- Reported stable plugin-owned residency metadata (`load_id`, `backend_kind`, `resident`, `state`,
+  timestamps, observed tasks) without depending on backend private fields.
+- Rejected OpenAI/OpenAI-compatible HTTP backends for residency control so the contract stays
+  honest about what AbstractVision can actually keep loaded in-process.
+- Kept the public residency surface process-local and JSON-safe for Core/Gateway-style route
+  adapters.
+
+### Files And Symbols Touched
+
+- `src/abstractvision/integrations/abstractcore_plugin.py`
+  - `_AbstractVisionCapability.load_resident_model`
+  - `_AbstractVisionCapability.list_loaded_models`
+  - `_AbstractVisionCapability.list_resident_models`
+  - `_AbstractVisionCapability.unload_resident_model`
+  - `_AbstractVisionCapability.unload_model`
+  - `_AbstractVisionCapability._record_loaded_model`
+  - `_AbstractVisionCapability._activate_request_backend`
+  - `_AbstractVisionCapability._find_loaded_backends`
+  - `_AbstractVisionCapability._normalize_loaded_filters`
+- `tests/test_abstractcore_plugin.py`
+- `docs/reference/abstractcore-integration.md`
+- `CHANGELOG.md`
+
+### Behavior Changes
+
+- Core/plugin callers can now preload, inspect, and unload local resident image backends
+  intentionally instead of relying only on implicit same-model reuse.
+- `list_loaded_models()` now distinguishes explicitly resident entries from transient request-loaded
+  local backends.
+- Explicitly resident local backends survive switches to other models until they are explicitly
+  unloaded.
+- OpenAI/OpenAI-compatible backends are refused for residency control, even when pointed at
+  localhost.
+
+### Validation
+
+- Historical shipped validation is reflected in the 0.3.7 changelog entry and the plugin test
+  coverage added with that release.
+- `PYTHONPATH=src python -m unittest tests.test_abstractcore_plugin -q` passed on 2026-05-20
+  during backlog verification, 33 tests.
+- `git diff --check` passed on 2026-05-20 during backlog verification.
+
+### Docs
+
+- Public integration docs describe the residency control surface and its process-local scope.
+- Changelog records the 0.3.7 residency feature and its semantics.
+
+### Residual Risks
+
+- The current residency surface is honest about loaded state, but it does not prove that a first
+  matching inference is fully warmed. That follow-up belongs to
+  `docs/backlog/proposed/2026-05-20_true_image_warmup_semantics.md`.
+- Residency is process-local only; cluster-wide orchestration and worker lifecycle policy remain
+  downstream concerns.
+
+### Backlog / Code Drift Found
+
+- This item remained in `docs/backlog/proposed/` even though the code, tests, docs, and changelog
+  already showed it was complete.
+- The item has now been moved to `docs/backlog/completed/` and its completion report recorded.
+
+### Follow-ups
+
+- Keep the narrower true-warmup follow-up proposed separately.
+- If the repo later adds backlog overview or recurrent hygiene files, this completion should be
+  reflected there as well.
+
+### Priority Impact
+
+- This no longer competes for implementation priority.
+- Remaining priority is on whether true warmup semantics and stronger engine-specific warmup are
+  worth adding beyond current residency.

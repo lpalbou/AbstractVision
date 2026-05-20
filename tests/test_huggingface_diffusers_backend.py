@@ -2,6 +2,7 @@ import io
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -376,6 +377,94 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(call.get("guidance_scale"), 7.5)
         self.assertIn("generator", call)
         self.assertEqual(call.get("foo"), "bar")
+
+    def test_preload_runs_t2i_warmup_once_per_loaded_pipeline(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.return_value = fake_pipe
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
+            )
+            backend.preload()
+            backend.preload()
+
+        self.assertEqual(fake_t2i_cls.from_pretrained.call_count, 1)
+        self.assertEqual(len(fake_pipe.calls), 1)
+        warmup = fake_pipe.calls[0]
+        self.assertEqual(warmup.get("prompt"), "abstractvision preload warmup")
+        self.assertEqual(warmup.get("num_inference_steps"), 1)
+        self.assertIn("generator", warmup)
+        self.assertNotIn("width", warmup)
+        self.assertNotIn("height", warmup)
+
+    def test_preload_serializes_concurrent_t2i_warmup(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+
+        class _BlockingPipeline(_FakePipeline):
+            def __init__(self, image):
+                super().__init__(image)
+                self.started = threading.Event()
+                self.proceed = threading.Event()
+                self.active_calls = 0
+                self.max_active_calls = 0
+
+            def __call__(self, **kwargs):
+                self.active_calls += 1
+                self.max_active_calls = max(self.max_active_calls, self.active_calls)
+                self.calls.append(kwargs)
+                self.started.set()
+                try:
+                    self.proceed.wait(timeout=2.0)
+                finally:
+                    self.active_calls -= 1
+                return _FakeDiffusersOutput(self._image)
+
+        fake_pipe = _BlockingPipeline(fake_image)
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.return_value = fake_pipe
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
+            )
+            t1 = threading.Thread(target=backend.preload)
+            t2 = threading.Thread(target=backend.preload)
+            t1.start()
+            self.assertTrue(fake_pipe.started.wait(timeout=1.0))
+            t2.start()
+            fake_pipe.proceed.set()
+            t1.join(timeout=2.0)
+            t2.join(timeout=2.0)
+
+        self.assertFalse(t1.is_alive())
+        self.assertFalse(t2.is_alive())
+        self.assertEqual(len(fake_pipe.calls), 1)
+        self.assertEqual(fake_pipe.max_active_calls, 1)
 
     def test_offline_mode_sets_hf_env_during_load_and_restores(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
