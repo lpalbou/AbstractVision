@@ -777,8 +777,8 @@
 <tr>
 <td>Diffusers (local)</td>
 <td><a href="../../src/abstractvision/backends/huggingface_diffusers.py"><code>huggingface_diffusers.py</code></a></td>
-<td><code>text_to_image</code>, <code>image_to_image</code></td>
-<td>Requires <code>abstractvision[diffusers]</code>. Supports cache-only/offline mode.</td>
+<td><code>text_to_image</code>, <code>image_to_image</code>, <code>text_to_video</code> (CogVideoX-2b family)</td>
+<td>Requires <code>abstractvision[diffusers]</code>. Supports cache-only/offline mode. Local MP4 export uses <code>ffmpeg</code> from <code>PATH</code>.</td>
 </tr>
 <tr>
 <td>MFLUX (local, Apple Silicon)</td>
@@ -796,8 +796,8 @@
 </table>
 <p>Notes:
 - <code>multi_view_image</code> (<code>VisionManager.generate_angles</code>) is part of the public API, but <strong>no built-in backend implements it yet</strong> (all raise <code>CapabilityNotSupportedError</code> today).
-- Backends may also expose best-effort <code>get_capabilities()</code>, <code>preload()</code>, <code>unload()</code>, <code>generate_image_with_progress(...)</code>, and <code>edit_image_with_progress(...)</code> hooks via the shared <code>VisionBackend</code> contract.
-- Backends may also implement <code>normalize_image_generation_request(...)</code> and <code>normalize_image_edit_request(...)</code>. <code>VisionManager</code>, the CLI/REPL, the playground API, and the AbstractCore plugin all route through those hooks so model-specific defaults and constraints are applied consistently instead of being hard-coded in one surface.</p>
+- Backends may also expose best-effort <code>get_capabilities()</code>, <code>preload()</code>, <code>unload()</code>, <code>generate_image_with_progress(...)</code>, <code>edit_image_with_progress(...)</code>, and video progress hooks via the shared <code>VisionBackend</code> contract.
+- Backends may also implement <code>normalize_image_generation_request(...)</code>, <code>normalize_image_edit_request(...)</code>, <code>normalize_video_generation_request(...)</code>, and <code>normalize_image_to_video_request(...)</code>. <code>VisionManager</code>, the CLI/REPL, the playground API, and the AbstractCore plugin all route through those hooks so model-specific defaults and constraints are applied consistently instead of being hard-coded in one surface.</p>
 <h2 id="openai-compatible-http-backend">OpenAI-compatible HTTP backend<a class="headerlink" href="#openai-compatible-http-backend" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
 - You already run a service that exposes OpenAI-shaped endpoints (local or remote).
@@ -854,10 +854,12 @@
   - <code>abstractvision download-model qwen-image-edit --provider diffusers</code>
   - <code>abstractvision download-model glm-image --provider diffusers</code>
   - <code>abstractvision download-model flux2-dev --provider diffusers</code>
+  - <code>abstractvision download-model cogvideox-2b --provider diffusers</code>
   - <code>abstractvision download-model flux2-klein-4b --provider diffusers</code>
   - <code>abstractvision download-model z-image-turbo --provider diffusers</code></p>
 <p>One-shot generation (uses the cached snapshot when present):
-- <code>abstractvision t2i --provider diffusers --model qwen-image "a studio photo of a ceramic teapot"</code></p>
+- <code>abstractvision t2i --provider diffusers --model qwen-image "a studio photo of a ceramic teapot"</code>
+- <code>abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"</code></p>
 <p>Code pointers:
 - Config: <code>HuggingFaceDiffusersBackendConfig</code> (<a href="../../src/abstractvision/backends/huggingface_diffusers.py"><code>../../src/abstractvision/backends/huggingface_diffusers.py</code></a>)
 - Backend: <code>HuggingFaceDiffusersVisionBackend</code> (<a href="../../src/abstractvision/backends/huggingface_diffusers.py"><code>../../src/abstractvision/backends/huggingface_diffusers.py</code></a>)</p>
@@ -872,7 +874,9 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 - <code>use_safetensors</code>, <code>low_cpu_mem_usage</code></p>
 <p>Runtime behavior notes:
 - The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
-- This is where model-specific defaults and constraints such as GLM <code>guidance_scale=1.5</code>, GLM <code>steps=20</code>, 32-multiple dimensions, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.</p>
+- Local Diffusers <code>text_to_video</code> is intentionally narrow today: the first shipped path is the CogVideoX-2b family (<code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code>).
+- Local video export requires an <code>ffmpeg</code> executable on <code>PATH</code> so generated frames can be packaged as MP4 artifact outputs.
+- This is where model-specific defaults and constraints such as GLM <code>guidance_scale=1.5</code>, CogVideoX <code>720x480</code> / <code>8 fps</code> defaults, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.</p>
 <h2 id="mflux-backend-local-apple-silicon">MFLUX backend (local Apple Silicon)<a class="headerlink" href="#mflux-backend-local-apple-silicon" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
 - You are on Apple Silicon and want local 8-bit MLX generation through the optional MFLUX runtime.</p>

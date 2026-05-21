@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/proposed/2026-05-20_true_image_warmup_semantics/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/planned/0022_local_diffusers_image_to_video_backend/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>Proposed: True Warmup Semantics For Resident Local Image Backends - AbstractVision</title>
+        <title>Planned: First local Diffusers image-to-video backend and surface integration - AbstractVision</title>
       
     
     
@@ -64,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#proposed-true-warmup-semantics-for-resident-local-image-backends" class="md-skip">
+        <a href="#planned-first-local-diffusers-image-to-video-backend-and-surface-integration" class="md-skip">
           Skip to content
         </a>
       
@@ -100,7 +100,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Proposed: True Warmup Semantics For Resident Local Image Backends
+              Planned: First local Diffusers image-to-video backend and surface integration
             
           </span>
         </div>
@@ -580,10 +580,32 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#adr-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADR status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#current-code-reality" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current Code Reality
+        Current code reality
       
     </span>
   </a>
@@ -602,22 +624,55 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#recommended-proposal" class="md-nav__link">
+  <a href="#what-we-want-to-do" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Recommended Proposal
+        What we want to do
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Recommended Proposal">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suggested-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suggested implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Suggested implementation">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-keep-residency-semantics-stable" class="md-nav__link">
+  <a href="#phase-1-choose-one-first-local-i2v-target" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Keep residency semantics stable
+        Phase 1: choose one first local I2V target
       
     </span>
   </a>
@@ -625,10 +680,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-extend-load_resident_model-with-optional-warmup-intent" class="md-nav__link">
+  <a href="#phase-2-implement-backend-truth" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Extend load_resident_model() with optional warmup intent
+        Phase 2: implement backend truth
       
     </span>
   </a>
@@ -636,54 +691,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-make-warmup-backend-owned-not-plugin-invented" class="md-nav__link">
+  <a href="#phase-3-expose-the-runnable-path" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Make warmup backend-owned, not plugin-invented
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#4-keep-warmup-reporting-additive-and-nested" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Keep warmup reporting additive and nested
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#5-initial-engine-scope-mflux-first" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        5. Initial engine scope: MFLUX first
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#6-request-driven-warming-should-be-reflected-when-the-backend-can-prove-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        6. Request-driven warming should be reflected when the backend can prove it
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#7-warmup-must-use-the-same-lifetime-protections-as-generation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        7. Warmup must use the same lifetime protections as generation
+        Phase 3: expose the runnable path
       
     </span>
   </a>
@@ -696,10 +707,21 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#non-goals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Non-Goals
+        Non-goals
       
     </span>
   </a>
@@ -707,10 +729,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#success-criteria" class="md-nav__link">
+  <a href="#dependencies-and-related-tasks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Success Criteria
+        Dependencies and related tasks
       
     </span>
   </a>
@@ -718,10 +740,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#validation-ideas" class="md-nav__link">
+  <a href="#expected-outcomes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Validation Ideas
+        Expected outcomes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guidance-for-the-implementing-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guidance for the implementing agent
       
     </span>
   </a>
@@ -748,207 +803,177 @@
   
 
 
-<h1 id="proposed-true-warmup-semantics-for-resident-local-image-backends">Proposed: True Warmup Semantics For Resident Local Image Backends<a class="headerlink" href="#proposed-true-warmup-semantics-for-resident-local-image-backends" title="Permanent link">&para;</a></h1>
+<h1 id="planned-first-local-diffusers-image-to-video-backend-and-surface-integration">Planned: First local Diffusers image-to-video backend and surface integration<a class="headerlink" href="#planned-first-local-diffusers-image-to-video-backend-and-surface-integration" title="Permanent link">&para;</a></h1>
 <h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Created: 2026-05-20</li>
-<li>Status: Proposed</li>
+<li>Created: 2026-05-21</li>
+<li>Status: Planned</li>
 <li>Priority: P1</li>
+<li>Completed: N/A</li>
 </ul>
-<h2 id="current-code-reality">Current Code Reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
-<p><code>abstractvision</code> already has a real local residency surface:</p>
+<h2 id="adr-status">ADR status<a class="headerlink" href="#adr-status" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>load_resident_model(...)</code></li>
-<li>backend <code>preload()</code></li>
-<li><code>list_loaded_models()</code> / <code>list_resident_models()</code></li>
-<li>explicit unload</li>
+<li>Governing ADRs:</li>
+<li><a href="../../../adr/0003_lightweight_base_package_and_explicit_runtime_extras/">ADR 0003: Keep base packaging lightweight and put heavy runtimes behind explicit extras</a></li>
+<li><a href="../../../adr/0004_thin_orchestrator_and_backend_owned_model_semantics/">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned</a></li>
+<li><a href="../../../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005: Own a curated capability registry and cache-backed model catalog</a></li>
+<li><a href="../../../adr/0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006: Keep runtime selection explicit and operator-controlled</a></li>
+<li><a href="../../../adr/0007_explicit_fallback_and_degraded_mode_disclosure/">ADR 0007: Disclose fallbacks and degraded modes explicitly</a></li>
+<li><a href="../../../adr/0008_validation_and_evidence_based_change_reporting/">ADR 0008: Require validation and evidence-based change reporting</a></li>
+<li><a href="../../../adr/0009_code_first_docs_backlog_and_adr_discipline/">ADR 0009: Keep docs, backlog, and ADRs code-first</a></li>
+<li>ADR impact: None if the first implementation stays inside the existing backend-owned task model and explicit runtime-selection rules.</li>
 </ul>
-<p>That work shipped in 0.3.7 and should remain the control plane for “keep this backend loaded in
-this process”.</p>
-<p>What it does <strong>not</strong> guarantee is a truly warmed first inference.</p>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>AbstractVision now has one real local Diffusers <code>text_to_video</code> path through CogVideoX-2b. The
+next missing local video milestone is <code>image_to_video</code>, because the public API, registry, and
+AbstractCore surfaces already acknowledge it, but the local Diffusers backend still rejects it.</p>
+<p>The immediate operator goal should stay narrow:</p>
 <ul>
-<li>the shared <code>VisionBackend.preload()</code> contract is best-effort eager load/prepare;</li>
-<li><code>resident=true</code> currently means pinned/loaded in-process, not “next request is hot”;</li>
-<li>MFLUX is the clearest gap: <code>preload()</code> stops at model construction, while the real
-  width/height-bearing path still happens on first generation;</li>
-<li>Diffusers and <code>stable-diffusion.cpp</code> also should not be assumed “hot” just because <code>preload()</code>
-  ran.</li>
+<li>add one honest local <code>image_to_video</code> path without new Python dependencies;</li>
+<li>keep the same package boundary (<code>abstractvision</code>, not <code>abstractvideo</code>);</li>
+<li>expose the runnable path consistently through CLI, playground, and AbstractCore only when the
+  backend/model truth is real.</li>
 </ul>
-<p>So there are two distinct semantics:</p>
-<ol>
-<li>process-local residency / loaded state</li>
-<li>true warmup for one backend instance and one representative request signature</li>
-</ol>
-<p>The package should expose both when it can do so honestly.</p>
+<h2 id="current-code-reality">Current code reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
+<p>Files and symbols re-checked on 2026-05-21:</p>
+<ul>
+<li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
+<li><code>src/abstractvision/vision_manager.py</code></li>
+<li><code>src/abstractvision/cli.py</code></li>
+<li><code>src/abstractvision/playground_server.py</code></li>
+<li><code>src/abstractvision/playground/vision_playground.html</code></li>
+<li><code>src/abstractvision/integrations/abstractcore.py</code></li>
+<li><code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
+<li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+<li><code>tests/test_huggingface_diffusers_backend.py</code></li>
+<li><code>tests/test_playground_server.py</code></li>
+<li><code>tests/test_abstractcore_plugin.py</code></li>
+</ul>
+<p>What already exists:</p>
+<ul>
+<li><code>VisionManager.image_to_video(...)</code> is part of the stable package contract.</li>
+<li>The OpenAI-compatible backend already supports remote <code>image_to_video</code> when endpoints are
+  configured.</li>
+<li>The AbstractCore plugin already exposes <code>i2v(...)</code> and normalizes residency task aliases for
+  <code>image_to_video</code>.</li>
+<li>The packaged registry already carries several <code>image_to_video</code> candidates, including:</li>
+<li><code>zai-org/CogVideoX1.5-5B-I2V</code></li>
+<li><code>Lightricks/LTX-2</code></li>
+<li><code>tencent/HunyuanVideo-1.5</code></li>
+<li><code>Wan-AI/Wan2.2-I2V-A14B</code></li>
+<li><code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code></li>
+<li>The installed Diffusers runtime on this machine already exposes official pipeline classes such as
+  <code>CogVideoXImageToVideoPipeline</code>, <code>WanImageToVideoPipeline</code>, and
+  <code>HunyuanVideoImageToVideoPipeline</code>.</li>
+<li>Local MP4 packaging is already solved in-package for video through the current external <code>ffmpeg</code>
+  binary path.</li>
+</ul>
+<p>What is still missing or mismatched:</p>
+<ul>
+<li><code>HuggingFaceDiffusersVisionBackend._supports_local_image_to_video(...)</code> hard-codes <code>False</code>.</li>
+<li><code>HuggingFaceDiffusersVisionBackend.image_to_video(...)</code> still raises
+  <code>CapabilityNotSupportedError</code>.</li>
+<li>There is no one-shot CLI <code>i2v</code> command and no REPL <code>/i2v</code> command.</li>
+<li>The playground has no image-to-video endpoint or UI panel.</li>
+<li>No local <code>image_to_video</code> model is currently downloaded on this machine.</li>
+</ul>
 <h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
-<p>The current residency contract is useful, but it conflates “loaded” with “warmed” if callers or
-docs over-interpret it.</p>
-<p>The main goal of this follow-up is:</p>
+<p>The package now has a real local <code>text_to_video</code> story but still has no local <code>image_to_video</code>
+path, so the public surface is still only half true for local video generation.</p>
+<h2 id="what-we-want-to-do">What we want to do<a class="headerlink" href="#what-we-want-to-do" title="Permanent link">&para;</a></h2>
+<p>Ship one honest, narrow, local Diffusers <code>image_to_video</code> path first, then expose it across the
+interactive and plugin surfaces that can really support it.</p>
+<h2 id="why">Why<a class="headerlink" href="#why" title="Permanent link">&para;</a></h2>
 <ul>
-<li>achieve proper, engine-aware warmup when that is actually possible;</li>
-<li>report the real capability semantics cleanly so callers can tell what is only resident vs what is
-  truly warmed.</li>
+<li>It completes the first practical local video milestone for the existing package boundary.</li>
+<li>It reuses the abstractions that were just proven by local <code>text_to_video</code> without introducing a
+  separate package or dependency stack.</li>
+<li>It makes the plugin/playground/CLI video story consistent instead of having one local video task
+  implemented and the other still remote-only.</li>
 </ul>
-<p>The proposal must stay narrow:</p>
+<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
 <ul>
-<li>no replacement of the residency API;</li>
-<li>no vague “hotness” marketing language;</li>
-<li>no claim that every local backend can provide the same warmup guarantees.</li>
+<li>Do not add new Python dependencies.</li>
+<li>Keep Hugging Face downloads in the default Hugging Face cache.</li>
+<li>Keep backend-owned task semantics and request normalization.</li>
+<li>Keep Apple Silicon support explicit and defensible: stay at 16-bit for the local Diffusers video
+  path unless a model family proves otherwise.</li>
+<li>Preserve the current artifact-first output contract and reuse the existing MP4 packaging path.</li>
+<li>Expose only models/tasks that the selected backend can really execute.</li>
 </ul>
-<h2 id="recommended-proposal">Recommended Proposal<a class="headerlink" href="#recommended-proposal" title="Permanent link">&para;</a></h2>
-<h3 id="1-keep-residency-semantics-stable">1. Keep residency semantics stable<a class="headerlink" href="#1-keep-residency-semantics-stable" title="Permanent link">&para;</a></h3>
-<p>Do not change the meaning of:</p>
+<h2 id="suggested-implementation">Suggested implementation<a class="headerlink" href="#suggested-implementation" title="Permanent link">&para;</a></h2>
+<h3 id="phase-1-choose-one-first-local-i2v-target">Phase 1: choose one first local I2V target<a class="headerlink" href="#phase-1-choose-one-first-local-i2v-target" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>resident</code></li>
-<li><code>state</code></li>
-<li><code>load_id</code></li>
-<li><code>backend_kind</code></li>
-<li>current unload behavior</li>
+<li>Prefer <code>zai-org/CogVideoX1.5-5B-I2V</code> as the first candidate:</li>
+<li>official Diffusers pipeline class already exists;</li>
+<li>it stays in the CogVideoX family already used for the first local T2V path;</li>
+<li>it requires no new Python dependency stack.</li>
+<li>Keep Wan/Hunyuan/LTX as later follow-ups unless runtime evidence shows a smaller or cleaner first
+  path.</li>
 </ul>
-<p>This item is a narrow follow-up to the completed residency work, not a redesign of it.</p>
-<h3 id="2-extend-load_resident_model-with-optional-warmup-intent">2. Extend <code>load_resident_model()</code> with optional warmup intent<a class="headerlink" href="#2-extend-load_resident_model-with-optional-warmup-intent" title="Permanent link">&para;</a></h3>
-<p>Keep the current preload-only path as the default.</p>
+<h3 id="phase-2-implement-backend-truth">Phase 2: implement backend truth<a class="headerlink" href="#phase-2-implement-backend-truth" title="Permanent link">&para;</a></h3>
 <ul>
-<li>omitting <code>warmup_request</code> means preload-only residency;</li>
-<li>when <code>warmup_request</code> is present, v1 still targets <code>text_to_image</code> only and should reject
-  <code>image_to_image</code> warmup;</li>
-<li><code>warmup_request: {}</code> means “run the backend's default representative text-to-image warmup
-  profile”;</li>
-<li>backends may optionally accept a very small bounded request shape in v1, for example:</li>
+<li>Add backend gating for the first supported local <code>image_to_video</code> model family only.</li>
+<li>Add backend-owned normalization for <code>ImageToVideoRequest</code>, including width/height/frame defaults
+  and unsupported-parameter filtering.</li>
+<li>Keep preload/warmup and unload semantics aligned with the current local video implementation.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-9b&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;warmup_request&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;width&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;height&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
-<p>Do not expose prompt, seed, format, arbitrary <code>extra</code>, or backend construction overrides through
-this public warmup input.</p>
-<h3 id="3-make-warmup-backend-owned-not-plugin-invented">3. Make warmup backend-owned, not plugin-invented<a class="headerlink" href="#3-make-warmup-backend-owned-not-plugin-invented" title="Permanent link">&para;</a></h3>
-<p>The plugin should not invent a second hidden generation API with fake prompts or ad hoc request
-rules.</p>
-<p>Instead, add an optional backend-owned true-warmup hook for local engines, for example:</p>
-<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">warmup_text_to_image</span><span class="p">(</span><span class="o">...</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VisionWarmupResult</span><span class="p">:</span> <span class="o">...</span>
-</code></pre></div>
-<p>The exact symbol can change, but the contract should be:</p>
+<h3 id="phase-3-expose-the-runnable-path">Phase 3: expose the runnable path<a class="headerlink" href="#phase-3-expose-the-runnable-path" title="Permanent link">&para;</a></h3>
 <ul>
-<li>the backend decides what work is required to make one normalized text-to-image signature truly
-  warm;</li>
-<li>the backend may internally execute a representative inference and discard the output, or use a
-  stronger equivalent mechanism if it can prove the same or better result;</li>
-<li>the backend returns structured warmup result data, including the canonical warmed signature and
-  support status it actually exercised;</li>
-<li>the plugin only orchestrates lifecycle, records the result, and exposes it through the existing
-  resident-model surface.</li>
+<li>Add one-shot CLI <code>i2v</code> and REPL <code>/i2v</code>.</li>
+<li>Extend playground discovery and UI with an image-to-video flow only for supported models.</li>
+<li>Keep AbstractCore plugin/runtime truth aligned with the backend support.</li>
 </ul>
-<p>This keeps “true warmup” tied to the engine that actually knows whether retained benefit is real.</p>
-<h3 id="4-keep-warmup-reporting-additive-and-nested">4. Keep warmup reporting additive and nested<a class="headerlink" href="#4-keep-warmup-reporting-additive-and-nested" title="Permanent link">&para;</a></h3>
-<p>Do not replace the current loaded-model record.</p>
-<p>Add a nested <code>warmup</code> object only:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;warmup&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;support&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;unsupported|signature_exact&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cold|ready|failed&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;signature&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;width&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;height&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
-<span class="w">    </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;explicit|request&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;attempted_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
-<p>Rules:</p>
+<h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
+<p>Included:</p>
 <ul>
-<li><code>support=unsupported</code> means this backend/mode cannot honestly report true warmup readiness;</li>
-<li><code>support=signature_exact</code> means the backend asserts retained benefit for exactly the recorded
-  canonical signature on this resident backend instance;</li>
-<li><code>state=ready</code> applies only to the recorded signature, not to all future request shapes;</li>
-<li><code>state=failed</code> does not roll back residency;</li>
-<li>warmup metadata must be cleared when the resident backend instance is unloaded or recreated.</li>
+<li>one real local Diffusers <code>image_to_video</code> path;</li>
+<li>backend/catalog/task-gating alignment for the first chosen model family;</li>
+<li>CLI/playground/AbstractCore exposure tied to real backend capability;</li>
+<li>validation that current image-edit and text-to-video behavior do not regress.</li>
 </ul>
-<p>The keys inside <code>signature</code> are backend-defined but must be JSON-safe and stable within that backend
-family. MFLUX should at minimum include <code>task</code>, <code>width</code>, and <code>height</code>, and may include other
-normalized backend-relevant fields only if they materially affect retained warmness.</p>
-<h3 id="5-initial-engine-scope-mflux-first">5. Initial engine scope: MFLUX first<a class="headerlink" href="#5-initial-engine-scope-mflux-first" title="Permanent link">&para;</a></h3>
-<p>V1 true warmup should be restricted to engines that can honestly retain benefit <strong>and</strong> serialize
-execution safely.</p>
-<p>Initial target:</p>
+<h2 id="non-goals">Non-goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>mflux</code>: yes, initial <code>signature_exact</code> target</li>
+<li>Broad local <code>image_to_video</code> parity across every video model family in one pass.</li>
+<li>Audio handling, timeline editing, muxing, or long-form video orchestration.</li>
+<li>A new package split such as <code>abstractvideo</code>.</li>
+<li>New runtime SDKs or helper libraries beyond what is already in the repo/runtime stack.</li>
 </ul>
-<p>Remain preload-only / unsupported in v1:</p>
+<h2 id="dependencies-and-related-tasks">Dependencies and related tasks<a class="headerlink" href="#dependencies-and-related-tasks" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>diffusers</code>: until a safe execution-serialization story and retained-benefit measurement exist</li>
-<li><code>stable-diffusion.cpp</code> CLI mode: unsupported, because each request shells out to a fresh process</li>
-<li><code>stable-diffusion.cpp</code> python mode: defer until retained warm benefit and execution safety are
-  proven</li>
+<li>Completed: <a href="../../completed/0021_local_diffusers_text_to_video_backend/">0021_local_diffusers_text_to_video_backend.md</a></li>
+<li>Planned: <a href="../017_mlx_mflux_backend_strategy/">017_mlx_mflux_backend_strategy.md</a></li>
+<li>Planned: <a href="../020_adapter_aware_model_graph_and_catalog/">020_adapter_aware_model_graph_and_catalog.md</a></li>
 </ul>
-<p>This is intentionally narrower than “all local backends”. The package should not claim parity where
-it cannot yet defend the semantics.</p>
-<h3 id="6-request-driven-warming-should-be-reflected-when-the-backend-can-prove-it">6. Request-driven warming should be reflected when the backend can prove it<a class="headerlink" href="#6-request-driven-warming-should-be-reflected-when-the-backend-can-prove-it" title="Permanent link">&para;</a></h3>
-<p>If a backend with <code>signature_exact</code> support completes a real ordinary local request successfully,
-the loaded-model record should update the same nested <code>warmup</code> object with:</p>
+<h2 id="expected-outcomes">Expected outcomes<a class="headerlink" href="#expected-outcomes" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>source: "request"</code></li>
-<li>the exact canonical signature that was actually exercised</li>
+<li>AbstractVision can run at least one real local Diffusers <code>image_to_video</code> model.</li>
+<li>CLI, playground, and AbstractCore can expose that path honestly.</li>
+<li>The packaged registry and backend support no longer disagree for the first chosen local I2V
+  model.</li>
+<li>Current local image-edit and local text-to-video behavior remain intact.</li>
 </ul>
-<p>This keeps reporting honest after a real first inference, not only after explicit warmup.</p>
-<h3 id="7-warmup-must-use-the-same-lifetime-protections-as-generation">7. Warmup must use the same lifetime protections as generation<a class="headerlink" href="#7-warmup-must-use-the-same-lifetime-protections-as-generation" title="Permanent link">&para;</a></h3>
-<p>Even though v1 can stay synchronous from the caller's perspective, internal coordination still
-matters.</p>
-<p>Implementation constraints:</p>
+<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
 <ul>
-<li>warmup must participate in the same backend lifetime/refcount protections as generation;</li>
-<li>warmup must <strong>not</strong> be implemented by reusing the public <code>t2i()</code> request path, because that would
-  mutate active-routing state and request bookkeeping;</li>
-<li>warmup needs a private operation/load-generation token so stale completions cannot write <code>ready</code>
-  or <code>failed</code> metadata onto a record that was unloaded or replaced mid-flight;</li>
-<li>repeated identical warmups should single-flight per resident backend instance when practical;</li>
-<li>warmup must not persist artifacts or create extra loaded-model records.</li>
+<li>Download the chosen first I2V model into the default Hugging Face cache and resolve it offline.</li>
+<li>Run one small local <code>image_to_video</code> smoke through the package backend.</li>
+<li>Verify CLI, REPL, playground, and AbstractCore request routing for the supported I2V model.</li>
+<li>Re-run the relevant backend, manager, playground, plugin, and catalog tests.</li>
 </ul>
-<h2 id="non-goals">Non-Goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
+<h2 id="progress-checklist">Progress checklist<a class="headerlink" href="#progress-checklist" title="Permanent link">&para;</a></h2>
 <ul>
-<li>No redesign of the completed residency API.</li>
-<li>No top-level <code>warm_level</code>.</li>
-<li>No <code>prepared</code> middle state.</li>
-<li>No schema replacement for loaded-model records.</li>
-<li>No <code>image_to_image</code> warmup in v1.</li>
-<li>No prompt/seed/format/raw-extra public warmup payload.</li>
-<li>No promise that every local backend will eventually support true warmup.</li>
-<li>No claim that <code>resident=true</code> means a generic hot first request.</li>
+<li>[ ] Confirm the first local I2V target and document why it is first.</li>
+<li>[ ] Implement local Diffusers <code>image_to_video</code> for that target family.</li>
+<li>[ ] Add CLI/REPL <code>i2v</code> support.</li>
+<li>[ ] Add playground I2V discovery/UI.</li>
+<li>[ ] Re-check AbstractCore plugin/runtime truth for <code>image_to_video</code>.</li>
+<li>[ ] Validate no regressions for local image-edit and local T2V.</li>
 </ul>
-<h2 id="success-criteria">Success Criteria<a class="headerlink" href="#success-criteria" title="Permanent link">&para;</a></h2>
-<ul>
-<li><code>load_resident_model()</code> without <code>warmup_request</code> preserves the current preload-only behavior.</li>
-<li>The package can distinguish “resident” from “true warmed” semantics clearly.</li>
-<li>MFLUX can warm one representative text-to-image signature and report it honestly.</li>
-<li>Warmup readiness is tied to the recorded signature and resident backend instance, not to a vague
-  model-global “hot” flag.</li>
-<li>Warmup failure leaves the model resident and reports failure explicitly.</li>
-<li>Warmup metadata is cleared on unload/recreation and is not left behind by stale completions.</li>
-<li>Unsupported engines continue to expose residency only, without pretending to have true warmup.</li>
-</ul>
-<h2 id="validation-ideas">Validation Ideas<a class="headerlink" href="#validation-ideas" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Keep the existing residency plugin tests as compatibility guards.</li>
-<li>Add plugin tests that preload-only residency leaves <code>warmup.state=cold</code> or no successful warmup
-  recorded.</li>
-<li>Add plugin tests that explicit warmup updates the resident record without storing artifacts.</li>
-<li>Add plugin tests that warmup failure returns a still-resident model plus explicit failure
-  metadata.</li>
-<li>Add plugin tests that unload/reload clears previous warmup metadata.</li>
-<li>Add MFLUX tests proving preload-only does not hit the real generation path, while true warmup
-  does.</li>
-<li>Add MFLUX tests proving the backend returns the canonical warmed signature it actually exercised.</li>
-<li>Add concurrency tests for unload/reload races so stale warmup completions cannot resurrect or
-  overwrite old metadata.</li>
-</ul>
+<h2 id="guidance-for-the-implementing-agent">Guidance for the implementing agent<a class="headerlink" href="#guidance-for-the-implementing-agent" title="Permanent link">&para;</a></h2>
+<p>Re-check current runtime truth before implementation. Keep the first local I2V milestone narrow,
+package-owned, and honest. If the chosen target cannot be made to work cleanly without new
+dependencies or unacceptable runtime behavior, update this backlog item with the evidence and stop
+instead of widening backend claims.</p>
 
 
 

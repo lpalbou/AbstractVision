@@ -782,7 +782,7 @@
 - OpenAI model ids are configured, not discovered dynamically. Providers may expose an OpenAI-compatible <code>GET /models</code> catalog; AbstractVision exposes it through <code>abstractvision provider-models</code>, <code>VisionManager.list_provider_models(...)</code>, and the plugin method <code>llm.vision.list_provider_models(...)</code>, but the plugin does not call it automatically or use it to select a model. The static plugin default is <code>gpt-image-1</code>; set <code>OPENAI_IMAGE_MODEL_ID</code>, <code>OPENAI_IMAGE_MODEL</code>, <code>ABSTRACTVISION_MODEL_ID</code>, or <code>vision_model_id</code> for newer provider models.
 - Compatible HTTP: set <code>OPENAI_BASE_URL</code> to a local/remote compatible <code>/v1</code> server. Set <code>ABSTRACTVISION_BACKEND=openai-compatible</code> when you want to force compatible-endpoint semantics.
 - Legacy <code>abstractvision:openai-compatible</code>: keeps compatible-endpoint defaults when that backend id is selected directly.
-- Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set.
+- Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code>, <code>zai-org/CogVideoX-2b</code>, or another supported Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set. The first shipped local plugin <code>t2v</code> path is <code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code>.
 - Local MFLUX (Apple Silicon): install <code>abstractvision[mflux]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mflux</code>. Download an 8-bit MLX/MFLUX preset with <code>abstractvision download-model flux2-klein-4b --provider mflux</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed model ids such as <code>mflux/flux2-klein-4b</code>.
 - stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure either a model path or a curated model key such as <code>flux2-klein-base-4b</code>. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.
@@ -883,6 +883,8 @@ instead of being reimplemented in the plugin layer.</p>
 - Distilled MFLUX/FLUX-family models can clamp guidance or minimum steps in the backend.
 - Diffusers-backed GLM Image requests pick up registry-driven defaults such as <code>guidance_scale</code>,
   recommended step counts, 32-multiple dimension rounding, and auto-derived edit dimensions.
+- Diffusers-backed CogVideoX video requests pick up registry-driven defaults such as <code>720x480</code>,
+  <code>8 fps</code>, default frame counts, and task-aware parameter filtering.
 - Unsupported parameters, such as negative prompts on constrained model families, are dropped in
   the backend rather than surfacing as per-surface validation bugs.</p>
 <h2 id="2-tool-helpers-make_vision_tools">2) Tool helpers (<code>make_vision_tools</code>)<a class="headerlink" href="#2-tool-helpers-make_vision_tools" title="Permanent link">&para;</a></h2>

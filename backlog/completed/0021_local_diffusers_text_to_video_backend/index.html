@@ -1,0 +1,1218 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Model-agnostic generative vision abstractions for image and video workflows.">
+      
+      
+      
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/completed/0021_local_diffusers_text_to_video_backend/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Completed: First local Diffusers text-to-video backend and surface integration - AbstractVision</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#completed-first-local-diffusers-text-to-video-backend-and-surface-integration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AbstractVision
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Completed: First local Diffusers text-to-video backend and surface integration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AbstractVision
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Artifacts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/capabilities-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/abstractcore-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AbstractCore Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adr-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADR status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-code-reality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current code reality
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-we-want-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What we want to do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suggested-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suggested implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Suggested implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-make-one-local-video-path-real" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: make one local video path real
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-expose-the-runnable-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: expose the runnable path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-decide-whether-to-include-local-image_to_video" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: decide whether to include local image_to_video
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dependencies-and-related-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies and related tasks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expected-outcomes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expected outcomes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#progress-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guidance-for-the-implementing-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guidance for the implementing agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completion report
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Completion report">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-and-symbols-touched" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files and symbols touched
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#behavior-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Behavior changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#residual-risks-and-follow-ups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Residual risks and follow-ups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="completed-first-local-diffusers-text-to-video-backend-and-surface-integration">Completed: First local Diffusers text-to-video backend and surface integration<a class="headerlink" href="#completed-first-local-diffusers-text-to-video-backend-and-surface-integration" title="Permanent link">&para;</a></h1>
+<h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Created: 2026-05-21</li>
+<li>Status: Completed</li>
+<li>Priority: P1</li>
+<li>Completed: 2026-05-21</li>
+</ul>
+<h2 id="adr-status">ADR status<a class="headerlink" href="#adr-status" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Governing ADRs:</li>
+<li><a href="../../../adr/0003_lightweight_base_package_and_explicit_runtime_extras/">ADR 0003: Keep base packaging lightweight and put heavy runtimes behind explicit extras</a></li>
+<li><a href="../../../adr/0004_thin_orchestrator_and_backend_owned_model_semantics/">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned</a></li>
+<li><a href="../../../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005: Own a curated capability registry and cache-backed model catalog</a></li>
+<li><a href="../../../adr/0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006: Keep runtime selection explicit and operator-controlled</a></li>
+<li><a href="../../../adr/0007_explicit_fallback_and_degraded_mode_disclosure/">ADR 0007: Disclose fallbacks and degraded modes explicitly</a></li>
+<li><a href="../../../adr/0008_validation_and_evidence_based_change_reporting/">ADR 0008: Require validation and evidence-based change reporting</a></li>
+<li><a href="../../../adr/0009_code_first_docs_backlog_and_adr_discipline/">ADR 0009: Keep docs, backlog, and ADRs code-first</a></li>
+<li>ADR impact: None if the first implementation stays inside the existing backend-owned task model and explicit runtime-selection rules.</li>
+</ul>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>AbstractVision already owns the package boundary for both image and video generation. The public
+API, registry, and AbstractCore integration already acknowledge <code>text_to_video</code> and
+<code>image_to_video</code>, but local execution is still missing.</p>
+<p>The immediate operator goal is narrow and practical:</p>
+<ul>
+<li>prepare one real local text-to-video test path on Apple Silicon;</li>
+<li>keep image-edit support working and visible across package surfaces;</li>
+<li>extend CLI, playground, and AbstractCore only where the runtime truth is real.</li>
+</ul>
+<h2 id="current-code-reality">Current code reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
+<p>Files and symbols re-checked on 2026-05-21:</p>
+<ul>
+<li><code>README.md</code></li>
+<li><code>docs/architecture.md</code></li>
+<li><code>src/abstractvision/vision_manager.py</code></li>
+<li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
+<li><code>src/abstractvision/backends/openai_compatible.py</code></li>
+<li><code>src/abstractvision/cli.py</code></li>
+<li><code>src/abstractvision/playground_server.py</code></li>
+<li><code>src/abstractvision/integrations/abstractcore.py</code></li>
+<li><code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
+<li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+</ul>
+<p>What already exists:</p>
+<ul>
+<li><code>VisionManager.generate_video(...)</code> and <code>VisionManager.image_to_video(...)</code> are already part of
+  the stable package contract.</li>
+<li>The OpenAI-compatible backend already implements optional remote <code>text_to_video</code> and
+  <code>image_to_video</code> when endpoints are configured.</li>
+<li>AbstractCore already exposes <code>vision_text_to_video</code> and <code>vision_image_to_video</code>, and the plugin
+  already routes <code>t2v</code> / <code>i2v</code>.</li>
+<li>Image editing is already implemented and exposed across the package:</li>
+<li>manager <code>edit_image(...)</code></li>
+<li>CLI <code>i2i</code></li>
+<li>playground image-edit endpoint and UI panel</li>
+<li>AbstractCore <code>vision_image_to_image</code></li>
+<li>On this machine, there are already cached and loadable local image-edit models, including:</li>
+<li><code>black-forest-labs/FLUX.2-klein-4B</code> via <code>mflux</code> (8-bit)</li>
+<li><code>black-forest-labs/FLUX.2-klein-9B</code> via <code>mflux</code> (8-bit)</li>
+<li><code>black-forest-labs/FLUX.2-klein-base-4B</code> via <code>mflux</code> (8-bit)</li>
+<li><code>zai-org/GLM-Image</code> via Diffusers (16-bit)</li>
+</ul>
+<p>What is missing or mismatched:</p>
+<ul>
+<li><code>HuggingFaceDiffusersVisionBackend.generate_video(...)</code> and <code>.image_to_video(...)</code> still raise
+  “phase 2” <code>CapabilityNotSupportedError</code>.</li>
+<li>The packaged capability registry includes several video families, but the local backend does not
+  execute them yet.</li>
+<li>The registry does not currently carry a dedicated entry for <code>zai-org/CogVideoX-2b</code>, even though
+  it is a pragmatic first local text-to-video test target.</li>
+<li>CLI has image-oriented one-shot commands (<code>t2i</code>, <code>i2i</code>) but no symmetric local <code>t2v</code> / <code>i2v</code>
+  one-shot command yet.</li>
+<li>The playground currently filters its model list to image tasks only, so local video models will
+  remain invisible there even after download.</li>
+</ul>
+<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
+<p>AbstractVision already claims a video-capable package boundary, but local video is still remote-only
+in practice. That creates a gap between:</p>
+<ul>
+<li>public API shape;</li>
+<li>registry/catalog claims;</li>
+<li>downloaded model inventory;</li>
+<li>what CLI, playground, and local backends can actually execute.</li>
+</ul>
+<h2 id="what-we-want-to-do">What we want to do<a class="headerlink" href="#what-we-want-to-do" title="Permanent link">&para;</a></h2>
+<p>Ship one honest, narrow, local text-to-video path first, then expose it deliberately across the
+surfaces that can support it.</p>
+<p>The first target should be <code>zai-org/CogVideoX-2b</code> through Diffusers because it is Apache-2.0,
+small enough to be practical for testing, and already published as a standard Diffusers pipeline.</p>
+<h2 id="why">Why<a class="headerlink" href="#why" title="Permanent link">&para;</a></h2>
+<ul>
+<li>It gives the package a real local video baseline instead of a purely aspirational API.</li>
+<li>It keeps the first implementation constrained to a concrete model family and runtime.</li>
+<li>It supports Apple Silicon bring-up without inventing a new package split.</li>
+<li>It avoids conflating “downloadable video model” with “runnable local video backend”.</li>
+</ul>
+<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Keep the default Hugging Face cache as the only snapshot location for Hugging Face downloads.</li>
+<li>Keep base package imports lightweight and all heavy runtimes behind explicit extras.</li>
+<li>Preserve the current <code>VisionManager</code> public contract and artifact-first outputs.</li>
+<li>Add explicit capability gating and clear runtime errors when local video is unavailable.</li>
+<li>Start with a concrete local <code>text_to_video</code> path before broadening to <code>image_to_video</code>.</li>
+<li>Do not regress current local image-edit support in CLI, playground, or AbstractCore.</li>
+<li>Make surface exposure honest:</li>
+<li>expose only tasks that a selected backend/model can really run;</li>
+<li>keep unsupported tasks visibly unsupported instead of silently routed elsewhere.</li>
+</ul>
+<h2 id="suggested-implementation">Suggested implementation<a class="headerlink" href="#suggested-implementation" title="Permanent link">&para;</a></h2>
+<h3 id="phase-1-make-one-local-video-path-real">Phase 1: make one local video path real<a class="headerlink" href="#phase-1-make-one-local-video-path-real" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add a first Diffusers local <code>text_to_video</code> implementation for the CogVideoX family.</li>
+<li>Add or normalize a curated registry/catalog entry for <code>zai-org/CogVideoX-2b</code>.</li>
+<li>Keep backend-owned model/runtime specifics inside the Diffusers backend rather than the manager.</li>
+</ul>
+<h3 id="phase-2-expose-the-runnable-path">Phase 2: expose the runnable path<a class="headerlink" href="#phase-2-expose-the-runnable-path" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add a local CLI path for <code>text_to_video</code> once the backend works.</li>
+<li>Extend playground model discovery and UI so video-capable models can appear without breaking the
+  current image-only flow.</li>
+<li>Re-check AbstractCore tool exposure so advertised video tools match runtime truth.</li>
+</ul>
+<h3 id="phase-3-decide-whether-to-include-local-image_to_video">Phase 3: decide whether to include local <code>image_to_video</code><a class="headerlink" href="#phase-3-decide-whether-to-include-local-image_to_video" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Evaluate whether CogVideoX-style or another family gives a clean first local <code>image_to_video</code>
+  implementation.</li>
+<li>Defer <code>image_to_video</code> if it adds too much runtime-specific complexity to the first milestone.</li>
+</ul>
+<h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
+<p>Included:</p>
+<ul>
+<li>first local Diffusers <code>text_to_video</code> execution path;</li>
+<li>catalog/registry alignment for at least one concrete local video model;</li>
+<li>CLI/playground/AbstractCore exposure review tied to actual backend support;</li>
+<li>explicit validation that existing image-edit paths remain usable and correctly exposed.</li>
+</ul>
+<h2 id="non-goals">Non-goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Create a new <code>abstractvideo</code> package.</li>
+<li>Implement every local video family in one pass.</li>
+<li>Promise backend-agnostic local video parity across Diffusers, MFLUX, and <code>stable-diffusion.cpp</code>.</li>
+<li>Add timeline editing, audio handling, muxing, or long-form video workflow features.</li>
+<li>Move Hugging Face downloads into package-specific cache directories.</li>
+</ul>
+<h2 id="dependencies-and-related-tasks">Dependencies and related tasks<a class="headerlink" href="#dependencies-and-related-tasks" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Completed: <a href="../006_openai_compatible_backend_for_image_and_video/">006_generative_vision_abstraction_api_and_backends.md</a></li>
+<li>Completed: <a href="../007_local_hf_backend_strategy_diffusers/">007_local_hf_backend_strategy_diffusers.md</a></li>
+<li>Completed: <a href="../011_abstractcore_tool_integration_and_artifact_refs/">011_abstractcore_tool_integration_and_artifact_refs.md</a></li>
+<li>Completed: <a href="../016_abstractcore_plugin_catalog_discovery_surface/">016_abstractcore_plugin_catalog_discovery_surface.md</a></li>
+<li>Planned: <a href="../../planned/017_mlx_mflux_backend_strategy/">017_mlx_mflux_backend_strategy.md</a></li>
+<li>Planned: <a href="../../planned/020_adapter_aware_model_graph_and_catalog/">020_adapter_aware_model_graph_and_catalog.md</a></li>
+</ul>
+<h2 id="expected-outcomes">Expected outcomes<a class="headerlink" href="#expected-outcomes" title="Permanent link">&para;</a></h2>
+<ul>
+<li>AbstractVision can run at least one real local <code>text_to_video</code> model through Diffusers.</li>
+<li>The first local video model is discoverable honestly in package catalog surfaces.</li>
+<li>CLI and playground stop being image-only where the backend/model truth supports video.</li>
+<li>AbstractCore video tools match what the package can really execute.</li>
+<li>Existing image-edit paths remain available with at least one cached/loadable local model on Apple
+  Silicon.</li>
+</ul>
+<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Confirm <code>zai-org/CogVideoX-2b</code> is downloaded into the default Hugging Face cache and can be
+  resolved offline after download.</li>
+<li>Run one small local <code>text_to_video</code> smoke test through the package backend.</li>
+<li>Verify CLI exposure and task gating for video-capable versus image-only models.</li>
+<li>Verify playground video-capable model listing and basic request flow once implemented.</li>
+<li>Re-run targeted tests covering:</li>
+<li>manager capability gating</li>
+<li>AbstractCore tool exposure</li>
+<li>playground model/task listing</li>
+<li>Diffusers backend task support</li>
+</ul>
+<h2 id="progress-checklist">Progress checklist<a class="headerlink" href="#progress-checklist" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[x] Normalize the first local video test target in registry/download surfaces.</li>
+<li>[x] Implement local Diffusers <code>text_to_video</code> for the first target family.</li>
+<li>[x] Add CLI support or explicit CLI deferral with honest messaging.</li>
+<li>[x] Extend playground discovery/UI beyond image-only filtering.</li>
+<li>[x] Re-check AbstractCore tool/runtime truth for video.</li>
+<li>[x] Validate that local image-edit exposure still works end to end.</li>
+</ul>
+<h2 id="guidance-for-the-implementing-agent">Guidance for the implementing agent<a class="headerlink" href="#guidance-for-the-implementing-agent" title="Permanent link">&para;</a></h2>
+<p>Re-check current code before implementation. Keep the first milestone narrow, package-owned, and
+honest. Prefer one real local video path over a broad but misleading compatibility surface.</p>
+<h2 id="completion-report">Completion report<a class="headerlink" href="#completion-report" title="Permanent link">&para;</a></h2>
+<p>Date: 2026-05-21</p>
+<h3 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Implemented the first local Diffusers <code>text_to_video</code> path through <code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code>.</li>
+<li>Kept the implementation inside the existing backend-owned task model: the manager stays thin, request normalization stays backend-local, and no new Python dependency was added.</li>
+<li>Exposed the runnable path consistently across the one-shot CLI, REPL, playground, and AbstractCore plugin surfaces.</li>
+<li>Preserved current image-edit support and verified that the local edit-capable models already cached on this machine remain usable.</li>
+</ul>
+<h3 id="files-and-symbols-touched">Files and symbols touched<a class="headerlink" href="#files-and-symbols-touched" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/abstractvision/backends/base_backend.py</code></li>
+<li>added default video normalization/progress hooks</li>
+<li><code>src/abstractvision/vision_manager.py</code></li>
+<li><code>generate_video(...)</code></li>
+<li><code>image_to_video(...)</code></li>
+<li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
+<li><code>HuggingFaceDiffusersVisionBackend.preload()</code></li>
+<li><code>HuggingFaceDiffusersVisionBackend.get_capabilities()</code></li>
+<li><code>HuggingFaceDiffusersVisionBackend.generate_video_with_progress()</code></li>
+<li><code>HuggingFaceDiffusersVisionBackend.generate_video()</code></li>
+<li><code>_move_pipe_to_device(...)</code></li>
+<li><code>_frames_to_mp4_bytes(...)</code></li>
+<li><code>_supported_task_names(...)</code></li>
+<li><code>normalize_video_generation_request(...)</code></li>
+<li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+<li>added <code>zai-org/CogVideoX-2b</code></li>
+<li><code>src/abstractvision/cli.py</code></li>
+<li>one-shot <code>t2v</code></li>
+<li>REPL <code>/t2v</code></li>
+<li>cache-backed Diffusers model-id normalization fix</li>
+<li><code>src/abstractvision/playground_server.py</code></li>
+<li><code>start_video_generation_job(...)</code></li>
+<li>backend/task-aware local model surfacing</li>
+<li><code>src/abstractvision/playground/vision_playground.html</code></li>
+<li>Text → Video panel</li>
+<li><code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
+<li>video residency aliases</li>
+<li>request-scoped local <code>t2v</code> / <code>i2v</code> routing and loaded-model tracking</li>
+<li><code>tests/test_huggingface_diffusers_backend.py</code></li>
+<li><code>tests/test_cli_smoke.py</code></li>
+<li><code>tests/test_playground_server.py</code></li>
+<li><code>tests/test_abstractcore_plugin.py</code></li>
+<li><code>tests/test_manager_capability_checks.py</code></li>
+<li><code>tests/test_vision_model_capabilities.py</code></li>
+<li><code>README.md</code></li>
+<li><code>docs/README.md</code></li>
+<li><code>docs/reference/backends.md</code></li>
+<li><code>docs/reference/configuration.md</code></li>
+<li><code>docs/reference/abstractcore-integration.md</code></li>
+<li><code>docs/api.md</code></li>
+<li><code>docs/getting-started.md</code></li>
+<li><code>docs/faq.md</code></li>
+<li><code>docs/architecture.md</code></li>
+<li><code>playground/README.md</code></li>
+<li><code>llms.txt</code></li>
+<li><code>CHANGELOG.md</code></li>
+</ul>
+<h3 id="behavior-changes">Behavior changes<a class="headerlink" href="#behavior-changes" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Diffusers now advertises and executes local <code>text_to_video</code> only for the supported CogVideoX-2b family instead of exposing a broad but false video promise.</li>
+<li>Local video outputs are returned as MP4 artifacts/bytes using the same artifact-first contract as images.</li>
+<li>Apple Silicon CogVideoX loads now move to MPS with explicit <code>float16</code>; the new video path does not auto-promote above 16-bit on MPS.</li>
+<li>Playground model discovery is no longer image-only; it surfaces <code>text_to_video</code> models when the selected backend/model can really execute them.</li>
+</ul>
+<h3 id="validation_1">Validation<a class="headerlink" href="#validation_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Targeted regression suite:</li>
+<li><code>python -m pytest tests/test_huggingface_diffusers_backend.py tests/test_cli_smoke.py tests/test_playground_server.py tests/test_abstractcore_plugin.py tests/test_manager_capability_checks.py tests/test_vision_model_capabilities.py -q</code></li>
+<li>Result: <code>124 passed</code></li>
+<li>Real local Diffusers CLI smoke on Apple Silicon:</li>
+<li><code>PYTHONPATH=src python -m abstractvision.cli t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 --fps 8 "a red fox walking through a snowy forest, cinematic"</code></li>
+<li>Result: generated a local MP4 artifact through the package path.</li>
+<li>Real REPL smoke:</li>
+<li><code>/backend diffusers zai-org/CogVideoX-2b mps float16</code></li>
+<li><code>/t2v ... --steps 1 --num-frames 9 --fps 8</code></li>
+<li>Result: generated a local MP4 artifact through the interactive path.</li>
+<li>Real playground/API smoke:</li>
+<li><code>GET /v1/vision/models</code> surfaced <code>zai-org/CogVideoX-2b</code> with <code>text_to_video</code></li>
+<li><code>POST /v1/vision/jobs/videos/generations</code> succeeded with a real MP4 payload</li>
+<li>Real AbstractCore plugin smoke:</li>
+<li><code>_AbstractVisionCapability.t2v(... provider="diffusers", model="zai-org/CogVideoX-2b")</code></li>
+<li>Result: returned MP4 bytes and tracked/unloaded the request-warm loaded model correctly.</li>
+</ul>
+<h3 id="residual-risks-and-follow-ups">Residual risks and follow-ups<a class="headerlink" href="#residual-risks-and-follow-ups" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Local <code>image_to_video</code> is still intentionally deferred. The public API remains, but the first shipped local runtime milestone is <code>text_to_video</code> only.</li>
+<li>Local MP4 packaging depends on an external <code>ffmpeg</code> binary being present on <code>PATH</code>. This is documented and surfaces as a clear runtime error when missing.</li>
+<li>The first local Diffusers video surface is intentionally narrow. Expanding beyond the CogVideoX-2b family should come from fresh runtime evidence, not by widening backend claims speculatively.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

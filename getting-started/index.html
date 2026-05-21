@@ -560,6 +560,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#72-optional-local-textvideo-with-diffusers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 Optional local text→video with Diffusers
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1124,6 +1135,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#72-optional-local-textvideo-with-diffusers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 Optional local text→video with Diffusers
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1161,6 +1183,7 @@
 <p>See also:
 - Docs index: <a href="../">docs/README.md</a>
 - FAQ: <a href="../faq/">docs/faq.md</a>
+- Troubleshooting: <a href="../troubleshooting/">docs/troubleshooting.md</a>
 - API reference: <a href="../api/">docs/api.md</a>
 - Architecture: <a href="../architecture/">docs/architecture.md</a>
 - Backends: <a href="../reference/backends/">docs/reference/backends.md</a>
@@ -1628,8 +1651,17 @@ authentication, and browser-origin policy.</p>
 <p>In the UI:
 - The API Base URL defaults to the same process that serves the page
 - Select a cached model and load it
-- Generate (T2I) or upload an input image (I2I) and run edits</p>
+- Generate (T2I), upload an input image (I2I), or use the Text→Video panel when the loaded model advertises <code>text_to_video</code></p>
 <p>For the endpoint list, see <code>playground/README.md</code>.</p>
+<h3 id="72-optional-local-textvideo-with-diffusers">7.2 Optional local text→video with Diffusers<a class="headerlink" href="#72-optional-local-textvideo-with-diffusers" title="Permanent link">&para;</a></h3>
+<p>The first shipped local video path is the CogVideoX-2b Diffusers family. On Apple Silicon, use <code>mps</code> plus <code>float16</code>:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download-model<span class="w"> </span>cogvideox-2b<span class="w"> </span>--provider<span class="w"> </span>diffusers
+abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>diffusers<span class="w"> </span>--model<span class="w"> </span>zai-org/CogVideoX-2b<span class="w"> </span>--diffusers-device<span class="w"> </span>mps<span class="w"> </span>--diffusers-torch-dtype<span class="w"> </span>float16<span class="w"> </span>--num-frames<span class="w"> </span><span class="m">9</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span>
+</code></pre></div>
+<p>Notes:
+- local MP4 export requires an <code>ffmpeg</code> executable on <code>PATH</code>;
+- backend normalization applies the model defaults/constraints, so CogVideoX requests are clamped to the supported <code>720x480</code> shape and default <code>8 fps</code> when you omit them;
+- the playground Text→Video panel becomes available when this model is selected and loaded.</p>
 
 
 

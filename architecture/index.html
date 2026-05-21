@@ -913,7 +913,8 @@ text→image, image→image (and optionally video when a backend supports it).</
 <li>Diffusers backend (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>)</li>
 <li>stable-diffusion.cpp backend (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)</li>
 <li>MFLUX backend for curated Apple Silicon MLX presets (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>)</li>
-<li>Video is supported <strong>only</strong> by the OpenAI-compatible backend, and only when <code>text_to_video_path</code> / <code>image_to_video_path</code> are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>).</li>
+<li>Local Diffusers also supports <code>text_to_video</code> for the CogVideoX-2b family (<code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code>) (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>).</li>
+<li><code>image_to_video</code> is still supported <strong>only</strong> by the OpenAI-compatible backend, and only when <code>text_to_video_path</code> / <code>image_to_video_path</code> are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>).</li>
 <li>No built-in backend implements <code>multi_view_image</code> yet (they raise <code>CapabilityNotSupportedError</code> in <code>generate_angles(...)</code>).</li>
 </ul>
 <p>For a detailed support matrix and configuration options, see <a href="../reference/backends/">docs/reference/backends.md</a>.</p>

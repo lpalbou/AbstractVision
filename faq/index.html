@@ -447,10 +447,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#does-abstractvision-t2i-run-locally" class="md-nav__link">
+  <a href="#do-the-one-shot-cli-commands-run-locally" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Does abstractvision t2i run locally?
+        Do the one-shot CLI commands run locally?
       
     </span>
   </a>
@@ -862,10 +862,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#does-abstractvision-t2i-run-locally" class="md-nav__link">
+  <a href="#do-the-one-shot-cli-commands-run-locally" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Does abstractvision t2i run locally?
+        Do the one-shot CLI commands run locally?
       
     </span>
   </a>
@@ -1040,14 +1040,15 @@
 <h2 id="what-does-abstractvision-support-today">What does AbstractVision support today?<a class="headerlink" href="#what-does-abstractvision-support-today" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Built-in backends implement <strong>images</strong>: <code>text_to_image</code> and <code>image_to_image</code>.</li>
-<li>Video (<code>text_to_video</code>, <code>image_to_video</code>) works only via the OpenAI-compatible backend <strong>when</strong> video endpoints are configured.</li>
+<li>Local Diffusers also implements <code>text_to_video</code> for the CogVideoX-2b family (<code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code>).</li>
+<li><code>image_to_video</code> still works only via the OpenAI-compatible backend <strong>when</strong> video endpoints are configured.</li>
 <li><code>multi_view_image</code> exists in the public API (<code>VisionManager.generate_angles</code>) but no built-in backend implements it yet (they raise <code>CapabilityNotSupportedError</code>).</li>
 </ul>
 <p>Details: <a href="../reference/backends/">docs/reference/backends.md</a>.</p>
 <h2 id="which-backend-should-i-use">Which backend should I use?<a class="headerlink" href="#which-backend-should-i-use" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong> (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).</li>
-<li><strong>Diffusers (local)</strong> (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>): run Diffusers pipelines locally (heavy deps).</li>
+<li><strong>Diffusers (local)</strong> (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>): run Diffusers pipelines locally (heavy deps). This now includes the first local <code>text_to_video</code> path through CogVideoX-2b.</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong> (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>): run GGUF diffusion models via <code>sd-cli</code> or <code>stable-diffusion-cpp-python</code>.</li>
 </ul>
 <h2 id="what-model-should-i-start-with-local">What model should I start with (local)?<a class="headerlink" href="#what-model-should-i-start-with-local" title="Permanent link">&para;</a></h2>
@@ -1065,9 +1066,12 @@ abstractvision<span class="w"> </span>repl
 <p>More model recommendations (by VRAM tier) are in <a href="../getting-started/">docs/getting-started.md</a>.</p>
 <p>After that works, <code>black-forest-labs/FLUX.2-klein-4B</code> is the recommended next local test for a newer non-gated model
 (it currently requires Diffusers from source).</p>
-<h2 id="does-abstractvision-t2i-run-locally">Does <code>abstractvision t2i</code> run locally?<a class="headerlink" href="#does-abstractvision-t2i-run-locally" title="Permanent link">&para;</a></h2>
-<p>Yes. <code>abstractvision t2i</code> / <code>abstractvision i2i</code> default to the OpenAI-compatible HTTP backend, but they also support local providers through <code>--provider diffusers</code>, <code>--provider mflux</code>, or <code>--provider sdcpp</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
+<h2 id="do-the-one-shot-cli-commands-run-locally">Do the one-shot CLI commands run locally?<a class="headerlink" href="#do-the-one-shot-cli-commands-run-locally" title="Permanent link">&para;</a></h2>
+<p>Yes. <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers through <code>--provider diffusers</code>, <code>--provider mflux</code>, or <code>--provider sdcpp</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
 <p>For interactive local generation, use <code>abstractvision cli</code> (legacy alias: <code>abstractvision repl</code>) with <code>/backend diffusers ...</code>, <code>/backend mflux ...</code>, or <code>/backend sdcpp ...</code>.</p>
+<p>Current local video note:
+- the first local one-shot/repl <code>t2v</code> path is Diffusers <code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code>;
+- generated MP4 outputs require <code>ffmpeg</code> on <code>PATH</code>.</p>
 <h2 id="where-do-generated-outputs-go">Where do generated outputs go?<a class="headerlink" href="#where-do-generated-outputs-go" title="Permanent link">&para;</a></h2>
 <p>It depends on whether you configured a store:</p>
 <ul>

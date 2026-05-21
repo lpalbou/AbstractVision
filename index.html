@@ -778,6 +778,7 @@
 <h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="faq/">FAQ</a></li>
+<li><a href="troubleshooting/">Troubleshooting</a></li>
 <li><a href="api/">API reference</a></li>
 <li><a href="adr/">Architecture decisions</a></li>
 <li><a href="reference/backends/">Backends</a></li>
@@ -801,7 +802,9 @@
 - <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
 <p>Built-in backends implement:
 - <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Video</strong>: OpenAI-compatible HTTP only, and only when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
+- <strong>Video</strong>:
+  - local Diffusers <code>text_to_video</code> for the <code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code> family (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>huggingface_diffusers.py</code></a>)
+  - OpenAI-compatible HTTP for optional <code>text_to_video</code> / <code>image_to_video</code> when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
 <p>If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
 <a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>../src/abstractvision/assets/vision_model_capabilities.json</code></a> (loaded by <code>VisionModelCapabilitiesRegistry</code> in <a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>).
 The curation and cross-platform support policy for that registry is governed by
