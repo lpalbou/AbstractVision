@@ -299,8 +299,8 @@ Date: 2026-05-19
 ### Residual Risks
 
 - The current residency surface is honest about loaded state, but it does not prove that a first
-  matching inference is fully warmed. That follow-up belongs to
-  `docs/backlog/proposed/2026-05-20_true_image_warmup_semantics.md`.
+  matching inference is fully warmed. That follow-up was later captured, then deprecated, in
+  `docs/backlog/deprecated/2026-05-20_true_image_warmup_semantics.md`.
 - Residency is process-local only; cluster-wide orchestration and worker lifecycle policy remain
   downstream concerns.
 
@@ -312,7 +312,9 @@ Date: 2026-05-19
 
 ### Follow-ups
 
-- Keep the narrower true-warmup follow-up proposed separately.
+- A narrower true-warmup follow-up was proposed separately at the time and later deprecated after
+  `docs/backlog/completed/019_best_effort_preload_warmup_for_local_backends.md` addressed the
+  operational warmup need without adding a public warmness contract.
 - If the repo later adds backlog overview or recurrent hygiene files, this completion should be
   reflected there as well.
 

@@ -1,6 +1,7 @@
 ## Backlog (how we work)
 
-This folder is the **single source of truth** for planned and completed engineering work in AbstractVision.
+This folder is the **single source of truth** for planned, proposed, completed, and deprecated
+engineering work in AbstractVision.
 
 Note:
 - `docs/backlog/` is an internal engineering log (design notes + completion reports).
@@ -23,7 +24,10 @@ Treat `pyproject.toml` and the latest planned/completed packaging task as the so
 ## Folder layout
 
 - `docs/backlog/planned/`: work to do next
+- `docs/backlog/proposed/`: plausible follow-ups or experiments that should stay out of the
+  committed plan
 - `docs/backlog/completed/`: finished tasks with a completion report
+- `docs/backlog/deprecated/`: superseded, rejected, or intentionally closed items kept for history
 
 ---
 
@@ -47,7 +51,7 @@ Every backlog item must include:
 
 - **Title**
 - **Date**
-- **Status**: Planned / Completed
+- **Status**: Proposed / Planned / Completed / Deprecated
 - **Priority**: P0/P1/P2
 - **Main goal(s)** and **secondary goal(s)**
 - **Context / problem statement**
@@ -67,7 +71,8 @@ See `docs/backlog/template.md`.
 ## Work process (development cycle)
 
 0. **Think, design, and plan** with long-term consequences in mind; prefer the cleanest, simplest, most efficient approach.
-1. **Write the task** in `docs/backlog/planned/{NNN}_{short_description}.md` (self-contained, with research and decisions).
+1. **Write the task** in `docs/backlog/planned/{NNN}_{short_description}.md` for committed work, or
+   `docs/backlog/proposed/{NNN}_{short_description}.md` for speculative follow-ups worth preserving.
 2. **Implement** the task.
 3. **Test** and fix issues.
 4. **Only when all tests pass**, move the task to `docs/backlog/completed/` and add the completion report at the end.

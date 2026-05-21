@@ -1,9 +1,13 @@
-# Proposed: True Warmup Semantics For Resident Local Image Backends
+# Deprecated: True Warmup Semantics For Resident Local Image Backends
 
 ## Metadata
 - Created: 2026-05-20
-- Status: Proposed
+- Status: Deprecated
+- Deprecated: 2026-05-21
 - Priority: P1
+
+Historical note: the sections below preserve the original proposal shape, but this item is no
+longer an active implementation target.
 
 ## Current Code Reality
 
@@ -17,14 +21,21 @@
 That work shipped in 0.3.7 and should remain the control plane for “keep this backend loaded in
 this process”.
 
-What it does **not** guarantee is a truly warmed first inference.
+What it does **not** guarantee is a truly signature-exact warmed first inference.
 
 - the shared `VisionBackend.preload()` contract is best-effort eager load/prepare;
-- `resident=true` currently means pinned/loaded in-process, not “next request is hot”;
-- MFLUX is the clearest gap: `preload()` stops at model construction, while the real
-  width/height-bearing path still happens on first generation;
-- Diffusers and `stable-diffusion.cpp` also should not be assumed “hot” just because `preload()`
-  ran.
+- `loaded=true` means pinned/loaded in-process, not “next request is hot”;
+- `mflux.preload()` now executes one representative warmup generation before returning;
+- `huggingface_diffusers.preload()` now does the same for the common `text_to_image` pipeline;
+- `stable-diffusion.cpp` python mode intentionally stays at eager model construction, and CLI mode
+  still cannot retain process-local warm state across subprocesses.
+
+2026-05-21 repo audit conclusion:
+
+- no new load/list/unload contract is needed for Vision;
+- current docs/tests already keep `loaded`/`resident` scoped to process-local loaded state;
+- the stronger public `warmup` contract proposed below is still unimplemented;
+- remote/OpenAI-compatible providers remain not-loaded from the local process perspective.
 
 So there are two distinct semantics:
 
@@ -41,7 +52,7 @@ docs over-interpret it.
 The main goal of this follow-up is:
 
 - achieve proper, engine-aware warmup when that is actually possible;
-- report the real capability semantics cleanly so callers can tell what is only resident vs what is
+- report the real capability semantics cleanly so callers can tell what is only loaded vs what is
   truly warmed.
 
 The proposal must stay narrow:
@@ -56,7 +67,7 @@ The proposal must stay narrow:
 
 Do not change the meaning of:
 
-- `resident`
+- `loaded`
 - `state`
 - `load_id`
 - `backend_kind`
@@ -149,18 +160,20 @@ The keys inside `signature` are backend-defined but must be JSON-safe and stable
 family. MFLUX should at minimum include `task`, `width`, and `height`, and may include other
 normalized backend-relevant fields only if they materially affect retained warmness.
 
-### 5. Initial engine scope: MFLUX first
+### 5. Initial engine scope: backend-owned reporting first
 
 V1 true warmup should be restricted to engines that can honestly retain benefit **and** serialize
 execution safely.
 
-Initial target:
+Initial targets should be whichever local backends can return a defensible signature result without
+changing the residency contract:
 
-- `mflux`: yes, initial `signature_exact` target
+- `mflux`: likely first target if it can report the exact width/height/model signature it exercised;
+- `diffusers`: acceptable only if the backend proves retained benefit for a normalized request
+  signature and uses the same lifetime protections as generation.
 
 Remain preload-only / unsupported in v1:
 
-- `diffusers`: until a safe execution-serialization story and retained-benefit measurement exist
 - `stable-diffusion.cpp` CLI mode: unsupported, because each request shells out to a fresh process
 - `stable-diffusion.cpp` python mode: defer until retained warm benefit and execution safety are
   proven
@@ -229,3 +242,21 @@ Implementation constraints:
 - Add MFLUX tests proving the backend returns the canonical warmed signature it actually exercised.
 - Add concurrency tests for unload/reload races so stale warmup completions cannot resurrect or
   overwrite old metadata.
+
+## Deprecation report
+
+Date: 2026-05-21
+
+- The practical warmup goal behind this proposal was addressed by
+  `docs/backlog/completed/019_best_effort_preload_warmup_for_local_backends.md`: `mflux` and
+  `huggingface_diffusers` now run real preload warmup, while `stable-diffusion.cpp` intentionally
+  stops at the strongest defensible eager preparation for its runtime model.
+- The remaining work here is a new public semantics/reporting contract (`warmup_request`,
+  backend-owned warmup results, and nested `warmup` metadata on loaded-model records). That
+  contract is not present in `load_resident_model(...)`, `list_loaded_models()`, or the current
+  integration tests.
+- Current package docs already describe residency as process-local loaded state rather than a true
+  warmness guarantee, so keeping this as active backlog would mostly invite premature API expansion
+  rather than close a live product gap.
+- If a future caller needs signature-exact warmup observability, create a new proposed item from
+  the then-current code and benchmark reality instead of reviving this pre-019 design unchanged.
