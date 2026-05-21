@@ -143,6 +143,22 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
                     extra=dict(request.extra or {}),
                 )
 
+            def normalize_video_generation_request(self, request):
+                from abstractvision.types import VideoGenerationRequest
+
+                return VideoGenerationRequest(
+                    prompt=request.prompt,
+                    negative_prompt=None,
+                    width=request.width,
+                    height=request.height,
+                    fps=8,
+                    num_frames=9,
+                    seed=request.seed,
+                    steps=2,
+                    guidance_scale=1.0,
+                    extra=dict(request.extra or {}),
+                )
+
             def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
                 seen["t2i"] = request
                 return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
@@ -154,8 +170,9 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
             def generate_angles(self, request):  # pragma: no cover
                 raise NotImplementedError
 
-            def generate_video(self, request):  # pragma: no cover
-                raise NotImplementedError
+            def generate_video(self, request):
+                seen["t2v"] = request
+                return GeneratedAsset(media_type="video", data=b"v", mime_type="video/mp4", metadata={})
 
             def image_to_video(self, request):  # pragma: no cover
                 raise NotImplementedError
@@ -163,6 +180,7 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         vm = VisionManager(backend=NormalizingBackend())
         vm.generate_image("hello", steps=1, guidance_scale=7.0, negative_prompt="blur")
         vm.edit_image("hello", image=b"img", steps=1, guidance_scale=7.0, negative_prompt="blur")
+        vm.generate_video("hello", steps=1, guidance_scale=7.0, negative_prompt="blur")
 
         self.assertEqual(seen["t2i"].steps, 2)
         self.assertEqual(seen["t2i"].guidance_scale, 1.0)
@@ -170,6 +188,11 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         self.assertEqual(seen["i2i"].steps, 2)
         self.assertEqual(seen["i2i"].guidance_scale, 1.0)
         self.assertIsNone(seen["i2i"].negative_prompt)
+        self.assertEqual(seen["t2v"].steps, 2)
+        self.assertEqual(seen["t2v"].guidance_scale, 1.0)
+        self.assertEqual(seen["t2v"].fps, 8)
+        self.assertEqual(seen["t2v"].num_frames, 9)
+        self.assertIsNone(seen["t2v"].negative_prompt)
 
 
 if __name__ == "__main__":

@@ -14,14 +14,15 @@ Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md` (includes local model residency control for in-process backends).
 - **Inspect provider model catalogs**: use `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, or `llm.vision.list_provider_models(...)`; catalog listing is explicit and does not select the active model.
-- **Inspect local model/task metadata**: use `abstractvision model-catalog`, `abstractvision show-model`, or `GET /v1/vision/models`; `image_to_image` in `task_specs` is the explicit edit-capability signal for local surfaces.
+- **Inspect local model/task metadata**: use `abstractvision model-catalog`, `abstractvision show-model`, or `GET /v1/vision/models`; `image_to_image` and `text_to_video` in `task_specs` are the explicit local edit/video-capability signals for the interactive surfaces.
 - **Need the model curation policy**: read `docs/reference/capabilities-registry.md`, `docs/adr/0005_curated_capability_registry_and_download_catalog.md`, and `docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
 - **Need local Diffusers**: install `abstractvision[diffusers]`, set `ABSTRACTVISION_BACKEND=diffusers`, pre-download `runwayml/stable-diffusion-v1-5`, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
 
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image` and `image_to_image`.
-- `text_to_video` and `image_to_video` are supported only via the OpenAI-compatible backend when video endpoints are configured.
+- Local Diffusers also implements `text_to_video` for the CogVideoX-2b family (`zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`).
+- `image_to_video` is supported only via the OpenAI-compatible backend when video endpoints are configured.
 - `multi_view_image` exists in the API but no built-in backend implements it yet.
 - Provider `/models` catalogs can be listed explicitly, including through the AbstractCore plugin boundary; they are not used for automatic model selection.
 - Backend normalization is shared across `VisionManager`, the playground API, and the AbstractCore plugin, so model-specific parameter constraints are enforced once in the backend layer instead of separately in each UI.
@@ -32,6 +33,7 @@ Reality checks (current shipped behavior, anchored in code):
 - [README.md](README.md): overview, install, quickstart
 - [docs/README.md](docs/README.md): docs index (map)
 - [docs/getting-started.md](docs/getting-started.md): first image (OpenAI-compatible HTTP / Diffusers / sdcpp) + Playground
+- [docs/troubleshooting.md](docs/troubleshooting.md): symptom-oriented setup/runtime fixes for local backends, playground, and integration issues
 - [docs/api.md](docs/api.md): public Python API surface
 - [docs/architecture.md](docs/architecture.md): how components fit together (with diagrams)
 - [docs/faq.md](docs/faq.md): common questions + troubleshooting
@@ -62,7 +64,7 @@ Reality checks (current shipped behavior, anchored in code):
 - [src/abstractvision/backends/base_backend.py](src/abstractvision/backends/base_backend.py): `VisionBackend` contract
 - [src/abstractvision/backends/__init__.py](src/abstractvision/backends/__init__.py): lazy imports (keeps `import abstractvision` import-light)
 - [src/abstractvision/backends/openai_compatible.py](src/abstractvision/backends/openai_compatible.py): OpenAI-compatible HTTP backend (+ optional video)
-- [src/abstractvision/backends/huggingface_diffusers.py](src/abstractvision/backends/huggingface_diffusers.py): local Diffusers backend (T2I/I2I)
+- [src/abstractvision/backends/huggingface_diffusers.py](src/abstractvision/backends/huggingface_diffusers.py): local Diffusers backend (T2I/I2I + CogVideoX T2V)
 - [src/abstractvision/backends/stable_diffusion_cpp.py](src/abstractvision/backends/stable_diffusion_cpp.py): stable-diffusion.cpp backend (GGUF via `sd-cli` or python bindings)
 - [src/abstractvision/model_capabilities.py](src/abstractvision/model_capabilities.py): capability registry loader + validator
 - [src/abstractvision/artifacts.py](src/abstractvision/artifacts.py): artifact refs + stores (`LocalAssetStore`, `RuntimeArtifactStoreAdapter`)

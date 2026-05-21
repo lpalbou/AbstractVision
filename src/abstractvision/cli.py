@@ -189,16 +189,14 @@ def _resolve_cached_diffusers_model_id(model_id: str) -> str:
     legacy_root = default_legacy_model_root()
     legacy_dir = legacy_root / preset.local_dir_name
     try:
-        cached = ensure_hf_repo_snapshot(
+        ensure_hf_repo_snapshot(
             preset.repo_id,
             source_dir=legacy_dir,
             cache_dir=str(default_hf_cache_root()),
             cleanup_source=True,
         )
     except Exception:
-        cached = None
-    if cached is not None:
-        return str(cached)
+        pass
     return str(preset.repo_id).strip() or candidate
 
 
@@ -799,6 +797,29 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_t2v(args: argparse.Namespace) -> int:
+    vm = _build_manager_from_args(args)
+    out = vm.generate_video(
+        args.prompt,
+        negative_prompt=args.negative_prompt,
+        width=args.width,
+        height=args.height,
+        fps=args.fps,
+        num_frames=args.num_frames,
+        steps=args.steps,
+        guidance_scale=args.guidance_scale,
+        seed=args.seed,
+    )
+    _print_json(out)
+    if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
+        p = vm.store.get_content_path(out["$artifact"])
+        if p is not None:
+            print(str(p))
+            if args.open:
+                _open_file(p)
+    return 0
+
+
 @dataclass
 class _ReplState:
     backend_kind: str = field(default_factory=_default_repl_backend)
@@ -867,6 +888,16 @@ class _ReplState:
                     "negative_prompt": None,
                 },
                 "i2i": {"steps": 10, "guidance_scale": None, "seed": None, "negative_prompt": None},
+                "t2v": {
+                    "width": None,
+                    "height": None,
+                    "fps": None,
+                    "num_frames": None,
+                    "steps": 10,
+                    "guidance_scale": None,
+                    "seed": None,
+                    "negative_prompt": None,
+                },
             }
 
 
@@ -906,6 +937,7 @@ def _repl_help() -> str:
         "Generation:\n"
         "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
         "  /i2i --image path <prompt...> [--mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
+        "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
         "      extra flags are forwarded through request.extra\n"
         "\n"
         "Quick examples:\n"
@@ -918,6 +950,10 @@ def _repl_help() -> str:
         "  # Local Diffusers path: Stable Diffusion 1.5 (requires abstractvision[diffusers])\n"
         "  /backend diffusers runwayml/stable-diffusion-v1-5 auto\n"
         "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
+        "\n"
+        "  # Local Diffusers video path: CogVideoX-2b on Apple Silicon / MPS\n"
+        "  /backend diffusers zai-org/CogVideoX-2b mps float16\n"
+        "  /t2v \"a red fox walking through snowy forest, cinematic\" --num-frames 9 --steps 1 --open\n"
         "\n"
         "  # Modern small FLUX path: FLUX.2-klein-4B (requires Diffusers main today)\n"
         "  /backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16\n"
@@ -1424,12 +1460,12 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 key = args[0].replace("-", "_")
                 value = " ".join(args[1:])
                 updated = False
-                for group in ("t2i", "i2i"):
+                for group in state.defaults.keys():
                     if key in state.defaults.get(group, {}):
                         state.defaults[group][key] = value
                         updated = True
                 if not updated:
-                    for group in ("t2i", "i2i"):
+                    for group in state.defaults.keys():
                         state.defaults.setdefault(group, {})[key] = value
                 print("ok")
                 continue
@@ -1438,7 +1474,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     print("Usage: /unset <key>")
                     continue
                 key = args[0].replace("-", "_")
-                for group in ("t2i", "i2i"):
+                for group in state.defaults.keys():
                     if key in state.defaults.get(group, {}):
                         state.defaults[group][key] = None
                 print("ok")
@@ -1524,6 +1560,56 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     image=img,
                     mask=mask,
                     negative_prompt=d.get("negative_prompt"),
+                    steps=_coerce_int(d.get("steps")),
+                    guidance_scale=_coerce_float(d.get("guidance_scale")),
+                    seed=_coerce_int(d.get("seed")),
+                    extra=extra,
+                )
+                _print_json(out)
+                if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
+                    p = vm.store.get_content_path(out["$artifact"])
+                    if p is not None:
+                        print(str(p))
+                        if bool(flags.get("open")):
+                            _open_file(p)
+                continue
+            if cmd == "t2v":
+                if not args:
+                    print("Usage: /t2v <prompt...> [--width ... --height ... --fps ... --num-frames ...]")
+                    continue
+                flags, rest = _parse_flags_and_rest(args)
+                prompt = " ".join(rest).strip()
+                if not prompt:
+                    print("Missing prompt.")
+                    continue
+
+                vm = _build_manager_from_state(state)
+                d = dict(state.defaults.get("t2v", {}))
+                d.update(flags)
+                extra = {
+                    k: _coerce_scalar(v)
+                    for k, v in d.items()
+                    if k
+                    not in {
+                        "width",
+                        "height",
+                        "fps",
+                        "num_frames",
+                        "steps",
+                        "guidance_scale",
+                        "seed",
+                        "negative_prompt",
+                        "open",
+                    }
+                    and v is not None
+                }
+                out = vm.generate_video(
+                    prompt,
+                    negative_prompt=d.get("negative_prompt"),
+                    width=_coerce_int(d.get("width")),
+                    height=_coerce_int(d.get("height")),
+                    fps=_coerce_int(d.get("fps")),
+                    num_frames=_coerce_int(d.get("num_frames")),
                     steps=_coerce_int(d.get("steps")),
                     guidance_scale=_coerce_float(d.get("guidance_scale")),
                     seed=_coerce_int(d.get("seed")),
@@ -1862,6 +1948,20 @@ def build_parser() -> argparse.ArgumentParser:
     i2i.add_argument("--seed", type=int, default=None)
     i2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     i2i.set_defaults(_fn=_cmd_i2i)
+
+    t2v = sub.add_parser("t2v", help="One-shot text-to-video (stores output and prints artifact ref + path).")
+    _add_provider_flags(t2v)
+    t2v.add_argument("prompt")
+    t2v.add_argument("--negative-prompt", default=None)
+    t2v.add_argument("--width", type=int, default=None)
+    t2v.add_argument("--height", type=int, default=None)
+    t2v.add_argument("--fps", type=int, default=None)
+    t2v.add_argument("--num-frames", type=int, default=None, dest="num_frames")
+    t2v.add_argument("--steps", type=int, default=10)
+    t2v.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
+    t2v.add_argument("--seed", type=int, default=None)
+    t2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
+    t2v.set_defaults(_fn=_cmd_t2v)
 
     return p
 

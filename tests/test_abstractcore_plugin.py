@@ -869,6 +869,51 @@ print("ok")
         self.assertEqual(backend.unloaded, 1)
         self.assertEqual(cap.list_loaded_models(), [])
 
+    def test_abstractcore_plugin_tracks_text_to_video_request_models(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        mp4 = b"ftyp" + (b"\x00" * 16)
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeDiffusersBackend:
+            def __init__(self):
+                self.unloaded = 0
+
+            def generate_video(self, request):
+                return GeneratedAsset(media_type="video", data=mp4, mime_type="video/mp4", metadata={})
+
+            def unload(self):
+                self.unloaded += 1
+
+        backend = FakeDiffusersBackend()
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_diffusers_backend", return_value=backend):
+            out = cap.t2v(
+                "animate the square",
+                provider="diffusers",
+                model="zai-org/CogVideoX-2b",
+            )
+
+            self.assertTrue(out.startswith(b"ftyp"))
+            loaded = cap.list_loaded_models({"task": "t2v"})
+            self.assertEqual(len(loaded), 1)
+            self.assertEqual(loaded[0]["model"], "zai-org/CogVideoX-2b")
+            self.assertEqual(loaded[0]["tasks"], ["text_to_video"])
+
+            cap.unload_model(
+                {
+                    "provider": "diffusers",
+                    "model": "zai-org/CogVideoX-2b",
+                }
+            )
+
+        self.assertEqual(backend.unloaded, 1)
+        self.assertEqual(cap.list_loaded_models(), [])
+
     def test_abstractcore_plugin_resident_backend_survives_model_switches(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset

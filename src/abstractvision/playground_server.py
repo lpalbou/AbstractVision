@@ -28,7 +28,7 @@ from .model_cache import (
     incomplete_hf_model_sources,
 )
 from .model_downloads import catalog_target_scope, local_model_profile, model_presets, resolve_sdcpp_model_selection
-from .types import GeneratedAsset, ImageEditRequest, ImageGenerationRequest
+from .types import GeneratedAsset, ImageEditRequest, ImageGenerationRequest, VideoGenerationRequest
 
 DEFAULT_PLAYGROUND_HOST = "127.0.0.1"
 DEFAULT_PLAYGROUND_PORT = 8091
@@ -324,7 +324,7 @@ def _parse_multipart(
     return fields, files
 
 
-def _asset_to_image_response(
+def _asset_to_media_response(
     asset: GeneratedAsset, *, response_format: str = "b64_json"
 ) -> Dict[str, Any]:
     fmt = str(response_format or "b64_json").strip().lower()
@@ -342,6 +342,12 @@ def _asset_to_image_response(
             }
         ],
     }
+
+
+def _asset_to_image_response(
+    asset: GeneratedAsset, *, response_format: str = "b64_json"
+) -> Dict[str, Any]:
+    return _asset_to_media_response(asset, response_format=response_format)
 
 
 def _request_kwargs(payload: Dict[str, Any], *, known: set) -> Dict[str, Any]:
@@ -467,6 +473,48 @@ class PlaygroundState:
             return {}
         return _serialize_task_specs(spec)
 
+    def _surface_tasks_for_backend(
+        self,
+        *,
+        backend: Optional[str],
+        model_id: str,
+        tasks: List[str],
+        task_specs: Dict[str, Dict[str, Any]],
+    ) -> tuple[List[str], Dict[str, Dict[str, Any]]]:
+        backend_kind = str(backend or "").strip().lower()
+        if backend_kind in {"huggingface", "hf", "hf-diffusers"}:
+            backend_kind = "diffusers"
+        allowed = set(str(task) for task in tasks)
+        if backend_kind == "diffusers":
+            try:
+                from .backends.huggingface_diffusers import (
+                    HuggingFaceDiffusersBackendConfig,
+                    HuggingFaceDiffusersVisionBackend,
+                )
+
+                probe = HuggingFaceDiffusersVisionBackend(
+                    config=HuggingFaceDiffusersBackendConfig(
+                        model_id=str(model_id),
+                        device=str(self.config.diffusers_device or "auto"),
+                        torch_dtype=self.config.diffusers_torch_dtype,
+                        allow_download=bool(self.config.diffusers_allow_download),
+                        auto_retry_fp32=bool(self.config.diffusers_auto_retry_fp32),
+                        cache_dir=self.config.diffusers_cache_dir,
+                        revision=self.config.diffusers_revision,
+                        variant=self.config.diffusers_variant,
+                    )
+                )
+                allowed = {str(task) for task in probe.get_capabilities().supported_tasks or []}
+            except Exception:
+                allowed = {"text_to_image", "image_to_image"}
+        filtered_tasks = [str(task) for task in tasks if str(task) in allowed]
+        filtered_specs = {
+            str(task_name): dict(task_spec)
+            for task_name, task_spec in task_specs.items()
+            if str(task_name) in allowed
+        }
+        return filtered_tasks, filtered_specs
+
     def _same_requested_model(self, requested_model_id: str) -> bool:
         current_model_id = str(self._active_model_id or "").strip()
         requested = str(requested_model_id or "").strip()
@@ -527,7 +575,7 @@ class PlaygroundState:
 
         seen_load_ids: set[str] = set()
         legacy_root = default_legacy_model_root()
-        image_tasks = {"text_to_image", "image_to_image"}
+        playground_tasks = {"text_to_image", "image_to_image", "text_to_video"}
         mflux_cached: Dict[str, Any] = {}
         mflux_invalid: Dict[str, Tuple[str, ...]] = {}
         if "mlx" in visible_targets:
@@ -565,8 +613,6 @@ class PlaygroundState:
                 tasks = ["text_to_image", "image_to_image"]
                 provider = "huggingface"
                 task_specs = {}
-            if not image_tasks.intersection(tasks):
-                continue
 
             backend: Optional[str] = None
             load_id: Optional[str] = None
@@ -582,6 +628,14 @@ class PlaygroundState:
                 load_id = f"mflux/{preset.key}"
                 runtime_available = mflux_runtime_available
                 download_enabled = runtime_available and "mlx" in visible_targets and allow_mflux_download
+            tasks, task_specs = self._surface_tasks_for_backend(
+                backend=backend or preset.engine,
+                model_id=model_id,
+                tasks=[str(task) for task in tasks],
+                task_specs=task_specs,
+            )
+            if not playground_tasks.intersection(tasks):
+                continue
 
             required_files, require_weight_files = _preset_cache_requirements(
                 target=preset.target,
@@ -702,30 +756,37 @@ class PlaygroundState:
             if cached_in:
                 task_specs = self._task_specs_for_model(label)
                 tasks = sorted(task_specs.keys()) if task_specs else ["text_to_image", "image_to_image"]
-                runtime_available = _local_runtime_available(backend)
-                display_sources = list(cached_in)
-                if not runtime_available:
-                    runtime_text = f"{backend} runtime missing"
-                    if runtime_text not in display_sources:
-                        display_sources.append(runtime_text)
-                models.append(
-                    {
-                        "id": label,
-                        "load_id": load_id,
-                        "provider": "configured",
-                        "backend": backend,
-                        "engine": backend,
-                        "target": "configured",
-                        "bits": None,
-                        "variant": label,
-                        "download_repo_id": None,
-                        "tasks": tasks,
-                        "task_specs": task_specs,
-                        "cached": "cache" in ",".join(cached_in).lower(),
-                        "cached_in": display_sources,
-                        "loadable": runtime_available,
-                    }
+                tasks, task_specs = self._surface_tasks_for_backend(
+                    backend=backend,
+                    model_id=label,
+                    tasks=[str(task) for task in tasks],
+                    task_specs=task_specs,
                 )
+                if playground_tasks.intersection(tasks):
+                    runtime_available = _local_runtime_available(backend)
+                    display_sources = list(cached_in)
+                    if not runtime_available:
+                        runtime_text = f"{backend} runtime missing"
+                        if runtime_text not in display_sources:
+                            display_sources.append(runtime_text)
+                    models.append(
+                        {
+                            "id": label,
+                            "load_id": load_id,
+                            "provider": "configured",
+                            "backend": backend,
+                            "engine": backend,
+                            "target": "configured",
+                            "bits": None,
+                            "variant": label,
+                            "download_repo_id": None,
+                            "tasks": tasks,
+                            "task_specs": task_specs,
+                            "cached": "cache" in ",".join(cached_in).lower(),
+                            "cached_in": display_sources,
+                            "loadable": runtime_available,
+                        }
+                    )
 
         if configured_backend == "sdcpp":
             models.append(
@@ -1032,7 +1093,73 @@ class PlaygroundState:
                 asset = backend.generate_image_with_progress(
                     normalized_request, progress_callback=progress_callback
                 )
-                return _asset_to_image_response(asset, response_format=response_format)
+                return _asset_to_media_response(asset, response_format=response_format)
+            finally:
+                if requested_model_id is not None:
+                    self._release_backend_snapshot(backend)
+
+        return self._start_job(run, total_steps=request.steps)
+
+    def start_video_generation_job(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        prompt = str(payload.get("prompt") or "").strip()
+        if not prompt:
+            raise ValueError("Missing required field: prompt")
+        requested_model_id = str(payload.get("model") or "").strip() or None
+        if requested_model_id is None and self.active_snapshot() is None:
+            raise ValueError("No active model. Select and load a model first.")
+        known = {
+            "prompt",
+            "model",
+            "response_format",
+            "negative_prompt",
+            "width",
+            "height",
+            "fps",
+            "num_frames",
+            "steps",
+            "guidance_scale",
+            "seed",
+            "extra",
+        }
+        request = VideoGenerationRequest(
+            prompt=prompt,
+            negative_prompt=(
+                str(payload.get("negative_prompt")) if payload.get("negative_prompt") else None
+            ),
+            width=_to_int(payload.get("width")),
+            height=_to_int(payload.get("height")),
+            fps=_to_int(payload.get("fps")),
+            num_frames=_to_int(payload.get("num_frames")),
+            steps=_to_int(payload.get("steps")),
+            guidance_scale=_to_float(payload.get("guidance_scale")),
+            seed=_to_int(payload.get("seed")),
+            extra=_request_kwargs(payload, known=known),
+        )
+        response_format = str(payload.get("response_format") or "b64_json")
+        backend_snapshot: Optional[Any] = None
+        if requested_model_id is None:
+            backend_snapshot, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
+
+        def run(progress_callback: Callable[[int, Optional[int]], None]) -> Dict[str, Any]:
+            backend = backend_snapshot
+            if requested_model_id is not None:
+                self.ensure_model_loaded(requested_model_id)
+                backend, _model_id, _backend_kind = self._acquire_active_backend_snapshot()
+            if backend is None:
+                raise ValueError("No active model. Select and load a model first.")
+            try:
+                self._require_backend_task_support(backend, "text_to_video")
+                normalized_request = request
+                normalize = getattr(backend, "normalize_video_generation_request", None)
+                if callable(normalize):
+                    normalized_request = normalize(request)
+                progress_callback(0, normalized_request.steps)
+                generate = getattr(backend, "generate_video_with_progress", None)
+                if callable(generate):
+                    asset = generate(normalized_request, progress_callback=progress_callback)
+                else:
+                    asset = backend.generate_video(normalized_request)
+                return _asset_to_media_response(asset, response_format=response_format)
             finally:
                 if requested_model_id is not None:
                     self._release_backend_snapshot(backend)
@@ -1088,7 +1215,7 @@ class PlaygroundState:
                 asset = backend.edit_image_with_progress(
                     normalized_request, progress_callback=progress_callback
                 )
-                return _asset_to_image_response(asset, response_format="b64_json")
+                return _asset_to_media_response(asset, response_format="b64_json")
             finally:
                 if requested_model_id is not None:
                     self._release_backend_snapshot(backend)
@@ -1278,6 +1405,10 @@ def _make_handler(state: PlaygroundState) -> type[BaseHTTPRequestHandler]:
                 if path == "/v1/vision/jobs/images/generations":
                     payload = _parse_json_bytes(body)
                     self._send_json(200, state.start_image_generation_job(payload))
+                    return
+                if path == "/v1/vision/jobs/videos/generations":
+                    payload = _parse_json_bytes(body)
+                    self._send_json(200, state.start_video_generation_job(payload))
                     return
                 if path == "/v1/vision/jobs/images/edits":
                     content_type = self.headers.get("Content-Type") or ""

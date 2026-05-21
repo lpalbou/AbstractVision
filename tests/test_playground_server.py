@@ -235,6 +235,22 @@ class TestPlaygroundServer(unittest.TestCase):
         self.assertEqual(ernie["tasks"], ["text_to_image"])
         self.assertNotIn("image_to_image", ernie["task_specs"])
 
+    def test_catalog_surfaces_cogvideox_2b_for_local_text_to_video(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+
+        state = PlaygroundState(
+            PlaygroundServerConfig(
+                diffusers_allow_download=False,
+                default_model_id="",
+            )
+        )
+        out = state.list_models()
+
+        cogvideo = next(m for m in out["models"] if m["id"] == "zai-org/CogVideoX-2b")
+        self.assertIn("text_to_video", cogvideo["tasks"])
+        self.assertEqual(cogvideo["task_specs"]["text_to_video"]["params"]["width"]["const"], 720)
+        self.assertEqual(cogvideo["task_specs"]["text_to_video"]["params"]["height"]["const"], 480)
+
     def test_incomplete_cached_diffusers_snapshot_is_not_marked_loadable(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
 
@@ -406,6 +422,39 @@ class TestPlaygroundServer(unittest.TestCase):
         state._active_backend_kind = "diffusers"
         state._active_model_id = "runwayml/stable-diffusion-v1-5"
         job = state.start_image_generation_job({"prompt": "hello", "steps": 1})
+
+        snap = None
+        for _ in range(100):
+            snap = state.get_job(job["job_id"])
+            if snap["state"] == "succeeded":
+                break
+            time.sleep(0.01)
+
+        self.assertIsNotNone(snap)
+        self.assertEqual(snap["state"], "succeeded")
+        self.assertIn("b64_json", snap["result"]["data"][0])
+        self.assertEqual(snap["progress"]["step"], 1)
+
+    def test_video_generation_job_uses_active_backend_and_returns_b64_json(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+        from abstractvision.types import GeneratedAsset
+
+        class FakeBackend:
+            def generate_video_with_progress(self, request, progress_callback=None):
+                if progress_callback:
+                    progress_callback(1, request.steps)
+                return GeneratedAsset(
+                    media_type="video",
+                    data=b"ftyp" + (b"\x00" * 8),
+                    mime_type="video/mp4",
+                    metadata={"prompt": request.prompt},
+                )
+
+        state = PlaygroundState(PlaygroundServerConfig(default_model_id=""))
+        state._active_backend = FakeBackend()
+        state._active_backend_kind = "diffusers"
+        state._active_model_id = "zai-org/CogVideoX-2b"
+        job = state.start_video_generation_job({"prompt": "hello", "steps": 1})
 
         snap = None
         for _ in range(100):

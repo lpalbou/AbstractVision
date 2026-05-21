@@ -29,6 +29,19 @@ Treat `pyproject.toml` and the latest planned/completed packaging task as the so
 - `docs/backlog/completed/`: finished tasks with a completion report
 - `docs/backlog/deprecated/`: superseded, rejected, or intentionally closed items kept for history
 
+### Current inventory
+
+- Planned: 3 items
+- Proposed: 0 items
+- Completed: 20 items
+- Deprecated: 1 item
+
+### Current planned items
+
+- `docs/backlog/planned/017_mlx_mflux_backend_strategy.md`
+- `docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md`
+- `docs/backlog/planned/0022_local_diffusers_image_to_video_backend.md`
+
 ---
 
 ## Naming convention

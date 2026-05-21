@@ -4,6 +4,9 @@ import io
 import inspect
 import os
 import hashlib
+import shutil
+import subprocess
+import tempfile
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -86,6 +89,10 @@ _GENERIC_CHAT_TEMPLATE_WITH_ASSISTANT_PROMPT = (
     "{{- '<|im_start|>assistant\\n' }}\n"
     "{%- endif -%}\n"
 )
+_SUPPORTED_LOCAL_DIFFUSERS_TEXT_TO_VIDEO_MODELS = {
+    "zai-org/cogvideox-2b",
+    "thudm/cogvideox-2b",
+}
 
 
 def _lazy_import_diffusers():
@@ -515,6 +522,72 @@ def _round_up_to_multiple(value: Optional[int], multiple_of: Any) -> Optional[in
     return current + (step - remainder)
 
 
+def _move_pipe_to_device(pipe: Any, *, device: str, dtype: Any = None) -> Any:
+    last_error: Optional[Exception] = None
+    if dtype is not None:
+        try:
+            return pipe.to(device=str(device), dtype=dtype)
+        except Exception as exc:
+            last_error = exc
+        try:
+            pipe = pipe.to(dtype=dtype)
+            return pipe.to(str(device))
+        except Exception as exc:
+            last_error = exc
+    try:
+        return pipe.to(str(device))
+    except Exception as exc:
+        last_error = exc
+    if last_error is not None:
+        raise last_error
+    return pipe
+
+
+def _require_ffmpeg_binary() -> str:
+    path = shutil.which("ffmpeg")
+    if path:
+        return path
+    raise ValueError(
+        "Local video export requires an `ffmpeg` executable on PATH. "
+        "Install ffmpeg and retry local text_to_video generation."
+    )
+
+
+def _frames_to_mp4_bytes(frames: List[Any], *, fps: int) -> bytes:
+    if not frames:
+        raise ValueError("Cannot encode a video with no frames.")
+    ffmpeg_bin = _require_ffmpeg_binary()
+    with tempfile.TemporaryDirectory(prefix="abstractvision-video-") as td:
+        root = Path(td)
+        for idx, frame in enumerate(frames):
+            frame_path = root / f"frame_{idx:05d}.png"
+            frame.save(frame_path, format="PNG")
+        out_path = root / "output.mp4"
+        common = [
+            ffmpeg_bin,
+            "-y",
+            "-loglevel",
+            "error",
+            "-framerate",
+            str(max(1, int(fps))),
+            "-i",
+            str(root / "frame_%05d.png"),
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+        ]
+        for codec in ("libx264", "mpeg4"):
+            cmd = [*common, "-c:v", codec, str(out_path)]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode == 0 and out_path.is_file():
+                return out_path.read_bytes()
+        raise ValueError(
+            "ffmpeg could not encode the generated frames into MP4. "
+            + (proc.stderr.strip() if proc.stderr else "No ffmpeg stderr output was captured.")
+        )
+
+
 def _maybe_upcast_vae_for_mps(torch: Any, pipe: Any, device: str) -> None:
     d = str(device or "").strip().lower()
     if d != "mps" and not d.startswith("mps:"):
@@ -641,7 +714,7 @@ class HuggingFaceDiffusersBackendConfig:
 
 
 class HuggingFaceDiffusersVisionBackend(VisionBackend):
-    """Local generative vision backend using HuggingFace Diffusers (images only, phase 1)."""
+    """Local generative vision backend using HuggingFace Diffusers."""
 
     def __init__(self, *, config: HuggingFaceDiffusersBackendConfig):
         self._cfg = config
@@ -686,10 +759,16 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
     def preload(self) -> None:
         with self._backend_lock:
-            pipe = self._get_or_load_pipeline("t2i")
-            if self._is_pipeline_warm("t2i", pipe):
+            kind = self._preload_pipeline_kind()
+            pipe = self._get_or_load_pipeline(kind)
+            if self._is_pipeline_warm(kind, pipe):
                 return
-            self.generate_image(self._warmup_generation_request())
+            if kind == "t2v":
+                self.generate_video(
+                    self.normalize_video_generation_request(self._warmup_video_generation_request())
+                )
+            else:
+                self.generate_image(self._warmup_generation_request())
 
     def unload(self) -> None:
         with self._backend_lock:
@@ -731,6 +810,24 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         except Exception:
             pass
 
+        try:
+            torch = _lazy_import_torch()
+            cuda = getattr(torch, "cuda", None)
+            if cuda is not None and callable(getattr(cuda, "is_available", None)) and cuda.is_available():
+                empty = getattr(cuda, "empty_cache", None)
+                if callable(empty):
+                    empty()
+                ipc_collect = getattr(cuda, "ipc_collect", None)
+                if callable(ipc_collect):
+                    ipc_collect()
+
+            mps = getattr(torch, "mps", None)
+            empty_mps = getattr(mps, "empty_cache", None) if mps is not None else None
+            if callable(empty_mps):
+                empty_mps()
+        except Exception:
+            pass
+
     def _registry(self) -> Optional[VisionModelCapabilitiesRegistry]:
         if self._capability_registry is not None:
             return self._capability_registry
@@ -753,10 +850,84 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         except Exception:
             return None
 
+    def _canonical_model_id(self, model_id: Optional[str] = None) -> str:
+        raw = str(model_id if model_id is not None else self._cfg.model_id or "").strip()
+        if not raw:
+            return ""
+        reg = self._registry()
+        if reg is not None:
+            try:
+                return str(reg.get(raw).model_id or raw).strip()
+            except Exception:
+                return raw
+        return raw
+
+    def _supports_local_text_to_video(self, model_id: Optional[str] = None) -> bool:
+        resolved_model_id = str(model_id if model_id is not None else self._cfg.model_id or "").strip()
+        if not resolved_model_id:
+            return False
+        reg = self._registry()
+        if reg is not None:
+            try:
+                if "text_to_video" not in reg.get(resolved_model_id).tasks:
+                    return False
+            except Exception:
+                return False
+        return self._canonical_model_id(resolved_model_id).lower() in _SUPPORTED_LOCAL_DIFFUSERS_TEXT_TO_VIDEO_MODELS
+
+    def _supports_local_image_to_video(self, model_id: Optional[str] = None) -> bool:
+        _ = model_id
+        return False
+
+    def _supports_backend_task(self, task: str, *, model_id: Optional[str] = None) -> bool:
+        if task == "text_to_video":
+            return self._supports_local_text_to_video(model_id=model_id)
+        if task == "image_to_video":
+            return self._supports_local_image_to_video(model_id=model_id)
+        if task == "multi_view_image":
+            return False
+        return True
+
+    def _supported_task_names(self, model_id: Optional[str] = None) -> List[str]:
+        model_spec = None
+        reg = self._registry()
+        resolved_model_id = str(model_id if model_id is not None else self._cfg.model_id or "").strip()
+        if reg is not None and resolved_model_id:
+            try:
+                model_spec = reg.get(resolved_model_id)
+            except Exception:
+                model_spec = None
+        if model_spec is None:
+            return ["image_to_image", "text_to_image"]
+        return sorted(
+            str(task_name)
+            for task_name in model_spec.tasks.keys()
+            if self._supports_backend_task(str(task_name), model_id=resolved_model_id)
+        )
+
+    def _preload_pipeline_kind(self) -> str:
+        tasks = set(self._supported_task_names())
+        if "text_to_image" in tasks:
+            return "t2i"
+        if "text_to_video" in tasks:
+            return "t2v"
+        if "image_to_image" in tasks:
+            return "i2i"
+        return "t2i"
+
     def _warmup_generation_request(self) -> ImageGenerationRequest:
         return ImageGenerationRequest(
             prompt="abstractvision preload warmup",
             steps=1,
+            seed=0,
+        )
+
+    def _warmup_video_generation_request(self) -> VideoGenerationRequest:
+        return VideoGenerationRequest(
+            prompt="abstractvision preload warmup",
+            steps=1,
+            num_frames=9,
+            fps=8,
             seed=0,
         )
 
@@ -877,23 +1048,51 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             extra=extra,
         )
 
-        try:
-            torch = _lazy_import_torch()
-            cuda = getattr(torch, "cuda", None)
-            if cuda is not None and callable(getattr(cuda, "is_available", None)) and cuda.is_available():
-                empty = getattr(cuda, "empty_cache", None)
-                if callable(empty):
-                    empty()
-                ipc_collect = getattr(cuda, "ipc_collect", None)
-                if callable(ipc_collect):
-                    ipc_collect()
+    def normalize_video_generation_request(
+        self,
+        request: VideoGenerationRequest,
+    ) -> VideoGenerationRequest:
+        spec = self._task_spec("text_to_video")
+        if spec is None:
+            return request
+        params = spec.params if isinstance(spec.params, dict) else {}
+        negative_prompt = request.negative_prompt
+        negative_spec = params.get("negative_prompt")
+        if isinstance(negative_spec, dict) and negative_spec.get("supported") is False:
+            negative_prompt = None
+        return replace(
+            request,
+            negative_prompt=negative_prompt,
+            width=self._normalize_int_param(request.width, params.get("width")),
+            height=self._normalize_int_param(request.height, params.get("height")),
+            fps=self._normalize_int_param(request.fps, params.get("fps")),
+            num_frames=self._normalize_int_param(request.num_frames, params.get("num_frames")),
+            steps=self._normalize_int_param(request.steps, params.get("steps")),
+            guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
+        )
 
-            mps = getattr(torch, "mps", None)
-            empty_mps = getattr(mps, "empty_cache", None) if mps is not None else None
-            if callable(empty_mps):
-                empty_mps()
-        except Exception:
-            pass
+    def normalize_image_to_video_request(
+        self,
+        request: ImageToVideoRequest,
+    ) -> ImageToVideoRequest:
+        spec = self._task_spec("image_to_video")
+        if spec is None:
+            return request
+        params = spec.params if isinstance(spec.params, dict) else {}
+        negative_prompt = request.negative_prompt
+        negative_spec = params.get("negative_prompt")
+        if isinstance(negative_spec, dict) and negative_spec.get("supported") is False:
+            negative_prompt = None
+        return replace(
+            request,
+            negative_prompt=negative_prompt,
+            width=self._normalize_int_param(request.width, params.get("width")),
+            height=self._normalize_int_param(request.height, params.get("height")),
+            fps=self._normalize_int_param(request.fps, params.get("fps")),
+            num_frames=self._normalize_int_param(request.num_frames, params.get("num_frames")),
+            steps=self._normalize_int_param(request.steps, params.get("steps")),
+            guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
+        )
 
     def _lora_signature(self, loras: List[Dict[str, Any]]) -> Optional[str]:
         if not loras:
@@ -1121,20 +1320,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     supports_mask = True
             else:
                 supports_mask = False
-        model_spec = None
-        reg = self._registry()
-        model_id = str(self._cfg.model_id or "").strip()
-        if reg is not None and model_id:
-            try:
-                model_spec = reg.get(model_id)
-            except Exception:
-                model_spec = None
         return VisionBackendCapabilities(
-            supported_tasks=(
-                sorted(str(task_name) for task_name in model_spec.tasks.keys())
-                if model_spec is not None
-                else ["text_to_image", "image_to_image"]
-            ),
+            supported_tasks=self._supported_task_names(),
             supports_mask=supports_mask,
         )
 
@@ -1241,8 +1428,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             reg = VisionModelCapabilitiesRegistry()
             for model_id in reg.list_models():
                 spec = reg.get(model_id)
-                tasks = sorted(str(t) for t in spec.tasks.keys())
+                tasks = self._supported_task_names(str(model_id))
                 if task_s and task_s not in tasks:
+                    continue
+                if not tasks:
                     continue
                 if not self._is_hf_model_cached(model_id):
                     continue
@@ -1261,6 +1450,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                                 "requires": dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None,
                             }
                             for task_name, task_spec in spec.tasks.items()
+                            if str(task_name) in set(tasks)
                         },
                     },
                 )
@@ -1649,11 +1839,22 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     _maybe_raise_offline_missing_model(e)
                     _maybe_raise_incomplete_snapshot_error(e)
                     raise
+            elif kind == "t2v":
+                try:
+                    pipe = _from_pretrained(DiffusionPipeline)
+                except Exception as e:
+                    _maybe_raise_offline_missing_model(e)
+                    _maybe_raise_incomplete_snapshot_error(e)
+                    raise ValueError(
+                        "Diffusers could not load a text-to-video pipeline for this model id. "
+                        "Install/upgrade diffusers (and compatible transformers/torch), or use a model repo that "
+                        "ships a text-to-video Diffusers pipeline. "
+                        f"(diffusers={diffusers_version})"
+                    ) from e
             else:
                 raise ValueError(f"Unknown pipeline kind: {kind!r}")
 
-        # Diffusers pipelines support `.to(<device>)` with a string.
-        pipe = pipe.to(str(device))
+        pipe = _move_pipe_to_device(pipe, device=str(device), dtype=torch_dtype)
         template_snapshot = snap
         if template_snapshot is None:
             candidate = Path(str(load_model_id)).expanduser()
@@ -1691,6 +1892,18 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()
+
+    def _video_frames(self, out: Any) -> List[Any]:
+        Image = _lazy_import_pil()
+        raw_frames = getattr(out, "frames", None)
+        if isinstance(raw_frames, list) and raw_frames:
+            if isinstance(raw_frames[0], list):
+                frames = raw_frames[0]
+            else:
+                frames = raw_frames
+            if all(isinstance(frame, Image.Image) for frame in frames):
+                return list(frames)
+        raise ValueError("Diffusers pipeline returned no video frames")
 
     def _seed_generator(self, seed: Optional[int]):
         if seed is None:
@@ -1849,18 +2062,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         candidates: list[Any] = []
         if current_dtype == getattr(torch, "bfloat16", object()):
             candidates.append(torch.float16)
-        if current_dtype != getattr(torch, "float32", object()):
+        allow_fp32_retry = kind not in {"t2v", "i2v"}
+        if allow_fp32_retry and current_dtype != getattr(torch, "float32", object()):
             candidates.append(torch.float32)
 
         for target in candidates:
             try:
-                pipe2 = pipe.to(device=str(device), dtype=target)
+                pipe2 = _move_pipe_to_device(pipe, device=str(device), dtype=target)
             except Exception:
-                try:
-                    pipe2 = pipe.to(dtype=target)
-                    pipe2 = pipe2.to(str(device))
-                except Exception:
-                    continue
+                continue
 
             _maybe_upcast_vae_for_mps(torch, pipe2, device)
             self._set_pipeline(kind, pipe2)
@@ -1902,13 +2112,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             return None
 
         try:
-            pipe_fp32 = pipe.to(device=str(device), dtype=torch.float32)
+            pipe_fp32 = _move_pipe_to_device(pipe, device=str(device), dtype=torch.float32)
         except Exception:
-            try:
-                pipe_fp32 = pipe.to(dtype=torch.float32)
-                pipe_fp32 = pipe_fp32.to(str(device))
-            except Exception:
-                return None
+            return None
 
         _maybe_upcast_vae_for_mps(torch, pipe_fp32, device)
         self._set_pipeline(kind, pipe_fp32)
@@ -2178,7 +2384,99 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         raise CapabilityNotSupportedError("HuggingFaceDiffusersVisionBackend does not implement multi-view generation.")
 
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
-        raise CapabilityNotSupportedError("HuggingFaceDiffusersVisionBackend does not implement text_to_video (phase 2).")
+        return self.generate_video_with_progress(request, progress_callback=None)
+
+    def generate_video_with_progress(
+        self,
+        request: VideoGenerationRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        if not self._supports_local_text_to_video():
+            raise CapabilityNotSupportedError(
+                "HuggingFaceDiffusersVisionBackend does not implement local text_to_video for this model."
+            )
+        with self._backend_lock:
+            pipe = self._get_or_load_pipeline("t2v")
+            call_params = self._call_params.get("t2v")
+            total_steps = int(request.steps) if request.steps is not None else None
+
+            kwargs: Dict[str, Any] = {
+                "prompt": request.prompt,
+            }
+            if request.negative_prompt is not None:
+                kwargs["negative_prompt"] = request.negative_prompt
+            if request.width is not None:
+                kwargs["width"] = int(request.width)
+            if request.height is not None:
+                kwargs["height"] = int(request.height)
+            if request.num_frames is not None:
+                kwargs["num_frames"] = int(request.num_frames)
+            if request.steps is not None:
+                kwargs["num_inference_steps"] = int(request.steps)
+            if request.guidance_scale is not None:
+                kwargs["guidance_scale"] = float(request.guidance_scale)
+            if call_params is None or "output_type" in call_params:
+                kwargs["output_type"] = "pil"
+            gen = self._seed_generator(request.seed)
+            if gen is not None:
+                kwargs["generator"] = gen
+
+            kwargs.update(_forward_extra_kwargs(request.extra, call_params=call_params))
+
+            try:
+                call_kwargs = dict(kwargs)
+                if progress_callback is not None:
+                    call_kwargs["__abstractvision_progress_callback"] = progress_callback
+                    call_kwargs["__abstractvision_progress_total_steps"] = total_steps
+                out, _had_invalid_cast = self._pipe_call(pipe, call_kwargs)
+            except Exception as e:
+                out2 = self._maybe_retry_on_dtype_mismatch(
+                    kind="t2v",
+                    pipe=pipe,
+                    kwargs=kwargs,
+                    error=e,
+                    progress_callback=progress_callback,
+                    total_steps=total_steps,
+                )
+                if out2 is None:
+                    raise
+                out = out2
+
+            frames = self._video_frames(out)
+            fps = int(request.fps) if request.fps is not None else 8
+            mp4 = _frames_to_mp4_bytes(frames, fps=fps)
+            current_pipe = self._pipelines.get("t2v", pipe)
+            self._mark_pipeline_warm("t2v", current_pipe)
+            meta: Dict[str, Any] = {
+                "source": "diffusers",
+                "model_id": self._cfg.model_id,
+                "fps": fps,
+                "frame_count": len(frames),
+            }
+            try:
+                width, height = frames[0].size
+                meta["width"] = int(width)
+                meta["height"] = int(height)
+            except Exception:
+                pass
+            try:
+                current_pipe = self._pipelines.get("t2v", pipe)
+                dtype = getattr(current_pipe, "dtype", None)
+                device = getattr(current_pipe, "device", None)
+                if dtype is not None:
+                    meta["dtype"] = str(dtype)
+                if device is not None:
+                    meta["device"] = str(device)
+            except Exception:
+                pass
+            return GeneratedAsset(
+                media_type="video",
+                data=mp4,
+                mime_type="video/mp4",
+                metadata=meta,
+            )
 
     def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
-        raise CapabilityNotSupportedError("HuggingFaceDiffusersVisionBackend does not implement image_to_video (phase 2).")
+        raise CapabilityNotSupportedError(
+            "HuggingFaceDiffusersVisionBackend does not implement local image_to_video yet."
+        )

@@ -41,6 +41,14 @@ _RESIDENCY_TASK_ALIASES = {
     "i2i": "image_to_image",
     "image_edit": "image_to_image",
     "image-edit": "image_to_image",
+    "text_to_video": "text_to_video",
+    "text-to-video": "text_to_video",
+    "t2v": "text_to_video",
+    "video_generation": "text_to_video",
+    "video-generation": "text_to_video",
+    "image_to_video": "image_to_video",
+    "image-to-video": "image_to_video",
+    "i2v": "image_to_video",
 }
 
 
@@ -397,7 +405,7 @@ def _normalize_residency_task(value: Any) -> Optional[str]:
     task = _RESIDENCY_TASK_ALIASES.get(raw)
     if task is None:
         raise AbstractVisionError(
-            f"Unsupported residency task {value!r}. Use 'text_to_image' or 'image_to_image'."
+            f"Unsupported residency task {value!r}. Use 'text_to_image', 'image_to_image', 'text_to_video', or 'image_to_video'."
         )
     return task
 
@@ -1605,20 +1613,72 @@ class _AbstractVisionCapability:
 
     def t2v(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
-        vm = self._make_manager(artifact_store=store)
-        out = vm.generate_video(str(prompt), **kwargs)
-        if isinstance(out, dict):
-            return out
-        return bytes(getattr(out, "data", b""))
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        allowed_request_keys = {
+            "negative_prompt",
+            "width",
+            "height",
+            "fps",
+            "num_frames",
+            "seed",
+            "steps",
+            "guidance_scale",
+            "extra",
+        }
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
+            merged_extra["model"] = model.strip()
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            out = vm.generate_video(str(prompt), **kwargs)
+            if binding.get("local_control"):
+                self._record_loaded_model(binding, task="text_to_video", resident=False, source="request")
+            if isinstance(out, dict):
+                return out
+            return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
 
     def i2v(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
         image_b = _resolve_bytes_input(image, artifact_store=store)
-        vm = self._make_manager(artifact_store=store)
-        out = vm.image_to_video(image=image_b, **kwargs)
-        if isinstance(out, dict):
-            return out
-        return bytes(getattr(out, "data", b""))
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        vm = VisionManager(
+            backend=backend,
+            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            out = vm.image_to_video(image=image_b, **kwargs)
+            if binding.get("local_control"):
+                self._record_loaded_model(binding, task="image_to_video", resident=False, source="request")
+            if isinstance(out, dict):
+                return out
+            return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
 
 
 def register(registry: Any) -> None:

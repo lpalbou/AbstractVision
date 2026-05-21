@@ -306,9 +306,8 @@ class TestCliSmoke(unittest.TestCase):
                 cfg = getattr(backend, "_cfg", None)
                 self.assertIsNotNone(cfg)
                 model_id = str(getattr(cfg, "model_id", ""))
-                self.assertTrue(model_id.startswith(cache_td))
-                self.assertIn("models--Qwen--Qwen-Image-2512", model_id)
-                self.assertIn("snapshots", model_id)
+                self.assertEqual(model_id, "Qwen/Qwen-Image-2512")
+                self.assertTrue((Path(cache_td) / "models--Qwen--Qwen-Image-2512").exists())
                 self.assertFalse(legacy_dir.exists())
 
     def test_sdcpp_provider_resolves_cached_component_bundle_from_model_key(self):
@@ -603,6 +602,9 @@ class TestCliSmoke(unittest.TestCase):
         self.assertFalse(state.diffusers_allow_download)
         self.assertEqual(state.defaults["t2i"]["width"], 512)
         self.assertEqual(state.defaults["t2i"]["height"], 512)
+        self.assertIn("t2v", state.defaults)
+        self.assertIsNone(state.defaults["t2v"]["width"])
+        self.assertIsNone(state.defaults["t2v"]["fps"])
 
     def test_repl_state_defaults_to_openai_when_base_url_is_configured(self):
         from abstractvision.cli import _ReplState
@@ -644,6 +646,17 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn('"sdcpp_model": "/models/sd-v1-5.gguf"', out)
         self.assertIn('"sdcpp_diffusion_model": null', out)
         self.assertIn('"model_id": null', out)
+
+    def test_cli_has_t2v_command(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["t2v", "hello", "--num-frames", "9", "--fps", "8"])
+        self.assertEqual(args.cmd, "t2v")
+        self.assertEqual(args.prompt, "hello")
+        self.assertEqual(args.num_frames, 9)
+        self.assertEqual(args.fps, 8)
+        self.assertTrue(callable(args._fn))
 
     def test_repl_build_manager_resolves_cached_sdcpp_component_bundle_from_model_key(self):
         from abstractvision.cli import _ReplState, _build_manager_from_state

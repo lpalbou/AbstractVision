@@ -141,6 +141,12 @@
         border: 1px solid var(--border);
         background: rgba(0, 0, 0, 0.2);
       }
+      .out video {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.2);
+      }
       fieldset {
         border: 0;
         margin: 0;
@@ -287,6 +293,73 @@
             <div id="i2iLog" class="mono"></div>
           </div>
         </div>
+
+        <div class="card">
+          <h2 style="margin: 0 0 8px; font-size: 16px">Text → Video</h2>
+          <div id="t2vSupportHint" class="status" style="margin-bottom: 8px">Select a model with text-to-video capability to enable this panel.</div>
+
+          <fieldset id="t2vFieldset" disabled>
+            <label for="t2vPrompt">Prompt</label>
+            <textarea id="t2vPrompt">a red fox walking through a snowy forest, cinematic, gentle camera motion</textarea>
+            <div class="status" style="margin-top: 6px">Uses the loaded model above.</div>
+
+            <label for="t2vNegative">Negative prompt (optional)</label>
+            <input id="t2vNegative" type="text" value="" />
+
+            <div class="row">
+              <div>
+                <label for="t2vWidth">Width</label>
+                <input id="t2vWidth" type="number" min="64" step="8" value="720" />
+              </div>
+              <div>
+                <label for="t2vHeight">Height</label>
+                <input id="t2vHeight" type="number" min="64" step="8" value="480" />
+              </div>
+            </div>
+
+            <div class="row">
+              <div>
+                <label for="t2vFps">FPS</label>
+                <input id="t2vFps" type="number" min="1" step="1" value="8" />
+              </div>
+              <div>
+                <label for="t2vFrames">Frames</label>
+                <input id="t2vFrames" type="number" min="1" step="1" value="49" />
+              </div>
+            </div>
+
+            <div class="row">
+              <div>
+                <label for="t2vSteps">Steps</label>
+                <input id="t2vSteps" type="number" min="1" step="1" value="10" />
+              </div>
+              <div>
+                <label for="t2vGuidance">Guidance scale</label>
+                <input id="t2vGuidance" type="number" step="0.1" value="6.0" />
+              </div>
+            </div>
+
+            <label for="t2vSeed">Seed (optional)</label>
+            <input id="t2vSeed" type="number" step="1" value="42" />
+
+            <label for="t2vExtra">Extra JSON (optional; forwarded to backend)</label>
+            <textarea id="t2vExtra">{}</textarea>
+
+            <div class="btns">
+              <button id="t2vBtn">Generate</button>
+              <span id="t2vStatus" class="status"></span>
+            </div>
+            <progress id="t2vProgress" style="display: none"></progress>
+          </fieldset>
+
+          <div class="out">
+            <video id="t2vVideo" controls playsinline></video>
+            <div class="btns">
+              <a id="t2vDownload" href="#" download="output.mp4">Download</a>
+            </div>
+            <div id="t2vLog" class="mono"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -324,6 +397,9 @@
       }
 
       function sniffMime(bytes) {
+        if (bytes.length >= 12 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+          return "video/mp4";
+        }
         if (bytes.length >= 8) {
           const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
           let ok = true;
@@ -509,11 +585,28 @@
         }
       }
 
+      function updateVideoPanelState() {
+        const model = currentModelMeta();
+        const enabled = !!model && modelSupportsTask(model, "text_to_video");
+        $("t2vFieldset").disabled = !enabled || modelOpInFlight;
+        if (!model) {
+          setStatus($("t2vSupportHint"), "", "Select a model with text-to-video capability to enable this panel.");
+          return;
+        }
+        if (enabled) {
+          setStatus($("t2vSupportHint"), "ok", `Video generation enabled for ${model.variant || model.id}.`);
+        } else {
+          setStatus($("t2vSupportHint"), "", `${model.variant || model.id} does not advertise text-to-video support.`);
+        }
+      }
+
       function applySelectedModelMetadata() {
         const model = currentModelMeta();
         applyModelDefaultsForTask("t2i", "text_to_image", model);
         applyModelDefaultsForTask("i2i", "image_to_image", model);
+        applyModelDefaultsForTask("t2v", "text_to_video", model);
         updateEditPanelState();
+        updateVideoPanelState();
       }
 
       function updateModelControls() {
@@ -527,6 +620,7 @@
         updateModelControls();
         $("t2iBtn").disabled = busy;
         $("i2iBtn").disabled = busy;
+        $("t2vBtn").disabled = busy;
 
         const p = $("modelLoadProgress");
         if (busy) {
@@ -811,6 +905,89 @@
           img.src = out.url;
           dl.href = out.url;
           dl.download = out.mime === "image/jpeg" ? "output.jpg" : "output.png";
+          log.textContent = JSON.stringify(sanitizeResponseForLog(resp), null, 2);
+          setStatus(status, "ok", "done");
+        } catch (e) {
+          setStatus(status, "err", String(e.message || e));
+          log.textContent = String(e && e.stack ? e.stack : e);
+        } finally {
+          hideProgress(prog);
+          btn.disabled = modelOpInFlight;
+          inferenceInFlight = Math.max(0, inferenceInFlight - 1);
+          updateModelControls();
+        }
+      });
+
+      $("t2vBtn").addEventListener("click", async () => {
+        const btn = $("t2vBtn");
+        const status = $("t2vStatus");
+        const log = $("t2vLog");
+        const video = $("t2vVideo");
+        const dl = $("t2vDownload");
+        const prog = $("t2vProgress");
+
+        btn.disabled = true;
+        inferenceInFlight += 1;
+        updateModelControls();
+        setStatus(status, "", "running…");
+        setProgress(prog, 0, $("t2vSteps").value ? Number($("t2vSteps").value) : null);
+        log.textContent = "";
+        video.removeAttribute("src");
+        video.load();
+        dl.href = "#";
+
+        try {
+          const selectedModelId = $("modelSelect").value || activeModelId;
+          if (!selectedModelId) throw new Error("select a model first");
+
+          const base = $("baseUrl").value;
+          const url = joinUrl(base, "/v1/vision/jobs/videos/generations");
+          const extra = parseJsonObject($("t2vExtra").value);
+          const payload = {
+            prompt: $("t2vPrompt").value,
+            model: selectedModelId,
+            response_format: "b64_json",
+            negative_prompt: $("t2vNegative").value || undefined,
+            width: $("t2vWidth").value ? Number($("t2vWidth").value) : undefined,
+            height: $("t2vHeight").value ? Number($("t2vHeight").value) : undefined,
+            fps: $("t2vFps").value ? Number($("t2vFps").value) : undefined,
+            num_frames: $("t2vFrames").value ? Number($("t2vFrames").value) : undefined,
+            steps: $("t2vSteps").value ? Number($("t2vSteps").value) : undefined,
+            guidance_scale: $("t2vGuidance").value ? Number($("t2vGuidance").value) : undefined,
+            seed: $("t2vSeed").value ? Number($("t2vSeed").value) : undefined,
+            ...extra,
+          };
+
+          const start = await fetchJson(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const jobId = start && start.job_id ? String(start.job_id) : "";
+          if (!jobId) throw new Error("missing job_id from server");
+
+          const done = await pollJob(base, jobId, (job) => {
+            const p = job && job.progress ? job.progress : null;
+            const step = p && p.step !== undefined ? Number(p.step) : null;
+            const total = p && p.total_steps !== undefined ? Number(p.total_steps) : null;
+            setProgress(prog, step, total);
+            if (total && total > 0) {
+              setStatus(status, "", `running… ${Math.min(Math.max(0, step || 0), total)}/${total}`);
+            } else {
+              setStatus(status, "", "running…");
+            }
+          });
+
+          const resp = done && done.result ? done.result : done;
+          const item = resp && resp.data && resp.data[0];
+          const b64 = item && item.b64_json;
+          if (!b64) throw new Error("missing data[0].b64_json");
+          const bytes = b64ToBytes(b64);
+          const out = bytesToObjectUrl(bytes);
+          video.src = out.url;
+          video.load();
+          dl.href = out.url;
+          dl.download = out.mime === "video/mp4" ? "output.mp4" : "output.bin";
           log.textContent = JSON.stringify(sanitizeResponseForLog(resp), null, 2);
           setStatus(status, "ok", "done");
         } catch (e) {

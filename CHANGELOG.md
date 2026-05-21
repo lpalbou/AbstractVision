@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.9 - 2026-05-21
+
+- Local Diffusers video: implement the first in-process `text_to_video` path through `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`, including registry-backed request normalization, preload warmup, unload support, MPS-safe explicit FP16 device moves, and MP4 artifact outputs packaged through `ffmpeg`.
+- Interactive surfaces: add one-shot `abstractvision t2v`, REPL `/t2v`, and playground `Text → Video` generation with backend/task-aware model discovery, progress reporting, and catalog surfacing for local video-capable models.
+- AbstractCore integration: route plugin `t2v` / `i2v` calls through the same explicit backend binding path used by image generation, extend residency task aliases for video, and track request-warm local `text_to_video` models in the loaded-model inventory.
+- Catalog/tests/docs: add curated capability/download metadata for `zai-org/CogVideoX-2b`, keep local image-edit surfaces intact, expand backend/CLI/playground/plugin regression coverage, refresh README/reference/FAQ/getting-started docs, and regenerate `llms-full.txt`.
+
 ## 0.3.8 - 2026-05-20
 
 - Model registry/catalog: expand the curated `vision_model_capabilities.json` inventory with more current official or reputable vision model families and cross-platform download variants, tighten provider provenance, remove adapter-only repos from the standalone model catalog, and expose richer model notes / `task_specs` through the CLI catalog surfaces.

@@ -16,6 +16,7 @@ The page calls:
 - `GET /v1/vision/models` (list cached models + active model)
 - `POST /v1/vision/model/load` (load a model into memory)
 - `POST /v1/vision/jobs/images/generations` (start a text→image job)
+- `POST /v1/vision/jobs/videos/generations` (start a text→video job)
 - `POST /v1/vision/jobs/images/edits` (start an image→image job)
 - `GET /v1/vision/jobs/{job_id}` (poll job status)
   - on success, the page calls `GET /v1/vision/jobs/{job_id}?consume=1` to fetch-and-consume the result
@@ -52,11 +53,13 @@ Usage notes:
 - Raw Hugging Face model ids such as `runwayml/stable-diffusion-v1-5` load directly; no `diffusers/` provider prefix is required.
 - For first tests, prefer a small cached model such as Stable Diffusion 1.5 before loading larger Qwen/FLUX models.
 - The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry metadata returned by `/v1/vision/models`.
+- The Text→Video panel is enabled only for models that advertise `text_to_video` in that same metadata. The first shipped local path is Diffusers `zai-org/CogVideoX-2b`.
 - Response logs intentionally show a shortened `b64_json` preview instead of the full base64 payload.
 - “Extra JSON” is forwarded to the server:
   - T2I: merged into the JSON request body
   - I2I: sent as a string field `extra_json` in the multipart form body
 - Model-specific request fixes happen in the backend/API layer, so the same normalization rules apply to the playground, CLI/REPL, and AbstractCore integration.
+- Local video export requires an `ffmpeg` executable on `PATH`.
 
 ## 3) stable-diffusion.cpp / GGUF notes
 

@@ -4038,6 +4038,69 @@
         }
       }
     },
+    "zai-org/CogVideoX-2b": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Official CogVideoX 2B text-to-video checkpoint (Diffusers: CogVideoXPipeline). First local Apple Silicon text-to-video target. Upstream documents English prompts, 720x480 output, 8 fps, 6-second clips, and FP16 as the recommended precision.",
+      "downloads": [
+        {
+          "key": "cogvideox-2b",
+          "engine": "diffusers",
+          "target": "diffusers",
+          "bits": 16,
+          "repo_id": "zai-org/CogVideoX-2b",
+          "source": "official",
+          "notes": "Official Diffusers snapshot."
+        }
+      ],
+      "tasks": {
+        "text_to_video": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "video"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "const": 720
+            },
+            "height": {
+              "required": false,
+              "const": 480
+            },
+            "fps": {
+              "required": false,
+              "default": 8
+            },
+            "num_frames": {
+              "required": false,
+              "default": 49,
+              "min": 9
+            },
+            "steps": {
+              "required": false,
+              "default": 50,
+              "min": 1
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 6
+            },
+            "seed": {
+              "required": false
+            }
+          }
+        }
+      }
+    },
     "zai-org/CogVideoX1.5-5B": {
       "provider": "huggingface",
       "license": "other",

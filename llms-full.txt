@@ -52,14 +52,15 @@ Agent quickstart (choose the path that matches your goal):
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md` (includes local model residency control for in-process backends).
 - **Inspect provider model catalogs**: use `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, or `llm.vision.list_provider_models(...)`; catalog listing is explicit and does not select the active model.
-- **Inspect local model/task metadata**: use `abstractvision model-catalog`, `abstractvision show-model`, or `GET /v1/vision/models`; `image_to_image` in `task_specs` is the explicit edit-capability signal for local surfaces.
+- **Inspect local model/task metadata**: use `abstractvision model-catalog`, `abstractvision show-model`, or `GET /v1/vision/models`; `image_to_image` and `text_to_video` in `task_specs` are the explicit local edit/video-capability signals for the interactive surfaces.
 - **Need the model curation policy**: read `docs/reference/capabilities-registry.md`, `docs/adr/0005_curated_capability_registry_and_download_catalog.md`, and `docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
 - **Need local Diffusers**: install `abstractvision[diffusers]`, set `ABSTRACTVISION_BACKEND=diffusers`, pre-download `runwayml/stable-diffusion-v1-5`, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
 
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image` and `image_to_image`.
-- `text_to_video` and `image_to_video` are supported only via the OpenAI-compatible backend when video endpoints are configured.
+- Local Diffusers also implements `text_to_video` for the CogVideoX-2b family (`zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`).
+- `image_to_video` is supported only via the OpenAI-compatible backend when video endpoints are configured.
 - `multi_view_image` exists in the API but no built-in backend implements it yet.
 - Provider `/models` catalogs can be listed explicitly, including through the AbstractCore plugin boundary; they are not used for automatic model selection.
 - Backend normalization is shared across `VisionManager`, the playground API, and the AbstractCore plugin, so model-specific parameter constraints are enforced once in the backend layer instead of separately in each UI.
@@ -70,6 +71,7 @@ Reality checks (current shipped behavior, anchored in code):
 - [README.md](README.md): overview, install, quickstart
 - [docs/README.md](docs/README.md): docs index (map)
 - [docs/getting-started.md](docs/getting-started.md): first image (OpenAI-compatible HTTP / Diffusers / sdcpp) + Playground
+- [docs/troubleshooting.md](docs/troubleshooting.md): symptom-oriented setup/runtime fixes for local backends, playground, and integration issues
 - [docs/api.md](docs/api.md): public Python API surface
 - [docs/architecture.md](docs/architecture.md): how components fit together (with diagrams)
 - [docs/faq.md](docs/faq.md): common questions + troubleshooting
@@ -100,7 +102,7 @@ Reality checks (current shipped behavior, anchored in code):
 - [src/abstractvision/backends/base_backend.py](src/abstractvision/backends/base_backend.py): `VisionBackend` contract
 - [src/abstractvision/backends/__init__.py](src/abstractvision/backends/__init__.py): lazy imports (keeps `import abstractvision` import-light)
 - [src/abstractvision/backends/openai_compatible.py](src/abstractvision/backends/openai_compatible.py): OpenAI-compatible HTTP backend (+ optional video)
-- [src/abstractvision/backends/huggingface_diffusers.py](src/abstractvision/backends/huggingface_diffusers.py): local Diffusers backend (T2I/I2I)
+- [src/abstractvision/backends/huggingface_diffusers.py](src/abstractvision/backends/huggingface_diffusers.py): local Diffusers backend (T2I/I2I + CogVideoX T2V)
 - [src/abstractvision/backends/stable_diffusion_cpp.py](src/abstractvision/backends/stable_diffusion_cpp.py): stable-diffusion.cpp backend (GGUF via `sd-cli` or python bindings)
 - [src/abstractvision/model_capabilities.py](src/abstractvision/model_capabilities.py): capability registry loader + validator
 - [src/abstractvision/artifacts.py](src/abstractvision/artifacts.py): artifact refs + stores (`LocalAssetStore`, `RuntimeArtifactStoreAdapter`)
@@ -162,8 +164,9 @@ flowchart LR
 ## Status (current backend support)
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
-- Built-in backends implement: `text_to_image` and `image_to_image`.
-- Video (`text_to_video`, `image_to_video`) is supported only via the OpenAI-compatible backend **when** endpoints are configured.
+- Built-in backends implement images: `text_to_image` and `image_to_image`.
+- Local Diffusers also implements `text_to_video` for the `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b` family.
+- `image_to_video` is currently supported only via the OpenAI-compatible backend **when** endpoints are configured.
 - `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
 
 Details: [`docs/reference/backends.md`](docs/reference/backends.md).
@@ -234,6 +237,7 @@ pip install -e ".[dev]"
 Start here:
 - Getting started: [`docs/getting-started.md`](docs/getting-started.md)
 - FAQ: [`docs/faq.md`](docs/faq.md)
+- Troubleshooting: [`docs/troubleshooting.md`](docs/troubleshooting.md)
 - API reference: [`docs/api.md`](docs/api.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Capability registry + catalog policy: [`docs/reference/capabilities-registry.md`](docs/reference/capabilities-registry.md), [`docs/adr/README.md`](docs/adr/README.md)
@@ -284,6 +288,7 @@ abstractvision download-model ernie-image --provider diffusers
 abstractvision download-model qwen-image-edit --provider diffusers
 abstractvision download-model glm-image --provider diffusers
 abstractvision download-model flux2-dev --provider diffusers
+abstractvision download-model cogvideox-2b --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -394,6 +399,13 @@ from source (see [`docs/getting-started.md`](docs/getting-started.md)):
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
 ```
 
+For local Diffusers text→video on Apple Silicon:
+
+```text
+/backend diffusers zai-org/CogVideoX-2b mps float16
+/t2v "a red fox walking through a snowy forest, cinematic" --num-frames 9 --steps 1 --fps 8 --open
+```
+
 For Apple Silicon 8-bit local generation through MFLUX:
 
 ```text
@@ -425,7 +437,9 @@ Open `http://127.0.0.1:8091/vision_playground.html`, select a cached model, then
 Current behavior:
 - Selecting a model switches to it by auto-loading the new backend/model; there is no separate unload step in the UI.
 - The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry.
+- The Text→Video panel is enabled only for models that advertise `text_to_video`; the first shipped local path is Diffusers `zai-org/CogVideoX-2b`.
 - Model-specific request normalization happens at the API/backend layer, not just in the page. The same MFLUX and GLM parameter corrections therefore apply to the playground, `abstractvision cli`, and AbstractCore.
+- Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
 One-shot commands default to the OpenAI-compatible HTTP backend, but they also support local providers:
@@ -434,6 +448,7 @@ One-shot commands default to the OpenAI-compatible HTTP backend, but they also s
 abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"
 abstractvision i2i --base-url http://localhost:1234/v1 --image ./input.png "make it watercolor"
 abstractvision t2i --provider diffusers --model qwen-image "a studio photo of an espresso machine"
+abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"
 ```
 
 #### Local GGUF via stable-diffusion.cpp
@@ -536,6 +551,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 ## Quick reference
 
 - [FAQ](faq.md)
+- [Troubleshooting](troubleshooting.md)
 - [API reference](api.md)
 - [Architecture decisions](adr/README.md)
 - [Backends](reference/backends.md)
@@ -562,7 +578,9 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Video**: OpenAI-compatible HTTP only, and only when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
+- **Video**:
+  - local Diffusers `text_to_video` for the `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b` family ([`huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
+  - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
 If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
 [`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) (loaded by `VisionModelCapabilitiesRegistry` in [`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
@@ -598,6 +616,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 See also:
 - Docs index: [docs/README.md](README.md)
 - FAQ: [docs/faq.md](faq.md)
+- Troubleshooting: [docs/troubleshooting.md](troubleshooting.md)
 - API reference: [docs/api.md](api.md)
 - Architecture: [docs/architecture.md](architecture.md)
 - Backends: [docs/reference/backends.md](reference/backends.md)
@@ -1144,9 +1163,23 @@ Open:
 In the UI:
 - The API Base URL defaults to the same process that serves the page
 - Select a cached model and load it
-- Generate (T2I) or upload an input image (I2I) and run edits
+- Generate (T2I), upload an input image (I2I), or use the Text→Video panel when the loaded model advertises `text_to_video`
 
 For the endpoint list, see `playground/README.md`.
+
+### 7.2 Optional local text→video with Diffusers
+
+The first shipped local video path is the CogVideoX-2b Diffusers family. On Apple Silicon, use `mps` plus `float16`:
+
+```bash
+abstractvision download-model cogvideox-2b --provider diffusers
+abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"
+```
+
+Notes:
+- local MP4 export requires an `ffmpeg` executable on `PATH`;
+- backend normalization applies the model defaults/constraints, so CogVideoX requests are clamped to the supported `720x480` shape and default `8 fps` when you omit them;
+- the playground Text→Video panel becomes available when this model is selected and loaded.
 --- >8 --- END FILE: docs/getting-started.md --- >8 ---
 
 --- 8< --- FILE: docs/api.md --- 8< ---
@@ -1192,7 +1225,7 @@ Backends are execution engines that implement the `VisionBackend` interface ([`.
 
 Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/):
 - `OpenAICompatibleVisionBackend` (HTTP)
-- `HuggingFaceDiffusersVisionBackend` (local Diffusers)
+- `HuggingFaceDiffusersVisionBackend` (local Diffusers images + CogVideoX text-to-video)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
 - `MFluxVisionBackend` (local Apple Silicon MFLUX bridge for curated MLX presets)
 
@@ -1272,6 +1305,8 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 ```
 
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
+
+For local text→video, switch the Diffusers model id to `zai-org/CogVideoX-2b` (or `THUDM/CogVideoX-2b`) and call `generate_video(...)`. Generated MP4 outputs require an `ffmpeg` executable on `PATH`.
 
 ## Passing advanced backend parameters (`extra`)
 
@@ -1427,7 +1462,8 @@ The public API includes `text_to_video`, `image_to_video`, and `multi_view_image
   - Diffusers backend ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
   - stable-diffusion.cpp backend ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
   - MFLUX backend for curated Apple Silicon MLX presets ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py))
-- Video is supported **only** by the OpenAI-compatible backend, and only when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).
+- Local Diffusers also supports `text_to_video` for the CogVideoX-2b family (`zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`) ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)).
+- `image_to_video` is still supported **only** by the OpenAI-compatible backend, and only when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).
 - No built-in backend implements `multi_view_image` yet (they raise `CapabilityNotSupportedError` in `generate_angles(...)`).
 
 For a detailed support matrix and configuration options, see [docs/reference/backends.md](reference/backends.md).
@@ -1513,7 +1549,8 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Video (`text_to_video`, `image_to_video`) works only via the OpenAI-compatible backend **when** video endpoints are configured.
+- Local Diffusers also implements `text_to_video` for the CogVideoX-2b family (`zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`).
+- `image_to_video` still works only via the OpenAI-compatible backend **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
 
 Details: [docs/reference/backends.md](reference/backends.md).
@@ -1521,7 +1558,7 @@ Details: [docs/reference/backends.md](reference/backends.md).
 ## Which backend should I use?
 
 - **OpenAI-compatible HTTP** ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).
-- **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps).
+- **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps). This now includes the first local `text_to_video` path through CogVideoX-2b.
 - **stable-diffusion.cpp (local GGUF)** ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py)): run GGUF diffusion models via `sd-cli` or `stable-diffusion-cpp-python`.
 
 ## What model should I start with (local)?
@@ -1545,11 +1582,15 @@ More model recommendations (by VRAM tier) are in [docs/getting-started.md](getti
 After that works, `black-forest-labs/FLUX.2-klein-4B` is the recommended next local test for a newer non-gated model
 (it currently requires Diffusers from source).
 
-## Does `abstractvision t2i` run locally?
+## Do the one-shot CLI commands run locally?
 
-Yes. `abstractvision t2i` / `abstractvision i2i` default to the OpenAI-compatible HTTP backend, but they also support local providers through `--provider diffusers`, `--provider mflux`, or `--provider sdcpp` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default to the OpenAI-compatible HTTP backend, but they also support local providers through `--provider diffusers`, `--provider mflux`, or `--provider sdcpp` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
 
 For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mflux ...`, or `/backend sdcpp ...`.
+
+Current local video note:
+- the first local one-shot/repl `t2v` path is Diffusers `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`;
+- generated MP4 outputs require `ffmpeg` on `PATH`.
 
 ## Where do generated outputs go?
 
@@ -1664,14 +1705,14 @@ See also:
 | Backend | Implementation | Tasks implemented | Notes |
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
-| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. |
+| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image`, `text_to_video` (CogVideoX-2b family) | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. Local MP4 export uses `ffmpeg` from `PATH`. |
 | MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
 - `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
-- Backends may also expose best-effort `get_capabilities()`, `preload()`, `unload()`, `generate_image_with_progress(...)`, and `edit_image_with_progress(...)` hooks via the shared `VisionBackend` contract.
-- Backends may also implement `normalize_image_generation_request(...)` and `normalize_image_edit_request(...)`. `VisionManager`, the CLI/REPL, the playground API, and the AbstractCore plugin all route through those hooks so model-specific defaults and constraints are applied consistently instead of being hard-coded in one surface.
+- Backends may also expose best-effort `get_capabilities()`, `preload()`, `unload()`, `generate_image_with_progress(...)`, `edit_image_with_progress(...)`, and video progress hooks via the shared `VisionBackend` contract.
+- Backends may also implement `normalize_image_generation_request(...)`, `normalize_image_edit_request(...)`, `normalize_video_generation_request(...)`, and `normalize_image_to_video_request(...)`. `VisionManager`, the CLI/REPL, the playground API, and the AbstractCore plugin all route through those hooks so model-specific defaults and constraints are applied consistently instead of being hard-coded in one surface.
 
 ## OpenAI-compatible HTTP backend
 
@@ -1739,11 +1780,13 @@ Model downloads (curated):
   - `abstractvision download-model qwen-image-edit --provider diffusers`
   - `abstractvision download-model glm-image --provider diffusers`
   - `abstractvision download-model flux2-dev --provider diffusers`
+  - `abstractvision download-model cogvideox-2b --provider diffusers`
   - `abstractvision download-model flux2-klein-4b --provider diffusers`
   - `abstractvision download-model z-image-turbo --provider diffusers`
 
 One-shot generation (uses the cached snapshot when present):
 - `abstractvision t2i --provider diffusers --model qwen-image "a studio photo of a ceramic teapot"`
+- `abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"`
 
 Code pointers:
 - Config: `HuggingFaceDiffusersBackendConfig` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
@@ -1762,7 +1805,9 @@ Config fields:
 
 Runtime behavior notes:
 - The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
-- This is where model-specific defaults and constraints such as GLM `guidance_scale=1.5`, GLM `steps=20`, 32-multiple dimensions, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.
+- Local Diffusers `text_to_video` is intentionally narrow today: the first shipped path is the CogVideoX-2b family (`zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`).
+- Local video export requires an `ffmpeg` executable on `PATH` so generated frames can be packaged as MP4 artifact outputs.
+- This is where model-specific defaults and constraints such as GLM `guidance_scale=1.5`, CogVideoX `720x480` / `8 fps` defaults, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.
 
 ## MFLUX backend (local Apple Silicon)
 
@@ -1850,10 +1895,10 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision cli` — interactive testing (supports `openai`, `diffusers`, `mflux`, `sdcpp`; legacy alias: `abstractvision repl`)
 - `abstractvision playground [--host 127.0.0.1] [--port 8091]` — self-contained local web UI and `/v1/vision/*` API
 - `abstractvision serve [--host 127.0.0.1] [--port 8091]` — alias for `abstractvision playground`
-- `abstractvision t2i ...` / `abstractvision i2i ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mflux`, and `sdcpp`)
+- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mflux`, and `sdcpp`, with `t2v` currently implemented locally through Diffusers)
 
 Note:
-- `abstractvision t2i` / `abstractvision i2i` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mflux|sdcpp` (legacy alias: `--backend`).
+- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mflux|sdcpp` (legacy alias: `--backend`).
 - Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 
 ## Interactive CLI backend selection
@@ -1868,6 +1913,8 @@ Inside `abstractvision cli`:
 - `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`
 
 Run `/help` in the interactive CLI to see the full command list (generated by `_repl_help()` in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py)).
+
+Interactive generation commands include `/t2i`, `/i2i`, and `/t2v`. The first shipped local REPL video path is Diffusers `zai-org/CogVideoX-2b`.
 
 Important runtime note:
 - Model-specific request adjustments are not implemented only in the interactive UI. The shared backend normalization hooks are applied by `VisionManager` and by the playground API server, so the same parameter corrections reach `abstractvision cli`, the legacy `repl` alias, one-shot CLI commands, the playground, and the AbstractCore plugin.
@@ -1914,7 +1961,7 @@ Note:
 - `ABSTRACTVISION_DIFFUSERS_DEVICE` — `auto` (default), `cpu`, `cuda`, `mps`, …
 - `ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE` — optional (`float16`, `bfloat16`, `float32`)
 - `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD` — `0` (default/cache-only/offline) or `1` to permit runtime downloads
-- `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32` — `1` (default) or `0` (MPS-only fallback behavior)
+- `ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32` — `1` (default) or `0` (MPS-only image fallback behavior; local video does not auto-promote above 16-bit on MPS)
 
 Playground-only Diffusers vars:
 - `ABSTRACTVISION_ALLOW_DOWNLOAD` — legacy fallback used only when `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD` is unset
@@ -2396,7 +2443,7 @@ Current behavior:
 - OpenAI model ids are configured, not discovered dynamically. Providers may expose an OpenAI-compatible `GET /models` catalog; AbstractVision exposes it through `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, and the plugin method `llm.vision.list_provider_models(...)`, but the plugin does not call it automatically or use it to select a model. The static plugin default is `gpt-image-1`; set `OPENAI_IMAGE_MODEL_ID`, `OPENAI_IMAGE_MODEL`, `ABSTRACTVISION_MODEL_ID`, or `vision_model_id` for newer provider models.
 - Compatible HTTP: set `OPENAI_BASE_URL` to a local/remote compatible `/v1` server. Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
-- Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
+- Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5`, `zai-org/CogVideoX-2b`, or another supported Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set. The first shipped local plugin `t2v` path is `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`.
 - Local MFLUX (Apple Silicon): install `abstractvision[mflux]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mflux`. Download an 8-bit MLX/MFLUX preset with `abstractvision download-model flux2-klein-4b --provider mflux` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed model ids such as `mflux/flux2-klein-4b`.
 - stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure either a model path or a curated model key such as `flux2-klein-base-4b`. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
@@ -2524,6 +2571,8 @@ Current examples:
 - Distilled MFLUX/FLUX-family models can clamp guidance or minimum steps in the backend.
 - Diffusers-backed GLM Image requests pick up registry-driven defaults such as `guidance_scale`,
   recommended step counts, 32-multiple dimension rounding, and auto-derived edit dimensions.
+- Diffusers-backed CogVideoX video requests pick up registry-driven defaults such as `720x480`,
+  `8 fps`, default frame counts, and task-aware parameter filtering.
 - Unsupported parameters, such as negative prompts on constrained model families, are dropped in
   the backend rather than surfacing as per-surface validation bugs.
 
@@ -2563,6 +2612,7 @@ The page calls:
 - `GET /v1/vision/models` (list cached models + active model)
 - `POST /v1/vision/model/load` (load a model into memory)
 - `POST /v1/vision/jobs/images/generations` (start a text→image job)
+- `POST /v1/vision/jobs/videos/generations` (start a text→video job)
 - `POST /v1/vision/jobs/images/edits` (start an image→image job)
 - `GET /v1/vision/jobs/{job_id}` (poll job status)
   - on success, the page calls `GET /v1/vision/jobs/{job_id}?consume=1` to fetch-and-consume the result
@@ -2599,11 +2649,13 @@ Usage notes:
 - Raw Hugging Face model ids such as `runwayml/stable-diffusion-v1-5` load directly; no `diffusers/` provider prefix is required.
 - For first tests, prefer a small cached model such as Stable Diffusion 1.5 before loading larger Qwen/FLUX models.
 - The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry metadata returned by `/v1/vision/models`.
+- The Text→Video panel is enabled only for models that advertise `text_to_video` in that same metadata. The first shipped local path is Diffusers `zai-org/CogVideoX-2b`.
 - Response logs intentionally show a shortened `b64_json` preview instead of the full base64 payload.
 - “Extra JSON” is forwarded to the server:
   - T2I: merged into the JSON request body
   - I2I: sent as a string field `extra_json` in the multipart form body
 - Model-specific request fixes happen in the backend/API layer, so the same normalization rules apply to the playground, CLI/REPL, and AbstractCore integration.
+- Local video export requires an `ffmpeg` executable on `PATH`.
 
 ## 3) stable-diffusion.cpp / GGUF notes
 
@@ -2814,6 +2866,13 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
+
+## 0.3.9 - 2026-05-21
+
+- Local Diffusers video: implement the first in-process `text_to_video` path through `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`, including registry-backed request normalization, preload warmup, unload support, MPS-safe explicit FP16 device moves, and MP4 artifact outputs packaged through `ffmpeg`.
+- Interactive surfaces: add one-shot `abstractvision t2v`, REPL `/t2v`, and playground `Text → Video` generation with backend/task-aware model discovery, progress reporting, and catalog surfacing for local video-capable models.
+- AbstractCore integration: route plugin `t2v` / `i2v` calls through the same explicit backend binding path used by image generation, extend residency task aliases for video, and track request-warm local `text_to_video` models in the loaded-model inventory.
+- Catalog/tests/docs: add curated capability/download metadata for `zai-org/CogVideoX-2b`, keep local image-edit surfaces intact, expand backend/CLI/playground/plugin regression coverage, refresh README/reference/FAQ/getting-started docs, and regenerate `llms-full.txt`.
 
 ## 0.3.8 - 2026-05-20
 

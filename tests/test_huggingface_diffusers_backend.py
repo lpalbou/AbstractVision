@@ -18,6 +18,11 @@ class _FakeDiffusersOutput:
         self.images = [image]
 
 
+class _FakeVideoDiffusersOutput:
+    def __init__(self, frames):
+        self.frames = [list(frames)]
+
+
 class _FakePipeline:
     def __init__(self, image):
         self._image = image
@@ -29,9 +34,18 @@ class _FakePipeline:
         self.unfused = 0
         self.unloaded = 0
         self.registered = {}
+        self.device = None
+        self.dtype = None
 
-    def to(self, device):
-        self.to_calls.append(device)
+    def to(self, *args, **kwargs):
+        device = kwargs.get("device")
+        if device is None and args:
+            device = args[0]
+        if device is not None:
+            self.to_calls.append(device)
+            self.device = device
+        if "dtype" in kwargs:
+            self.dtype = kwargs["dtype"]
         return self
 
     def register_modules(self, **kwargs):
@@ -265,6 +279,17 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(set(caps.supported_tasks or []), {"text_to_image"})
         self.assertFalse(caps.supports_mask)
 
+    def test_get_capabilities_for_cogvideox_2b_only_exposes_text_to_video(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/CogVideoX-2b", device="cpu")
+        )
+        caps = backend.get_capabilities()
+
+        self.assertEqual(set(caps.supported_tasks or []), {"text_to_video"})
+        self.assertIsNone(caps.supports_mask)
+
     def test_normalize_glm_generation_request_uses_registry_defaults(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
         from abstractvision.types import ImageGenerationRequest
@@ -298,6 +323,24 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         self.assertIsNone(normalized.negative_prompt)
         self.assertEqual(normalized.guidance_scale, 1.0)
+
+    def test_normalize_cogvideox_video_request_uses_registry_defaults(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/CogVideoX-2b", device="cpu")
+        )
+        normalized = backend.normalize_video_generation_request(
+            VideoGenerationRequest(prompt="fox", width=513, height=511)
+        )
+
+        self.assertEqual(normalized.width, 720)
+        self.assertEqual(normalized.height, 480)
+        self.assertEqual(normalized.fps, 8)
+        self.assertEqual(normalized.num_frames, 49)
+        self.assertEqual(normalized.steps, 50)
+        self.assertEqual(normalized.guidance_scale, 6.0)
 
     def test_normalize_glm_edit_request_derives_dimensions_from_input(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -378,6 +421,73 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertIn("generator", call)
         self.assertEqual(call.get("foo"), "bar")
 
+    def test_generate_video_maps_common_params(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+
+        class _FakeVideoPipeline(_FakePipeline):
+            def __call__(self, **kwargs):
+                self.calls.append(kwargs)
+                return _FakeVideoDiffusersOutput([self._image] * 3)
+
+        fake_pipe = _FakeVideoPipeline(fake_image)
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_diffusion_pipeline_cls.from_pretrained.return_value = fake_pipe
+        fake_t2i_cls = MagicMock()
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ), patch("abstractvision.backends.huggingface_diffusers._frames_to_mp4_bytes", return_value=b"ftyp" + (b"\x00" * 8)):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/CogVideoX-2b", device="cpu")
+            )
+            asset = backend.generate_video(
+                VideoGenerationRequest(
+                    prompt="hello",
+                    negative_prompt="nope",
+                    width=720,
+                    height=480,
+                    fps=8,
+                    num_frames=9,
+                    steps=12,
+                    guidance_scale=7.5,
+                    seed=123,
+                    extra={"foo": "bar"},
+                )
+            )
+
+        self.assertEqual(asset.media_type, "video")
+        self.assertEqual(asset.mime_type, "video/mp4")
+        self.assertTrue(asset.data.startswith(b"ftyp"))
+        self.assertEqual(asset.metadata.get("fps"), 8)
+        self.assertEqual(asset.metadata.get("frame_count"), 3)
+
+        self.assertTrue(fake_diffusion_pipeline_cls.from_pretrained.called)
+        _, kwargs = fake_diffusion_pipeline_cls.from_pretrained.call_args
+        self.assertEqual(kwargs.get("local_files_only"), True)
+        self.assertEqual(kwargs.get("use_safetensors"), True)
+
+        self.assertEqual(len(fake_pipe.calls), 1)
+        call = fake_pipe.calls[0]
+        self.assertEqual(call.get("prompt"), "hello")
+        self.assertEqual(call.get("negative_prompt"), "nope")
+        self.assertEqual(call.get("width"), 720)
+        self.assertEqual(call.get("height"), 480)
+        self.assertEqual(call.get("num_frames"), 9)
+        self.assertEqual(call.get("num_inference_steps"), 12)
+        self.assertEqual(call.get("guidance_scale"), 7.5)
+        self.assertEqual(call.get("output_type"), "pil")
+        self.assertIn("generator", call)
+        self.assertEqual(call.get("foo"), "bar")
+
     def test_preload_runs_t2i_warmup_once_per_loaded_pipeline(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
 
@@ -410,6 +520,43 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertIn("generator", warmup)
         self.assertNotIn("width", warmup)
         self.assertNotIn("height", warmup)
+
+    def test_preload_runs_t2v_warmup_once_per_loaded_pipeline(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+
+        class _FakeVideoPipeline(_FakePipeline):
+            def __call__(self, **kwargs):
+                self.calls.append(kwargs)
+                return _FakeVideoDiffusersOutput([self._image] * 9)
+
+        fake_pipe = _FakeVideoPipeline(fake_image)
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_diffusion_pipeline_cls.from_pretrained.return_value = fake_pipe
+        fake_t2i_cls = MagicMock()
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ), patch("abstractvision.backends.huggingface_diffusers._frames_to_mp4_bytes", return_value=b"ftyp" + (b"\x00" * 8)):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/CogVideoX-2b", device="cpu")
+            )
+            backend.preload()
+            backend.preload()
+
+        self.assertEqual(fake_diffusion_pipeline_cls.from_pretrained.call_count, 1)
+        self.assertEqual(len(fake_pipe.calls), 1)
+        warmup = fake_pipe.calls[0]
+        self.assertEqual(warmup.get("prompt"), "abstractvision preload warmup")
+        self.assertEqual(warmup.get("num_inference_steps"), 1)
+        self.assertEqual(warmup.get("num_frames"), 9)
 
     def test_preload_serializes_concurrent_t2i_warmup(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -595,6 +742,39 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertTrue(asset.metadata.get("had_invalid_cast_warning"))
         self.assertFalse(asset.metadata.get("retried_fp32", False))
         retry.assert_not_called()
+
+    def test_text_to_video_dtype_retry_on_mps_does_not_escalate_above_16bit(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        class _FakeTorch:
+            float16 = object()
+            float32 = object()
+            bfloat16 = object()
+
+        pipe = MagicMock()
+        pipe.dtype = _FakeTorch.float16
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(
+                model_id="zai-org/CogVideoX-2b",
+                device="mps",
+                torch_dtype="float16",
+                auto_retry_fp32=True,
+            )
+        )
+
+        with patch("abstractvision.backends.huggingface_diffusers._lazy_import_torch", return_value=_FakeTorch), patch(
+            "abstractvision.backends.huggingface_diffusers._move_pipe_to_device"
+        ) as move:
+            out = backend._maybe_retry_on_dtype_mismatch(
+                kind="t2v",
+                pipe=pipe,
+                kwargs={"prompt": "hello"},
+                error=RuntimeError("Input type and bias type should be the same"),
+            )
+
+        self.assertIsNone(out)
+        move.assert_not_called()
 
     def test_edit_image_uses_inpaint_when_mask_provided(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend

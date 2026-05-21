@@ -37,8 +37,9 @@ flowchart LR
 ## Status (current backend support)
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
-- Built-in backends implement: `text_to_image` and `image_to_image`.
-- Video (`text_to_video`, `image_to_video`) is supported only via the OpenAI-compatible backend **when** endpoints are configured.
+- Built-in backends implement images: `text_to_image` and `image_to_image`.
+- Local Diffusers also implements `text_to_video` for the `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b` family.
+- `image_to_video` is currently supported only via the OpenAI-compatible backend **when** endpoints are configured.
 - `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
 
 Details: [`docs/reference/backends.md`](docs/reference/backends.md).
@@ -109,6 +110,7 @@ pip install -e ".[dev]"
 Start here:
 - Getting started: [`docs/getting-started.md`](docs/getting-started.md)
 - FAQ: [`docs/faq.md`](docs/faq.md)
+- Troubleshooting: [`docs/troubleshooting.md`](docs/troubleshooting.md)
 - API reference: [`docs/api.md`](docs/api.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Capability registry + catalog policy: [`docs/reference/capabilities-registry.md`](docs/reference/capabilities-registry.md), [`docs/adr/README.md`](docs/adr/README.md)
@@ -159,6 +161,7 @@ abstractvision download-model ernie-image --provider diffusers
 abstractvision download-model qwen-image-edit --provider diffusers
 abstractvision download-model glm-image --provider diffusers
 abstractvision download-model flux2-dev --provider diffusers
+abstractvision download-model cogvideox-2b --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -269,6 +272,13 @@ from source (see [`docs/getting-started.md`](docs/getting-started.md)):
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
 ```
 
+For local Diffusers text→video on Apple Silicon:
+
+```text
+/backend diffusers zai-org/CogVideoX-2b mps float16
+/t2v "a red fox walking through a snowy forest, cinematic" --num-frames 9 --steps 1 --fps 8 --open
+```
+
 For Apple Silicon 8-bit local generation through MFLUX:
 
 ```text
@@ -300,7 +310,9 @@ Open `http://127.0.0.1:8091/vision_playground.html`, select a cached model, then
 Current behavior:
 - Selecting a model switches to it by auto-loading the new backend/model; there is no separate unload step in the UI.
 - The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry.
+- The Text→Video panel is enabled only for models that advertise `text_to_video`; the first shipped local path is Diffusers `zai-org/CogVideoX-2b`.
 - Model-specific request normalization happens at the API/backend layer, not just in the page. The same MFLUX and GLM parameter corrections therefore apply to the playground, `abstractvision cli`, and AbstractCore.
+- Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
 One-shot commands default to the OpenAI-compatible HTTP backend, but they also support local providers:
@@ -309,6 +321,7 @@ One-shot commands default to the OpenAI-compatible HTTP backend, but they also s
 abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"
 abstractvision i2i --base-url http://localhost:1234/v1 --image ./input.png "make it watercolor"
 abstractvision t2i --provider diffusers --model qwen-image "a studio photo of an espresso machine"
+abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"
 ```
 
 #### Local GGUF via stable-diffusion.cpp

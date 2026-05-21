@@ -11,6 +11,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 See also:
 - Docs index: [docs/README.md](README.md)
 - FAQ: [docs/faq.md](faq.md)
+- Troubleshooting: [docs/troubleshooting.md](troubleshooting.md)
 - API reference: [docs/api.md](api.md)
 - Architecture: [docs/architecture.md](architecture.md)
 - Backends: [docs/reference/backends.md](reference/backends.md)
@@ -557,6 +558,20 @@ Open:
 In the UI:
 - The API Base URL defaults to the same process that serves the page
 - Select a cached model and load it
-- Generate (T2I) or upload an input image (I2I) and run edits
+- Generate (T2I), upload an input image (I2I), or use the Text→Video panel when the loaded model advertises `text_to_video`
 
 For the endpoint list, see `playground/README.md`.
+
+### 7.2 Optional local text→video with Diffusers
+
+The first shipped local video path is the CogVideoX-2b Diffusers family. On Apple Silicon, use `mps` plus `float16`:
+
+```bash
+abstractvision download-model cogvideox-2b --provider diffusers
+abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"
+```
+
+Notes:
+- local MP4 export requires an `ffmpeg` executable on `PATH`;
+- backend normalization applies the model defaults/constraints, so CogVideoX requests are clamped to the supported `720x480` shape and default `8 fps` when you omit them;
+- the playground Text→Video panel becomes available when this model is selected and loaded.

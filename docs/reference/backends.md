@@ -12,14 +12,14 @@ See also:
 | Backend | Implementation | Tasks implemented | Notes |
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
-| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. |
+| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image`, `text_to_video` (CogVideoX-2b family) | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. Local MP4 export uses `ffmpeg` from `PATH`. |
 | MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
 - `multi_view_image` (`VisionManager.generate_angles`) is part of the public API, but **no built-in backend implements it yet** (all raise `CapabilityNotSupportedError` today).
-- Backends may also expose best-effort `get_capabilities()`, `preload()`, `unload()`, `generate_image_with_progress(...)`, and `edit_image_with_progress(...)` hooks via the shared `VisionBackend` contract.
-- Backends may also implement `normalize_image_generation_request(...)` and `normalize_image_edit_request(...)`. `VisionManager`, the CLI/REPL, the playground API, and the AbstractCore plugin all route through those hooks so model-specific defaults and constraints are applied consistently instead of being hard-coded in one surface.
+- Backends may also expose best-effort `get_capabilities()`, `preload()`, `unload()`, `generate_image_with_progress(...)`, `edit_image_with_progress(...)`, and video progress hooks via the shared `VisionBackend` contract.
+- Backends may also implement `normalize_image_generation_request(...)`, `normalize_image_edit_request(...)`, `normalize_video_generation_request(...)`, and `normalize_image_to_video_request(...)`. `VisionManager`, the CLI/REPL, the playground API, and the AbstractCore plugin all route through those hooks so model-specific defaults and constraints are applied consistently instead of being hard-coded in one surface.
 
 ## OpenAI-compatible HTTP backend
 
@@ -87,11 +87,13 @@ Model downloads (curated):
   - `abstractvision download-model qwen-image-edit --provider diffusers`
   - `abstractvision download-model glm-image --provider diffusers`
   - `abstractvision download-model flux2-dev --provider diffusers`
+  - `abstractvision download-model cogvideox-2b --provider diffusers`
   - `abstractvision download-model flux2-klein-4b --provider diffusers`
   - `abstractvision download-model z-image-turbo --provider diffusers`
 
 One-shot generation (uses the cached snapshot when present):
 - `abstractvision t2i --provider diffusers --model qwen-image "a studio photo of a ceramic teapot"`
+- `abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"`
 
 Code pointers:
 - Config: `HuggingFaceDiffusersBackendConfig` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
@@ -110,7 +112,9 @@ Config fields:
 
 Runtime behavior notes:
 - The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
-- This is where model-specific defaults and constraints such as GLM `guidance_scale=1.5`, GLM `steps=20`, 32-multiple dimensions, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.
+- Local Diffusers `text_to_video` is intentionally narrow today: the first shipped path is the CogVideoX-2b family (`zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`).
+- Local video export requires an `ffmpeg` executable on `PATH` so generated frames can be packaged as MP4 artifact outputs.
+- This is where model-specific defaults and constraints such as GLM `guidance_scale=1.5`, CogVideoX `720x480` / `8 fps` defaults, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.
 
 ## MFLUX backend (local Apple Silicon)
 

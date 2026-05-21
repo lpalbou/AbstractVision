@@ -25,7 +25,7 @@ Current behavior:
 - OpenAI model ids are configured, not discovered dynamically. Providers may expose an OpenAI-compatible `GET /models` catalog; AbstractVision exposes it through `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, and the plugin method `llm.vision.list_provider_models(...)`, but the plugin does not call it automatically or use it to select a model. The static plugin default is `gpt-image-1`; set `OPENAI_IMAGE_MODEL_ID`, `OPENAI_IMAGE_MODEL`, `ABSTRACTVISION_MODEL_ID`, or `vision_model_id` for newer provider models.
 - Compatible HTTP: set `OPENAI_BASE_URL` to a local/remote compatible `/v1` server. Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
-- Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set.
+- Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5`, `zai-org/CogVideoX-2b`, or another supported Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set. The first shipped local plugin `t2v` path is `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`.
 - Local MFLUX (Apple Silicon): install `abstractvision[mflux]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mflux`. Download an 8-bit MLX/MFLUX preset with `abstractvision download-model flux2-klein-4b --provider mflux` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed model ids such as `mflux/flux2-klein-4b`.
 - stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure either a model path or a curated model key such as `flux2-klein-base-4b`. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
@@ -153,6 +153,8 @@ Current examples:
 - Distilled MFLUX/FLUX-family models can clamp guidance or minimum steps in the backend.
 - Diffusers-backed GLM Image requests pick up registry-driven defaults such as `guidance_scale`,
   recommended step counts, 32-multiple dimension rounding, and auto-derived edit dimensions.
+- Diffusers-backed CogVideoX video requests pick up registry-driven defaults such as `720x480`,
+  `8 fps`, default frame counts, and task-aware parameter filtering.
 - Unsupported parameters, such as negative prompts on constrained model families, are dropped in
   the backend rather than surfacing as per-surface validation bugs.
 

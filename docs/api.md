@@ -40,7 +40,7 @@ Backends are execution engines that implement the `VisionBackend` interface ([`.
 
 Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/):
 - `OpenAICompatibleVisionBackend` (HTTP)
-- `HuggingFaceDiffusersVisionBackend` (local Diffusers)
+- `HuggingFaceDiffusersVisionBackend` (local Diffusers images + CogVideoX text-to-video)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
 - `MFluxVisionBackend` (local Apple Silicon MFLUX bridge for curated MLX presets)
 
@@ -120,6 +120,8 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 ```
 
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
+
+For local text→video, switch the Diffusers model id to `zai-org/CogVideoX-2b` (or `THUDM/CogVideoX-2b`) and call `generate_video(...)`. Generated MP4 outputs require an `ffmpeg` executable on `PATH`.
 
 ## Passing advanced backend parameters (`extra`)
 

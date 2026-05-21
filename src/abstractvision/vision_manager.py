@@ -118,12 +118,20 @@ class VisionManager:
         backend = self._require_backend()
         self._require_model_support("text_to_video")
         self._require_backend_support(backend, "text_to_video")
-        asset = backend.generate_video(VideoGenerationRequest(prompt=prompt, **kwargs))
+        request = VideoGenerationRequest(prompt=prompt, **kwargs)
+        normalize = getattr(backend, "normalize_video_generation_request", None)
+        if callable(normalize):
+            request = normalize(request)
+        asset = backend.generate_video(request)
         return self._maybe_store(asset, tags={"kind": "generated_media", "modality": "video", "task": "text_to_video"})
 
     def image_to_video(self, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("image_to_video")
         self._require_backend_support(backend, "image_to_video")
-        asset = backend.image_to_video(ImageToVideoRequest(image=image, **kwargs))
+        request = ImageToVideoRequest(image=image, **kwargs)
+        normalize = getattr(backend, "normalize_image_to_video_request", None)
+        if callable(normalize):
+            request = normalize(request)
+        asset = backend.image_to_video(request)
         return self._maybe_store(asset, tags={"kind": "generated_media", "modality": "video", "task": "image_to_video"})

@@ -32,6 +32,20 @@ class VisionBackend(ABC):
         """Best-effort request normalization before execution."""
         return request
 
+    def normalize_video_generation_request(
+        self,
+        request: VideoGenerationRequest,
+    ) -> VideoGenerationRequest:
+        """Best-effort request normalization before execution."""
+        return request
+
+    def normalize_image_to_video_request(
+        self,
+        request: ImageToVideoRequest,
+    ) -> ImageToVideoRequest:
+        """Best-effort request normalization before execution."""
+        return request
+
     def generate_image_with_progress(
         self,
         request: ImageGenerationRequest,
@@ -49,6 +63,24 @@ class VisionBackend(ABC):
         """Edit an image, optionally reporting progress (best-effort)."""
         _ = progress_callback
         return self.edit_image(request)
+
+    def generate_video_with_progress(
+        self,
+        request: VideoGenerationRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        """Generate a video, optionally reporting progress (best-effort)."""
+        _ = progress_callback
+        return self.generate_video(request)
+
+    def image_to_video_with_progress(
+        self,
+        request: ImageToVideoRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        """Generate a video from an image, optionally reporting progress (best-effort)."""
+        _ = progress_callback
+        return self.image_to_video(request)
 
     def get_capabilities(self) -> Optional[VisionBackendCapabilities]:
         """Return backend-level capability constraints (optional)."""

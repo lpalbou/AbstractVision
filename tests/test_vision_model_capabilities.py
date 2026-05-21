@@ -14,6 +14,7 @@ ALL_MODELS = [
     "Wan-AI/Wan2.2-T2V-A14B",
     "tencent/HunyuanVideo-1.5",
     "genmo/mochi-1-preview",
+    "zai-org/CogVideoX-2b",
     "zai-org/GLM-Image",
     "Tongyi-MAI/Z-Image-Turbo",
     "Lightricks/LTX-2",
@@ -44,6 +45,7 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         self.assertTrue(reg.supports("Wan-AI/Wan2.2-T2V-A14B", "text_to_video"))
         self.assertTrue(reg.supports("tencent/HunyuanVideo-1.5", "text_to_video"))
         self.assertTrue(reg.supports("genmo/mochi-1-preview", "text_to_video"))
+        self.assertTrue(reg.supports("zai-org/CogVideoX-2b", "text_to_video"))
 
         self.assertTrue(reg.supports("Lightricks/LTX-2", "image_to_video"))
 
