@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.12 - 2026-05-22
+
+- Release packaging: publish the current clean tracked repository state as a fresh patch release.
+
 ## 0.3.11 - 2026-05-22
 
 - Hugging Face cache integrity: treat repo-level `.incomplete` blobs as an incomplete snapshot, so interrupted Diffusers downloads no longer masquerade as a usable cached model.
