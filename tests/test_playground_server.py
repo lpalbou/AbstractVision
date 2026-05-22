@@ -248,13 +248,17 @@ class TestPlaygroundServer(unittest.TestCase):
     def test_catalog_surfaces_mflux_flux2_klein_for_text_to_image_only(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
 
-        state = PlaygroundState(
-            PlaygroundServerConfig(
-                diffusers_allow_download=False,
-                default_model_id="",
+        with patch(
+            "abstractvision.playground_server.catalog_target_scope",
+            return_value={"diffusers", "mlx"},
+        ):
+            state = PlaygroundState(
+                PlaygroundServerConfig(
+                    diffusers_allow_download=False,
+                    default_model_id="",
+                )
             )
-        )
-        out = state.list_models()
+            out = state.list_models()
 
         flux2 = next(m for m in out["models"] if m["load_id"] == "mflux/flux2-klein-9b")
         self.assertEqual(flux2["tasks"], ["text_to_image"])
