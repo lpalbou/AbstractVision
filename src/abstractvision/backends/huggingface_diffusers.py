@@ -93,6 +93,12 @@ _SUPPORTED_LOCAL_DIFFUSERS_TEXT_TO_VIDEO_MODELS = {
     "zai-org/cogvideox-2b",
     "thudm/cogvideox-2b",
 }
+_TEMPORARILY_DISABLED_LOCAL_DIFFUSERS_TASKS: Dict[str, set[str]] = {
+    "zai-org/glm-image": {"text_to_image", "image_to_image"},
+    "zai-org/cogvideox-2b": {"text_to_video"},
+    "thudm/cogvideox-2b": {"text_to_video"},
+}
+_DEFAULT_REQUIRED_IMAGE_DIMENSION = 512
 
 
 def _lazy_import_diffusers():
@@ -273,6 +279,7 @@ def _ensure_pipeline_chat_templates(
 
 
 _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED = False
+_TRANSFORMERS_GLM_IMAGE_MPS_GRID_SAMPLE_PATCHED = False
 
 
 def _maybe_patch_transformers_clip_position_ids() -> None:
@@ -349,6 +356,103 @@ def _maybe_patch_transformers_clip_position_ids() -> None:
     _patch(CLIPTextEmbeddings)
     _patch(CLIPVisionEmbeddings)
     _TRANSFORMERS_CLIP_POSITION_IDS_PATCHED = True
+
+
+def _glm_image_position_embedding_with_cpu_grid_sample(
+    self: Any,
+    embeddings: Any,
+    lengths: Any,
+    image_shapes: Any,
+    h_coords: Any,
+    w_coords: Any,
+    *,
+    torch: Any,
+    F: Any,
+) -> Any:
+    pos_embed_weight = self.position_embedding.weight
+    hidden_size = pos_embed_weight.shape[1]
+    device = pos_embed_weight.device
+
+    if isinstance(lengths, list):
+        lengths = torch.tensor(lengths, device=device, dtype=torch.long)
+
+    orig_size_sq = pos_embed_weight.shape[0]
+    orig_size = int(orig_size_sq**0.5)
+    pos_embed_2d = (
+        pos_embed_weight.view(orig_size, orig_size, hidden_size)
+        .permute(2, 0, 1)
+        .unsqueeze(0)
+        .to(device=device, dtype=torch.float32)
+    )
+
+    target_h = torch.cat([image_shapes[i, 1].repeat(lengths[i]) for i in range(len(lengths))]).to(
+        device=device, dtype=torch.float32
+    )
+    target_w = torch.cat([image_shapes[i, 2].repeat(lengths[i]) for i in range(len(lengths))]).to(
+        device=device, dtype=torch.float32
+    )
+
+    norm_w = ((w_coords + 0.5) / target_w) * 2 - 1
+    norm_h = ((h_coords + 0.5) / target_h) * 2 - 1
+    grid = torch.stack((norm_w, norm_h), dim=-1).unsqueeze(0).unsqueeze(2)
+
+    interpolated_embed_fp32 = F.grid_sample(
+        pos_embed_2d.detach().to("cpu", dtype=torch.float32),
+        grid.detach().to("cpu", dtype=torch.float32),
+        mode=self.interpolated_method,
+        align_corners=False,
+        padding_mode="border",
+    ).to(device=embeddings.device, dtype=torch.float32)
+
+    adapted_pos_embed_fp32 = interpolated_embed_fp32.squeeze(0).squeeze(-1).permute(1, 0)
+    adapted_pos_embed = adapted_pos_embed_fp32.to(pos_embed_weight.dtype).to(embeddings.device)
+    return embeddings + adapted_pos_embed
+
+
+def _maybe_patch_transformers_glm_image_mps_grid_sample() -> None:
+    global _TRANSFORMERS_GLM_IMAGE_MPS_GRID_SAMPLE_PATCHED
+    if _TRANSFORMERS_GLM_IMAGE_MPS_GRID_SAMPLE_PATCHED:
+        return
+
+    try:
+        import torch as _torch  # type: ignore
+        import torch.nn.functional as _F  # type: ignore
+        from transformers.models.glm_image.modeling_glm_image import GlmImageVisionEmbeddings  # type: ignore
+    except Exception:
+        return
+
+    if bool(getattr(GlmImageVisionEmbeddings, "_abstractvision_mps_grid_sample_patched", False)):
+        _TRANSFORMERS_GLM_IMAGE_MPS_GRID_SAMPLE_PATCHED = True
+        return
+
+    orig_forward = getattr(GlmImageVisionEmbeddings, "forward", None)
+    if not callable(orig_forward):
+        return
+
+    def _patched_forward(self: Any, embeddings: Any, lengths: Any, image_shapes: Any, h_coords: Any, w_coords: Any) -> Any:
+        try:
+            return orig_forward(self, embeddings, lengths, image_shapes, h_coords, w_coords)
+        except RuntimeError as e:
+            msg = str(e or "")
+            position_embedding = getattr(self, "position_embedding", None)
+            weight = getattr(position_embedding, "weight", None)
+            device = str(getattr(weight, "device", "") or "").lower()
+            if "Unsupported Border padding mode" not in msg or not (device == "mps" or device.startswith("mps:")):
+                raise
+            return _glm_image_position_embedding_with_cpu_grid_sample(
+                self,
+                embeddings,
+                lengths,
+                image_shapes,
+                h_coords,
+                w_coords,
+                torch=_torch,
+                F=_F,
+            )
+
+    setattr(GlmImageVisionEmbeddings, "forward", _patched_forward)
+    setattr(GlmImageVisionEmbeddings, "_abstractvision_mps_grid_sample_patched", True)
+    _TRANSFORMERS_GLM_IMAGE_MPS_GRID_SAMPLE_PATCHED = True
 
 
 @contextmanager
@@ -588,9 +692,30 @@ def _frames_to_mp4_bytes(frames: List[Any], *, fps: int) -> bytes:
         )
 
 
-def _maybe_upcast_vae_for_mps(torch: Any, pipe: Any, device: str) -> None:
+def _maybe_enable_video_pipeline_memory_savers(pipe: Any) -> None:
+    for attr in ("enable_attention_slicing", "enable_vae_slicing", "enable_vae_tiling"):
+        fn = getattr(pipe, attr, None)
+        if callable(fn):
+            try:
+                fn()
+            except Exception:
+                pass
+
+    vae = getattr(pipe, "vae", None)
+    for attr in ("enable_slicing", "enable_tiling"):
+        fn = getattr(vae, attr, None) if vae is not None else None
+        if callable(fn):
+            try:
+                fn()
+            except Exception:
+                pass
+
+
+def _maybe_upcast_vae_for_mps(torch: Any, pipe: Any, device: str, *, allow_fp32_vae: bool = True) -> None:
     d = str(device or "").strip().lower()
     if d != "mps" and not d.startswith("mps:"):
+        return
+    if not allow_fp32_vae:
         return
 
     # On Apple Silicon, some pipelines can produce NaNs/black images when decoding with a float16 VAE.
@@ -862,9 +987,46 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 return raw
         return raw
 
+    def _needs_list_wrapped_i2i_image(self, pipe: Any = None) -> bool:
+        model_id = self._canonical_model_id().lower()
+        if model_id == "zai-org/glm-image":
+            return True
+        pipe_name = type(pipe).__name__ if pipe is not None else ""
+        return pipe_name == "GlmImagePipeline"
+
+    def _preferred_torch_dtype_for_kind(
+        self,
+        kind: str,
+        device: Any,
+        torch: Any,
+        torch_dtype: Any,
+    ) -> Any:
+        if kind != "i2i":
+            return torch_dtype
+        model_id = self._canonical_model_id().lower()
+        device_name = str(device or "").strip().lower()
+        if model_id != "zai-org/glm-image" or not (device_name == "mps" or device_name.startswith("mps:")):
+            return torch_dtype
+        bf16 = getattr(torch, "bfloat16", None)
+        fp16 = getattr(torch, "float16", None)
+        if bf16 is None:
+            return torch_dtype
+        if torch_dtype is None or torch_dtype == fp16:
+            return bf16
+        return torch_dtype
+
+    def _is_temporarily_disabled_task(self, task: str, *, model_id: Optional[str] = None) -> bool:
+        canonical = self._canonical_model_id(model_id).lower()
+        disabled = _TEMPORARILY_DISABLED_LOCAL_DIFFUSERS_TASKS.get(canonical)
+        if not disabled:
+            return False
+        return str(task) in disabled
+
     def _supports_local_text_to_video(self, model_id: Optional[str] = None) -> bool:
         resolved_model_id = str(model_id if model_id is not None else self._cfg.model_id or "").strip()
         if not resolved_model_id:
+            return False
+        if self._is_temporarily_disabled_task("text_to_video", model_id=resolved_model_id):
             return False
         reg = self._registry()
         if reg is not None:
@@ -880,6 +1042,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return False
 
     def _supports_backend_task(self, task: str, *, model_id: Optional[str] = None) -> bool:
+        if self._is_temporarily_disabled_task(task, model_id=model_id):
+            return False
         if task == "text_to_video":
             return self._supports_local_text_to_video(model_id=model_id)
         if task == "image_to_video":
@@ -907,6 +1071,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
     def _preload_pipeline_kind(self) -> str:
         tasks = set(self._supported_task_names())
+        if not tasks:
+            raise CapabilityNotSupportedError(
+                "This model is temporarily disabled in the local Diffusers backend pending runtime-quality investigation."
+            )
         if "text_to_image" in tasks:
             return "t2i"
         if "text_to_video" in tasks:
@@ -983,6 +1151,38 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 pass
         return out
 
+    def _normalize_required_image_dimensions(
+        self,
+        *,
+        width_value: Optional[int],
+        height_value: Optional[int],
+        params: Dict[str, Any],
+        input_image_size: Optional[Tuple[int, int]] = None,
+    ) -> Tuple[Optional[int], Optional[int]]:
+        width_spec = params.get("width")
+        height_spec = params.get("height")
+
+        width = self._normalize_int_param(width_value, width_spec)
+        height = self._normalize_int_param(height_value, height_spec)
+
+        width_required = isinstance(width_spec, dict) and bool(width_spec.get("required"))
+        height_required = isinstance(height_spec, dict) and bool(height_spec.get("required"))
+        width_auto = isinstance(width_spec, dict) and bool(width_spec.get("auto_derived_from_input"))
+        height_auto = isinstance(height_spec, dict) and bool(height_spec.get("auto_derived_from_input"))
+
+        if input_image_size is not None:
+            image_width, image_height = input_image_size
+            if width is None and (width_required or width_auto):
+                width = self._normalize_int_param(int(image_width), width_spec)
+            if height is None and (height_required or height_auto):
+                height = self._normalize_int_param(int(image_height), height_spec)
+
+        if width is None and width_required:
+            width = self._normalize_int_param(_DEFAULT_REQUIRED_IMAGE_DIMENSION, width_spec)
+        if height is None and height_required:
+            height = self._normalize_int_param(_DEFAULT_REQUIRED_IMAGE_DIMENSION, height_spec)
+        return width, height
+
     def normalize_image_generation_request(
         self,
         request: ImageGenerationRequest,
@@ -995,11 +1195,16 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         negative_spec = params.get("negative_prompt")
         if isinstance(negative_spec, dict) and negative_spec.get("supported") is False:
             negative_prompt = None
+        width, height = self._normalize_required_image_dimensions(
+            width_value=request.width,
+            height_value=request.height,
+            params=params,
+        )
         return replace(
             request,
             negative_prompt=negative_prompt,
-            width=self._normalize_int_param(request.width, params.get("width")),
-            height=self._normalize_int_param(request.height, params.get("height")),
+            width=width,
+            height=height,
             steps=self._normalize_int_param(request.steps, params.get("steps")),
             guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
         )
@@ -1020,22 +1225,19 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         extra = dict(request.extra or {})
         width_value = extra.get("width")
         height_value = extra.get("height")
+        input_image_size: Optional[Tuple[int, int]] = None
         if width_value is None or height_value is None:
-            width_spec = params.get("width")
-            height_spec = params.get("height")
-            if isinstance(width_spec, dict) or isinstance(height_spec, dict):
-                try:
-                    pil_image = self._pil_from_bytes(request.image)
-                    image_width, image_height = pil_image.size
-                    if width_value is None and isinstance(width_spec, dict) and width_spec.get("auto_derived_from_input"):
-                        width_value = image_width
-                    if height_value is None and isinstance(height_spec, dict) and height_spec.get("auto_derived_from_input"):
-                        height_value = image_height
-                except Exception:
-                    pass
+            try:
+                input_image_size = self._pil_from_bytes(request.image).size
+            except Exception:
+                input_image_size = None
 
-        width = self._normalize_int_param(int(width_value) if width_value is not None else None, params.get("width"))
-        height = self._normalize_int_param(int(height_value) if height_value is not None else None, params.get("height"))
+        width, height = self._normalize_required_image_dimensions(
+            width_value=int(width_value) if width_value is not None else None,
+            height_value=int(height_value) if height_value is not None else None,
+            params=params,
+            input_image_size=input_image_size,
+        )
         if width is not None:
             extra["width"] = width
         if height is not None:
@@ -1308,7 +1510,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return repo
 
     def get_capabilities(self) -> VisionBackendCapabilities:
-        task_spec = self._task_spec("image_to_image")
+        supported_tasks = self._supported_task_names()
+        task_spec = self._task_spec("image_to_image") if "image_to_image" in set(supported_tasks) else None
         supports_mask: Optional[bool] = None
         if task_spec is not None:
             params = task_spec.params if isinstance(task_spec.params, dict) else {}
@@ -1321,7 +1524,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             else:
                 supports_mask = False
         return VisionBackendCapabilities(
-            supported_tasks=self._supported_task_names(),
+            supported_tasks=supported_tasks,
             supports_mask=supports_mask,
         )
 
@@ -1711,6 +1914,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype)
         if torch_dtype is None:
             torch_dtype = _default_torch_dtype_for_device(torch, device)
+        torch_dtype = self._preferred_torch_dtype_for_kind(kind, device, torch, torch_dtype)
         common = self._pipeline_common_kwargs()
         if bool(self._cfg.low_cpu_mem_usage):
             common["low_cpu_mem_usage"] = True
@@ -1785,7 +1989,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             detail_s = "; ".join(details) if details else "required files are missing"
             raise ValueError(
                 f"Local Diffusers snapshot for {model_id!r} is incomplete: {snap} ({detail_s}). "
-                "Re-run `abstractvision download-model` for this model, or delete the broken cache snapshot and download it again."
+                "Re-run `abstractvision download` for this model, or delete the broken cache snapshot and download it again."
             ) from e
 
         pipe = None
@@ -1864,7 +2068,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 template_snapshot = self._resolve_any_snapshot_dir()
         _ensure_pipeline_chat_templates(pipe, snapshot_dir=template_snapshot, model_id=str(self._cfg.model_id or ""))
         _maybe_cast_pipe_modules_to_dtype(pipe, dtype=torch_dtype)
-        _maybe_upcast_vae_for_mps(torch, pipe, device)
+        _maybe_upcast_vae_for_mps(torch, pipe, device, allow_fp32_vae=kind not in {"t2v", "i2v"})
+        if kind in {"t2v", "i2v"}:
+            _maybe_enable_video_pipeline_memory_savers(pipe)
         self._set_pipeline(kind, pipe)
         return pipe
 
@@ -2141,7 +2347,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         request: ImageGenerationRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
+        if not self._supports_backend_task("text_to_image"):
+            raise CapabilityNotSupportedError(
+                "This model is temporarily disabled for local Diffusers text_to_image generation."
+            )
         with self._backend_lock:
+            request = self.normalize_image_generation_request(request)
             pipe = self._get_or_load_pipeline("t2i")
             call_params = self._call_params.get("t2i")
             total_steps = int(request.steps) if request.steps is not None else None
@@ -2263,7 +2474,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         request: ImageEditRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
+        if not self._supports_backend_task("image_to_image"):
+            raise CapabilityNotSupportedError(
+                "This model is temporarily disabled for local Diffusers image_to_image generation."
+            )
         with self._backend_lock:
+            request = self.normalize_image_edit_request(request)
             if request.mask is not None:
                 pipe = self._get_or_load_pipeline("inpaint")
                 call_params = self._call_params.get("inpaint")
@@ -2284,7 +2500,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             lora_sig = self._apply_loras(kind=kind, pipe=pipe, extra=request.extra)
 
             img = self._pil_from_bytes(request.image)
-            kwargs: Dict[str, Any] = {"prompt": request.prompt, "image": img}
+            image_input: Any = [img] if request.mask is None and self._needs_list_wrapped_i2i_image(pipe) else img
+            kwargs: Dict[str, Any] = {"prompt": request.prompt, "image": image_input}
             if request.mask is not None:
                 kwargs["mask_image"] = self._pil_from_bytes(request.mask)
             if request.negative_prompt is not None:
@@ -2391,9 +2608,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         request: VideoGenerationRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
-        if not self._supports_local_text_to_video():
+        if not self._supports_backend_task("text_to_video"):
             raise CapabilityNotSupportedError(
-                "HuggingFaceDiffusersVisionBackend does not implement local text_to_video for this model."
+                "Local Diffusers text_to_video is experimental and temporarily disabled for this model."
             )
         with self._backend_lock:
             pipe = self._get_or_load_pipeline("t2v")

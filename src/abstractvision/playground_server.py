@@ -506,7 +506,42 @@ class PlaygroundState:
                 )
                 allowed = {str(task) for task in probe.get_capabilities().supported_tasks or []}
             except Exception:
-                allowed = {"text_to_image", "image_to_image"}
+                pass
+        elif backend_kind == "mflux":
+            try:
+                from .backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+                probe = MFluxVisionBackend(
+                    config=MFluxBackendConfig(
+                        model=str(model_id),
+                        base_model=str(self.config.mflux_base_model) if self.config.mflux_base_model else None,
+                        model_dir=str(self.config.mflux_model_dir) if self.config.mflux_model_dir else None,
+                        cache_dir=str(self.config.diffusers_cache_dir) if self.config.diffusers_cache_dir else None,
+                        allow_download=bool(self.config.mflux_allow_download),
+                    )
+                )
+                probed = {str(task) for task in probe.get_capabilities().supported_tasks or []}
+                allowed = allowed.intersection(probed) if allowed else probed
+            except Exception:
+                pass
+        elif backend_kind == "sdcpp":
+            try:
+                from .backends.stable_diffusion_cpp import (
+                    StableDiffusionCppBackendConfig,
+                    StableDiffusionCppVisionBackend,
+                )
+
+                probe = StableDiffusionCppVisionBackend(
+                    config=StableDiffusionCppBackendConfig(
+                        sd_cli_path=str(self.config.sdcpp_bin),
+                        model=str(model_id),
+                        capabilities_model_id=str(model_id),
+                    )
+                )
+                probed = {str(task) for task in probe.get_capabilities().supported_tasks or []}
+                allowed = allowed.intersection(probed) if allowed else probed
+            except Exception:
+                pass
         filtered_tasks = [str(task) for task in tasks if str(task) in allowed]
         filtered_specs = {
             str(task_name): dict(task_spec)
@@ -575,7 +610,7 @@ class PlaygroundState:
 
         seen_load_ids: set[str] = set()
         legacy_root = default_legacy_model_root()
-        playground_tasks = {"text_to_image", "image_to_image", "text_to_video"}
+        playground_tasks = {"text_to_image", "image_to_image", "text_to_video", "image_to_video"}
         mflux_cached: Dict[str, Any] = {}
         mflux_invalid: Dict[str, Tuple[str, ...]] = {}
         if "mlx" in visible_targets:
@@ -837,13 +872,24 @@ class PlaygroundState:
         self._unload_backend(unload_after_lock)
         return {"ok": True, "active": None}
 
-    def load_model(self, requested_model_id: str) -> Dict[str, Any]:
+    def load_model(self, requested_model_id: str, *, unload_first: bool = False) -> Dict[str, Any]:
         requested = str(requested_model_id or "").strip()
         if not requested:
             raise ValueError("Missing required field: model_id")
         with self._active_lock:
             if self._same_requested_model(requested):
                 return {"ok": True, "active": self.active_snapshot()}
+
+        if unload_first:
+            unload_before_load: Optional[Any] = None
+            with self._active_lock:
+                old = self._active_backend
+                self._active_backend = None
+                self._active_backend_kind = None
+                self._active_model_id = None
+                self._active_loaded_at = None
+                unload_before_load = self._retire_backend_locked(old)
+            self._unload_backend(unload_before_load)
 
         backend_kind, backend_model_id = normalize_model_id_for_backend(requested)
 
@@ -975,6 +1021,9 @@ class PlaygroundState:
             cfg = StableDiffusionCppBackendConfig(
                 sd_cli_path=str(self.config.sdcpp_bin),
                 model=resolved_sdcpp.model if resolved_sdcpp is not None else (explicit_model or self.config.sdcpp_model),
+                capabilities_model_id=(
+                    resolved_sdcpp.capabilities_model_id if resolved_sdcpp is not None else explicit_model
+                ),
                 diffusion_model=(
                     resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else explicit_diffusion_model
                 ),
@@ -1397,7 +1446,8 @@ def _make_handler(state: PlaygroundState) -> type[BaseHTTPRequestHandler]:
                 if path == "/v1/vision/model/load":
                     payload = _parse_json_bytes(body)
                     model_id = str(payload.get("model_id") or payload.get("model") or "").strip()
-                    self._send_json(200, state.load_model(model_id))
+                    unload_first = bool(payload.get("unload_first"))
+                    self._send_json(200, state.load_model(model_id, unload_first=unload_first))
                     return
                 if path == "/v1/vision/model/unload":
                     self._send_json(200, state.unload_active())

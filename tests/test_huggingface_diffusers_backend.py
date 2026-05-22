@@ -279,7 +279,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(set(caps.supported_tasks or []), {"text_to_image"})
         self.assertFalse(caps.supports_mask)
 
-    def test_get_capabilities_for_cogvideox_2b_only_exposes_text_to_video(self):
+    def test_get_capabilities_for_cogvideox_2b_is_temporarily_disabled(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
 
         backend = HuggingFaceDiffusersVisionBackend(
@@ -287,7 +287,18 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         )
         caps = backend.get_capabilities()
 
-        self.assertEqual(set(caps.supported_tasks or []), {"text_to_video"})
+        self.assertEqual(list(caps.supported_tasks or []), [])
+        self.assertIsNone(caps.supports_mask)
+
+    def test_get_capabilities_for_glm_image_is_temporarily_disabled(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/GLM-Image", device="cpu")
+        )
+        caps = backend.get_capabilities()
+
+        self.assertEqual(list(caps.supported_tasks or []), [])
         self.assertIsNone(caps.supports_mask)
 
     def test_normalize_glm_generation_request_uses_registry_defaults(self):
@@ -304,6 +315,20 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(normalized.steps, 50)
         self.assertEqual(normalized.guidance_scale, 1.5)
         self.assertEqual(normalized.width, 544)
+        self.assertEqual(normalized.height, 512)
+
+    def test_normalize_glm_generation_request_fills_required_dimensions_when_missing(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/GLM-Image", device="cpu")
+        )
+        normalized = backend.normalize_image_generation_request(ImageGenerationRequest(prompt="fox"))
+
+        self.assertEqual(normalized.steps, 50)
+        self.assertEqual(normalized.guidance_scale, 1.5)
+        self.assertEqual(normalized.width, 512)
         self.assertEqual(normalized.height, 512)
 
     def test_normalize_flux2_generation_request_applies_registry_constraints(self):
@@ -342,6 +367,30 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(normalized.steps, 50)
         self.assertEqual(normalized.guidance_scale, 6.0)
 
+    def test_mps_vae_upcast_can_be_disabled_for_video_pipelines(self):
+        from abstractvision.backends.huggingface_diffusers import _maybe_upcast_vae_for_mps
+
+        class FakeTorch:
+            float16 = "float16"
+            float32 = "float32"
+
+        class FakeVAE:
+            dtype = FakeTorch.float16
+
+            def __init__(self):
+                self.to_calls = []
+
+            def to(self, **kwargs):
+                self.to_calls.append(dict(kwargs))
+
+        class FakePipe:
+            def __init__(self):
+                self.vae = FakeVAE()
+
+        pipe = FakePipe()
+        _maybe_upcast_vae_for_mps(FakeTorch, pipe, "mps", allow_fp32_vae=False)
+        self.assertEqual(pipe.vae.to_calls, [])
+
     def test_normalize_glm_edit_request_derives_dimensions_from_input(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
         from abstractvision.types import ImageEditRequest
@@ -357,10 +406,32 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         )
         normalized = backend.normalize_image_edit_request(ImageEditRequest(prompt="watercolor", image=image_bytes))
 
-        self.assertEqual(normalized.steps, 50)
+        self.assertEqual(normalized.steps, 15)
         self.assertEqual(normalized.guidance_scale, 1.5)
-        self.assertIsNone(normalized.extra.get("width"))
-        self.assertIsNone(normalized.extra.get("height"))
+        self.assertEqual(normalized.extra.get("width"), 544)
+        self.assertEqual(normalized.extra.get("height"), 512)
+
+    def test_generate_image_rejects_temporarily_disabled_glm_model(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/GLM-Image", device="cpu")
+        )
+
+        with self.assertRaisesRegex(Exception, "temporarily disabled"):
+            backend.generate_image(ImageGenerationRequest(prompt="fox"))
+
+    def test_edit_image_rejects_temporarily_disabled_glm_model(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/GLM-Image", device="cpu")
+        )
+
+        with self.assertRaisesRegex(Exception, "temporarily disabled"):
+            backend.edit_image(ImageEditRequest(prompt="edit", image=_png_bytes(), steps=1, seed=1))
 
     def test_generate_image_maps_common_params(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -421,72 +492,16 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertIn("generator", call)
         self.assertEqual(call.get("foo"), "bar")
 
-    def test_generate_video_maps_common_params(self):
+    def test_generate_video_rejects_temporarily_disabled_cogvideox_model(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
         from abstractvision.types import VideoGenerationRequest
 
-        out_img_bytes = _png_bytes()
-        from PIL import Image
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/CogVideoX-2b", device="cpu")
+        )
 
-        fake_image = Image.open(io.BytesIO(out_img_bytes))
-
-        class _FakeVideoPipeline(_FakePipeline):
-            def __call__(self, **kwargs):
-                self.calls.append(kwargs)
-                return _FakeVideoDiffusersOutput([self._image] * 3)
-
-        fake_pipe = _FakeVideoPipeline(fake_image)
-        fake_diffusion_pipeline_cls = MagicMock()
-        fake_diffusion_pipeline_cls.from_pretrained.return_value = fake_pipe
-        fake_t2i_cls = MagicMock()
-        fake_i2i_cls = MagicMock()
-        fake_inpaint_cls = MagicMock()
-
-        with patch(
-            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
-        ), patch("abstractvision.backends.huggingface_diffusers._frames_to_mp4_bytes", return_value=b"ftyp" + (b"\x00" * 8)):
-            backend = HuggingFaceDiffusersVisionBackend(
-                config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/CogVideoX-2b", device="cpu")
-            )
-            asset = backend.generate_video(
-                VideoGenerationRequest(
-                    prompt="hello",
-                    negative_prompt="nope",
-                    width=720,
-                    height=480,
-                    fps=8,
-                    num_frames=9,
-                    steps=12,
-                    guidance_scale=7.5,
-                    seed=123,
-                    extra={"foo": "bar"},
-                )
-            )
-
-        self.assertEqual(asset.media_type, "video")
-        self.assertEqual(asset.mime_type, "video/mp4")
-        self.assertTrue(asset.data.startswith(b"ftyp"))
-        self.assertEqual(asset.metadata.get("fps"), 8)
-        self.assertEqual(asset.metadata.get("frame_count"), 3)
-
-        self.assertTrue(fake_diffusion_pipeline_cls.from_pretrained.called)
-        _, kwargs = fake_diffusion_pipeline_cls.from_pretrained.call_args
-        self.assertEqual(kwargs.get("local_files_only"), True)
-        self.assertEqual(kwargs.get("use_safetensors"), True)
-
-        self.assertEqual(len(fake_pipe.calls), 1)
-        call = fake_pipe.calls[0]
-        self.assertEqual(call.get("prompt"), "hello")
-        self.assertEqual(call.get("negative_prompt"), "nope")
-        self.assertEqual(call.get("width"), 720)
-        self.assertEqual(call.get("height"), 480)
-        self.assertEqual(call.get("num_frames"), 9)
-        self.assertEqual(call.get("num_inference_steps"), 12)
-        self.assertEqual(call.get("guidance_scale"), 7.5)
-        self.assertEqual(call.get("output_type"), "pil")
-        self.assertIn("generator", call)
-        self.assertEqual(call.get("foo"), "bar")
+        with self.assertRaisesRegex(Exception, "temporarily disabled"):
+            backend.generate_video(VideoGenerationRequest(prompt="hello", steps=12))
 
     def test_preload_runs_t2i_warmup_once_per_loaded_pipeline(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -521,42 +536,23 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertNotIn("width", warmup)
         self.assertNotIn("height", warmup)
 
-    def test_preload_runs_t2v_warmup_once_per_loaded_pipeline(self):
+    def test_preload_rejects_temporarily_disabled_glm_model(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
 
-        out_img_bytes = _png_bytes()
-        from PIL import Image
-
-        fake_image = Image.open(io.BytesIO(out_img_bytes))
-
-        class _FakeVideoPipeline(_FakePipeline):
-            def __call__(self, **kwargs):
-                self.calls.append(kwargs)
-                return _FakeVideoDiffusersOutput([self._image] * 9)
-
-        fake_pipe = _FakeVideoPipeline(fake_image)
-        fake_diffusion_pipeline_cls = MagicMock()
-        fake_diffusion_pipeline_cls.from_pretrained.return_value = fake_pipe
-        fake_t2i_cls = MagicMock()
-        fake_i2i_cls = MagicMock()
-        fake_inpaint_cls = MagicMock()
-
-        with patch(
-            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
-            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
-        ), patch("abstractvision.backends.huggingface_diffusers._frames_to_mp4_bytes", return_value=b"ftyp" + (b"\x00" * 8)):
-            backend = HuggingFaceDiffusersVisionBackend(
-                config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/CogVideoX-2b", device="cpu")
-            )
-            backend.preload()
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/GLM-Image", device="cpu")
+        )
+        with self.assertRaisesRegex(Exception, "temporarily disabled"):
             backend.preload()
 
-        self.assertEqual(fake_diffusion_pipeline_cls.from_pretrained.call_count, 1)
-        self.assertEqual(len(fake_pipe.calls), 1)
-        warmup = fake_pipe.calls[0]
-        self.assertEqual(warmup.get("prompt"), "abstractvision preload warmup")
-        self.assertEqual(warmup.get("num_inference_steps"), 1)
-        self.assertEqual(warmup.get("num_frames"), 9)
+    def test_preload_rejects_temporarily_disabled_cogvideox_model(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/CogVideoX-2b", device="cpu")
+        )
+        with self.assertRaisesRegex(Exception, "temporarily disabled"):
+            backend.preload()
 
     def test_preload_serializes_concurrent_t2i_warmup(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend

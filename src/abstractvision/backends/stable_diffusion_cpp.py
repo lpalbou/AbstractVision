@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
+from ..model_capabilities import VisionModelCapabilitiesRegistry
 from ..types import (
     GeneratedAsset,
     ImageEditRequest,
@@ -321,6 +322,7 @@ class StableDiffusionCppBackendConfig:
 
     # Single-file full model
     model: Optional[str] = None
+    capabilities_model_id: Optional[str] = None
 
     # Component mode
     diffusion_model: Optional[str] = None
@@ -374,9 +376,17 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             pass
 
     def get_capabilities(self) -> VisionBackendCapabilities:
+        supported_tasks = ["text_to_image", "image_to_image"]
+        capability_model_id = str(self._cfg.capabilities_model_id or "").strip()
+        if capability_model_id:
+            try:
+                reg = VisionModelCapabilitiesRegistry()
+                supported_tasks = sorted(str(task_name) for task_name in reg.get(capability_model_id).tasks.keys())
+            except Exception:
+                pass
         return VisionBackendCapabilities(
-            supported_tasks=["text_to_image", "image_to_image"],
-            supports_mask=True,
+            supported_tasks=supported_tasks,
+            supports_mask="image_to_image" in set(supported_tasks),
         )
 
     def _base_cmd(self) -> List[str]:

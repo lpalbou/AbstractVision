@@ -60,6 +60,7 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         self.assertEqual(spec.tasks["text_to_image"].params["guidance_scale"]["default"], 1.5)
         self.assertEqual(spec.tasks["text_to_image"].params["width"]["multiple_of"], 32)
         self.assertTrue(spec.tasks["image_to_image"].params["width"]["required"])
+        self.assertEqual(spec.tasks["image_to_image"].params["steps"]["default"], 15)
 
 
 if __name__ == "__main__":

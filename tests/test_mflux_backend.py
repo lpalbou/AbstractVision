@@ -305,7 +305,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                     with self.assertRaises(OptionalDependencyMissingError) as ctx:
                         backend.generate_image(ImageGenerationRequest(prompt="hello"))
 
-        self.assertIn("abstractvision download-model flux2-klein-4b", str(ctx.exception))
+        self.assertIn("abstractvision download flux2-klein-4b", str(ctx.exception))
 
     def test_hf_repo_id_can_resolve_from_cache_without_allow_download(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -352,6 +352,48 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(_FakeQwenImage.last_init["model_config"], "qwen-image-config")
         self.assertEqual(_FakeQwenImage.last_init["model_path"], str(local_dir))
         self.assertEqual(_FakeQwenImage.last_generate["prompt"], "hello")
+
+    def test_qwen_image_capabilities_are_text_to_image_only(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        backend = MFluxVisionBackend(config=MFluxBackendConfig(model="qwen-image"))
+        caps = backend.get_capabilities()
+
+        self.assertEqual(caps.supported_tasks, ["text_to_image"])
+        self.assertFalse(caps.supports_mask)
+
+    def test_qwen_image_provider_catalog_does_not_advertise_image_to_image(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "mlx-community/Qwen-Image-2512-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="qwen-image"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                models = list(backend.list_provider_models())
+                image_edit_models = list(backend.list_provider_models(task="image_to_image"))
+
+        self.assertEqual(len(models), 1)
+        self.assertEqual(models[0].id, "qwen-image")
+        self.assertEqual(tuple(models[0].capabilities), ("text_to_image",))
+        self.assertEqual(image_edit_models, [])
+
+    def test_flux2_klein_capabilities_are_text_to_image_only(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
+        caps = backend.get_capabilities()
+
+        self.assertEqual(caps.supported_tasks, ["text_to_image"])
+        self.assertFalse(caps.supports_mask)
+
+    def test_edit_image_is_temporarily_disabled_for_mflux(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
+        with self.assertRaisesRegex(Exception, "temporarily disabled"):
+            backend.edit_image(ImageEditRequest(prompt="watercolor", image=b"input"))
 
     def test_runtime_serializes_model_init_and_generate_on_same_thread(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend

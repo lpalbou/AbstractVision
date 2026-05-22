@@ -18,9 +18,11 @@
 - ADR impact: None if the first implementation stays inside the existing backend-owned task model and explicit runtime-selection rules.
 
 ## Context
-AbstractVision now has one real local Diffusers `text_to_video` path through CogVideoX-2b. The
-next missing local video milestone is `image_to_video`, because the public API, registry, and
-AbstractCore surfaces already acknowledge it, but the local Diffusers backend still rejects it.
+AbstractVision now has local Diffusers `text_to_video` groundwork through CogVideoX-2b, but that
+path is currently quarantined from the normal local surfaces pending the follow-up captured in
+`0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`. The next missing local video
+milestone is still `image_to_video`, because the public API, registry, and AbstractCore surfaces
+already acknowledge it, but the local Diffusers backend still rejects it.
 
 The immediate operator goal should stay narrow:
 
@@ -73,8 +75,8 @@ What is still missing or mismatched:
 - No local `image_to_video` model is currently downloaded on this machine.
 
 ## Problem
-The package now has a real local `text_to_video` story but still has no local `image_to_video`
-path, so the public surface is still only half true for local video generation.
+The package has local video groundwork but still has no honest local `image_to_video` path, so the
+public surface is still only half true for local video generation.
 
 ## What we want to do
 Ship one honest, narrow, local Diffusers `image_to_video` path first, then expose it across the
@@ -133,6 +135,7 @@ Included:
 
 ## Dependencies and related tasks
 - Completed: [0021_local_diffusers_text_to_video_backend.md](../completed/0021_local_diffusers_text_to_video_backend.md)
+- Planned: [0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md](0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
 - Planned: [017_mlx_mflux_backend_strategy.md](017_mlx_mflux_backend_strategy.md)
 - Planned: [020_adapter_aware_model_graph_and_catalog.md](020_adapter_aware_model_graph_and_catalog.md)
 

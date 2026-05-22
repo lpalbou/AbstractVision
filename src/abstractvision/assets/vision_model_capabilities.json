@@ -314,7 +314,7 @@
             },
             "steps": {
               "required": false,
-              "default": 50
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -399,7 +399,7 @@
             },
             "steps": {
               "required": false,
-              "default": 28
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -626,7 +626,7 @@
     "black-forest-labs/FLUX.2-klein-4B": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Official open 4B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download-model flux2-klein-4b --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
+      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Official open 4B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download flux2-klein-4b --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
       "downloads": [
         {
           "key": "flux2-klein-4b",
@@ -842,7 +842,7 @@
             },
             "steps": {
               "required": false,
-              "default": 50
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -858,7 +858,7 @@
     "black-forest-labs/FLUX.2-klein-9B": {
       "provider": "huggingface",
       "license": "flux-non-commercial-license",
-      "notes": "FLUX 2 klein (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official gated 9B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download-model flux2-klein-9b --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
+      "notes": "FLUX 2 klein (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official gated 9B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download flux2-klein-9b --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
       "downloads": [
         {
           "key": "flux2-klein-9b",
@@ -1074,7 +1074,7 @@
             },
             "steps": {
               "required": false,
-              "default": 50
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -1180,11 +1180,11 @@
               "required": false
             },
             "width": {
-              "required": false,
+              "required": true,
               "multiple_of": 32
             },
             "height": {
-              "required": false,
+              "required": true,
               "multiple_of": 32
             },
             "fps": {
@@ -1197,7 +1197,7 @@
             },
             "steps": {
               "required": false,
-              "default": 40
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -1230,11 +1230,11 @@
               "required": false
             },
             "width": {
-              "required": false,
+              "required": true,
               "multiple_of": 32
             },
             "height": {
-              "required": false,
+              "required": true,
               "multiple_of": 32
             },
             "fps": {
@@ -1247,7 +1247,7 @@
             },
             "steps": {
               "required": false,
-              "default": 40
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -1526,7 +1526,7 @@
     "Qwen/Qwen-Image-Edit": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Earlier Qwen Image Edit release (Diffusers: QwenImageEditPipeline).",
+      "notes": "Undated legacy Qwen Image Edit release (Diffusers: QwenImageEditPipeline).",
       "downloads": [
         {
           "key": "qwen-image-edit",
@@ -1630,7 +1630,7 @@
             },
             "steps": {
               "required": false,
-              "default": 40
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -1646,10 +1646,10 @@
     "Qwen/Qwen-Image-Edit-2511": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Primary image edit model (image-to-image). Upstream examples still default to 40 steps and guidance_scale=1.0.",
+      "notes": "Dated 2511 Qwen Image Edit release (image-to-image). Upstream examples still default to 40 steps and guidance_scale=1.0; AbstractVision defaults local image-edit requests to 15 steps unless a lower model-specific default is defined.",
       "downloads": [
         {
-          "key": "qwen-image-edit",
+          "key": "qwen-image-edit-2511",
           "engine": "diffusers",
           "target": "diffusers",
           "bits": 16,
@@ -1658,7 +1658,7 @@
           "notes": "Official Diffusers snapshot (full model weights)."
         },
         {
-          "key": "qwen-image-edit",
+          "key": "qwen-image-edit-2511",
           "engine": "stable-diffusion.cpp",
           "target": "gguf",
           "bits": 8,
@@ -1691,7 +1691,7 @@
             },
             "steps": {
               "required": false,
-              "default": 40
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -2852,7 +2852,7 @@
     "tencent/HunyuanVideo-1.5": {
       "provider": "huggingface",
       "license": "tencent-hunyuan-community",
-      "notes": "Unified HunyuanVideo-1.5 family covering both text-to-video and image-to-video. Official Diffusers checkpoints are published under hunyuanvideo-community/* and are useful for catalog/download-model, but AbstractVision does not yet execute local Diffusers video generation.",
+      "notes": "Unified HunyuanVideo-1.5 family covering both text-to-video and image-to-video. Official Diffusers checkpoints are published under hunyuanvideo-community/* and are useful for catalog/download, but AbstractVision does not yet execute local Diffusers video generation.",
       "downloads": [
         {
           "key": "hunyuanvideo-1.5-720p-t2v",
@@ -3075,7 +3075,7 @@
     "Tongyi-MAI/Z-Image-Turbo": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Turbo text-to-image option. Official examples use num_inference_steps=9 (8 effective DiT forwards) with guidance_scale=0.0; plain-text negative prompting is not exposed. For Apple Silicon local generation, prefer abstractvision download-model z-image-turbo --provider mflux so macOS uses a curated MLX preset instead of the full repo.",
+      "notes": "Turbo text-to-image option. Official examples use num_inference_steps=9 (8 effective DiT forwards) with guidance_scale=0.0; plain-text negative prompting is not exposed. For Apple Silicon local generation, prefer abstractvision download z-image-turbo --provider mflux so macOS uses a curated MLX preset instead of the full repo.",
       "downloads": [
         {
           "key": "z-image-turbo",
@@ -3284,7 +3284,7 @@
     "zai-org/GLM-Image": {
       "provider": "huggingface",
       "license": "mit",
-      "notes": "General image model family (generation + edit in some pipelines). Upstream examples currently install Diffusers and Transformers from source; image-to-image requires explicit width and height even when matching the input image. AbstractVision catalogs the download, but does not yet ship a local runtime for it.",
+      "notes": "General image model family (generation + edit in some pipelines). Upstream examples currently install Diffusers and Transformers from source; both text-to-image and image-to-image require explicit target dimensions. AbstractVision normalizes those dimensions for local Diffusers execution when the caller omits them.",
       "downloads": [
         {
           "key": "glm-image",
@@ -3312,11 +3312,11 @@
               "required": false
             },
             "width": {
-              "required": false,
+              "required": true,
               "multiple_of": 32
             },
             "height": {
-              "required": false,
+              "required": true,
               "multiple_of": 32
             },
             "steps": {
@@ -3366,7 +3366,7 @@
             },
             "steps": {
               "required": false,
-              "default": 50
+              "default": 15
             },
             "guidance_scale": {
               "required": false,
@@ -3500,7 +3500,7 @@
             },
             "steps": {
               "required": false,
-              "default": 50
+              "default": 15
             },
             "guidance_scale": {
               "required": false,

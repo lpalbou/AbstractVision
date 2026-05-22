@@ -55,6 +55,22 @@ class _CountingStableDiffusion:
 
 
 class TestStableDiffusionCppVisionBackend(unittest.TestCase):
+    def test_get_capabilities_uses_registry_model_when_available(self):
+        from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+
+        backend = StableDiffusionCppVisionBackend(
+            config=StableDiffusionCppBackendConfig(
+                sd_cli_path="sd-cli",
+                model="qwen-image",
+                capabilities_model_id="Qwen/Qwen-Image-2512",
+            )
+        )
+
+        caps = backend.get_capabilities()
+
+        self.assertEqual(caps.supported_tasks, ["text_to_image"])
+        self.assertFalse(caps.supports_mask)
+
     def test_generate_image_builds_cmd_and_reads_output(self):
         from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
         from abstractvision.types import ImageGenerationRequest

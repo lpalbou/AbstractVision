@@ -167,6 +167,33 @@
       a {
         color: var(--muted);
       }
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .tab-btn {
+        background: var(--btn2);
+      }
+      .tab-btn.active {
+        background: var(--btn);
+      }
+      .tab-panel {
+        display: none;
+      }
+      .tab-panel.active {
+        display: block;
+      }
+      .task-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .task-head h2 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
     </style>
   </head>
   <body>
@@ -183,56 +210,72 @@
         <div id="pingStatus" class="status"></div>
       </div>
 
-      <div class="grid">
+      <div class="card">
+        <div class="tabs" role="tablist" aria-label="Playground task tabs">
+          <button class="tab-btn active" data-task="t2i" type="button">Text → Image</button>
+          <button class="tab-btn" data-task="i2i" type="button">Image → Image</button>
+          <button class="tab-btn" data-task="t2v" type="button">Text → Video (Experimental)</button>
+          <button class="tab-btn" data-task="i2v" type="button">Image → Video</button>
+        </div>
+      </div>
+
+      <div id="t2iPanel" class="tab-panel active">
         <div class="card">
-          <h2 style="margin: 0 0 8px; font-size: 16px">Text → Image</h2>
-
-          <label for="t2iPrompt">Prompt</label>
-          <textarea id="t2iPrompt">a cinematic photo of a red fox in snow, 35mm, high detail</textarea>
-
-          <label for="modelSelect">Model Catalog</label>
-            <div class="hstack">
-              <select id="modelSelect"></select>
+          <div class="task-head">
+            <div>
+              <h2>Text → Image</h2>
+              <div id="t2iSupportHint" class="status">Select a model with text-to-image capability.</div>
             </div>
-            <progress id="modelLoadProgress" style="display: none"></progress>
-            <div id="modelLoadStatus" class="status"></div>
-
-	          <label for="t2iNegative">Negative prompt (optional)</label>
-	          <input id="t2iNegative" type="text" value="" />
-
-          <div class="row">
-            <div>
-	              <label for="t2iWidth">Width</label>
-	              <input id="t2iWidth" type="number" min="64" step="64" value="512" />
-	            </div>
-	            <div>
-	              <label for="t2iHeight">Height</label>
-	              <input id="t2iHeight" type="number" min="64" step="64" value="512" />
-	            </div>
-	          </div>
-
-          <div class="row">
-            <div>
-	              <label for="t2iSteps">Steps</label>
-	              <input id="t2iSteps" type="number" min="1" step="1" value="10" />
-	            </div>
-	            <div>
-	              <label for="t2iGuidance">Guidance scale</label>
-	              <input id="t2iGuidance" type="number" step="0.1" value="7.0" />
-	            </div>
-	          </div>
-
-	          <label for="t2iSeed">Seed (optional)</label>
-	          <input id="t2iSeed" type="number" step="1" value="42" />
-
-          <label for="t2iExtra">Extra JSON (optional; forwarded to backend)</label>
-          <textarea id="t2iExtra">{}</textarea>
-
-          <div class="btns">
-            <button id="t2iBtn">Generate</button>
-            <span id="t2iStatus" class="status"></span>
           </div>
-          <progress id="t2iProgress" style="display: none"></progress>
+          <label for="t2iModelSelect">Model Catalog</label>
+          <div class="hstack">
+            <select id="t2iModelSelect"></select>
+            <button class="secondary" id="t2iUnloadBtn" type="button">Unload</button>
+          </div>
+          <progress id="t2iModelProgress" style="display: none"></progress>
+          <div id="t2iModelStatus" class="status"></div>
+
+          <fieldset id="t2iFieldset" disabled>
+            <label for="t2iPrompt">Prompt</label>
+            <textarea id="t2iPrompt">a cinematic photo of a red fox in snow, 35mm, high detail</textarea>
+
+            <label for="t2iNegative">Negative prompt (optional)</label>
+            <input id="t2iNegative" type="text" value="" />
+
+            <div class="row">
+              <div>
+                <label for="t2iWidth">Width</label>
+                <input id="t2iWidth" type="number" min="64" step="64" value="512" />
+              </div>
+              <div>
+                <label for="t2iHeight">Height</label>
+                <input id="t2iHeight" type="number" min="64" step="64" value="512" />
+              </div>
+            </div>
+
+            <div class="row">
+              <div>
+                <label for="t2iSteps">Steps</label>
+                <input id="t2iSteps" type="number" min="1" step="1" value="10" />
+              </div>
+              <div>
+                <label for="t2iGuidance">Guidance scale</label>
+                <input id="t2iGuidance" type="number" step="0.1" value="7.0" />
+              </div>
+            </div>
+
+            <label for="t2iSeed">Seed (optional)</label>
+            <input id="t2iSeed" type="number" step="1" value="42" />
+
+            <label for="t2iExtra">Extra JSON (optional; forwarded to backend)</label>
+            <textarea id="t2iExtra">{}</textarea>
+
+            <div class="btns">
+              <button id="t2iBtn" type="button">Generate</button>
+              <span id="t2iStatus" class="status"></span>
+            </div>
+            <progress id="t2iProgress" style="display: none"></progress>
+          </fieldset>
 
           <div class="out">
             <img id="t2iImg" alt="" />
@@ -242,47 +285,59 @@
             <div id="t2iLog" class="mono"></div>
           </div>
         </div>
+      </div>
 
+      <div id="i2iPanel" class="tab-panel">
         <div class="card">
-          <h2 style="margin: 0 0 8px; font-size: 16px">Image → Image (edits)</h2>
-          <div id="i2iSupportHint" class="status" style="margin-bottom: 8px">Select a model with edit capability to enable this panel.</div>
+          <div class="task-head">
+            <div>
+              <h2>Image → Image</h2>
+              <div id="i2iSupportHint" class="status">Select a model with image edit capability.</div>
+            </div>
+          </div>
+          <label for="i2iModelSelect">Model Catalog</label>
+          <div class="hstack">
+            <select id="i2iModelSelect"></select>
+            <button class="secondary" id="i2iUnloadBtn" type="button">Unload</button>
+          </div>
+          <progress id="i2iModelProgress" style="display: none"></progress>
+          <div id="i2iModelStatus" class="status"></div>
 
           <fieldset id="i2iFieldset" disabled>
-	          <label for="i2iPrompt">Prompt</label>
-	          <textarea id="i2iPrompt">make it watercolor</textarea>
-            <div class="status" style="margin-top: 6px">Uses the loaded model above.</div>
+            <label for="i2iPrompt">Prompt</label>
+            <textarea id="i2iPrompt">make it watercolor</textarea>
 
-          <label for="i2iImage">Input image</label>
-          <input id="i2iImage" type="file" accept="image/*" />
+            <label for="i2iImage">Input image</label>
+            <input id="i2iImage" type="file" accept="image/*" />
 
-          <label for="i2iMask">Mask image (optional)</label>
-          <input id="i2iMask" type="file" accept="image/*" />
+            <label for="i2iMask">Mask image (optional)</label>
+            <input id="i2iMask" type="file" accept="image/*" />
 
-          <label for="i2iNegative">Negative prompt (optional)</label>
-          <input id="i2iNegative" type="text" value="" />
+            <label for="i2iNegative">Negative prompt (optional)</label>
+            <input id="i2iNegative" type="text" value="" />
 
-          <div class="row">
-            <div>
-	              <label for="i2iSteps">Steps</label>
-	              <input id="i2iSteps" type="number" min="1" step="1" value="10" />
-	            </div>
-	            <div>
-	              <label for="i2iGuidance">Guidance scale</label>
-	              <input id="i2iGuidance" type="number" step="0.1" value="7.0" />
-	            </div>
-	          </div>
+            <div class="row">
+              <div>
+                <label for="i2iSteps">Steps</label>
+                <input id="i2iSteps" type="number" min="1" step="1" value="15" />
+              </div>
+              <div>
+                <label for="i2iGuidance">Guidance scale</label>
+                <input id="i2iGuidance" type="number" step="0.1" value="7.0" />
+              </div>
+            </div>
 
-	          <label for="i2iSeed">Seed (optional)</label>
-	          <input id="i2iSeed" type="number" step="1" value="42" />
+            <label for="i2iSeed">Seed (optional)</label>
+            <input id="i2iSeed" type="number" step="1" value="42" />
 
-          <label for="i2iExtra">Extra JSON (optional; forwarded to backend)</label>
-          <textarea id="i2iExtra">{"strength": 0.75}</textarea>
+            <label for="i2iExtra">Extra JSON (optional; forwarded to backend)</label>
+            <textarea id="i2iExtra">{"strength": 0.75}</textarea>
 
-          <div class="btns">
-            <button id="i2iBtn">Edit</button>
-            <span id="i2iStatus" class="status"></span>
-          </div>
-          <progress id="i2iProgress" style="display: none"></progress>
+            <div class="btns">
+              <button id="i2iBtn" type="button">Edit</button>
+              <span id="i2iStatus" class="status"></span>
+            </div>
+            <progress id="i2iProgress" style="display: none"></progress>
           </fieldset>
 
           <div class="out">
@@ -293,15 +348,27 @@
             <div id="i2iLog" class="mono"></div>
           </div>
         </div>
+      </div>
 
+      <div id="t2vPanel" class="tab-panel">
         <div class="card">
-          <h2 style="margin: 0 0 8px; font-size: 16px">Text → Video</h2>
-          <div id="t2vSupportHint" class="status" style="margin-bottom: 8px">Select a model with text-to-video capability to enable this panel.</div>
+          <div class="task-head">
+            <div>
+              <h2>Text → Video</h2>
+              <div id="t2vSupportHint" class="status">Experimental local text-to-video is currently unavailable in the bundled server.</div>
+            </div>
+          </div>
+          <label for="t2vModelSelect">Model Catalog</label>
+          <div class="hstack">
+            <select id="t2vModelSelect"></select>
+            <button class="secondary" id="t2vUnloadBtn" type="button">Unload</button>
+          </div>
+          <progress id="t2vModelProgress" style="display: none"></progress>
+          <div id="t2vModelStatus" class="status"></div>
 
           <fieldset id="t2vFieldset" disabled>
             <label for="t2vPrompt">Prompt</label>
             <textarea id="t2vPrompt">a red fox walking through a snowy forest, cinematic, gentle camera motion</textarea>
-            <div class="status" style="margin-top: 6px">Uses the loaded model above.</div>
 
             <label for="t2vNegative">Negative prompt (optional)</label>
             <input id="t2vNegative" type="text" value="" />
@@ -346,7 +413,7 @@
             <textarea id="t2vExtra">{}</textarea>
 
             <div class="btns">
-              <button id="t2vBtn">Generate</button>
+              <button id="t2vBtn" type="button">Generate</button>
               <span id="t2vStatus" class="status"></span>
             </div>
             <progress id="t2vProgress" style="display: none"></progress>
@@ -358,6 +425,33 @@
               <a id="t2vDownload" href="#" download="output.mp4">Download</a>
             </div>
             <div id="t2vLog" class="mono"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="i2vPanel" class="tab-panel">
+        <div class="card">
+          <div class="task-head">
+            <div>
+              <h2>Image → Video</h2>
+              <div id="i2vSupportHint" class="status">Reserved for a later runtime implementation.</div>
+            </div>
+          </div>
+          <label for="i2vModelSelect">Model Catalog</label>
+          <div class="hstack">
+            <select id="i2vModelSelect"></select>
+            <button class="secondary" id="i2vUnloadBtn" type="button">Unload</button>
+          </div>
+          <progress id="i2vModelProgress" style="display: none"></progress>
+          <div id="i2vModelStatus" class="status"></div>
+
+          <fieldset id="i2vFieldset" disabled>
+            <label for="i2vPrompt">Prompt (optional)</label>
+            <textarea id="i2vPrompt">Feature reserved for a later image-to-video backend.</textarea>
+          </fieldset>
+
+          <div class="out">
+            <div id="i2vLog" class="mono">No local image-to-video backend is wired into the playground yet.</div>
           </div>
         </div>
       </div>
@@ -483,10 +577,65 @@
         }
       });
 
+      const TASKS = {
+        t2i: {
+          taskName: "text_to_image",
+          panelId: "t2iPanel",
+          selectId: "t2iModelSelect",
+          unloadId: "t2iUnloadBtn",
+          supportHintId: "t2iSupportHint",
+          fieldsetId: "t2iFieldset",
+          modelStatusId: "t2iModelStatus",
+          modelProgressId: "t2iModelProgress",
+          emptyHint: "Select a model with text-to-image capability.",
+          readyHint: "Text-to-image enabled",
+        },
+        i2i: {
+          taskName: "image_to_image",
+          panelId: "i2iPanel",
+          selectId: "i2iModelSelect",
+          unloadId: "i2iUnloadBtn",
+          supportHintId: "i2iSupportHint",
+          fieldsetId: "i2iFieldset",
+          modelStatusId: "i2iModelStatus",
+          modelProgressId: "i2iModelProgress",
+          emptyHint: "Select a model with image edit capability.",
+          readyHint: "Image edits enabled",
+        },
+        t2v: {
+          taskName: "text_to_video",
+          panelId: "t2vPanel",
+          selectId: "t2vModelSelect",
+          unloadId: "t2vUnloadBtn",
+          supportHintId: "t2vSupportHint",
+          fieldsetId: "t2vFieldset",
+          modelStatusId: "t2vModelStatus",
+          modelProgressId: "t2vModelProgress",
+          emptyHint: "Experimental local text-to-video is currently unavailable in the bundled server.",
+          readyHint: "Experimental video generation enabled",
+        },
+        i2v: {
+          taskName: "image_to_video",
+          panelId: "i2vPanel",
+          selectId: "i2vModelSelect",
+          unloadId: "i2vUnloadBtn",
+          supportHintId: "i2vSupportHint",
+          fieldsetId: "i2vFieldset",
+          modelStatusId: "i2vModelStatus",
+          modelProgressId: "i2vModelProgress",
+          emptyHint: "Reserved for a later image-to-video backend.",
+          readyHint: "Reserved for a later image-to-video backend.",
+        },
+      };
+      const TASK_KEYS = Object.keys(TASKS);
+
       let activeModelId = null;
       let catalogModels = [];
       let modelOpInFlight = false;
       let inferenceInFlight = 0;
+      let activeTab = "t2i";
+      let selectedModels = { t2i: "", i2i: "", t2v: "", i2v: "" };
+      let outputObjectUrls = { t2i: null, i2i: null, t2v: null };
 
       function summarizeBase64(value) {
         const text = String(value || "");
@@ -506,6 +655,63 @@
         return value;
       }
 
+      function releaseOutputUrl(prefix) {
+        const current = outputObjectUrls[prefix];
+        if (current) {
+          try {
+            URL.revokeObjectURL(current);
+          } catch {}
+        }
+        outputObjectUrls[prefix] = null;
+      }
+
+      function clearOutput(prefix) {
+        releaseOutputUrl(prefix);
+        const log =
+          prefix === "t2v" ? $("t2vLog") :
+          prefix === "i2i" ? $("i2iLog") :
+          $("t2iLog");
+        if (log) log.textContent = "";
+        if (prefix === "t2v") {
+          const video = $("t2vVideo");
+          const dl = $("t2vDownload");
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+          dl.href = "#";
+          return;
+        }
+        const img = prefix === "i2i" ? $("i2iImg") : $("t2iImg");
+        const dl = prefix === "i2i" ? $("i2iDownload") : $("t2iDownload");
+        img.removeAttribute("src");
+        dl.href = "#";
+      }
+
+      function clearAllOutputs() {
+        clearOutput("t2i");
+        clearOutput("i2i");
+        clearOutput("t2v");
+      }
+
+      function setOutput(prefix, out) {
+        releaseOutputUrl(prefix);
+        outputObjectUrls[prefix] = out && out.url ? out.url : null;
+        if (prefix === "t2v") {
+          const video = $("t2vVideo");
+          const dl = $("t2vDownload");
+          video.src = out.url;
+          video.load();
+          dl.href = out.url;
+          dl.download = out.mime === "video/mp4" ? "output.mp4" : "output.bin";
+          return;
+        }
+        const img = prefix === "i2i" ? $("i2iImg") : $("t2iImg");
+        const dl = prefix === "i2i" ? $("i2iDownload") : $("t2iDownload");
+        img.src = out.url;
+        dl.href = out.url;
+        dl.download = out.mime === "image/jpeg" ? "output.jpg" : "output.png";
+      }
+
       function findModelMetaByValue(value) {
         const key = String(value || "").trim();
         if (!key) return null;
@@ -516,8 +722,13 @@
         );
       }
 
-      function currentModelMeta() {
-        return findModelMetaByValue($("modelSelect").value) || findModelMetaByValue(activeModelId);
+      function selectedTaskModelId(prefix) {
+        const cfg = TASKS[prefix];
+        return String((cfg ? $(cfg.selectId)?.value : "") || selectedModels[prefix] || "").trim();
+      }
+
+      function currentModelMeta(prefix) {
+        return findModelMetaByValue(selectedTaskModelId(prefix));
       }
 
       function modelSupportsTask(model, taskName) {
@@ -557,7 +768,14 @@
         }
         if (raw.default !== undefined && raw.default !== null) {
           maybeApplyInputValue(el, raw.default);
+          return;
         }
+        const previousAuto = String(el.dataset.autoValue || "");
+        const initial = String(el.defaultValue || "");
+        if (previousAuto && String(el.value || "") === previousAuto && initial) {
+          el.value = initial;
+        }
+        el.dataset.autoValue = initial;
       }
 
       function applyModelDefaultsForTask(prefix, taskName, model) {
@@ -566,78 +784,27 @@
         const params = taskSpec && typeof taskSpec.params === "object" ? taskSpec.params : {};
         applyNumericSpec($(`${prefix}Width`), params.width);
         applyNumericSpec($(`${prefix}Height`), params.height);
+        applyNumericSpec($(`${prefix}Fps`), params.fps);
+        applyNumericSpec($(`${prefix}Frames`), params.num_frames);
         applyNumericSpec($(`${prefix}Steps`), params.steps);
         applyNumericSpec($(`${prefix}Guidance`), params.guidance_scale);
       }
 
-      function updateEditPanelState() {
-        const model = currentModelMeta();
-        const enabled = !!model && modelSupportsTask(model, "image_to_image");
-        $("i2iFieldset").disabled = !enabled || modelOpInFlight;
-        if (!model) {
-          setStatus($("i2iSupportHint"), "", "Select a model with edit capability to enable this panel.");
-          return;
-        }
-        if (enabled) {
-          setStatus($("i2iSupportHint"), "ok", `Edits enabled for ${model.variant || model.id}.`);
-        } else {
-          setStatus($("i2iSupportHint"), "", `${model.variant || model.id} does not advertise image edit support.`);
-        }
+      function taskModels(prefix) {
+        const cfg = TASKS[prefix];
+        return catalogModels.filter((model) => modelSupportsTask(model, cfg.taskName));
       }
 
-      function updateVideoPanelState() {
-        const model = currentModelMeta();
-        const enabled = !!model && modelSupportsTask(model, "text_to_video");
-        $("t2vFieldset").disabled = !enabled || modelOpInFlight;
-        if (!model) {
-          setStatus($("t2vSupportHint"), "", "Select a model with text-to-video capability to enable this panel.");
-          return;
-        }
-        if (enabled) {
-          setStatus($("t2vSupportHint"), "ok", `Video generation enabled for ${model.variant || model.id}.`);
-        } else {
-          setStatus($("t2vSupportHint"), "", `${model.variant || model.id} does not advertise text-to-video support.`);
-        }
+      function syncTaskStatus(prefix, statusKind, statusMessage) {
+        const cfg = TASKS[prefix];
+        setStatus($(cfg.modelStatusId), statusKind, statusMessage);
       }
 
-      function applySelectedModelMetadata() {
-        const model = currentModelMeta();
-        applyModelDefaultsForTask("t2i", "text_to_image", model);
-        applyModelDefaultsForTask("i2i", "image_to_image", model);
-        applyModelDefaultsForTask("t2v", "text_to_video", model);
-        updateEditPanelState();
-        updateVideoPanelState();
-      }
-
-      function updateModelControls() {
-        const busy = modelOpInFlight || inferenceInFlight > 0;
-        $("modelSelect").disabled = busy;
-        updateEditPanelState();
-      }
-
-      function setModelUiBusy(busy, msg) {
-        modelOpInFlight = !!busy;
-        updateModelControls();
-        $("t2iBtn").disabled = busy;
-        $("i2iBtn").disabled = busy;
-        $("t2vBtn").disabled = busy;
-
-        const p = $("modelLoadProgress");
-        if (busy) {
-          p.removeAttribute("value"); // indeterminate
-          p.style.display = "block";
-        } else {
-          p.style.display = "none";
-        }
-        if (msg !== undefined) setStatus($("modelLoadStatus"), "", msg);
-      }
-
-      async function refreshCachedModels() {
-        const base = $("baseUrl").value;
-        const select = $("modelSelect");
-
-        // Keep current selection if possible.
-        const prev = select.value;
+      function refreshTaskModelSelect(prefix) {
+        const cfg = TASKS[prefix];
+        const select = $(cfg.selectId);
+        const prev = String(selectedModels[prefix] || "").trim();
+        const models = taskModels(prefix);
         select.innerHTML = "";
 
         const opt0 = document.createElement("option");
@@ -645,96 +812,205 @@
         opt0.textContent = "— select a loadable model —";
         select.appendChild(opt0);
 
+        for (const model of models) {
+          const opt = document.createElement("option");
+          opt.value = model.load_id || model.id;
+          opt.disabled = !model.loadable;
+          const sources = (model.cached_in || []).join(", ");
+          const variant = model.variant || model.id;
+          const backend = model.backend ? ` [${model.backend}]` : "";
+          opt.textContent = sources ? `${variant} — ${model.id}${backend} (${sources})` : `${variant} — ${model.id}${backend}`;
+          select.appendChild(opt);
+        }
+
+        let next = prev;
+        if (next && !models.some((model) => String(model.load_id || model.id) === next)) {
+          next = "";
+        }
+        if (!next && activeModelId) {
+          const activeModel = findModelMetaByValue(activeModelId);
+          if (activeModel && modelSupportsTask(activeModel, cfg.taskName)) {
+            next = String(activeModel.load_id || activeModel.id || activeModelId);
+          }
+        }
+        select.value = next;
+        selectedModels[prefix] = next;
+        applyModelDefaultsForTask(prefix, cfg.taskName, currentModelMeta(prefix));
+      }
+
+      function updateTaskPanelState(prefix) {
+        const cfg = TASKS[prefix];
+        const model = currentModelMeta(prefix);
+        const selected = selectedTaskModelId(prefix);
+        const busy = modelOpInFlight || inferenceInFlight > 0;
+        const fieldset = $(cfg.fieldsetId);
+        const unloadBtn = $(cfg.unloadId);
+
+        unloadBtn.disabled = busy || !activeModelId;
+        if (prefix === "i2v") {
+          fieldset.disabled = true;
+          setStatus($(cfg.supportHintId), "", cfg.emptyHint);
+          if (!selected) syncTaskStatus(prefix, "", "No image-to-video runtime is wired in yet.");
+          return;
+        }
+
+        const enabled = !!selected && !!model && modelSupportsTask(model, cfg.taskName) && !busy;
+        fieldset.disabled = !enabled;
+        if (!model) {
+          setStatus($(cfg.supportHintId), "", cfg.emptyHint);
+          if (!selected) syncTaskStatus(prefix, "", "Select a model.");
+          return;
+        }
+        if (modelSupportsTask(model, cfg.taskName)) {
+          setStatus($(cfg.supportHintId), "ok", `${cfg.readyHint} for ${model.variant || model.id}.`);
+        } else {
+          setStatus($(cfg.supportHintId), "", `${model.variant || model.id} does not advertise ${cfg.taskName} support.`);
+        }
+
+        if (!selected) {
+          syncTaskStatus(prefix, "", "Select a model.");
+        } else if (activeModelId && selected === activeModelId) {
+          syncTaskStatus(prefix, "ok", `loaded: ${activeModelId}`);
+        } else {
+          syncTaskStatus(prefix, "", `selected: ${selected} (not loaded)`);
+        }
+      }
+
+      function updateAllPanels() {
+        for (const prefix of TASK_KEYS) {
+          updateTaskPanelState(prefix);
+        }
+      }
+
+      function updateModelControls() {
+        const busy = modelOpInFlight || inferenceInFlight > 0;
+        for (const prefix of TASK_KEYS) {
+          $(TASKS[prefix].selectId).disabled = busy;
+        }
+        updateAllPanels();
+      }
+
+      function setModelUiBusy(prefix, busy, msg) {
+        const cfg = TASKS[prefix];
+        modelOpInFlight = !!busy;
+        updateModelControls();
+        $("t2iBtn").disabled = busy;
+        $("i2iBtn").disabled = busy;
+        $("t2vBtn").disabled = busy;
+
+        const p = $(cfg.modelProgressId);
+        if (busy) {
+          p.removeAttribute("value");
+          p.style.display = "block";
+        } else {
+          p.style.display = "none";
+        }
+        if (msg !== undefined) syncTaskStatus(prefix, "", msg);
+      }
+
+      function activateTab(prefix) {
+        activeTab = prefix;
+        document.querySelectorAll(".tab-btn").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.task === prefix);
+        });
+        for (const key of TASK_KEYS) {
+          $(TASKS[key].panelId).classList.toggle("active", key === prefix);
+        }
+      }
+
+      async function refreshCachedModels() {
+        const base = $("baseUrl").value;
         try {
           const data = await fetchJson(joinUrl(base, "/v1/vision/models"), { method: "GET" });
           const models = (data && data.models) || [];
           catalogModels = Array.isArray(models) ? models : [];
-          const platform = (data && data.platform) || "local";
-          const targets = Array.isArray(data && data.targets) ? data.targets.filter(Boolean) : [];
-
-          for (const m of models) {
-            const opt = document.createElement("option");
-            opt.value = m.load_id || `catalog:${m.backend || "download"}:${m.id}`;
-            opt.dataset.modelId = m.id;
-            opt.disabled = !m.loadable;
-            const sources = (m.cached_in || []).join(", ");
-            const variant = m.variant || m.id;
-            const backend = m.backend ? ` [${m.backend}]` : "";
-            opt.textContent = sources ? `${variant} — ${m.id}${backend} (${sources})` : `${variant} — ${m.id}${backend}`;
-            select.appendChild(opt);
-          }
-
           const active = data && data.active;
           activeModelId = active && active.model_id ? String(active.model_id) : null;
-
-          if (activeModelId) {
-            select.value = active.load_id || activeModelId;
-            setStatus($("modelLoadStatus"), "ok", `loaded: ${activeModelId}`);
-          } else if (prev) {
-            select.value = prev;
-            setStatus($("modelLoadStatus"), "", "");
-          } else {
-            const scope = targets.length ? `${platform}: ${targets.join(", ")}` : platform;
-            setStatus(
-              $("modelLoadStatus"),
-              "",
-              models.length ? `catalog: ${scope}` : "No surfaced playground models found."
-            );
+          for (const prefix of TASK_KEYS) {
+            refreshTaskModelSelect(prefix);
           }
-          applySelectedModelMetadata();
           updateModelControls();
         } catch (e) {
           catalogModels = [];
           activeModelId = null;
-          applySelectedModelMetadata();
+          for (const prefix of TASK_KEYS) {
+            const select = $(TASKS[prefix].selectId);
+            select.innerHTML = '<option value="">— select a loadable model —</option>';
+            selectedModels[prefix] = "";
+          }
           updateModelControls();
-          setStatus($("modelLoadStatus"), "err", String(e.message || e));
+          syncTaskStatus(activeTab, "err", String(e.message || e));
         }
       }
 
-      async function loadSelectedModel(modelId) {
+      async function loadSelectedModel(prefix) {
+        const cfg = TASKS[prefix];
         const base = $("baseUrl").value;
+        const modelId = selectedTaskModelId(prefix);
         if (!modelId) return;
-        setModelUiBusy(true, `loading ${modelId}…`);
+        setModelUiBusy(prefix, true, `loading ${modelId}…`);
         try {
+          clearAllOutputs();
           const resp = await fetchJson(joinUrl(base, "/v1/vision/model/load"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model_id: modelId }),
+            body: JSON.stringify({ model_id: modelId, unload_first: true }),
           });
           const active = resp && resp.active;
           activeModelId = active && active.model_id ? String(active.model_id) : modelId;
-          applySelectedModelMetadata();
-          setStatus($("modelLoadStatus"), "ok", `loaded: ${activeModelId}`);
+          updateModelControls();
+          syncTaskStatus(prefix, "ok", `loaded: ${activeModelId}`);
         } catch (e) {
           activeModelId = null;
-          setStatus($("modelLoadStatus"), "err", String(e.message || e));
-          // Reset selection to empty on failure.
-          $("modelSelect").value = "";
-          applySelectedModelMetadata();
+          updateModelControls();
+          syncTaskStatus(prefix, "err", String(e.message || e));
         } finally {
-          setModelUiBusy(false, $("modelLoadStatus").textContent);
+          setModelUiBusy(prefix, false);
           updateModelControls();
         }
       }
 
-      $("modelSelect").addEventListener("change", async () => {
-        if (modelOpInFlight) return;
-        const modelId = $("modelSelect").value;
-        applySelectedModelMetadata();
-        if (!modelId) {
-          if (activeModelId) {
-            $("modelSelect").value = activeModelId;
-            setStatus($("modelLoadStatus"), "ok", `loaded: ${activeModelId}`);
-            applySelectedModelMetadata();
-          }
-          return;
+      async function unloadActiveModel(prefix) {
+        const cfg = TASKS[prefix];
+        if (!activeModelId) return;
+        setModelUiBusy(prefix, true, `unloading ${activeModelId}…`);
+        try {
+          await fetchJson(joinUrl($("baseUrl").value, "/v1/vision/model/unload"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          clearAllOutputs();
+          activeModelId = null;
+          updateModelControls();
+          syncTaskStatus(prefix, "ok", "unloaded");
+        } catch (e) {
+          syncTaskStatus(prefix, "err", String(e.message || e));
+        } finally {
+          setModelUiBusy(prefix, false);
+          updateModelControls();
         }
-        if (activeModelId && modelId === activeModelId) return;
-        await loadSelectedModel(modelId);
-      });
+      }
 
-      // Initial load.
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => activateTab(String(btn.dataset.task || "t2i")));
+      });
+      for (const prefix of TASK_KEYS) {
+        const cfg = TASKS[prefix];
+        $(cfg.selectId).addEventListener("change", async () => {
+          selectedModels[prefix] = String($(cfg.selectId).value || "").trim();
+          applyModelDefaultsForTask(prefix, cfg.taskName, currentModelMeta(prefix));
+          updateAllPanels();
+          if (selectedModels[prefix] && prefix !== "i2v") {
+            await loadSelectedModel(prefix);
+          }
+        });
+        $(cfg.unloadId).addEventListener("click", async () => {
+          await unloadActiveModel(prefix);
+        });
+      }
+
+      activateTab(activeTab);
       refreshCachedModels();
 
       async function sleep(ms) {
@@ -772,11 +1048,10 @@
         setStatus(status, "", "running…");
         setProgress(prog, 0, $("t2iSteps").value ? Number($("t2iSteps").value) : null);
         log.textContent = "";
-        img.removeAttribute("src");
-        dl.href = "#";
+        clearOutput("t2i");
 
         try {
-          const selectedModelId = $("modelSelect").value || activeModelId;
+          const selectedModelId = selectedTaskModelId("t2i") || activeModelId;
           if (!selectedModelId) throw new Error("select a model first");
 
           const base = $("baseUrl").value;
@@ -822,9 +1097,7 @@
           if (!b64) throw new Error("missing data[0].b64_json");
           const bytes = b64ToBytes(b64);
           const out = bytesToObjectUrl(bytes);
-          img.src = out.url;
-          dl.href = out.url;
-          dl.download = out.mime === "image/jpeg" ? "output.jpg" : "output.png";
+          setOutput("t2i", out);
           log.textContent = JSON.stringify(sanitizeResponseForLog(resp), null, 2);
           setStatus(status, "ok", "done");
         } catch (e) {
@@ -852,11 +1125,10 @@
         setStatus(status, "", "running…");
         setProgress(prog, 0, $("i2iSteps").value ? Number($("i2iSteps").value) : null);
         log.textContent = "";
-        img.removeAttribute("src");
-        dl.href = "#";
+        clearOutput("i2i");
 
         try {
-          const selectedModelId = $("modelSelect").value || activeModelId;
+          const selectedModelId = selectedTaskModelId("i2i") || activeModelId;
           if (!selectedModelId) throw new Error("select a model first");
 
           const base = $("baseUrl").value;
@@ -902,9 +1174,7 @@
           if (!b64) throw new Error("missing data[0].b64_json");
           const bytes = b64ToBytes(b64);
           const out = bytesToObjectUrl(bytes);
-          img.src = out.url;
-          dl.href = out.url;
-          dl.download = out.mime === "image/jpeg" ? "output.jpg" : "output.png";
+          setOutput("i2i", out);
           log.textContent = JSON.stringify(sanitizeResponseForLog(resp), null, 2);
           setStatus(status, "ok", "done");
         } catch (e) {
@@ -932,12 +1202,10 @@
         setStatus(status, "", "running…");
         setProgress(prog, 0, $("t2vSteps").value ? Number($("t2vSteps").value) : null);
         log.textContent = "";
-        video.removeAttribute("src");
-        video.load();
-        dl.href = "#";
+        clearOutput("t2v");
 
         try {
-          const selectedModelId = $("modelSelect").value || activeModelId;
+          const selectedModelId = selectedTaskModelId("t2v") || activeModelId;
           if (!selectedModelId) throw new Error("select a model first");
 
           const base = $("baseUrl").value;
@@ -984,10 +1252,7 @@
           if (!b64) throw new Error("missing data[0].b64_json");
           const bytes = b64ToBytes(b64);
           const out = bytesToObjectUrl(bytes);
-          video.src = out.url;
-          video.load();
-          dl.href = out.url;
-          dl.download = out.mime === "video/mp4" ? "output.mp4" : "output.bin";
+          setOutput("t2v", out);
           log.textContent = JSON.stringify(sanitizeResponseForLog(resp), null, 2);
           setStatus(status, "ok", "done");
         } catch (e) {
@@ -999,6 +1264,10 @@
           inferenceInFlight = Math.max(0, inferenceInFlight - 1);
           updateModelControls();
         }
+      });
+
+      window.addEventListener("beforeunload", () => {
+        clearAllOutputs();
       });
     </script>
   </body>

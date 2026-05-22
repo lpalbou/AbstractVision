@@ -3,8 +3,8 @@
 This guide helps you generate your first image using AbstractVision with the built-in backends:
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
-- **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)
-- **MFLUX (local Apple Silicon)**: 8-bit MLX/MFLUX image generation via the optional MFLUX runtime
+- **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines
+- **MFLUX (local Apple Silicon)**: 8-bit MLX/MFLUX text-to-image generation via the optional MFLUX runtime
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -179,7 +179,7 @@ Recommended default (local, cross-platform) — Stable Diffusion 1.5:
 
 ```bash
 pip install "abstractvision[diffusers]"
-abstractvision download-model stable-diffusion --provider diffusers
+abstractvision download stable-diffusion --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -203,7 +203,7 @@ Jump to detailed recipes:
 The REPL is cache-only by default, so it will not download model weights. Download the model separately first:
 
 ```bash
-abstractvision download-model stable-diffusion --provider diffusers
+abstractvision download stable-diffusion --provider diffusers
 ```
 
 ```bash
@@ -482,8 +482,8 @@ For Qwen Image and FLUX GGUF, external users should not have to manually locate 
 Download the curated bundle once, then use the model key everywhere:
 
 ```bash
-abstractvision download-model qwen-image --provider sdcpp
-abstractvision download-model flux2-klein-base-4b --provider sdcpp
+abstractvision download qwen-image --provider sdcpp
+abstractvision download flux2-klein-base-4b --provider sdcpp
 ```
 
 AbstractVision resolves the required side artifacts from the Hugging Face cache automatically:
@@ -492,7 +492,7 @@ AbstractVision resolves the required side artifacts from the Hugging Face cache 
 - REPL: `/backend sdcpp flux2-klein-base-4b /path/to/sd-cli`
 - Playground / AbstractCore plugin: set the model key and let the package resolve the cached bundle
 
-If a required companion file is missing, the package now fails early with a precise `download-model ... --provider sdcpp`
+If a required companion file is missing, the package now fails early with a precise `download ... --provider sdcpp`
 hint instead of starting generation and then failing deep in the runtime.
 
 ### 6.4 Run Qwen Image with `sdcpp`
@@ -557,21 +557,20 @@ Open:
 
 In the UI:
 - The API Base URL defaults to the same process that serves the page
-- Select a cached model and load it
-- Generate (T2I), upload an input image (I2I), or use the Text→Video panel when the loaded model advertises `text_to_video`
+- Each task tab has its own model selector and unload button
+- Switching models in a tab unloads the previously active backend first to free memory before the replacement model is loaded
+- Generate (T2I), upload an input image (I2I), or inspect the experimental Text→Video tab status. The bundled local server currently does not ship an enabled local `t2v` model there.
 
 For the endpoint list, see `playground/README.md`.
 
-### 7.2 Optional local text→video with Diffusers
+### 7.2 Local text→video status
 
-The first shipped local video path is the CogVideoX-2b Diffusers family. On Apple Silicon, use `mps` plus `float16`:
+The packaged local Diffusers `text_to_video` groundwork remains experimental and
+is currently disabled from the normal local surfaces.
 
-```bash
-abstractvision download-model cogvideox-2b --provider diffusers
-abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"
-```
-
-Notes:
-- local MP4 export requires an `ffmpeg` executable on `PATH`;
-- backend normalization applies the model defaults/constraints, so CogVideoX requests are clamped to the supported `720x480` shape and default `8 fps` when you omit them;
-- the playground Text→Video panel becomes available when this model is selected and loaded.
+Current policy:
+- do not treat bundled local `t2v` as production-ready;
+- use the OpenAI-compatible backend if you need a working `text_to_video`
+  surface today; and
+- track the local follow-up in
+  [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).

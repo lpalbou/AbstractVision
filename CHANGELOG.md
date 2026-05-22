@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.10 - 2026-05-22
+
+- Catalog/handles: make the curated Qwen Image Edit aliases consistent across the registry, downloads, and CLI catalog surfaces (`qwen-image-edit`, `qwen-image-edit-2509`, `qwen-image-edit-2511`), and re-verify all packaged Hugging Face repo ids in `vision_model_capabilities.json`.
+- Runtime truth: quarantine unreliable local runtime task paths until they are re-validated. Local Diffusers `GLM-Image` is now hidden/disabled, local MFLUX is surfaced for `text_to_image` only, and local Diffusers `text_to_video` is marked experimental and disabled from the normal local surfaces.
+- Playground/catalog UX: keep the per-task playground tabs with per-tab load/unload controls, but filter task selectors through backend-supported runtime truth so disabled local tasks do not surface. Update the `download` command messaging so curated 16-bit Diffusers snapshots are reported honestly instead of looking like a failed 8-bit fallback.
+- Docs/backlog/tests: add the planned quarantine follow-up item, refresh the core docs around current local support policy, expand regression coverage for the runtime blacklists and catalog filtering, and regenerate `llms-full.txt`.
+
 ## 0.3.9 - 2026-05-21
 
 - Local Diffusers video: implement the first in-process `text_to_video` path through `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`, including registry-backed request normalization, preload warmup, unload support, MPS-safe explicit FP16 device moves, and MP4 artifact outputs packaged through `ffmpeg`.

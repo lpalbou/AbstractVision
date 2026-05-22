@@ -79,6 +79,20 @@ def make_vision_tools(
     if not model_id:
         raise ValueError("model_id must be a non-empty string")
 
+    def _task_param_value(task_name: str, param_name: str, fallback: Any = None) -> Any:
+        try:
+            task = reg.get(model_id).tasks.get(task_name)
+        except Exception:
+            task = None
+        params = task.params if task is not None and isinstance(task.params, dict) else {}
+        spec = params.get(param_name)
+        if isinstance(spec, dict):
+            if spec.get("const") is not None:
+                return spec.get("const")
+            if spec.get("default") is not None:
+                return spec.get("default")
+        return fallback
+
     @tool(
         name="vision_text_to_image",
         description="Generate an image from a text prompt and return an artifact ref.",
@@ -90,7 +104,7 @@ def make_vision_tools(
         negative_prompt: Optional[str] = None,
         width: Optional[int] = None,
         height: Optional[int] = None,
-        steps: Optional[int] = 10,
+        steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -98,10 +112,14 @@ def make_vision_tools(
         out = vision_manager.generate_image(
             prompt,
             negative_prompt=negative_prompt,
-            width=width,
-            height=height,
-            steps=steps,
-            guidance_scale=guidance_scale,
+            width=width if width is not None else _task_param_value("text_to_image", "width", None),
+            height=height if height is not None else _task_param_value("text_to_image", "height", None),
+            steps=steps if steps is not None else _task_param_value("text_to_image", "steps", 10),
+            guidance_scale=(
+                guidance_scale
+                if guidance_scale is not None
+                else _task_param_value("text_to_image", "guidance_scale", None)
+            ),
             seed=seed,
         )
         if not (isinstance(out, dict) and is_artifact_ref(out)):
@@ -121,7 +139,7 @@ def make_vision_tools(
         mask_artifact: Optional[Dict[str, Any]] = None,
         mask_b64: Optional[str] = None,
         negative_prompt: Optional[str] = None,
-        steps: Optional[int] = 10,
+        steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -133,8 +151,12 @@ def make_vision_tools(
             image=image_bytes or b"",
             mask=mask_bytes,
             negative_prompt=negative_prompt,
-            steps=steps,
-            guidance_scale=guidance_scale,
+            steps=steps if steps is not None else _task_param_value("image_to_image", "steps", 15),
+            guidance_scale=(
+                guidance_scale
+                if guidance_scale is not None
+                else _task_param_value("image_to_image", "guidance_scale", None)
+            ),
             seed=seed,
         )
         if not (isinstance(out, dict) and is_artifact_ref(out)):
@@ -153,7 +175,7 @@ def make_vision_tools(
         reference_image_b64: Optional[str] = None,
         angles: Optional[List[str]] = None,
         negative_prompt: Optional[str] = None,
-        steps: Optional[int] = 10,
+        steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
@@ -172,10 +194,16 @@ def make_vision_tools(
             kwargs["angles"] = angles
         if negative_prompt is not None:
             kwargs["negative_prompt"] = negative_prompt
-        if steps is not None:
-            kwargs["steps"] = steps
-        if guidance_scale is not None:
-            kwargs["guidance_scale"] = guidance_scale
+        resolved_steps = steps if steps is not None else _task_param_value("multi_view_image", "steps", 10)
+        resolved_guidance = (
+            guidance_scale
+            if guidance_scale is not None
+            else _task_param_value("multi_view_image", "guidance_scale", None)
+        )
+        if resolved_steps is not None:
+            kwargs["steps"] = resolved_steps
+        if resolved_guidance is not None:
+            kwargs["guidance_scale"] = resolved_guidance
         if seed is not None:
             kwargs["seed"] = seed
 
@@ -197,7 +225,7 @@ def make_vision_tools(
         height: Optional[int] = None,
         fps: Optional[int] = None,
         num_frames: Optional[int] = None,
-        steps: Optional[int] = 10,
+        steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -205,12 +233,18 @@ def make_vision_tools(
         out = vision_manager.generate_video(
             prompt,
             negative_prompt=negative_prompt,
-            width=width,
-            height=height,
-            fps=fps,
-            num_frames=num_frames,
-            steps=steps,
-            guidance_scale=guidance_scale,
+            width=width if width is not None else _task_param_value("text_to_video", "width", None),
+            height=height if height is not None else _task_param_value("text_to_video", "height", None),
+            fps=fps if fps is not None else _task_param_value("text_to_video", "fps", None),
+            num_frames=(
+                num_frames if num_frames is not None else _task_param_value("text_to_video", "num_frames", None)
+            ),
+            steps=steps if steps is not None else _task_param_value("text_to_video", "steps", 10),
+            guidance_scale=(
+                guidance_scale
+                if guidance_scale is not None
+                else _task_param_value("text_to_video", "guidance_scale", None)
+            ),
             seed=seed,
         )
         if not (isinstance(out, dict) and is_artifact_ref(out)):
@@ -232,7 +266,7 @@ def make_vision_tools(
         height: Optional[int] = None,
         fps: Optional[int] = None,
         num_frames: Optional[int] = None,
-        steps: Optional[int] = 10,
+        steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -242,12 +276,18 @@ def make_vision_tools(
             image=image_bytes or b"",
             prompt=prompt,
             negative_prompt=negative_prompt,
-            width=width,
-            height=height,
-            fps=fps,
-            num_frames=num_frames,
-            steps=steps,
-            guidance_scale=guidance_scale,
+            width=width if width is not None else _task_param_value("image_to_video", "width", None),
+            height=height if height is not None else _task_param_value("image_to_video", "height", None),
+            fps=fps if fps is not None else _task_param_value("image_to_video", "fps", None),
+            num_frames=(
+                num_frames if num_frames is not None else _task_param_value("image_to_video", "num_frames", None)
+            ),
+            steps=steps if steps is not None else _task_param_value("image_to_video", "steps", 10),
+            guidance_scale=(
+                guidance_scale
+                if guidance_scale is not None
+                else _task_param_value("image_to_video", "guidance_scale", None)
+            ),
             seed=seed,
         )
         if not (isinstance(out, dict) and is_artifact_ref(out)):

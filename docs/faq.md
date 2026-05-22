@@ -31,7 +31,8 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local Diffusers also implements `text_to_video` for the CogVideoX-2b family (`zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`).
+- Local MFLUX is currently surfaced for `text_to_image` only.
+- Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - `image_to_video` still works only via the OpenAI-compatible backend **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
 
@@ -40,7 +41,7 @@ Details: [docs/reference/backends.md](reference/backends.md).
 ## Which backend should I use?
 
 - **OpenAI-compatible HTTP** ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).
-- **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps). This now includes the first local `text_to_video` path through CogVideoX-2b.
+- **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps). Local `text_to_video` groundwork exists but is currently quarantined from the normal local surfaces.
 - **stable-diffusion.cpp (local GGUF)** ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py)): run GGUF diffusion models via `sd-cli` or `stable-diffusion-cpp-python`.
 
 ## What model should I start with (local)?
@@ -52,7 +53,7 @@ If you’re running locally via the Diffusers backend and want a reliable starti
 Quickstart:
 
 ```bash
-abstractvision download-model stable-diffusion --provider diffusers
+abstractvision download stable-diffusion --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
@@ -71,8 +72,8 @@ Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default 
 For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mflux ...`, or `/backend sdcpp ...`.
 
 Current local video note:
-- the first local one-shot/repl `t2v` path is Diffusers `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`;
-- generated MP4 outputs require `ffmpeg` on `PATH`.
+- local `t2v` is currently experimental and disabled from the normal bundled local surfaces;
+- remote `text_to_video` / `image_to_video` still depend on the OpenAI-compatible backend being configured with video endpoints.
 
 ## Where do generated outputs go?
 

@@ -7,11 +7,13 @@ import queue
 import threading
 from concurrent.futures import Future
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
+from ..model_capabilities import VisionModelCapabilitiesRegistry
 from ..model_downloads import (
     download_hf_repo_snapshot,
     find_model_preset,
@@ -119,6 +121,30 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "mlx-community/qwen-image-2512-8bit-mlx": "qwen-image",
     "qwen-image": "qwen-image",
     "qwen-image-2512": "qwen-image",
+}
+
+
+_MFLUX_BASE_MODEL_REGISTRY_IDS: Dict[str, str] = {
+    "flux2-klein-4b": "black-forest-labs/FLUX.2-klein-4B",
+    "flux2-klein-9b": "black-forest-labs/FLUX.2-klein-9B",
+    "qwen-image": "Qwen/Qwen-Image-2512",
+    "z-image-turbo": "Tongyi-MAI/Z-Image-Turbo",
+}
+
+
+_MFLUX_BASE_MODEL_FALLBACK_TASKS: Dict[str, Tuple[str, ...]] = {
+    "flux2-klein-4b": ("text_to_image",),
+    "flux2-klein-9b": ("text_to_image",),
+    "qwen-image": ("text_to_image",),
+    "z-image-turbo": ("text_to_image",),
+}
+
+
+_MFLUX_RUNTIME_ALLOWED_TASKS: Dict[str, Tuple[str, ...]] = {
+    "flux2-klein-4b": ("text_to_image",),
+    "flux2-klein-9b": ("text_to_image",),
+    "qwen-image": ("text_to_image",),
+    "z-image-turbo": ("text_to_image",),
 }
 
 
@@ -526,6 +552,14 @@ def _preset_for(value: Any) -> Any:
         return None
 
 
+@lru_cache(maxsize=1)
+def _mflux_capability_registry() -> Optional[VisionModelCapabilitiesRegistry]:
+    try:
+        return VisionModelCapabilitiesRegistry()
+    except Exception:
+        return None
+
+
 def _first_other_engine_preset(value: Any) -> Any:
     s = str(value or "").strip()
     if not s:
@@ -646,9 +680,51 @@ class MFluxVisionBackend(VisionBackend):
     def preload(self) -> None:
         self._run_on_runtime_thread(self._preload_impl)
 
+    def _capability_model_id(self, *, model_id: Optional[str] = None, base_model: Optional[str] = None) -> Optional[str]:
+        explicit = str(model_id or "").strip()
+        if explicit:
+            return explicit
+        configured_model = str(self._cfg.model or "").strip()
+        preset = _preset_for(configured_model) if configured_model else None
+        if preset is not None:
+            return str(preset.upstream_repo_id or preset.repo_id)
+        resolved_base = str(
+            base_model
+            or self._resolved_base_model
+            or _infer_base_model(self._cfg.base_model, self._cfg.model)
+            or ""
+        ).strip()
+        return _MFLUX_BASE_MODEL_REGISTRY_IDS.get(resolved_base)
+
+    def _supported_task_names(
+        self,
+        *,
+        model_id: Optional[str] = None,
+        base_model: Optional[str] = None,
+    ) -> List[str]:
+        resolved_base = str(
+            base_model
+            or self._resolved_base_model
+            or _infer_base_model(self._cfg.base_model, self._cfg.model)
+            or ""
+        ).strip()
+        capability_model_id = self._capability_model_id(model_id=model_id, base_model=resolved_base)
+        allowed = set(_MFLUX_RUNTIME_ALLOWED_TASKS.get(resolved_base, ("text_to_image",)))
+        reg = _mflux_capability_registry()
+        if reg is not None and capability_model_id:
+            try:
+                return sorted(
+                    str(task_name)
+                    for task_name in reg.get(capability_model_id).tasks.keys()
+                    if str(task_name) in allowed
+                )
+            except Exception:
+                pass
+        return list(_MFLUX_BASE_MODEL_FALLBACK_TASKS.get(resolved_base, ("text_to_image",)))
+
     def get_capabilities(self) -> VisionBackendCapabilities:
         return VisionBackendCapabilities(
-            supported_tasks=["text_to_image", "image_to_image"],
+            supported_tasks=self._supported_task_names(),
             supports_mask=False,
         )
 
@@ -657,8 +733,7 @@ class MFluxVisionBackend(VisionBackend):
         # `mflux` runtime is not installed. Generation will still error until
         # the runtime is present, but catalogs can surface what is already
         # downloaded.
-        if task and str(task).strip() not in {"text_to_image", "image_to_image"}:
-            return ()
+        task_s = str(task or "").strip()
         out = []
         discovered = discover_cached_mflux_models(
             model_dir=self._cfg.model_dir,
@@ -669,6 +744,12 @@ class MFluxVisionBackend(VisionBackend):
             if discovered_model is None:
                 continue
             base_model = _infer_base_model(preset.key, preset.repo_id, preset.upstream_repo_id)
+            tasks = self._supported_task_names(
+                model_id=str(preset.upstream_repo_id or preset.repo_id),
+                base_model=base_model,
+            )
+            if task_s and task_s not in tasks:
+                continue
             model_def = _MFLUX_MODELS.get(str(base_model or ""))
             parameter_metadata = _mflux_parameter_metadata(model_def) if model_def is not None else {}
             out.append(
@@ -676,7 +757,7 @@ class MFluxVisionBackend(VisionBackend):
                     id=preset.key,
                     object="model",
                     owned_by="mflux",
-                    capabilities=("text_to_image", "image_to_image"),
+                    capabilities=tuple(tasks),
                     raw={
                         "provider": "mflux",
                         "model": preset.key,
@@ -730,7 +811,7 @@ class MFluxVisionBackend(VisionBackend):
                 if not self._cfg.allow_download:
                     raise OptionalDependencyMissingError(
                         f"MFLUX model preset {preset.key!r} is not available in the Hugging Face cache. "
-                        f"Run: abstractvision download-model {preset.key} --provider mflux"
+                        f"Run: abstractvision download {preset.key} --provider mflux"
                     )
                 try:
                     downloaded = download_hf_repo_snapshot(
@@ -762,7 +843,7 @@ class MFluxVisionBackend(VisionBackend):
                 if not self._cfg.allow_download:
                     raise OptionalDependencyMissingError(
                         f"MFLUX model repo {configured_model!r} is not cached locally. "
-                        "Pre-download it with `abstractvision download-model <org/name>` "
+                        "Pre-download it with `abstractvision download <org/name>` "
                         "or set ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1 to permit downloads."
                     )
                 base = configured_base or _infer_base_model(configured_model)
@@ -812,7 +893,7 @@ class MFluxVisionBackend(VisionBackend):
         raise OptionalDependencyMissingError(
             "MFLUX backend is not configured and no downloaded MFLUX preset was found. "
             "Set vision_mflux_model / ABSTRACTVISION_MFLUX_MODEL or run "
-            "`abstractvision download-model flux2-klein-4b --provider mflux`."
+            "`abstractvision download flux2-klein-4b --provider mflux`."
         )
 
     def _ensure_model_impl(self) -> Tuple[Any, _MFluxModelDef]:
@@ -997,25 +1078,11 @@ class MFluxVisionBackend(VisionBackend):
         return self._run_on_runtime_thread(self._generate_impl, request)
 
     def _edit_image_impl(self, request: ImageEditRequest) -> GeneratedAsset:
-        if request.mask is not None:
-            raise CapabilityNotSupportedError("MFLUX backend does not support mask-based image editing.")
-        with tempfile.TemporaryDirectory(prefix="abstractvision-mflux-") as td:
-            image_path = Path(td) / "input.png"
-            image_path.write_bytes(bytes(request.image))
-            image_strength = None
-            if isinstance(request.extra, dict) and request.extra.get("image_strength") is not None:
-                image_strength = float(request.extra["image_strength"])
-            gen_req = ImageGenerationRequest(
-                prompt=request.prompt,
-                negative_prompt=request.negative_prompt,
-                width=None,
-                height=None,
-                seed=request.seed,
-                steps=request.steps,
-                guidance_scale=request.guidance_scale,
-                extra=dict(request.extra or {}),
-            )
-            return self._generate_impl(gen_req, image_path=image_path, image_strength=image_strength)
+        _ = request
+        raise CapabilityNotSupportedError(
+            "MFLUX backend currently supports text_to_image only. "
+            "Local image_to_image is temporarily disabled pending quality investigation."
+        )
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         return self._run_on_runtime_thread(self._edit_image_impl, request)

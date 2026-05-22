@@ -30,7 +30,7 @@ unless you choose the matching extra.
 ### Verify
 
 - `abstractvision cli`
-- `abstractvision model-catalog --provider diffusers`
+- `abstractvision catalog --provider diffusers`
 
 ## Local Diffusers cannot find the model
 
@@ -46,54 +46,78 @@ present in the Hugging Face cache.
 
 ### Fix
 
-- Pre-download the model with `abstractvision download-model ... --provider diffusers`
+- Pre-download the model with `abstractvision download ... --provider diffusers`
 - or allow runtime downloads explicitly with `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`
 
 Examples:
 
 ```bash
-abstractvision download-model stable-diffusion --provider diffusers
-abstractvision download-model cogvideox-2b --provider diffusers
+abstractvision download stable-diffusion --provider diffusers
+abstractvision download qwen-image-edit-2511 --provider diffusers
 ```
 
 ### Verify
 
-- `abstractvision model-catalog --provider diffusers`
-- `abstractvision show-model zai-org/CogVideoX-2b`
+- `abstractvision catalog --provider diffusers`
+- `abstractvision show-model Qwen/Qwen-Image-Edit-2511`
 
-## Local Diffusers text-to-video fails because `ffmpeg` is missing
+## Local `text_to_video` is experimental and currently disabled
 
 ### Symptom
 
-- local `t2v` generation runs inference but fails while packaging the output
-- the error says `ffmpeg` is required on `PATH`
+- the local playground has no active local `Text→Video` model choices
+- local Diffusers `t2v` raises a capability/disabled error
 
 ### Likely cause
 
-AbstractVision reuses the existing external `ffmpeg` binary path to package
-generated frames into MP4. There is no bundled video encoder in the package.
+AbstractVision intentionally quarantines the current local `text_to_video`
+groundwork because the operator validation bar is not met yet.
 
 ### Fix
 
-Install `ffmpeg` and make sure it is available on `PATH`.
+- use the OpenAI-compatible backend if you need `text_to_video` today; or
+- follow the backlog item that tracks the local re-validation work:
+  [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
 
-On macOS with Homebrew:
+## `GLM-Image` is temporarily disabled in the local Diffusers backend
 
-```bash
-brew install ffmpeg
-```
+### Symptom
 
-### Verify
+- `zai-org/GLM-Image` does not appear in local runtime-backed model selectors
+- direct local Diffusers calls reject it as temporarily disabled
 
-```bash
-ffmpeg -version
-```
+### Likely cause
 
-Then retry:
+Operator testing and runtime investigation showed that current local GLM output
+quality/runtime behavior is not honest enough to ship as a working local
+capability.
 
-```bash
-abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"
-```
+### Fix
+
+Use another local Diffusers image model for now, for example:
+- `runwayml/stable-diffusion-v1-5`
+- `Qwen/Qwen-Image-Edit-2511`
+- `black-forest-labs/FLUX.2-klein-4B`
+
+The follow-up investigation is tracked in:
+- [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
+
+## MFLUX `image_to_image` is temporarily disabled
+
+### Symptom
+
+- MFLUX models do not appear in the playground `Image→Image` tab
+- local MFLUX `i2i` calls raise a temporary capability error
+
+### Likely cause
+
+Operator tests showed that the current MFLUX `image_to_image` path does not yet
+preserve scene structure reliably enough.
+
+### Fix
+
+- use MFLUX for `text_to_image` only for now; and
+- use local Diffusers or `stable-diffusion.cpp` for `image_to_image`.
 
 ## `mps` was requested but is unavailable
 
@@ -141,7 +165,7 @@ packaged capability registry, or the backend cannot really execute that task.
 Choose a model that advertises the task:
 
 - image edits: a model with `image_to_image`
-- local text-to-video: `zai-org/CogVideoX-2b`
+- local text-to-video: none are currently shipped as enabled local options in the bundled server
 
 ### Verify
 

@@ -40,9 +40,9 @@ Backends are execution engines that implement the `VisionBackend` interface ([`.
 
 Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/):
 - `OpenAICompatibleVisionBackend` (HTTP)
-- `HuggingFaceDiffusersVisionBackend` (local Diffusers images + CogVideoX text-to-video)
+- `HuggingFaceDiffusersVisionBackend` (local Diffusers images; local `text_to_video` groundwork is currently quarantined)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
-- `MFluxVisionBackend` (local Apple Silicon MFLUX bridge for curated MLX presets)
+- `MFluxVisionBackend` (local Apple Silicon MFLUX bridge for curated MLX presets; currently `text_to_image` only)
 
 Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 
@@ -121,7 +121,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
-For local text→video, switch the Diffusers model id to `zai-org/CogVideoX-2b` (or `THUDM/CogVideoX-2b`) and call `generate_video(...)`. Generated MP4 outputs require an `ffmpeg` executable on `PATH`.
+`generate_video(...)` remains part of the public API, but the bundled local `text_to_video` path is currently experimental and disabled from the normal local surfaces. Generated MP4 outputs still require an `ffmpeg` executable on `PATH` whenever a backend returns frame sequences for local packaging.
 
 ## Passing advanced backend parameters (`extra`)
 

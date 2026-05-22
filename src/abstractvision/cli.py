@@ -7,7 +7,7 @@ import os
 import shlex
 import subprocess
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -41,6 +41,7 @@ from .model_downloads import (
     resolve_sdcpp_model_selection,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
+from .types import ImageEditRequest, ImageGenerationRequest
 from .vision_manager import VisionManager
 
 DEFAULT_REPL_BACKEND = ""
@@ -48,6 +49,8 @@ DEFAULT_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
 DEFAULT_DIFFUSERS_DEVICE = "auto"
 DEFAULT_T2I_WIDTH = 512
 DEFAULT_T2I_HEIGHT = 512
+DEFAULT_T2I_STEPS = 10
+DEFAULT_I2I_STEPS = 15
 
 
 def _generic_mlx_backend_error() -> str:
@@ -71,6 +74,41 @@ def _env_bool(key: str, default: bool = False) -> bool:
     if v is None:
         return bool(default)
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _runtime_supported_tasks_for_catalog_preset(
+    preset: Any,
+    *,
+    model_id: str,
+    registry_tasks: Sequence[str],
+) -> List[str]:
+    tasks = [str(task_name) for task_name in registry_tasks]
+    engine = normalize_model_engine(getattr(preset, "engine", None))
+    try:
+        if engine == "diffusers":
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(
+                    model_id=str(model_id),
+                    device="cpu",
+                    allow_download=False,
+                )
+            )
+        elif engine == "mflux":
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=str(getattr(preset, "key", model_id))))
+        elif engine == "stable-diffusion.cpp":
+            backend = StableDiffusionCppVisionBackend(
+                config=StableDiffusionCppBackendConfig(
+                    sd_cli_path="sd-cli",
+                    model=str(getattr(preset, "key", model_id)),
+                    capabilities_model_id=str(model_id),
+                )
+            )
+        else:
+            return tasks
+        allowed = {str(task_name) for task_name in backend.get_capabilities().supported_tasks or []}
+        return [task_name for task_name in tasks if task_name in allowed]
+    except Exception:
+        return tasks
 
 
 def _default_repl_backend() -> str:
@@ -277,6 +315,9 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
             config=StableDiffusionCppBackendConfig(
                 sd_cli_path=str(getattr(args, "sdcpp_bin", None) or "sd-cli"),
                 model=(resolved_sdcpp.model if resolved_sdcpp is not None else sdcpp_model),
+                capabilities_model_id=(
+                    resolved_sdcpp.capabilities_model_id if resolved_sdcpp is not None else None
+                ),
                 diffusion_model=(
                     resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else sdcpp_diffusion_model or None
                 ),
@@ -438,8 +479,8 @@ def _cmd_model_presets(args: argparse.Namespace) -> int:
         print("policy: HF snapshot targets include full snapshots by default")
     else:
         print("policy: 8-bit presets only by default; pass --all to show explicit non-8-bit fallbacks")
-    print("tip: `abstractvision model-catalog` joins presets with the capability registry (tasks)")
-    print("tip: `download-model org/name` downloads arbitrary Hugging Face repos (not shown here) into the HF cache")
+    print("tip: `abstractvision catalog` joins presets with the capability registry (tasks)")
+    print("tip: `download org/name` downloads arbitrary Hugging Face repos (not shown here) into the HF cache")
     print()
     for line in format_model_preset_rows(presets):
         print(line)
@@ -502,14 +543,21 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     rows: List[Sequence[Any]] = []
     for preset in presets:
         model_id = str(preset.upstream_repo_id or preset.repo_id)
-        if task and not reg.supports(model_id, task):
-            continue
         try:
             spec = reg.get(model_id)
-            tasks = ",".join(sorted(spec.tasks.keys()))
+            supported_tasks = _runtime_supported_tasks_for_catalog_preset(
+                preset,
+                model_id=model_id,
+                registry_tasks=sorted(spec.tasks.keys()),
+            )
         except Exception:
             # #FALLBACK: allow listing presets even if the capability registry is missing an entry.
-            tasks = ""
+            supported_tasks = []
+        if task and task not in supported_tasks:
+            continue
+        if not supported_tasks:
+            continue
+        tasks = ",".join(supported_tasks)
         rows.append(
             (
                 model_id,
@@ -526,16 +574,28 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     if bool(getattr(args, "json", False)):
         out: List[Dict[str, Any]] = []
         for model_id in sorted({str(p.upstream_repo_id or p.repo_id) for p in presets}):
-            if task and not reg.supports(model_id, task):
-                continue
             spec = reg.get(model_id) if model_id in reg.list_models() else None
             matching = [
-                p.to_dict()
+                {
+                    **p.to_dict(),
+                    "tasks": _runtime_supported_tasks_for_catalog_preset(
+                        p,
+                        model_id=model_id,
+                        registry_tasks=sorted(spec.tasks.keys()) if spec else [],
+                    ),
+                }
                 for p in presets
                 if str(p.upstream_repo_id or p.repo_id) == model_id
-                and (not task or reg.supports(model_id, task))
             ]
             if not matching:
+                continue
+            runtime_tasks: List[str] = []
+            for item in matching:
+                runtime_tasks.extend(str(task_name) for task_name in item.get("tasks") or [])
+            runtime_tasks = sorted(set(runtime_tasks))
+            if task and task not in runtime_tasks:
+                continue
+            if not runtime_tasks:
                 continue
             out.append(
                 {
@@ -543,7 +603,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                     "provider": spec.provider if spec else "unknown",
                     "license": spec.license if spec else "unknown",
                     "notes": spec.notes if spec else "",
-                    "tasks": sorted(spec.tasks.keys()) if spec else [],
+                    "tasks": runtime_tasks,
                     "task_specs": (
                         {
                             task_name: {
@@ -553,6 +613,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                                 "requires": dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None,
                             }
                             for task_name, task_spec in sorted(spec.tasks.items())
+                            if task_name in runtime_tasks
                         }
                         if spec
                         else {}
@@ -689,7 +750,14 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                     f"#FALLBACK: upstream source is {preset.upstream_repo_id}; using {preset.source} artifact for {selected_target}."
                 )
             if preset.notes:
-                print(preset.notes)
+                note = str(preset.notes)
+                if (
+                    preset.target == "diffusers"
+                    and preset.engine == "diffusers"
+                    and "full Diffusers snapshot (not 8-bit)" in note
+                ):
+                    note = "Official curated Diffusers snapshot (16-bit)."
+                print(note)
 
         try:
             path = download_model_preset(
@@ -755,14 +823,25 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
 
 def _cmd_t2i(args: argparse.Namespace) -> int:
     vm = _build_manager_from_args(args)
-    out = vm.generate_image(
-        args.prompt,
+    request = _resolve_t2i_request(
+        vm,
+        prompt=args.prompt,
         negative_prompt=args.negative_prompt,
         width=args.width,
         height=args.height,
         steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
+    )
+    out = vm.generate_image(
+        request.prompt,
+        negative_prompt=request.negative_prompt,
+        width=request.width,
+        height=request.height,
+        steps=request.steps,
+        guidance_scale=request.guidance_scale,
+        seed=request.seed,
+        extra=dict(request.extra or {}),
     )
     _print_json(out)
     if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
@@ -774,16 +853,100 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_t2i_request(
+    vm: Any,
+    *,
+    prompt: str,
+    negative_prompt: Optional[str],
+    width: Optional[int],
+    height: Optional[int],
+    steps: Optional[int],
+    guidance_scale: Optional[float],
+    seed: Optional[int],
+    extra: Optional[Dict[str, Any]] = None,
+) -> ImageGenerationRequest:
+    request = ImageGenerationRequest(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        steps=steps,
+        guidance_scale=guidance_scale,
+        seed=seed,
+        extra=dict(extra or {}),
+    )
+    backend = getattr(vm, "backend", None)
+    normalize = getattr(backend, "normalize_image_generation_request", None)
+    if callable(normalize):
+        try:
+            request = normalize(request)
+        except Exception:
+            pass
+    if request.width is None:
+        request = replace(request, width=DEFAULT_T2I_WIDTH)
+    if request.height is None:
+        request = replace(request, height=DEFAULT_T2I_HEIGHT)
+    if request.steps is None:
+        request = replace(request, steps=DEFAULT_T2I_STEPS)
+    return request
+
+
+def _resolve_i2i_steps(
+    vm: Any,
+    *,
+    prompt: str,
+    image: bytes,
+    mask: Optional[bytes],
+    negative_prompt: Optional[str],
+    guidance_scale: Optional[float],
+    seed: Optional[int],
+    requested_steps: Optional[int],
+) -> int:
+    if requested_steps is not None:
+        return int(requested_steps)
+    backend = getattr(vm, "backend", None)
+    normalize = getattr(backend, "normalize_image_edit_request", None)
+    if callable(normalize):
+        try:
+            normalized = normalize(
+                ImageEditRequest(
+                    prompt=prompt,
+                    image=image,
+                    mask=mask,
+                    negative_prompt=negative_prompt,
+                    seed=seed,
+                    steps=None,
+                    guidance_scale=guidance_scale,
+                    extra={},
+                )
+            )
+            if getattr(normalized, "steps", None) is not None:
+                return int(normalized.steps)
+        except Exception:
+            pass
+    return DEFAULT_I2I_STEPS
+
+
 def _cmd_i2i(args: argparse.Namespace) -> int:
     vm = _build_manager_from_args(args)
     image_bytes = Path(args.image).expanduser().read_bytes()
     mask_bytes = Path(args.mask).expanduser().read_bytes() if args.mask else None
+    steps = _resolve_i2i_steps(
+        vm,
+        prompt=args.prompt,
+        image=image_bytes,
+        mask=mask_bytes,
+        negative_prompt=args.negative_prompt,
+        guidance_scale=args.guidance_scale,
+        seed=args.seed,
+        requested_steps=args.steps,
+    )
     out = vm.edit_image(
         args.prompt,
         image=image_bytes,
         mask=mask_bytes,
         negative_prompt=args.negative_prompt,
-        steps=args.steps,
+        steps=steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
     )
@@ -880,20 +1043,20 @@ class _ReplState:
         if self.defaults is None:
             self.defaults = {
                 "t2i": {
-                    "width": DEFAULT_T2I_WIDTH,
-                    "height": DEFAULT_T2I_HEIGHT,
-                    "steps": 10,
+                    "width": None,
+                    "height": None,
+                    "steps": None,
                     "guidance_scale": None,
                     "seed": None,
                     "negative_prompt": None,
                 },
-                "i2i": {"steps": 10, "guidance_scale": None, "seed": None, "negative_prompt": None},
+                "i2i": {"steps": None, "guidance_scale": None, "seed": None, "negative_prompt": None},
                 "t2v": {
                     "width": None,
                     "height": None,
                     "fps": None,
                     "num_frames": None,
-                    "steps": 10,
+                    "steps": None,
                     "guidance_scale": None,
                     "seed": None,
                     "negative_prompt": None,
@@ -943,7 +1106,7 @@ def _repl_help() -> str:
         "Quick examples:\n"
         "  # Local model download policy: 8-bit MLX on macOS, cache-backed by default\n"
         "  abstractvision model-presets\n"
-        "  abstractvision download-model flux2-klein-4b\n"
+        "  abstractvision download flux2-klein-4b\n"
         "  /backend mflux flux2-klein-4b\n"
         "  /t2i \"a product photo of a matte black espresso machine\" --steps 4 --guidance-scale 1.0 --open\n"
         "\n"
@@ -953,7 +1116,7 @@ def _repl_help() -> str:
         "\n"
         "  # Local Diffusers video path: CogVideoX-2b on Apple Silicon / MPS\n"
         "  /backend diffusers zai-org/CogVideoX-2b mps float16\n"
-        "  /t2v \"a red fox walking through snowy forest, cinematic\" --num-frames 9 --steps 1 --open\n"
+        "  /t2v \"a red fox walking through snowy forest, cinematic\" --num-frames 49 --steps 50 --open\n"
         "\n"
         "  # Modern small FLUX path: FLUX.2-klein-4B (requires Diffusers main today)\n"
         "  /backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16\n"
@@ -964,7 +1127,7 @@ def _repl_help() -> str:
         "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
         "\n"
         "  # Curated stable-diffusion.cpp bundle path for FLUX/Qwen-class models\n"
-        "  abstractvision download-model flux2-klein-base-4b --provider sdcpp\n"
+        "  abstractvision download flux2-klein-base-4b --provider sdcpp\n"
         "  /backend sdcpp flux2-klein-base-4b /path/to/sd-cli\n"
         "  /t2i \"a product photo of a matte black espresso machine\" --steps 4 --guidance-scale 1.0 --open\n"
         "\n"
@@ -1189,6 +1352,9 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             cfg = StableDiffusionCppBackendConfig(
                 sd_cli_path=str(state.sdcpp_bin),
                 model=resolved_sdcpp.model if resolved_sdcpp is not None else sdcpp_model,
+                capabilities_model_id=(
+                    resolved_sdcpp.capabilities_model_id if resolved_sdcpp is not None else None
+                ),
                 diffusion_model=(
                     resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else sdcpp_diffusion_model
                 ),
@@ -1512,14 +1678,25 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     for k, v in d.items()
                     if k not in {"width", "height", "steps", "guidance_scale", "seed", "negative_prompt", "open"} and v is not None
                 }
-                out = vm.generate_image(
-                    prompt,
+                request = _resolve_t2i_request(
+                    vm,
+                    prompt=prompt,
                     negative_prompt=d.get("negative_prompt"),
                     width=_coerce_int(d.get("width")),
                     height=_coerce_int(d.get("height")),
                     steps=_coerce_int(d.get("steps")),
                     guidance_scale=_coerce_float(d.get("guidance_scale")),
                     seed=_coerce_int(d.get("seed")),
+                    extra=extra,
+                )
+                out = vm.generate_image(
+                    request.prompt,
+                    negative_prompt=request.negative_prompt,
+                    width=request.width,
+                    height=request.height,
+                    steps=request.steps,
+                    guidance_scale=request.guidance_scale,
+                    seed=request.seed,
                     extra=extra,
                 )
                 _print_json(out)
@@ -1555,12 +1732,22 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 }
                 img = Path(str(image_path)).expanduser().read_bytes()
                 mask = Path(str(mask_path)).expanduser().read_bytes() if mask_path else None
+                steps = _resolve_i2i_steps(
+                    vm,
+                    prompt=prompt,
+                    image=img,
+                    mask=mask,
+                    negative_prompt=d.get("negative_prompt"),
+                    guidance_scale=_coerce_float(d.get("guidance_scale")),
+                    seed=_coerce_int(d.get("seed")),
+                    requested_steps=_coerce_int(d.get("steps")),
+                )
                 out = vm.edit_image(
                     prompt,
                     image=img,
                     mask=mask,
                     negative_prompt=d.get("negative_prompt"),
-                    steps=_coerce_int(d.get("steps")),
+                    steps=steps,
                     guidance_scale=_coerce_float(d.get("guidance_scale")),
                     seed=_coerce_int(d.get("seed")),
                     extra=extra,
@@ -1711,8 +1898,8 @@ def build_parser() -> argparse.ArgumentParser:
     presets.set_defaults(_fn=_cmd_model_presets)
 
     catalog = sub.add_parser(
-        "model-catalog",
-        aliases=["catalog", "download-catalog"],
+        "catalog",
+        aliases=["model-catalog", "download-catalog"],
         help="List downloadable models (capability registry joined with curated presets).",
     )
     catalog.add_argument(
@@ -1754,8 +1941,8 @@ def build_parser() -> argparse.ArgumentParser:
     catalog.set_defaults(_fn=_cmd_model_catalog)
 
     dl = sub.add_parser(
-        "download-model",
-        aliases=["download-vision-model"],
+        "download",
+        aliases=["download-model", "download-vision-model"],
         help="Download a curated vision model preset (8-bit by default) or a Hugging Face repo snapshot.",
     )
     dl.add_argument(
@@ -1764,7 +1951,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Preset name/alias (e.g. flux2-klein-4b, flux2-klein-9b, z-image-turbo) "
             "or a Hugging Face repo id (org/name). You can pass multiple names to download them in sequence. "
-            "Shorthand: `download-model mflux flux2-klein-4b` (provider/engine prefix)."
+            "Shorthand: `download mflux flux2-klein-4b` (provider/engine prefix)."
         ),
     )
     dl.add_argument(
@@ -1929,9 +2116,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_provider_flags(t2i)
     t2i.add_argument("prompt")
     t2i.add_argument("--negative-prompt", default=None)
-    t2i.add_argument("--width", type=int, default=512)
-    t2i.add_argument("--height", type=int, default=512)
-    t2i.add_argument("--steps", type=int, default=10)
+    t2i.add_argument("--width", type=int, default=None)
+    t2i.add_argument("--height", type=int, default=None)
+    t2i.add_argument("--steps", type=int, default=None)
     t2i.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     t2i.add_argument("--seed", type=int, default=None)
     t2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
@@ -1943,7 +2130,7 @@ def build_parser() -> argparse.ArgumentParser:
     i2i.add_argument("--mask", default=None, help="Optional mask file path.")
     i2i.add_argument("prompt")
     i2i.add_argument("--negative-prompt", default=None)
-    i2i.add_argument("--steps", type=int, default=10)
+    i2i.add_argument("--steps", type=int, default=None)
     i2i.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     i2i.add_argument("--seed", type=int, default=None)
     i2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
@@ -1957,7 +2144,7 @@ def build_parser() -> argparse.ArgumentParser:
     t2v.add_argument("--height", type=int, default=None)
     t2v.add_argument("--fps", type=int, default=None)
     t2v.add_argument("--num-frames", type=int, default=None, dest="num_frames")
-    t2v.add_argument("--steps", type=int, default=10)
+    t2v.add_argument("--steps", type=int, default=None)
     t2v.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     t2v.add_argument("--seed", type=int, default=None)
     t2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")

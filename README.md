@@ -38,7 +38,8 @@ flowchart LR
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
 - Built-in backends implement images: `text_to_image` and `image_to_image`.
-- Local Diffusers also implements `text_to_video` for the `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b` family.
+- Local MFLUX currently surfaces `text_to_image` only.
+- Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - `image_to_video` is currently supported only via the OpenAI-compatible backend **when** endpoints are configured.
 - `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
 
@@ -128,17 +129,20 @@ full models unless you pass `--allow-non-8bit`.
 ```bash
 pip install "abstractvision[models,mflux]"
 abstractvision model-presets
-abstractvision model-catalog --provider mflux
+abstractvision catalog --provider mflux
 # Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
-abstractvision download-model flux2-klein-4b --provider mflux
-abstractvision download-model flux2-klein-9b --provider mflux
-abstractvision download-model qwen-image --provider mflux
-abstractvision download-model z-image-turbo --provider mflux
+abstractvision download flux2-klein-4b --provider mflux
+abstractvision download flux2-klein-9b --provider mflux
+abstractvision download qwen-image --provider mflux
+abstractvision download z-image-turbo --provider mflux
 abstractvision t2i --provider mflux --model flux2-klein-4b "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 ```
 
 The shipped MFLUX backend currently supports the curated `flux2-klein-4b`,
-`flux2-klein-9b`, `qwen-image`, and `z-image-turbo` preset families.
+`flux2-klein-9b`, `qwen-image`, and `z-image-turbo` preset families for local
+`text_to_image`. Local MFLUX `image_to_image` is temporarily disabled pending
+the quality follow-up tracked in
+[`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 
 Stable Diffusion does not currently have a curated MLX 8-bit preset in
 AbstractVision, so full Diffusers downloads remain explicit.
@@ -148,25 +152,28 @@ the Diffusers backend explicitly:
 
 ```bash
 pip install "abstractvision[models,diffusers]"
-abstractvision model-catalog --provider diffusers
+abstractvision catalog --provider diffusers
 # Tip: `--provider diffusers` implies `--target diffusers` (you usually set one or the other).
-abstractvision download-model stable-diffusion --provider diffusers
-abstractvision download-model sd1.4 --provider diffusers
-abstractvision download-model sd1.5-inpaint --provider diffusers
-abstractvision download-model sdxl-base --provider diffusers
-abstractvision download-model sdxl-inpaint --provider diffusers
-abstractvision download-model sd3-medium --provider diffusers
-abstractvision download-model sd3.5-large --provider diffusers
-abstractvision download-model ernie-image --provider diffusers
-abstractvision download-model qwen-image-edit --provider diffusers
-abstractvision download-model glm-image --provider diffusers
-abstractvision download-model flux2-dev --provider diffusers
-abstractvision download-model cogvideox-2b --provider diffusers
+abstractvision download stable-diffusion --provider diffusers
+abstractvision download sd1.4 --provider diffusers
+abstractvision download sd1.5-inpaint --provider diffusers
+abstractvision download sdxl-base --provider diffusers
+abstractvision download sdxl-inpaint --provider diffusers
+abstractvision download sd3-medium --provider diffusers
+abstractvision download sd3.5-large --provider diffusers
+abstractvision download ernie-image --provider diffusers
+abstractvision download qwen-image-edit-2511 --provider diffusers
+abstractvision download flux2-dev --provider diffusers
 export ABSTRACTVISION_BACKEND=diffusers
 export ABSTRACTVISION_MODEL_ID=runwayml/stable-diffusion-v1-5
 export ABSTRACTVISION_DIFFUSERS_DEVICE=auto
 abstractvision cli
 ```
+
+Notes:
+- `abstractvision download qwen-image-edit-2511 --provider diffusers` downloads the curated official 16-bit Diffusers snapshot.
+- `GLM-Image` remains in the packaged registry, but local Diffusers `GLM-Image` is temporarily disabled pending the follow-up tracked in [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
+- `CogVideoX-2b` downloads are still available for experimentation, but local `text_to_video` is currently marked experimental and disabled from the normal product surfaces.
 
 For a fresh cache, you can also permit the interactive CLI to download missing files:
 
@@ -183,7 +190,7 @@ from abstractvision import VisionModelCapabilitiesRegistry
 
 reg = VisionModelCapabilitiesRegistry()
 assert reg.supports("runwayml/stable-diffusion-v1-5", "text_to_image")
-assert reg.supports("zai-org/GLM-Image", "image_to_image")
+assert reg.supports("Qwen/Qwen-Image-Edit-2511", "image_to_image")
 
 print(reg.list_tasks())
 print(reg.models_for_task("text_to_image"))
@@ -215,7 +222,7 @@ backend = OpenAICompatibleVisionBackend(
 vm = VisionManager(
     backend=backend,
     store=LocalAssetStore(),         # enables artifact-ref outputs
-    model_id="zai-org/GLM-Image",    # optional: capability gating
+    model_id="Qwen/Qwen-Image-Edit-2511",  # optional: capability gating
     registry=reg,                   # optional: reuse loaded registry
 )
 
@@ -272,12 +279,10 @@ from source (see [`docs/getting-started.md`](docs/getting-started.md)):
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
 ```
 
-For local Diffusers text→video on Apple Silicon:
-
-```text
-/backend diffusers zai-org/CogVideoX-2b mps float16
-/t2v "a red fox walking through a snowy forest, cinematic" --num-frames 9 --steps 1 --fps 8 --open
-```
+Local Diffusers `text_to_video` remains experimental and is temporarily
+disabled from the normal bundled local surfaces. Use the OpenAI-compatible
+backend for video today, or track the local follow-up in
+[`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 
 For Apple Silicon 8-bit local generation through MFLUX:
 
@@ -305,13 +310,15 @@ authentication, and browser-origin policy.
 abstractvision playground --port 8091
 ```
 
-Open `http://127.0.0.1:8091/vision_playground.html`, select a cached model, then load it. The page and the API are served by the same process.
+Open `http://127.0.0.1:8091/vision_playground.html`. The page and the API are served by the same process.
 
 Current behavior:
-- Selecting a model switches to it by auto-loading the new backend/model; there is no separate unload step in the UI.
-- The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry.
-- The Text→Video panel is enabled only for models that advertise `text_to_video`; the first shipped local path is Diffusers `zai-org/CogVideoX-2b`.
-- Model-specific request normalization happens at the API/backend layer, not just in the page. The same MFLUX and GLM parameter corrections therefore apply to the playground, `abstractvision cli`, and AbstractCore.
+- The UI is split into task tabs (`Text→Image`, `Image→Image`, `Text→Video`, and a placeholder `Image→Video` tab for later work).
+- Each active task tab has its own model selector and unload button. Switching models in a tab unloads the current active backend first to free memory before loading the replacement.
+- The Image→Image tab is enabled only for models that both advertise `image_to_image` in the packaged capability registry and remain enabled by the selected backend.
+- MFLUX models are intentionally surfaced only in `Text→Image` for now.
+- The Text→Video tab is experimental; the bundled local server currently does not advertise a shipped local model there.
+- Model-specific request normalization happens at the API/backend layer, not just in the page.
 - Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
@@ -321,7 +328,6 @@ One-shot commands default to the OpenAI-compatible HTTP backend, but they also s
 abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"
 abstractvision i2i --base-url http://localhost:1234/v1 --image ./input.png "make it watercolor"
 abstractvision t2i --provider diffusers --model qwen-image "a studio photo of an espresso machine"
-abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"
 ```
 
 #### Local GGUF via stable-diffusion.cpp
@@ -347,7 +353,7 @@ In the REPL:
 Curated FLUX/Qwen GGUF bundle example:
 
 ```bash
-abstractvision download-model flux2-klein-base-4b --provider sdcpp
+abstractvision download flux2-klein-base-4b --provider sdcpp
 ```
 
 ```text
@@ -367,7 +373,7 @@ If you’re using AbstractCore tool calling, AbstractVision can expose vision ta
 ```python
 from abstractvision.integrations.abstractcore import make_vision_tools
 
-tools = make_vision_tools(vision_manager=vm, model_id="zai-org/GLM-Image")
+tools = make_vision_tools(vision_manager=vm, model_id="Qwen/Qwen-Image-Edit-2511")
 ```
 
 Install `abstractcore` in the host application environment when you use these helpers; it is not pulled in by AbstractVision.

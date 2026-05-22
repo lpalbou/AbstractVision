@@ -132,7 +132,7 @@ class HuggingFaceAccessError(RuntimeError):
             f"1. Open {self.repo_url} and accept the model terms or request access.\n"
             f"2. Create or copy a Hugging Face read token at {self.token_url}.\n"
             "3. Retry with one of:\n"
-            "   - `abstractvision download-model ... --token <HF_TOKEN>`\n"
+            "   - `abstractvision download ... --token <HF_TOKEN>`\n"
             "   - `hf auth login` (or `huggingface-cli login`)\n"
             "   - `export HF_TOKEN=...` (or `export HUGGINGFACE_HUB_TOKEN=...`)\n"
         )
@@ -488,7 +488,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source_priority=90,
     ),
     VisionModelDownloadPreset(
-        key="qwen-image-edit",
+        key="qwen-image-edit-2511",
         display_name="Qwen-Image-Edit-2511 (Diffusers)",
         repo_id="Qwen/Qwen-Image-Edit-2511",
         target="diffusers",
@@ -497,10 +497,28 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=16,
         upstream_repo_id=None,
         source="official",
-        aliases=("qwen-image-edit", "qwen-image-edit-2511", "Qwen/Qwen-Image-Edit-2511"),
+        aliases=("qwen-image-edit-2511", "Qwen/Qwen-Image-Edit-2511"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
         notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
-        source_priority=90,
+        source_priority=80,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit-2511",
+        display_name="Qwen-Image-Edit-2511 GGUF Q8_0",
+        repo_id="unsloth/Qwen-Image-Edit-2511-GGUF",
+        target="gguf",
+        engine="stable-diffusion.cpp",
+        local_dir_name="qwen-image-edit-2511-q8_0-gguf",
+        quantization_bits=8,
+        upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
+        source="curated-community-gguf",
+        aliases=("qwen-image-edit-2511", "Qwen/Qwen-Image-Edit-2511"),
+        allow_patterns=("README.md", "LICENSE*", "qwen-image-edit-2511-Q8_0.gguf"),
+        notes=(
+            "Qwen Image Edit 2511 GGUF bundle for stable-diffusion.cpp; requires a separate VAE "
+            "safetensors file and a Qwen2.5-VL GGUF text encoder at runtime."
+        ),
+        source_priority=30,
     ),
     VisionModelDownloadPreset(
         key="glm-image",
@@ -861,6 +879,7 @@ class _SdcppBundleSpec:
 class SdcppModelSelection:
     key: str
     repo_id: str
+    capabilities_model_id: Optional[str] = None
     model: Optional[str] = None
     diffusion_model: Optional[str] = None
     vae: Optional[str] = None
@@ -952,7 +971,7 @@ _SDCPP_BUNDLES: Dict[str, _SdcppBundleSpec] = {
             ),
         ),
     ),
-    "qwen-image-edit": _SdcppBundleSpec(
+    "qwen-image-edit-2511": _SdcppBundleSpec(
         mode="component",
         model_patterns=("qwen-image-edit-2511-Q8_0.gguf",),
         components=(
@@ -1609,7 +1628,7 @@ def _gguf_patterns_for_preset(preset: VisionModelDownloadPreset) -> Tuple[str, .
 
 
 def _sdcpp_bundle_download_hint(name: str) -> str:
-    return f"abstractvision download-model {name} --provider sdcpp"
+    return f"abstractvision download {name} --provider sdcpp"
 
 
 def _resolve_cached_sdcpp_companion(
@@ -1705,6 +1724,7 @@ def resolve_sdcpp_model_selection(
         return SdcppModelSelection(
             key=preset.key,
             repo_id=preset.repo_id,
+            capabilities_model_id=str(preset.upstream_repo_id or preset.repo_id),
             model=str(primary_file),
         )
 
@@ -1725,6 +1745,7 @@ def resolve_sdcpp_model_selection(
     return SdcppModelSelection(
         key=preset.key,
         repo_id=preset.repo_id,
+        capabilities_model_id=str(preset.upstream_repo_id or preset.repo_id),
         model=None,
         diffusion_model=component_values.get("diffusion_model"),
         vae=component_values.get("vae"),

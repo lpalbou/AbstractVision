@@ -49,17 +49,20 @@ Open:
 - `http://127.0.0.1:8091/vision_playground.html`
 
 Usage notes:
-- You must **select a cached model** before running inference; selecting a different model auto-loads and switches to it.
+- The page is split into task tabs (`Text→Image`, `Image→Image`, `Text→Video`, and a placeholder `Image→Video` tab for later work).
+- Each active task tab has its own model selector and unload button.
+- Selecting a different model unloads the current active backend first, then auto-loads the replacement to keep memory usage bounded.
 - Raw Hugging Face model ids such as `runwayml/stable-diffusion-v1-5` load directly; no `diffusers/` provider prefix is required.
 - For first tests, prefer a small cached model such as Stable Diffusion 1.5 before loading larger Qwen/FLUX models.
-- The Image→Image panel is enabled only for models that advertise `image_to_image` in the packaged capability registry metadata returned by `/v1/vision/models`.
-- The Text→Video panel is enabled only for models that advertise `text_to_video` in that same metadata. The first shipped local path is Diffusers `zai-org/CogVideoX-2b`.
+- The Image→Image panel is enabled only for models that both advertise `image_to_image` and remain enabled by backend runtime truth.
+- MFLUX models are intentionally surfaced only in `Text→Image` for now.
+- The bundled local `Text→Video` tab is experimental and currently expected to have no shipped local model options until [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md) is resolved.
 - Response logs intentionally show a shortened `b64_json` preview instead of the full base64 payload.
 - “Extra JSON” is forwarded to the server:
   - T2I: merged into the JSON request body
   - I2I: sent as a string field `extra_json` in the multipart form body
 - Model-specific request fixes happen in the backend/API layer, so the same normalization rules apply to the playground, CLI/REPL, and AbstractCore integration.
-- Local video export requires an `ffmpeg` executable on `PATH`.
+- Local video export requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for packaging.
 
 ## 3) stable-diffusion.cpp / GGUF notes
 

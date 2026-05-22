@@ -147,7 +147,7 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("cache-only by default", out)
         self.assertIn("black-forest-labs/FLUX.2-klein-4B", out)
         self.assertIn("/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]", out)
-        self.assertIn("abstractvision download-model flux2-klein-base-4b --provider sdcpp", out)
+        self.assertIn("abstractvision download flux2-klein-base-4b --provider sdcpp", out)
         self.assertIn("/provider-models", out)
         self.assertIn("--negative-prompt", out)
         self.assertNotIn("FLUX.2-klein-9B", out)
@@ -193,11 +193,12 @@ class TestCliSmoke(unittest.TestCase):
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = main(["model-catalog", "--all-targets"])
+            rc = main(["catalog", "--all-targets"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertIn("policy: recommend 8-bit", out)
         self.assertIn("Qwen/Qwen-Image-2512", out)
+        self.assertIn("Qwen/Qwen-Image-Edit-2511", out)
         self.assertIn("stable-diffusion-v1-5/stable-diffusion-v1-5", out)
         self.assertIn("baidu/ERNIE-Image", out)
         self.assertIn("stabilityai/stable-diffusion-xl-base-1.0", out)
@@ -214,6 +215,18 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("stable-diffusion-v1-5/stable-diffusion-v1-5", out)
         self.assertNotIn("Tongyi-MAI/Z-Image-Turbo", out)
         self.assertNotIn("Qwen/Qwen-Image-2512", out)
+        self.assertNotIn("zai-org/GLM-Image", out)
+
+    def test_model_catalog_task_filter_hides_mflux_i2i_rows(self):
+        from abstractvision.cli import main
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main(["catalog", "--task", "image_to_image", "--provider", "mflux"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertNotIn("flux2-klein-4b", out)
+        self.assertNotIn("flux2-klein-9b", out)
 
     def test_model_catalog_json_is_parseable(self):
         from abstractvision.cli import main
@@ -230,10 +243,10 @@ class TestCliSmoke(unittest.TestCase):
         from abstractvision.cli import main
 
         with self.assertRaises(SystemExit) as ctx:
-            main(["download-model", "stable-diffusion"])
+            main(["download", "stable-diffusion"])
         self.assertIn("No 8-bit preset", str(ctx.exception))
 
-    def test_download_model_diffusers_provider_implies_target_and_allows_full_snapshots_by_default(self):
+    def test_download_alias_diffusers_provider_implies_target_and_allows_full_snapshots_by_default(self):
         from abstractvision.cli import main
 
         calls = {}
@@ -247,12 +260,43 @@ class TestCliSmoke(unittest.TestCase):
         buf = io.StringIO()
         with patch("abstractvision.cli.download_model_preset", new=fake_download):
             with contextlib.redirect_stdout(buf):
-                rc = main(["download-model", "stable-diffusion", "--provider", "diffusers"])
+                rc = main(["download", "stable-diffusion", "--provider", "diffusers"])
 
         self.assertEqual(rc, 0)
         self.assertEqual(calls["repo_id"], "stable-diffusion-v1-5/stable-diffusion-v1-5")
         self.assertEqual(calls["target"], "diffusers")
         self.assertEqual(calls["bits"], 16)
+
+    def test_download_diffusers_qwen_edit_prints_curated_16bit_note(self):
+        from abstractvision.cli import main
+
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
+
+        buf = io.StringIO()
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["download", "qwen-image-edit-2511", "--provider", "diffusers"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("Official curated Diffusers snapshot (16-bit).", out)
+        self.assertNotIn("#FALLBACK: full Diffusers snapshot (not 8-bit).", out)
+
+    def test_download_model_legacy_alias_still_works(self):
+        from abstractvision.cli import main
+
+        calls = {}
+
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+            calls["repo_id"] = preset.repo_id
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
+
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            rc = main(["download-model", "qwen-image", "--provider", "diffusers"])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls["repo_id"], "Qwen/Qwen-Image-2512")
 
     def test_diffusers_provider_uses_cached_snapshot_and_migrates_legacy_tree(self):
         from abstractvision.cli import _build_manager_from_args
@@ -600,11 +644,14 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIsNone(state.model_id)
         self.assertEqual(state.diffusers_device, DEFAULT_DIFFUSERS_DEVICE)
         self.assertFalse(state.diffusers_allow_download)
-        self.assertEqual(state.defaults["t2i"]["width"], 512)
-        self.assertEqual(state.defaults["t2i"]["height"], 512)
+        self.assertIsNone(state.defaults["t2i"]["width"])
+        self.assertIsNone(state.defaults["t2i"]["height"])
+        self.assertIsNone(state.defaults["t2i"]["steps"])
+        self.assertIsNone(state.defaults["i2i"]["steps"])
         self.assertIn("t2v", state.defaults)
         self.assertIsNone(state.defaults["t2v"]["width"])
         self.assertIsNone(state.defaults["t2v"]["fps"])
+        self.assertIsNone(state.defaults["t2v"]["steps"])
 
     def test_repl_state_defaults_to_openai_when_base_url_is_configured(self):
         from abstractvision.cli import _ReplState
@@ -656,7 +703,130 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(args.prompt, "hello")
         self.assertEqual(args.num_frames, 9)
         self.assertEqual(args.fps, 8)
+        self.assertIsNone(args.steps)
         self.assertTrue(callable(args._fn))
+
+    def test_cli_i2i_parser_default_steps_are_none(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["i2i", "--image", "input.png", "hello"])
+
+        self.assertIsNone(args.steps)
+
+    def test_cli_t2i_parser_defaults_are_none(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["t2i", "hello"])
+
+        self.assertIsNone(args.width)
+        self.assertIsNone(args.height)
+        self.assertIsNone(args.steps)
+
+    def test_resolve_i2i_steps_prefers_backend_recommended_default(self):
+        from dataclasses import replace
+
+        from abstractvision.cli import _resolve_i2i_steps
+
+        class FakeBackend:
+            def normalize_image_edit_request(self, request):
+                self.seen = request
+                return replace(request, steps=28)
+
+        class FakeVm:
+            def __init__(self):
+                self.backend = FakeBackend()
+
+        steps = _resolve_i2i_steps(
+            FakeVm(),
+            prompt="hello",
+            image=b"img",
+            mask=None,
+            negative_prompt=None,
+            guidance_scale=None,
+            seed=None,
+            requested_steps=None,
+        )
+
+        self.assertEqual(steps, 28)
+
+    def test_resolve_i2i_steps_falls_back_to_15_without_model_default(self):
+        from abstractvision.cli import DEFAULT_I2I_STEPS, _resolve_i2i_steps
+
+        class FakeBackend:
+            pass
+
+        class FakeVm:
+            def __init__(self):
+                self.backend = FakeBackend()
+
+        steps = _resolve_i2i_steps(
+            FakeVm(),
+            prompt="hello",
+            image=b"img",
+            mask=None,
+            negative_prompt=None,
+            guidance_scale=None,
+            seed=None,
+            requested_steps=None,
+        )
+
+        self.assertEqual(steps, DEFAULT_I2I_STEPS)
+
+    def test_resolve_t2i_request_prefers_backend_recommended_defaults(self):
+        from dataclasses import replace
+
+        from abstractvision.cli import _resolve_t2i_request
+
+        class FakeBackend:
+            def normalize_image_generation_request(self, request):
+                return replace(request, width=1024, height=768, steps=28, guidance_scale=3.5)
+
+        class FakeVm:
+            def __init__(self):
+                self.backend = FakeBackend()
+
+        request = _resolve_t2i_request(
+            FakeVm(),
+            prompt="hello",
+            negative_prompt=None,
+            width=None,
+            height=None,
+            steps=None,
+            guidance_scale=None,
+            seed=None,
+        )
+
+        self.assertEqual(request.width, 1024)
+        self.assertEqual(request.height, 768)
+        self.assertEqual(request.steps, 28)
+        self.assertEqual(request.guidance_scale, 3.5)
+
+    def test_resolve_t2i_request_falls_back_to_package_defaults(self):
+        from abstractvision.cli import DEFAULT_T2I_HEIGHT, DEFAULT_T2I_STEPS, DEFAULT_T2I_WIDTH, _resolve_t2i_request
+
+        class FakeBackend:
+            pass
+
+        class FakeVm:
+            def __init__(self):
+                self.backend = FakeBackend()
+
+        request = _resolve_t2i_request(
+            FakeVm(),
+            prompt="hello",
+            negative_prompt=None,
+            width=None,
+            height=None,
+            steps=None,
+            guidance_scale=None,
+            seed=None,
+        )
+
+        self.assertEqual(request.width, DEFAULT_T2I_WIDTH)
+        self.assertEqual(request.height, DEFAULT_T2I_HEIGHT)
+        self.assertEqual(request.steps, DEFAULT_T2I_STEPS)
 
     def test_repl_build_manager_resolves_cached_sdcpp_component_bundle_from_model_key(self):
         from abstractvision.cli import _ReplState, _build_manager_from_state

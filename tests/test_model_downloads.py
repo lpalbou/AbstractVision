@@ -44,6 +44,39 @@ class TestModelDownloads(unittest.TestCase):
         )
         self.assertIn("*.jinja", tuple(preset.allow_patterns or ()))
 
+    def test_qwen_image_edit_handle_resolves_legacy_diffusers_snapshot(self):
+        from abstractvision.model_downloads import find_model_preset
+
+        preset = find_model_preset(
+            "qwen-image-edit",
+            target="diffusers",
+            engine="diffusers",
+            require_8bit=False,
+        )
+        self.assertEqual(preset.repo_id, "Qwen/Qwen-Image-Edit")
+
+    def test_qwen_image_edit_handle_resolves_legacy_sdcpp_bundle(self):
+        from abstractvision.model_downloads import find_model_preset
+
+        preset = find_model_preset(
+            "qwen-image-edit",
+            target="gguf",
+            engine="stable-diffusion.cpp",
+            require_8bit=True,
+        )
+        self.assertEqual(preset.repo_id, "unsloth/Qwen-Image-Edit-GGUF")
+
+    def test_qwen_image_edit_2511_handle_resolves_dated_release(self):
+        from abstractvision.model_downloads import find_model_preset
+
+        preset = find_model_preset(
+            "qwen-image-edit-2511",
+            target="diffusers",
+            engine="diffusers",
+            require_8bit=False,
+        )
+        self.assertEqual(preset.repo_id, "Qwen/Qwen-Image-Edit-2511")
+
     def test_generic_mlx_engine_is_rejected_and_flux1_mflux_presets_are_not_curated(self):
         from abstractvision.model_downloads import find_model_preset, model_presets, normalize_model_engine
 
@@ -134,7 +167,7 @@ class TestModelDownloads(unittest.TestCase):
                     resolve_sdcpp_model_selection("flux2-klein-base-4b", allow_download=False)
 
         self.assertIn("flux2-klein-base-4b", str(ctx.exception))
-        self.assertIn("download-model flux2-klein-base-4b --provider sdcpp", str(ctx.exception))
+        self.assertIn("download flux2-klein-base-4b --provider sdcpp", str(ctx.exception))
 
     def test_resolve_sdcpp_model_selection_supports_legacy_qwen_image_repo_id(self):
         from abstractvision.model_cache import import_directory_to_hf_cache

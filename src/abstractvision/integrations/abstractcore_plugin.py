@@ -1068,6 +1068,9 @@ class _AbstractVisionCapability:
             or _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli")
             or "sd-cli",
             model=resolved_sdcpp.model if resolved_sdcpp is not None else (str(model) if model else None),
+            capabilities_model_id=(
+                resolved_sdcpp.capabilities_model_id if resolved_sdcpp is not None else (str(model) if model else None)
+            ),
             diffusion_model=(
                 resolved_sdcpp.diffusion_model
                 if resolved_sdcpp is not None

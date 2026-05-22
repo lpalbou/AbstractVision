@@ -102,7 +102,7 @@ Examples of additive `params` metadata used in this repo:
 
 Some models include a `downloads` list to document what AbstractVision considers “downloadable” for common engines:
 
-- `key`: the canonical short name used in `model-presets` / `download-model` (e.g. `qwen-image`, `flux2-klein-4b`)
+- `key`: the canonical short name used in `model-presets` / `download` (e.g. `qwen-image`, `flux2-klein-4b`)
 - `engine`: `mflux`, `diffusers`, `stable-diffusion.cpp`, ...
 - `target`: `mlx`, `diffusers`, `gguf`, ...
 - `bits`: typically `8` (quantized) or `16` (full snapshot)
@@ -110,8 +110,8 @@ Some models include a `downloads` list to document what AbstractVision considers
 - optional `source`, `notes`
 
 This metadata is descriptive, but in this repo it is maintained to align with the curated
-download surfaces exposed by `abstractvision model-catalog`, `abstractvision model-presets`, and
-`abstractvision download-model`.
+download surfaces exposed by `abstractvision catalog`, `abstractvision model-presets`, and
+`abstractvision download`.
 
 In this repo, we keep `downloads` entries aligned with the curated preset table (`model_downloads._PRESETS`) so `abstractvision show-model` and the docs can reliably describe what the CLI can download.
 That alignment is intentionally user-facing: if a variant is curated for download, it should have

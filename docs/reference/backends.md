@@ -12,8 +12,8 @@ See also:
 | Backend | Implementation | Tasks implemented | Notes |
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
-| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image`, `text_to_video` (CogVideoX-2b family) | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. Local MP4 export uses `ffmpeg` from `PATH`. |
-| MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
+| Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. Local `text_to_video` groundwork exists but is currently experimental and disabled from the normal local surfaces. |
+| MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
@@ -66,34 +66,31 @@ Install:
 
 Model downloads (curated):
 - See what's downloadable for Diffusers:
-  - `abstractvision model-catalog --provider diffusers` (add `--all-targets` to compare engines)
+  - `abstractvision catalog --provider diffusers` (add `--all-targets` to compare engines)
   - Tip: `--provider diffusers` implies `--target diffusers` (you usually set one or the other).
 - Download a curated Diffusers snapshot into the Hugging Face cache (legacy `~/models` trees auto-migrate when encountered):
-  - `abstractvision download-model stable-diffusion --provider diffusers`
-  - `abstractvision download-model sd1.4 --provider diffusers`
-  - `abstractvision download-model sd1.5-inpaint --provider diffusers`
-  - `abstractvision download-model instruct-pix2pix --provider diffusers`
-  - `abstractvision download-model sdxl-base --provider diffusers`
-  - `abstractvision download-model sdxl-refiner --provider diffusers`
-  - `abstractvision download-model sdxl-inpaint --provider diffusers`
-  - `abstractvision download-model sdxl-turbo --provider diffusers`
-  - `abstractvision download-model sd-turbo --provider diffusers`
-  - `abstractvision download-model sd3-medium --provider diffusers`
-  - `abstractvision download-model sd3.5-medium --provider diffusers`
-  - `abstractvision download-model sd3.5-large --provider diffusers`
-  - `abstractvision download-model sd3.5-large-turbo --provider diffusers`
-  - `abstractvision download-model ernie-image --provider diffusers`
-  - `abstractvision download-model qwen-image --provider diffusers`
-  - `abstractvision download-model qwen-image-edit --provider diffusers`
-  - `abstractvision download-model glm-image --provider diffusers`
-  - `abstractvision download-model flux2-dev --provider diffusers`
-  - `abstractvision download-model cogvideox-2b --provider diffusers`
-  - `abstractvision download-model flux2-klein-4b --provider diffusers`
-  - `abstractvision download-model z-image-turbo --provider diffusers`
+  - `abstractvision download stable-diffusion --provider diffusers`
+  - `abstractvision download sd1.4 --provider diffusers`
+  - `abstractvision download sd1.5-inpaint --provider diffusers`
+  - `abstractvision download instruct-pix2pix --provider diffusers`
+  - `abstractvision download sdxl-base --provider diffusers`
+  - `abstractvision download sdxl-refiner --provider diffusers`
+  - `abstractvision download sdxl-inpaint --provider diffusers`
+  - `abstractvision download sdxl-turbo --provider diffusers`
+  - `abstractvision download sd-turbo --provider diffusers`
+  - `abstractvision download sd3-medium --provider diffusers`
+  - `abstractvision download sd3.5-medium --provider diffusers`
+  - `abstractvision download sd3.5-large --provider diffusers`
+  - `abstractvision download sd3.5-large-turbo --provider diffusers`
+  - `abstractvision download ernie-image --provider diffusers`
+  - `abstractvision download qwen-image --provider diffusers`
+  - `abstractvision download qwen-image-edit-2511 --provider diffusers`
+  - `abstractvision download flux2-dev --provider diffusers`
+  - `abstractvision download flux2-klein-4b --provider diffusers`
+  - `abstractvision download z-image-turbo --provider diffusers`
 
 One-shot generation (uses the cached snapshot when present):
 - `abstractvision t2i --provider diffusers --model qwen-image "a studio photo of a ceramic teapot"`
-- `abstractvision t2v --provider diffusers --model zai-org/CogVideoX-2b --diffusers-device mps --diffusers-torch-dtype float16 --num-frames 9 --steps 1 "a red fox walking through a snowy forest, cinematic"`
 
 Code pointers:
 - Config: `HuggingFaceDiffusersBackendConfig` ([`../../src/abstractvision/backends/huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py))
@@ -112,9 +109,10 @@ Config fields:
 
 Runtime behavior notes:
 - The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
-- Local Diffusers `text_to_video` is intentionally narrow today: the first shipped path is the CogVideoX-2b family (`zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b`).
-- Local video export requires an `ffmpeg` executable on `PATH` so generated frames can be packaged as MP4 artifact outputs.
-- This is where model-specific defaults and constraints such as GLM `guidance_scale=1.5`, CogVideoX `720x480` / `8 fps` defaults, task-aware edit support, and unsupported-parameter dropping are enforced for all callers.
+- Local Diffusers `GLM-Image` is temporarily disabled for both `text_to_image` and `image_to_image` pending the follow-up in [`../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
+- Local Diffusers `text_to_video` is currently experimental and disabled from the normal local surfaces.
+- Local video export still requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for MP4 packaging.
+- This backend is where model-specific defaults and constraints such as packaged step counts, guidance defaults, dimension constraints, and unsupported-parameter dropping are enforced for all callers.
 
 ## MFLUX backend (local Apple Silicon)
 
@@ -126,14 +124,14 @@ Install:
 
 Model presets:
 - See what's downloadable for your machine/engine:
-  - `abstractvision model-catalog --provider mflux` (add `--all` for full fallback list)
+  - `abstractvision catalog --provider mflux` (add `--all` for full fallback list)
   - Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
 - Download a curated 8-bit preset into the Hugging Face cache (legacy `~/models` trees auto-migrate when encountered):
-  - `abstractvision download-model flux2-klein-4b --provider mflux`
-  - `abstractvision download-model flux2-klein-9b --provider mflux`
-  - `abstractvision download-model qwen-image --provider mflux`
-  - `abstractvision download-model z-image-turbo --provider mflux`
-- Current shipped backend coverage is limited to those curated MFLUX families: `flux2-klein-4b`, `flux2-klein-9b`, `qwen-image`, and `z-image-turbo`.
+  - `abstractvision download flux2-klein-4b --provider mflux`
+  - `abstractvision download flux2-klein-9b --provider mflux`
+  - `abstractvision download qwen-image --provider mflux`
+  - `abstractvision download z-image-turbo --provider mflux`
+- Current shipped backend coverage is limited to those curated MFLUX families for `text_to_image`: `flux2-klein-4b`, `flux2-klein-9b`, `qwen-image`, and `z-image-turbo`.
 
 Config/env:
 - `ABSTRACTVISION_PROVIDER=mflux` (alias: `ABSTRACTVISION_BACKEND=mflux`)
@@ -142,11 +140,12 @@ Config/env:
 
 Non-curated MFLUX models:
 - If you have an MFLUX-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
-  - Pre-download it with `abstractvision download-model org/name` (HF cache) or `hf download org/name`
+  - Pre-download it with `abstractvision download org/name` (HF cache) or `hf download org/name`
   - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (base model usually auto-infers; override with `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image` if needed).
 
 Runtime behavior notes:
 - MFLUX request normalization is also backend-level, so distilled FLUX-family constraints such as `guidance_scale=1.0`, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
+- Local MFLUX `image_to_image` is temporarily disabled pending the quality follow-up in [`../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 
 Code pointers:
 - Config: `MFluxBackendConfig` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
@@ -169,7 +168,7 @@ Notes:
 - Interactive CLI selection supports both `/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]` and
   `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`.
 - One-shot CLI, playground, and the AbstractCore plugin can also accept curated `sdcpp` model keys such as
-  `flux2-klein-base-4b` or `qwen-image` after `abstractvision download-model ... --provider sdcpp`.
+  `flux2-klein-base-4b` or `qwen-image` after `abstractvision download ... --provider sdcpp`.
 - Python code and AbstractCore plugin configuration can also pass component paths such as `clip_l`, `clip_g`, `t5xxl`, `llm_vision`, plus `extra_args`, `timeout_s`, and `cwd`.
 
 Code pointers:

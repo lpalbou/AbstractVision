@@ -38,8 +38,8 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
+- **Current local policy**: MFLUX is surfaced for `text_to_image` only; local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
-  - local Diffusers `text_to_video` for the `zai-org/CogVideoX-2b` / `THUDM/CogVideoX-2b` family ([`huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
 If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:

@@ -226,16 +226,13 @@ class TestPlaygroundServer(unittest.TestCase):
         )
         out = state.list_models()
 
-        glm = next(m for m in out["models"] if m["id"] == "zai-org/GLM-Image")
-        self.assertIn("image_to_image", glm["task_specs"])
-        self.assertEqual(glm["task_specs"]["text_to_image"]["params"]["steps"]["default"], 50)
-        self.assertEqual(glm["task_specs"]["text_to_image"]["params"]["guidance_scale"]["default"], 1.5)
+        self.assertFalse(any(m["id"] == "zai-org/GLM-Image" for m in out["models"]))
 
         ernie = next(m for m in out["models"] if m["id"] == "baidu/ERNIE-Image-Turbo")
         self.assertEqual(ernie["tasks"], ["text_to_image"])
         self.assertNotIn("image_to_image", ernie["task_specs"])
 
-    def test_catalog_surfaces_cogvideox_2b_for_local_text_to_video(self):
+    def test_catalog_hides_temporarily_disabled_cogvideox_2b(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
 
         state = PlaygroundState(
@@ -246,10 +243,46 @@ class TestPlaygroundServer(unittest.TestCase):
         )
         out = state.list_models()
 
-        cogvideo = next(m for m in out["models"] if m["id"] == "zai-org/CogVideoX-2b")
-        self.assertIn("text_to_video", cogvideo["tasks"])
-        self.assertEqual(cogvideo["task_specs"]["text_to_video"]["params"]["width"]["const"], 720)
-        self.assertEqual(cogvideo["task_specs"]["text_to_video"]["params"]["height"]["const"], 480)
+        self.assertFalse(any(m["id"] == "zai-org/CogVideoX-2b" for m in out["models"]))
+
+    def test_catalog_surfaces_mflux_flux2_klein_for_text_to_image_only(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+
+        state = PlaygroundState(
+            PlaygroundServerConfig(
+                diffusers_allow_download=False,
+                default_model_id="",
+            )
+        )
+        out = state.list_models()
+
+        flux2 = next(m for m in out["models"] if m["load_id"] == "mflux/flux2-klein-9b")
+        self.assertEqual(flux2["tasks"], ["text_to_image"])
+        self.assertNotIn("image_to_image", flux2["task_specs"])
+
+    def test_surface_tasks_for_backend_preserves_registry_tasks_when_diffusers_probe_fails(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+
+        state = PlaygroundState(
+            PlaygroundServerConfig(
+                diffusers_allow_download=False,
+                default_model_id="",
+            )
+        )
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers.HuggingFaceDiffusersVisionBackend.get_capabilities",
+            side_effect=RuntimeError("boom"),
+        ):
+            tasks, task_specs = state._surface_tasks_for_backend(
+                backend="diffusers",
+                model_id="zai-org/CogVideoX-2b",
+                tasks=["text_to_video"],
+                task_specs={"text_to_video": {"params": {"width": {"const": 720}}}},
+            )
+
+        self.assertEqual(tasks, ["text_to_video"])
+        self.assertIn("text_to_video", task_specs)
 
     def test_incomplete_cached_diffusers_snapshot_is_not_marked_loadable(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
@@ -624,6 +657,35 @@ class TestPlaygroundServer(unittest.TestCase):
         self.assertEqual(active["backend"], "diffusers")
         self.assertFalse(existing.unloaded)
         self.assertTrue(replacement.unloaded)
+
+    def test_load_model_can_unload_existing_backend_before_preload(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+
+        events = []
+
+        class ExistingBackend:
+            def unload(self):
+                events.append("old_unload")
+
+        class ReplacementBackend:
+            def preload(self):
+                events.append("new_preload")
+
+            def unload(self):
+                events.append("new_unload")
+
+        state = PlaygroundState(PlaygroundServerConfig(default_model_id=""))
+        state._active_backend = ExistingBackend()
+        state._active_backend_kind = "diffusers"
+        state._active_model_id = "runwayml/stable-diffusion-v1-5"
+        state._active_loaded_at = 123.0
+
+        with patch.object(state, "_build_backend", return_value=ReplacementBackend()):
+            out = state.load_model("mflux/flux2-klein-9b", unload_first=True)
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(events[:2], ["old_unload", "new_preload"])
+        self.assertEqual(state.active_snapshot()["model_id"], "mflux/flux2-klein-9b")
 
     def test_generation_job_uses_backend_snapshot_if_active_model_changes(self):
         import abstractvision.playground_server as playground_server

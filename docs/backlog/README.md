@@ -31,7 +31,7 @@ Treat `pyproject.toml` and the latest planned/completed packaging task as the so
 
 ### Current inventory
 
-- Planned: 3 items
+- Planned: 4 items
 - Proposed: 0 items
 - Completed: 20 items
 - Deprecated: 1 item
@@ -41,6 +41,7 @@ Treat `pyproject.toml` and the latest planned/completed packaging task as the so
 - `docs/backlog/planned/017_mlx_mflux_backend_strategy.md`
 - `docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md`
 - `docs/backlog/planned/0022_local_diffusers_image_to_video_backend.md`
+- `docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`
 
 ---
 
