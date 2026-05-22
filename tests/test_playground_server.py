@@ -247,10 +247,24 @@ class TestPlaygroundServer(unittest.TestCase):
 
     def test_catalog_surfaces_mflux_flux2_klein_for_text_to_image_only(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+        from abstractvision.model_downloads import model_presets as real_model_presets
 
+        mflux_flux2 = next(
+            preset
+            for preset in real_model_presets(
+                target="mlx",
+                engine="mflux",
+                include_non_8bit=True,
+                include_all_targets=False,
+            )
+            if preset.key == "flux2-klein-9b"
+        )
         with patch(
             "abstractvision.playground_server.catalog_target_scope",
             return_value={"diffusers", "mlx"},
+        ), patch(
+            "abstractvision.playground_server.model_presets",
+            return_value=[mflux_flux2],
         ):
             state = PlaygroundState(
                 PlaygroundServerConfig(
