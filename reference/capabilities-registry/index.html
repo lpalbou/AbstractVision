@@ -878,7 +878,7 @@ inventory that feeds:</p>
 <h3 id="downloads-optional">Downloads (optional)<a class="headerlink" href="#downloads-optional" title="Permanent link">&para;</a></h3>
 <p>Some models include a <code>downloads</code> list to document what AbstractVision considers “downloadable” for common engines:</p>
 <ul>
-<li><code>key</code>: the canonical short name used in <code>model-presets</code> / <code>download-model</code> (e.g. <code>qwen-image</code>, <code>flux2-klein-4b</code>)</li>
+<li><code>key</code>: the canonical short name used in <code>model-presets</code> / <code>download</code> (e.g. <code>qwen-image</code>, <code>flux2-klein-4b</code>)</li>
 <li><code>engine</code>: <code>mflux</code>, <code>diffusers</code>, <code>stable-diffusion.cpp</code>, ...</li>
 <li><code>target</code>: <code>mlx</code>, <code>diffusers</code>, <code>gguf</code>, ...</li>
 <li><code>bits</code>: typically <code>8</code> (quantized) or <code>16</code> (full snapshot)</li>
@@ -886,8 +886,8 @@ inventory that feeds:</p>
 <li>optional <code>source</code>, <code>notes</code></li>
 </ul>
 <p>This metadata is descriptive, but in this repo it is maintained to align with the curated
-download surfaces exposed by <code>abstractvision model-catalog</code>, <code>abstractvision model-presets</code>, and
-<code>abstractvision download-model</code>.</p>
+download surfaces exposed by <code>abstractvision catalog</code>, <code>abstractvision model-presets</code>, and
+<code>abstractvision download</code>.</p>
 <p>In this repo, we keep <code>downloads</code> entries aligned with the curated preset table (<code>model_downloads._PRESETS</code>) so <code>abstractvision show-model</code> and the docs can reliably describe what the CLI can download.
 That alignment is intentionally user-facing: if a variant is curated for download, it should have
 clear provenance, a realistic runtime target, and a documented readiness story.</p>

@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/planned/0022_local_diffusers_image_to_video_backend/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>Planned: First local Diffusers image-to-video backend and surface integration - AbstractVision</title>
+        <title>Planned: Quarantine unreliable local runtime capabilities until they are re-validated - AbstractVision</title>
       
     
     
@@ -64,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#planned-first-local-diffusers-image-to-video-backend-and-surface-integration" class="md-skip">
+        <a href="#planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated" class="md-skip">
           Skip to content
         </a>
       
@@ -100,7 +100,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Planned: First local Diffusers image-to-video backend and surface integration
+              Planned: Quarantine unreliable local runtime capabilities until they are re-validated
             
           </span>
         </div>
@@ -613,6 +613,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#operator-evidence-to-preserve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operator evidence to preserve
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operator evidence to preserve">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-glm-image-local-diffusers-is-not-shippable-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1) GLM-Image local Diffusers is not shippable yet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-mflux-image_to_image-fails-structural-fidelity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2) MFLUX image_to_image fails structural fidelity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-local-text_to_video-is-wired-but-not-honest-enough-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3) Local text_to_video is wired but not honest enough yet
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#problem" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -624,10 +674,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-we-want-to-do" class="md-nav__link">
+  <a href="#decision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What we want to do
+        Decision
       
     </span>
   </a>
@@ -646,67 +696,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Requirements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#suggested-implementation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Suggested implementation
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Suggested implementation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#phase-1-choose-one-first-local-i2v-target" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 1: choose one first local I2V target
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#phase-2-implement-backend-truth" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 2: implement backend truth
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#phase-3-expose-the-runnable-path" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 3: expose the runnable path
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#scope" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -718,13 +707,52 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#non-goals" class="md-nav__link">
+  <a href="#re-enable-criteria" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Non-goals
+        Re-enable criteria
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Re-enable criteria">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#glm-local-diffusers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GLM local Diffusers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mflux-image_to_image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MFLUX image_to_image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-text_to_video" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local text_to_video
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -803,10 +831,10 @@
   
 
 
-<h1 id="planned-first-local-diffusers-image-to-video-backend-and-surface-integration">Planned: First local Diffusers image-to-video backend and surface integration<a class="headerlink" href="#planned-first-local-diffusers-image-to-video-backend-and-surface-integration" title="Permanent link">&para;</a></h1>
+<h1 id="planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated">Planned: Quarantine unreliable local runtime capabilities until they are re-validated<a class="headerlink" href="#planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated" title="Permanent link">&para;</a></h1>
 <h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Created: 2026-05-21</li>
+<li>Created: 2026-05-22</li>
 <li>Status: Planned</li>
 <li>Priority: P1</li>
 <li>Completed: N/A</li>
@@ -814,169 +842,140 @@
 <h2 id="adr-status">ADR status<a class="headerlink" href="#adr-status" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Governing ADRs:</li>
-<li><a href="../../../adr/0003_lightweight_base_package_and_explicit_runtime_extras/">ADR 0003: Keep base packaging lightweight and put heavy runtimes behind explicit extras</a></li>
 <li><a href="../../../adr/0004_thin_orchestrator_and_backend_owned_model_semantics/">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned</a></li>
 <li><a href="../../../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005: Own a curated capability registry and cache-backed model catalog</a></li>
 <li><a href="../../../adr/0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006: Keep runtime selection explicit and operator-controlled</a></li>
 <li><a href="../../../adr/0007_explicit_fallback_and_degraded_mode_disclosure/">ADR 0007: Disclose fallbacks and degraded modes explicitly</a></li>
 <li><a href="../../../adr/0008_validation_and_evidence_based_change_reporting/">ADR 0008: Require validation and evidence-based change reporting</a></li>
 <li><a href="../../../adr/0009_code_first_docs_backlog_and_adr_discipline/">ADR 0009: Keep docs, backlog, and ADRs code-first</a></li>
-<li>ADR impact: None if the first implementation stays inside the existing backend-owned task model and explicit runtime-selection rules.</li>
+<li>ADR impact: None if we keep the quarantine backend-owned and continue to treat the packaged registry as model-family metadata rather than unconditional local-runtime truth.</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>AbstractVision now has local Diffusers <code>text_to_video</code> groundwork through CogVideoX-2b, but that
-path is currently quarantined from the normal local surfaces pending the follow-up captured in
-<code>0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code>. The next missing local video
-milestone is still <code>image_to_video</code>, because the public API, registry, and AbstractCore surfaces
-already acknowledge it, but the local Diffusers backend still rejects it.</p>
-<p>The immediate operator goal should stay narrow:</p>
+<p>AbstractVision currently has a clean packaged capability registry and backend-owned runtime gating, but recent operator testing showed that some local model/task combinations are not yet honest enough to expose as working local capabilities.</p>
+<p>Three cases need to stay quarantined until they are re-validated:</p>
 <ul>
-<li>add one honest local <code>image_to_video</code> path without new Python dependencies;</li>
-<li>keep the same package boundary (<code>abstractvision</code>, not <code>abstractvideo</code>);</li>
-<li>expose the runnable path consistently through CLI, playground, and AbstractCore only when the
-  backend/model truth is real.</li>
+<li>local Diffusers <code>zai-org/GLM-Image</code> / <code>GLM-Image</code> for both <code>text_to_image</code> and <code>image_to_image</code>;</li>
+<li>local MFLUX <code>image_to_image</code> for the current curated FLUX klein families;</li>
+<li>local Diffusers <code>text_to_video</code> for the current CogVideoX path.</li>
 </ul>
 <h2 id="current-code-reality">Current code reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
-<p>Files and symbols re-checked on 2026-05-21:</p>
+<p>Files re-checked on 2026-05-22:</p>
 <ul>
 <li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
-<li><code>src/abstractvision/vision_manager.py</code></li>
-<li><code>src/abstractvision/cli.py</code></li>
+<li><code>src/abstractvision/backends/mflux.py</code></li>
 <li><code>src/abstractvision/playground_server.py</code></li>
-<li><code>src/abstractvision/playground/vision_playground.html</code></li>
-<li><code>src/abstractvision/integrations/abstractcore.py</code></li>
+<li><code>src/abstractvision/cli.py</code></li>
 <li><code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
 <li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
-<li><code>tests/test_huggingface_diffusers_backend.py</code></li>
-<li><code>tests/test_playground_server.py</code></li>
-<li><code>tests/test_abstractcore_plugin.py</code></li>
 </ul>
-<p>What already exists:</p>
+<p>The current runtime policy after the quarantine change is:</p>
 <ul>
-<li><code>VisionManager.image_to_video(...)</code> is part of the stable package contract.</li>
-<li>The OpenAI-compatible backend already supports remote <code>image_to_video</code> when endpoints are
-  configured.</li>
-<li>The AbstractCore plugin already exposes <code>i2v(...)</code> and normalizes residency task aliases for
-  <code>image_to_video</code>.</li>
-<li>The packaged registry already carries several <code>image_to_video</code> candidates, including:</li>
-<li><code>zai-org/CogVideoX1.5-5B-I2V</code></li>
-<li><code>Lightricks/LTX-2</code></li>
-<li><code>tencent/HunyuanVideo-1.5</code></li>
-<li><code>Wan-AI/Wan2.2-I2V-A14B</code></li>
-<li><code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code></li>
-<li>The installed Diffusers runtime on this machine already exposes official pipeline classes such as
-  <code>CogVideoXImageToVideoPipeline</code>, <code>WanImageToVideoPipeline</code>, and
-  <code>HunyuanVideoImageToVideoPipeline</code>.</li>
-<li>Local MP4 packaging is already solved in-package for video through the current external <code>ffmpeg</code>
-  binary path.</li>
+<li>local Diffusers <code>GLM-Image</code> is hidden from runtime-backed local surfaces and rejected by the backend for <code>text_to_image</code> and <code>image_to_image</code>;</li>
+<li>local MFLUX advertises <code>text_to_image</code> only and rejects <code>image_to_image</code>;</li>
+<li>local Diffusers CogVideoX <code>text_to_video</code> is marked experimental and disabled from normal local surfaces.</li>
 </ul>
-<p>What is still missing or mismatched:</p>
+<p>The packaged registry still records the broader model-family tasks. That is intentional: the registry says what the family can do in principle, while the backend says what AbstractVision can currently run honestly.</p>
+<h2 id="operator-evidence-to-preserve">Operator evidence to preserve<a class="headerlink" href="#operator-evidence-to-preserve" title="Permanent link">&para;</a></h2>
+<h3 id="1-glm-image-local-diffusers-is-not-shippable-yet">1) <code>GLM-Image</code> local Diffusers is not shippable yet<a class="headerlink" href="#1-glm-image-local-diffusers-is-not-shippable-yet" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>HuggingFaceDiffusersVisionBackend._supports_local_image_to_video(...)</code> hard-codes <code>False</code>.</li>
-<li><code>HuggingFaceDiffusersVisionBackend.image_to_video(...)</code> still raises
-  <code>CapabilityNotSupportedError</code>.</li>
-<li>There is no one-shot CLI <code>i2v</code> command and no REPL <code>/i2v</code> command.</li>
-<li>The playground has no image-to-video endpoint or UI panel.</li>
-<li>No local <code>image_to_video</code> model is currently downloaded on this machine.</li>
+<li>Operator ran local <code>GLM-Image</code> from the playground and rejected the output quality even for <code>text_to_image</code>.</li>
+<li>Earlier runtime investigation also found <code>image_to_image</code> path-specific issues on Apple Silicon:</li>
+<li>pipeline input shape differences (<code>image=[pil_image]</code> expectation);</li>
+<li>PyTorch MPS failure in the GLM vision embedding path (<code>grid_sample(..., padding_mode="border")</code>);</li>
+<li>instability on the image-conditioning path with <code>float16</code>.</li>
+<li>A narrow workaround path could make some Apple Silicon <code>i2i</code> runs execute, but that is not sufficient. The operator explicitly does not want a CPU-heavy fallback story except as a last resort, and the current local quality bar is not met.</li>
+</ul>
+<h3 id="2-mflux-image_to_image-fails-structural-fidelity">2) MFLUX <code>image_to_image</code> fails structural fidelity<a class="headerlink" href="#2-mflux-image_to_image-fails-structural-fidelity" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Source image: snowy grounded spacecraft; prompt: watercolor.</li>
+<li>Diffusers FLUX klein produced a recognizable watercolor transform of the same scene.</li>
+<li>MFLUX FLUX klein produced a semantically wrong result with severe structure drift.</li>
+<li>Second source image: indoor room / living-room scene; prompt: watercolor.</li>
+<li>MFLUX preserved some coarse layout but still failed scene fidelity enough that the operator does not consider current local <code>i2i</code> acceptable.</li>
+<li>Conclusion: MFLUX is acceptable for <code>text_to_image</code> iteration today, but not for <code>image_to_image</code>.</li>
+</ul>
+<h3 id="3-local-text_to_video-is-wired-but-not-honest-enough-yet">3) Local <code>text_to_video</code> is wired but not honest enough yet<a class="headerlink" href="#3-local-text_to_video-is-wired-but-not-honest-enough-yet" title="Permanent link">&para;</a></h3>
+<ul>
+<li>CogVideoX local path can produce technically valid MP4 outputs.</li>
+<li>The operator observed outputs that “make no sense” semantically and does not want the package to present this as a working local capability today.</li>
+<li>Conclusion: keep the code and tests as internal groundwork if useful, but do not surface local <code>text_to_video</code> as working until there is a real quality acceptance pass.</li>
 </ul>
 <h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
-<p>The package has local video groundwork but still has no honest local <code>image_to_video</code> path, so the
-public surface is still only half true for local video generation.</p>
-<h2 id="what-we-want-to-do">What we want to do<a class="headerlink" href="#what-we-want-to-do" title="Permanent link">&para;</a></h2>
-<p>Ship one honest, narrow, local Diffusers <code>image_to_video</code> path first, then expose it across the
-interactive and plugin surfaces that can really support it.</p>
+<p>If the playground, CLI catalog, or plugin surfaces advertise these tasks as usable local capabilities, they overstate current product truth.</p>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p>Quarantine the unreliable local task paths now and only re-enable them after a targeted validation task produces evidence that the outputs are acceptable.</p>
+<p>Current quarantine policy:</p>
+<ul>
+<li>local Diffusers <code>GLM-Image</code>: disable <code>text_to_image</code> and <code>image_to_image</code>;</li>
+<li>local MFLUX: disable <code>image_to_image</code>, keep <code>text_to_image</code>;</li>
+<li>local Diffusers CogVideoX: disable <code>text_to_video</code> from normal local surfaces and describe it as experimental / not working.</li>
+</ul>
 <h2 id="why">Why<a class="headerlink" href="#why" title="Permanent link">&para;</a></h2>
 <ul>
-<li>It completes the first practical local video milestone for the existing package boundary.</li>
-<li>It reuses the abstractions that were just proven by local <code>text_to_video</code> without introducing a
-  separate package or dependency stack.</li>
-<li>It makes the plugin/playground/CLI video story consistent instead of having one local video task
-  implemented and the other still remote-only.</li>
-</ul>
-<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Do not add new Python dependencies.</li>
-<li>Keep Hugging Face downloads in the default Hugging Face cache.</li>
-<li>Keep backend-owned task semantics and request normalization.</li>
-<li>Keep Apple Silicon support explicit and defensible: stay at 16-bit for the local Diffusers video
-  path unless a model family proves otherwise.</li>
-<li>Preserve the current artifact-first output contract and reuse the existing MP4 packaging path.</li>
-<li>Expose only models/tasks that the selected backend can really execute.</li>
-</ul>
-<h2 id="suggested-implementation">Suggested implementation<a class="headerlink" href="#suggested-implementation" title="Permanent link">&para;</a></h2>
-<h3 id="phase-1-choose-one-first-local-i2v-target">Phase 1: choose one first local I2V target<a class="headerlink" href="#phase-1-choose-one-first-local-i2v-target" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Prefer <code>zai-org/CogVideoX1.5-5B-I2V</code> as the first candidate:</li>
-<li>official Diffusers pipeline class already exists;</li>
-<li>it stays in the CogVideoX family already used for the first local T2V path;</li>
-<li>it requires no new Python dependency stack.</li>
-<li>Keep Wan/Hunyuan/LTX as later follow-ups unless runtime evidence shows a smaller or cleaner first
-  path.</li>
-</ul>
-<h3 id="phase-2-implement-backend-truth">Phase 2: implement backend truth<a class="headerlink" href="#phase-2-implement-backend-truth" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Add backend gating for the first supported local <code>image_to_video</code> model family only.</li>
-<li>Add backend-owned normalization for <code>ImageToVideoRequest</code>, including width/height/frame defaults
-  and unsupported-parameter filtering.</li>
-<li>Keep preload/warmup and unload semantics aligned with the current local video implementation.</li>
-</ul>
-<h3 id="phase-3-expose-the-runnable-path">Phase 3: expose the runnable path<a class="headerlink" href="#phase-3-expose-the-runnable-path" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Add one-shot CLI <code>i2v</code> and REPL <code>/i2v</code>.</li>
-<li>Extend playground discovery and UI with an image-to-video flow only for supported models.</li>
-<li>Keep AbstractCore plugin/runtime truth aligned with the backend support.</li>
+<li>This keeps the package honest.</li>
+<li>It preserves the clean abstraction boundary: runtime truth stays backend-owned.</li>
+<li>It avoids forcing low-confidence features through the playground, CLI, and AbstractCore plugin just because the model family metadata exists.</li>
 </ul>
 <h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
 <p>Included:</p>
 <ul>
-<li>one real local Diffusers <code>image_to_video</code> path;</li>
-<li>backend/catalog/task-gating alignment for the first chosen model family;</li>
-<li>CLI/playground/AbstractCore exposure tied to real backend capability;</li>
-<li>validation that current image-edit and text-to-video behavior do not regress.</li>
+<li>keep the runtime blacklist in backend capability surfacing;</li>
+<li>keep playground/CLI/plugin discovery aligned with that backend truth;</li>
+<li>preserve the investigation notes and operator examples;</li>
+<li>define what evidence is required before re-enabling these tasks.</li>
 </ul>
-<h2 id="non-goals">Non-goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
+<p>Not included:</p>
 <ul>
-<li>Broad local <code>image_to_video</code> parity across every video model family in one pass.</li>
-<li>Audio handling, timeline editing, muxing, or long-form video orchestration.</li>
-<li>A new package split such as <code>abstractvideo</code>.</li>
-<li>New runtime SDKs or helper libraries beyond what is already in the repo/runtime stack.</li>
+<li>solving GLM local quality/runtime issues in this task;</li>
+<li>solving MFLUX structural <code>i2i</code> fidelity in this task;</li>
+<li>solving local CogVideoX quality in this task;</li>
+<li>widening local video support.</li>
+</ul>
+<h2 id="re-enable-criteria">Re-enable criteria<a class="headerlink" href="#re-enable-criteria" title="Permanent link">&para;</a></h2>
+<h3 id="glm-local-diffusers">GLM local Diffusers<a class="headerlink" href="#glm-local-diffusers" title="Permanent link">&para;</a></h3>
+<ul>
+<li>reproducible <code>t2i</code> outputs that meet operator quality expectations;</li>
+<li>reproducible <code>i2i</code> outputs on Apple Silicon without unacceptable fallback behavior;</li>
+<li>no special-case runtime path that silently pushes most work to CPU.</li>
+</ul>
+<h3 id="mflux-image_to_image">MFLUX <code>image_to_image</code><a class="headerlink" href="#mflux-image_to_image" title="Permanent link">&para;</a></h3>
+<ul>
+<li>side-by-side evidence on at least two representative edit cases showing acceptable scene preservation compared with the current Diffusers baseline;</li>
+<li>clear task-specific constraints documented if MFLUX <code>i2i</code> needs narrower prompts/settings than <code>t2i</code>.</li>
+</ul>
+<h3 id="local-text_to_video">Local <code>text_to_video</code><a class="headerlink" href="#local-text_to_video" title="Permanent link">&para;</a></h3>
+<ul>
+<li>at least one local model/path that produces semantically acceptable short clips under documented settings;</li>
+<li>explicit hardware/settings guidance and representative validation clips;</li>
+<li>no claim of “working local video” before that quality bar is met.</li>
 </ul>
 <h2 id="dependencies-and-related-tasks">Dependencies and related tasks<a class="headerlink" href="#dependencies-and-related-tasks" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Completed: <a href="../../completed/0021_local_diffusers_text_to_video_backend/">0021_local_diffusers_text_to_video_backend.md</a></li>
-<li>Planned: <a href="../0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/">0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</a></li>
 <li>Planned: <a href="../017_mlx_mflux_backend_strategy/">017_mlx_mflux_backend_strategy.md</a></li>
 <li>Planned: <a href="../020_adapter_aware_model_graph_and_catalog/">020_adapter_aware_model_graph_and_catalog.md</a></li>
+<li>Planned: <a href="../0022_local_diffusers_image_to_video_backend/">0022_local_diffusers_image_to_video_backend.md</a></li>
 </ul>
 <h2 id="expected-outcomes">Expected outcomes<a class="headerlink" href="#expected-outcomes" title="Permanent link">&para;</a></h2>
 <ul>
-<li>AbstractVision can run at least one real local Diffusers <code>image_to_video</code> model.</li>
-<li>CLI, playground, and AbstractCore can expose that path honestly.</li>
-<li>The packaged registry and backend support no longer disagree for the first chosen local I2V
-  model.</li>
-<li>Current local image-edit and local text-to-video behavior remain intact.</li>
+<li>Runtime-backed local surfaces only expose local tasks we are willing to stand behind.</li>
+<li>The registry remains curated model metadata, while backend gating remains the source of local execution truth.</li>
+<li>Future re-enablement work has preserved evidence and explicit acceptance criteria instead of oral history.</li>
 </ul>
 <h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Download the chosen first I2V model into the default Hugging Face cache and resolve it offline.</li>
-<li>Run one small local <code>image_to_video</code> smoke through the package backend.</li>
-<li>Verify CLI, REPL, playground, and AbstractCore request routing for the supported I2V model.</li>
-<li>Re-run the relevant backend, manager, playground, plugin, and catalog tests.</li>
+<li>Verify local provider-model listings exclude quarantined tasks.</li>
+<li>Verify playground task selectors do not surface quarantined local models/tasks.</li>
+<li>Verify backend direct calls raise clear capability errors for quarantined paths.</li>
+<li>Verify docs and release notes state the quarantine explicitly.</li>
 </ul>
 <h2 id="progress-checklist">Progress checklist<a class="headerlink" href="#progress-checklist" title="Permanent link">&para;</a></h2>
 <ul>
-<li>[ ] Confirm the first local I2V target and document why it is first.</li>
-<li>[ ] Implement local Diffusers <code>image_to_video</code> for that target family.</li>
-<li>[ ] Add CLI/REPL <code>i2v</code> support.</li>
-<li>[ ] Add playground I2V discovery/UI.</li>
-<li>[ ] Re-check AbstractCore plugin/runtime truth for <code>image_to_video</code>.</li>
-<li>[ ] Validate no regressions for local image-edit and local T2V.</li>
+<li>[ ] Preserve all current operator/runtime findings in this backlog item.</li>
+<li>[ ] Keep runtime-backed local surfacing aligned with the quarantine policy.</li>
+<li>[ ] Revisit each quarantined path with explicit acceptance criteria before re-enabling it.</li>
 </ul>
 <h2 id="guidance-for-the-implementing-agent">Guidance for the implementing agent<a class="headerlink" href="#guidance-for-the-implementing-agent" title="Permanent link">&para;</a></h2>
-<p>Re-check current runtime truth before implementation. Keep the first local I2V milestone narrow,
-package-owned, and honest. If the chosen target cannot be made to work cleanly without new
-dependencies or unacceptable runtime behavior, update this backlog item with the evidence and stop
-instead of widening backend claims.</p>
+<p>Do not widen claims while this item is open. Treat the quarantine as intentional product truth, not as a temporary testing hack. If you later improve one of these paths, re-open the evidence, compare against the operator examples preserved here, and only then remove the corresponding backend blacklist.</p>
 
 
 

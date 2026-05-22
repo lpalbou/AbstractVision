@@ -1040,7 +1040,8 @@
 <h2 id="what-does-abstractvision-support-today">What does AbstractVision support today?<a class="headerlink" href="#what-does-abstractvision-support-today" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Built-in backends implement <strong>images</strong>: <code>text_to_image</code> and <code>image_to_image</code>.</li>
-<li>Local Diffusers also implements <code>text_to_video</code> for the CogVideoX-2b family (<code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code>).</li>
+<li>Local MFLUX is currently surfaced for <code>text_to_image</code> only.</li>
+<li>Local Diffusers <code>text_to_video</code> remains experimental and is temporarily disabled from the normal local runtime surfaces.</li>
 <li><code>image_to_video</code> still works only via the OpenAI-compatible backend <strong>when</strong> video endpoints are configured.</li>
 <li><code>multi_view_image</code> exists in the public API (<code>VisionManager.generate_angles</code>) but no built-in backend implements it yet (they raise <code>CapabilityNotSupportedError</code>).</li>
 </ul>
@@ -1048,7 +1049,7 @@
 <h2 id="which-backend-should-i-use">Which backend should I use?<a class="headerlink" href="#which-backend-should-i-use" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong> (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).</li>
-<li><strong>Diffusers (local)</strong> (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>): run Diffusers pipelines locally (heavy deps). This now includes the first local <code>text_to_video</code> path through CogVideoX-2b.</li>
+<li><strong>Diffusers (local)</strong> (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>): run Diffusers pipelines locally (heavy deps). Local <code>text_to_video</code> groundwork exists but is currently quarantined from the normal local surfaces.</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong> (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>): run GGUF diffusion models via <code>sd-cli</code> or <code>stable-diffusion-cpp-python</code>.</li>
 </ul>
 <h2 id="what-model-should-i-start-with-local">What model should I start with (local)?<a class="headerlink" href="#what-model-should-i-start-with-local" title="Permanent link">&para;</a></h2>
@@ -1057,7 +1058,7 @@
 <li><strong>Default / ≤16GB VRAM (cross-platform)</strong>: <code>runwayml/stable-diffusion-v1-5</code></li>
 </ul>
 <p>Quickstart:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download-model<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_DIFFUSERS_DEVICE</span><span class="o">=</span>auto
@@ -1070,8 +1071,8 @@ abstractvision<span class="w"> </span>repl
 <p>Yes. <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers through <code>--provider diffusers</code>, <code>--provider mflux</code>, or <code>--provider sdcpp</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
 <p>For interactive local generation, use <code>abstractvision cli</code> (legacy alias: <code>abstractvision repl</code>) with <code>/backend diffusers ...</code>, <code>/backend mflux ...</code>, or <code>/backend sdcpp ...</code>.</p>
 <p>Current local video note:
-- the first local one-shot/repl <code>t2v</code> path is Diffusers <code>zai-org/CogVideoX-2b</code> / <code>THUDM/CogVideoX-2b</code>;
-- generated MP4 outputs require <code>ffmpeg</code> on <code>PATH</code>.</p>
+- local <code>t2v</code> is currently experimental and disabled from the normal bundled local surfaces;
+- remote <code>text_to_video</code> / <code>image_to_video</code> still depend on the OpenAI-compatible backend being configured with video endpoints.</p>
 <h2 id="where-do-generated-outputs-go">Where do generated outputs go?<a class="headerlink" href="#where-do-generated-outputs-go" title="Permanent link">&para;</a></h2>
 <p>It depends on whether you configured a store:</p>
 <ul>

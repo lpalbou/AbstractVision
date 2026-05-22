@@ -561,10 +561,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#72-optional-local-textvideo-with-diffusers" class="md-nav__link">
+  <a href="#72-local-textvideo-status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7.2 Optional local text→video with Diffusers
+        7.2 Local text→video status
       
     </span>
   </a>
@@ -1136,10 +1136,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#72-optional-local-textvideo-with-diffusers" class="md-nav__link">
+  <a href="#72-local-textvideo-status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7.2 Optional local text→video with Diffusers
+        7.2 Local text→video status
       
     </span>
   </a>
@@ -1175,8 +1175,8 @@
 <p>This guide helps you generate your first image using AbstractVision with the built-in backends:</p>
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
-<li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / GLM-Image (and other Diffusers pipelines)</li>
-<li><strong>MFLUX (local Apple Silicon)</strong>: 8-bit MLX/MFLUX image generation via the optional MFLUX runtime</li>
+<li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines</li>
+<li><strong>MFLUX (local Apple Silicon)</strong>: 8-bit MLX/MFLUX text-to-image generation via the optional MFLUX runtime</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
 <li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
@@ -1407,7 +1407,7 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 </ul>
 <p>Recommended default (local, cross-platform) — Stable Diffusion 1.5:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers]&quot;</span>
-abstractvision<span class="w"> </span>download-model<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
+abstractvision<span class="w"> </span>download<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_DIFFUSERS_DEVICE</span><span class="o">=</span>auto
@@ -1424,7 +1424,7 @@ abstractvision<span class="w"> </span>repl
 <hr />
 <h2 id="1-first-local-image-diffusers">1) First local image (Diffusers)<a class="headerlink" href="#1-first-local-image-diffusers" title="Permanent link">&para;</a></h2>
 <p>The REPL is cache-only by default, so it will not download model weights. Download the model separately first:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download-model<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="c1"># Required for this local Diffusers recipe.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
@@ -1599,8 +1599,8 @@ AbstractVision falls back to <code>stable-diffusion-cpp-python</code> when that 
 <h3 id="63-curated-sdcpp-bundles">6.3 Curated <code>sdcpp</code> bundles<a class="headerlink" href="#63-curated-sdcpp-bundles" title="Permanent link">&para;</a></h3>
 <p>For Qwen Image and FLUX GGUF, external users should not have to manually locate a VAE or text encoder.
 Download the curated bundle once, then use the model key everywhere:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download-model<span class="w"> </span>qwen-image<span class="w"> </span>--provider<span class="w"> </span>sdcpp
-abstractvision<span class="w"> </span>download-model<span class="w"> </span>flux2-klein-base-4b<span class="w"> </span>--provider<span class="w"> </span>sdcpp
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download<span class="w"> </span>qwen-image<span class="w"> </span>--provider<span class="w"> </span>sdcpp
+abstractvision<span class="w"> </span>download<span class="w"> </span>flux2-klein-base-4b<span class="w"> </span>--provider<span class="w"> </span>sdcpp
 </code></pre></div>
 <p>AbstractVision resolves the required side artifacts from the Hugging Face cache automatically:</p>
 <ul>
@@ -1608,7 +1608,7 @@ abstractvision<span class="w"> </span>download-model<span class="w"> </span>flux
 <li>REPL: <code>/backend sdcpp flux2-klein-base-4b /path/to/sd-cli</code></li>
 <li>Playground / AbstractCore plugin: set the model key and let the package resolve the cached bundle</li>
 </ul>
-<p>If a required companion file is missing, the package now fails early with a precise <code>download-model ... --provider sdcpp</code>
+<p>If a required companion file is missing, the package now fails early with a precise <code>download ... --provider sdcpp</code>
 hint instead of starting generation and then failing deep in the runtime.</p>
 <h3 id="64-run-qwen-image-with-sdcpp">6.4 Run Qwen Image with <code>sdcpp</code><a class="headerlink" href="#64-run-qwen-image-with-sdcpp" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>repl
@@ -1650,18 +1650,19 @@ authentication, and browser-origin policy.</p>
 </ul>
 <p>In the UI:
 - The API Base URL defaults to the same process that serves the page
-- Select a cached model and load it
-- Generate (T2I), upload an input image (I2I), or use the Text→Video panel when the loaded model advertises <code>text_to_video</code></p>
+- Each task tab has its own model selector and unload button
+- Switching models in a tab unloads the previously active backend first to free memory before the replacement model is loaded
+- Generate (T2I), upload an input image (I2I), or inspect the experimental Text→Video tab status. The bundled local server currently does not ship an enabled local <code>t2v</code> model there.</p>
 <p>For the endpoint list, see <code>playground/README.md</code>.</p>
-<h3 id="72-optional-local-textvideo-with-diffusers">7.2 Optional local text→video with Diffusers<a class="headerlink" href="#72-optional-local-textvideo-with-diffusers" title="Permanent link">&para;</a></h3>
-<p>The first shipped local video path is the CogVideoX-2b Diffusers family. On Apple Silicon, use <code>mps</code> plus <code>float16</code>:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download-model<span class="w"> </span>cogvideox-2b<span class="w"> </span>--provider<span class="w"> </span>diffusers
-abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>diffusers<span class="w"> </span>--model<span class="w"> </span>zai-org/CogVideoX-2b<span class="w"> </span>--diffusers-device<span class="w"> </span>mps<span class="w"> </span>--diffusers-torch-dtype<span class="w"> </span>float16<span class="w"> </span>--num-frames<span class="w"> </span><span class="m">9</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span>
-</code></pre></div>
-<p>Notes:
-- local MP4 export requires an <code>ffmpeg</code> executable on <code>PATH</code>;
-- backend normalization applies the model defaults/constraints, so CogVideoX requests are clamped to the supported <code>720x480</code> shape and default <code>8 fps</code> when you omit them;
-- the playground Text→Video panel becomes available when this model is selected and loaded.</p>
+<h3 id="72-local-textvideo-status">7.2 Local text→video status<a class="headerlink" href="#72-local-textvideo-status" title="Permanent link">&para;</a></h3>
+<p>The packaged local Diffusers <code>text_to_video</code> groundwork remains experimental and
+is currently disabled from the normal local surfaces.</p>
+<p>Current policy:
+- do not treat bundled local <code>t2v</code> as production-ready;
+- use the OpenAI-compatible backend if you need a working <code>text_to_video</code>
+  surface today; and
+- track the local follow-up in
+  <a href="../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a>.</p>
 
 
 
