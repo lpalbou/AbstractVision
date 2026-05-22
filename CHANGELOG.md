@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.11 - 2026-05-22
+
+- Hugging Face cache integrity: treat repo-level `.incomplete` blobs as an incomplete snapshot, so interrupted Diffusers downloads no longer masquerade as a usable cached model.
+- Qwen Image Edit downloads: `abstractvision download qwen-image-edit-2511 --provider diffusers` now resumes the real 16-bit snapshot instead of incorrectly short-circuiting on a partial cache.
+
 ## 0.3.10 - 2026-05-22
 
 - Catalog/handles: make the curated Qwen Image Edit aliases consistent across the registry, downloads, and CLI catalog surfaces (`qwen-image-edit`, `qwen-image-edit-2509`, `qwen-image-edit-2511`), and re-verify all packaged Hugging Face repo ids in `vision_model_capabilities.json`.

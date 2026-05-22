@@ -203,14 +203,32 @@ def hf_repo_dir(repo_id: str, *, cache_dir: Optional[str] = None) -> Path:
 
 def hf_snapshot_has_incomplete_downloads(snapshot_dir: Path | str) -> bool:
     snapshot = _expand_path(snapshot_dir)
-    download_dir = snapshot / ".cache" / "huggingface" / "download"
-    if not download_dir.is_dir():
-        return False
+
+    repo_dir: Optional[Path] = None
     try:
-        for root, _dirs, files in os.walk(download_dir):
-            for name in files:
-                if str(name).endswith(".incomplete"):
-                    return True
+        if snapshot.parent.name == "snapshots":
+            repo_dir = snapshot.parent.parent
+    except Exception:
+        repo_dir = None
+
+    download_dirs = [snapshot / ".cache" / "huggingface" / "download"]
+    if repo_dir is not None:
+        download_dirs.append(repo_dir / ".cache" / "huggingface" / "download")
+
+    try:
+        for download_dir in download_dirs:
+            if not download_dir.is_dir():
+                continue
+            for root, _dirs, files in os.walk(download_dir):
+                for name in files:
+                    if str(name).endswith(".incomplete"):
+                        return True
+        if repo_dir is not None:
+            blobs_dir = repo_dir / "blobs"
+            if blobs_dir.is_dir():
+                for path in blobs_dir.iterdir():
+                    if path.is_file() and str(path.name).endswith(".incomplete"):
+                        return True
     except Exception:
         return False
     return False

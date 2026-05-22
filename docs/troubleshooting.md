@@ -44,10 +44,16 @@ unless you choose the matching extra.
 The Diffusers backend is cache-only by default and the required model is not yet
 present in the Hugging Face cache.
 
+Another common case is an interrupted Hugging Face download: the snapshot
+directory exists, but the repo still contains `.incomplete` blobs and the
+package now rejects that cache entry as unusable until the download is resumed.
+
 ### Fix
 
 - Pre-download the model with `abstractvision download ... --provider diffusers`
 - or allow runtime downloads explicitly with `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`
+- if the repo already exists but is partial, rerun the same `abstractvision download ... --provider diffusers`
+  command to resume it
 
 Examples:
 

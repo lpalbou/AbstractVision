@@ -163,6 +163,55 @@ class TestModelCache(unittest.TestCase):
                     )
                 )
 
+    def test_rejects_snapshot_with_incomplete_repo_blobs(self):
+        from abstractvision.model_cache import cached_hf_model_sources, hf_snapshot_is_usable, incomplete_hf_model_sources, resolve_hf_repo_snapshot
+
+        repo_id = "Qwen/Qwen-Image-Edit-2511"
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                repo_dir = Path(cache_td) / "models--Qwen--Qwen-Image-Edit-2511"
+                snap = repo_dir / "snapshots" / "abc123"
+                (snap / "model_index.json").parent.mkdir(parents=True, exist_ok=True)
+                (snap / "model_index.json").write_text("{}", encoding="utf-8")
+                (snap / "vae").mkdir(parents=True, exist_ok=True)
+                (snap / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"x")
+                (repo_dir / "blobs").mkdir(parents=True, exist_ok=True)
+                (repo_dir / "blobs" / "partial-weight.incomplete").write_bytes(b"x")
+                refs = repo_dir / "refs"
+                refs.mkdir(parents=True, exist_ok=True)
+                (refs / "main").write_text("abc123", encoding="utf-8")
+
+                self.assertFalse(
+                    hf_snapshot_is_usable(snap, required_files=("model_index.json",), require_weight_files=True)
+                )
+                self.assertEqual(
+                    cached_hf_model_sources(
+                        repo_id,
+                        cache_dir=cache_td,
+                        required_files=("model_index.json",),
+                        require_weight_files=True,
+                    ),
+                    [],
+                )
+                self.assertEqual(
+                    incomplete_hf_model_sources(
+                        repo_id,
+                        cache_dir=cache_td,
+                        required_files=("model_index.json",),
+                        require_weight_files=True,
+                    ),
+                    ["configured cache"],
+                )
+                self.assertIsNone(
+                    resolve_hf_repo_snapshot(
+                        repo_id,
+                        cache_dir=cache_td,
+                        required_files=("model_index.json",),
+                        require_weight_files=True,
+                    )
+                )
+
     def test_marks_lock_only_repo_as_incomplete(self):
         from abstractvision.model_cache import incomplete_hf_model_sources
 
