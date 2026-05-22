@@ -1091,10 +1091,15 @@ unless you choose the matching extra.</p>
 <h3 id="likely-cause_1">Likely cause<a class="headerlink" href="#likely-cause_1" title="Permanent link">&para;</a></h3>
 <p>The Diffusers backend is cache-only by default and the required model is not yet
 present in the Hugging Face cache.</p>
+<p>Another common case is an interrupted Hugging Face download: the snapshot
+directory exists, but the repo still contains <code>.incomplete</code> blobs and the
+package now rejects that cache entry as unusable until the download is resumed.</p>
 <h3 id="fix_1">Fix<a class="headerlink" href="#fix_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Pre-download the model with <code>abstractvision download ... --provider diffusers</code></li>
 <li>or allow runtime downloads explicitly with <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code></li>
+<li>if the repo already exists but is partial, rerun the same <code>abstractvision download ... --provider diffusers</code>
+  command to resume it</li>
 </ul>
 <p>Examples:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>download<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
