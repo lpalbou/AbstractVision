@@ -516,9 +516,54 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         allow_patterns=("README.md", "LICENSE*", "qwen-image-edit-2511-Q8_0.gguf"),
         notes=(
             "Qwen Image Edit 2511 GGUF bundle for stable-diffusion.cpp; requires a separate VAE "
-            "safetensors file and a Qwen2.5-VL GGUF text encoder at runtime."
+            "safetensors file and a Qwen2.5-VL 7B text encoder (safetensors) at runtime."
         ),
         source_priority=30,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit-2511-gguf",
+        display_name="Qwen-Image-Edit-2511 GGUF Q8_0 (Diffusers)",
+        repo_id="unsloth/Qwen-Image-Edit-2511-GGUF",
+        target="gguf",
+        engine="diffusers",
+        local_dir_name="qwen-image-edit-2511-gguf-q8_0-diffusers",
+        quantization_bits=8,
+        upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
+        source="curated-community-gguf",
+        aliases=(
+            "qwen-image-edit-2511-gguf",
+            "qwen-image-edit-2511-gguf-q8_0",
+            "unsloth/Qwen-Image-Edit-2511-GGUF",
+        ),
+        allow_patterns=("README.md", "LICENSE*", "qwen-image-edit-2511-Q8_0.gguf"),
+        notes=(
+            "8-bit GGUF transformer for the Diffusers Qwen Image Edit 2511 pipeline. "
+            "The official Diffusers snapshot supplies tokenizer, text encoder, scheduler, and VAE."
+        ),
+        source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit-2511-gguf",
+        display_name="Qwen-Image-Edit-2511 GGUF Q8_0",
+        repo_id="unsloth/Qwen-Image-Edit-2511-GGUF",
+        target="gguf",
+        engine="stable-diffusion.cpp",
+        local_dir_name="qwen-image-edit-2511-gguf-q8_0-gguf",
+        quantization_bits=8,
+        upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
+        source="curated-community-gguf",
+        aliases=(
+            "qwen-image-edit-2511-gguf",
+            "qwen-image-edit-2511-gguf-q8_0",
+            "unsloth/Qwen-Image-Edit-2511-GGUF",
+            "Qwen/Qwen-Image-Edit-2511",
+        ),
+        allow_patterns=("README.md", "LICENSE*", "qwen-image-edit-2511-Q8_0.gguf"),
+        notes=(
+            "Alias preset for qwen-image-edit-2511 GGUF (stable-diffusion.cpp). "
+            "Use this key when you explicitly want the GGUF runtime artifact."
+        ),
+        source_priority=31,
     ),
     VisionModelDownloadPreset(
         key="glm-image",
@@ -961,13 +1006,15 @@ _SDCPP_BUNDLES: Dict[str, _SdcppBundleSpec] = {
         components=(
             _SdcppBundleComponentSpec(
                 role="vae",
-                repo_id="Qwen/Qwen-Image-2512",
-                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                allow_patterns=("split_files/vae/qwen_image_vae.safetensors",),
             ),
             _SdcppBundleComponentSpec(
                 role="llm",
-                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                # NOTE: fp8_scaled variants contain tensors not supported by stable-diffusion.cpp and
+                # can lead to blank/black outputs. Prefer the full safetensors encoder.
+                allow_patterns=("split_files/text_encoders/qwen_2.5_vl_7b.safetensors",),
             ),
         ),
     ),
@@ -977,13 +1024,15 @@ _SDCPP_BUNDLES: Dict[str, _SdcppBundleSpec] = {
         components=(
             _SdcppBundleComponentSpec(
                 role="vae",
-                repo_id="Qwen/Qwen-Image-Edit-2511",
-                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                allow_patterns=("split_files/vae/qwen_image_vae.safetensors",),
             ),
             _SdcppBundleComponentSpec(
                 role="llm",
-                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                # NOTE: fp8_scaled variants contain tensors not supported by stable-diffusion.cpp and
+                # can lead to blank/black outputs. Prefer the full safetensors encoder.
+                allow_patterns=("split_files/text_encoders/qwen_2.5_vl_7b.safetensors",),
             ),
         ),
     ),
@@ -997,13 +1046,33 @@ _SDCPP_BUNDLES: Dict[str, _SdcppBundleSpec] = {
         components=(
             _SdcppBundleComponentSpec(
                 role="vae",
-                repo_id="Qwen/Qwen-Image-Edit-2509",
-                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                allow_patterns=("split_files/vae/qwen_image_vae.safetensors",),
             ),
             _SdcppBundleComponentSpec(
                 role="llm",
-                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                # NOTE: fp8_scaled variants contain tensors not supported by stable-diffusion.cpp and
+                # can lead to blank/black outputs. Prefer the full safetensors encoder.
+                allow_patterns=("split_files/text_encoders/qwen_2.5_vl_7b.safetensors",),
+            ),
+        ),
+    ),
+    "qwen-image-edit-2511-gguf": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("qwen-image-edit-2511-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                allow_patterns=("split_files/vae/qwen_image_vae.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                # NOTE: fp8_scaled variants contain tensors not supported by stable-diffusion.cpp and
+                # can lead to blank/black outputs. Prefer the full safetensors encoder.
+                allow_patterns=("split_files/text_encoders/qwen_2.5_vl_7b.safetensors",),
             ),
         ),
     ),
@@ -1022,13 +1091,15 @@ _SDCPP_BUNDLES_BY_REPO_ID: Dict[str, _SdcppBundleSpec] = {
         components=(
             _SdcppBundleComponentSpec(
                 role="vae",
-                repo_id="Qwen/Qwen-Image",
-                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                allow_patterns=("split_files/vae/qwen_image_vae.safetensors",),
             ),
             _SdcppBundleComponentSpec(
                 role="llm",
-                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                # NOTE: fp8_scaled variants contain tensors not supported by stable-diffusion.cpp and
+                # can lead to blank/black outputs. Prefer the full safetensors encoder.
+                allow_patterns=("split_files/text_encoders/qwen_2.5_vl_7b.safetensors",),
             ),
         ),
     ),
@@ -1043,13 +1114,15 @@ _SDCPP_BUNDLES_BY_REPO_ID: Dict[str, _SdcppBundleSpec] = {
         components=(
             _SdcppBundleComponentSpec(
                 role="vae",
-                repo_id="Qwen/Qwen-Image-Edit",
-                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                allow_patterns=("split_files/vae/qwen_image_vae.safetensors",),
             ),
             _SdcppBundleComponentSpec(
                 role="llm",
-                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-                allow_patterns=("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",),
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
+                # NOTE: fp8_scaled variants contain tensors not supported by stable-diffusion.cpp and
+                # can lead to blank/black outputs. Prefer the full safetensors encoder.
+                allow_patterns=("split_files/text_encoders/qwen_2.5_vl_7b.safetensors",),
             ),
         ),
     ),
@@ -1059,12 +1132,12 @@ _SDCPP_BUNDLES_BY_REPO_ID: Dict[str, _SdcppBundleSpec] = {
 def _default_allow_patterns(*, target: str, engine: str) -> Tuple[str, ...]:
     if target == "mlx" or engine == "mflux":
         return _COMMON_MLX_PATTERNS
-    if target == "diffusers" or engine == "diffusers":
-        return _COMMON_DIFFUSERS_PATTERNS
     if target == "fp8" or engine == "diffusers-component":
         return ("*.json", "*.md", "LICENSE*", "*.safetensors")
     if target == "gguf" or engine == "stable-diffusion.cpp":
         return ("README.md", "LICENSE*", "*.gguf")
+    if target == "diffusers" or engine == "diffusers":
+        return _COMMON_DIFFUSERS_PATTERNS
     # Full Hugging Face snapshots should not constrain filenames by default.
     return ()
 
@@ -1110,6 +1183,8 @@ def _default_local_dir_name(*, key: str, target: str, engine: str, repo_id: str)
 
 def _default_display_name(*, model_id: str, target: str, engine: str, bits: Optional[int]) -> str:
     stem = str(model_id or "").rsplit("/", 1)[-1].replace("-", " ").strip() or str(model_id)
+    if str(model_id).strip() in {"Qwen/Qwen-Image", "Qwen/Qwen-Image-Edit"}:
+        stem = f"{stem} (legacy)"
     engine_label = {
         "diffusers": "Diffusers",
         "diffusers-component": "Diffusers component",
@@ -1219,7 +1294,9 @@ def local_model_profile() -> str:
 def local_catalog_targets() -> Tuple[str, ...]:
     profile = local_model_profile()
     if profile == "apple-silicon":
-        return ("mlx", "diffusers", "hf-snapshot")
+        # Include GGUF (stable-diffusion.cpp) because a number of models (e.g. Qwen Image Edit)
+        # have good 8-bit presets there, and Apple Silicon can run it efficiently via Metal.
+        return ("mlx", "diffusers", "hf-snapshot", "gguf")
     if profile == "cuda":
         return ("fp8", "gguf", "diffusers", "hf-snapshot")
     return ("diffusers", "hf-snapshot", "gguf")
@@ -1239,6 +1316,8 @@ def catalog_target_scope(
             if preset.target not in preferred:
                 preferred.append(preset.target)
         return tuple(preferred)
+    if raw_target in {"", "auto", "default"} and selected_engine == "diffusers":
+        return ("diffusers", "gguf")
     if raw_target in {"", "auto", "default"} and selected_engine is None:
         return local_catalog_targets()
     return (selected_target,)
@@ -1493,10 +1572,10 @@ def _snapshot_requirements_for_preset(
 ) -> tuple[Tuple[str, ...], bool]:
     target = str(preset.target or "").strip().lower()
     engine = str(preset.engine or "").strip().lower()
-    if target == "diffusers" or engine == "diffusers":
-        return ("model_index.json",), True
     if target in {"hf-snapshot", "mlx", "gguf", "fp8"}:
         return tuple(), True
+    if target == "diffusers" or engine == "diffusers":
+        return ("model_index.json",), True
     if engine in {"transformers", "mflux", "stable-diffusion.cpp", "diffusers-component"}:
         return tuple(), True
     return tuple(), False

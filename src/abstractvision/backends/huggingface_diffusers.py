@@ -11,7 +11,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..model_capabilities import VisionModelCapabilitiesRegistry, VisionTaskSpec
@@ -184,6 +184,17 @@ def _lazy_import_qwen_image_transformer_2d_model():
             "which is not available in this diffusers build."
         )
     return QwenImageTransformer2DModel
+
+
+def _lazy_import_gguf_quantization_config():
+    try:
+        from diffusers import GGUFQuantizationConfig  # type: ignore
+    except Exception:
+        raise ValueError(
+            "Diffusers GGUF loading requires diffusers.GGUFQuantizationConfig, "
+            "which is not available in this diffusers build."
+        )
+    return GGUFQuantizationConfig
 
 
 def _read_chat_template_file(snapshot_dir: Optional[Path], *relative_paths: str) -> Optional[str]:
@@ -743,12 +754,58 @@ def _maybe_upcast_vae_for_mps(torch: Any, pipe: Any, device: str, *, allow_fp32_
             return
 
 
+def _is_quantized_module(module: Any) -> bool:
+    if module is None:
+        return False
+    return bool(
+        getattr(module, "is_quantized", False)
+        or getattr(module, "hf_quantizer", None) is not None
+        or getattr(module, "quantization_method", None) is not None
+    )
+
+
+def _pipe_has_quantized_components(pipe: Any) -> bool:
+    seen: set[int] = set()
+
+    def check(module: Any) -> bool:
+        if module is None:
+            return False
+        ident = id(module)
+        if ident in seen:
+            return False
+        seen.add(ident)
+        return _is_quantized_module(module)
+
+    comps = getattr(pipe, "components", None)
+    if isinstance(comps, dict):
+        for v in comps.values():
+            if check(v):
+                return True
+
+    for attr in (
+        "model",
+        "transformer",
+        "unet",
+        "text_encoder",
+        "text_encoder_2",
+        "image_encoder",
+        "prior",
+        "vae",
+        "safety_checker",
+    ):
+        if check(getattr(pipe, attr, None)):
+            return True
+    return False
+
+
 def _maybe_cast_pipe_modules_to_dtype(pipe: Any, *, dtype: Any) -> None:
     if dtype is None:
         return
 
     def _to(module: Any) -> None:
         if module is None:
+            return
+        if _is_quantized_module(module):
             return
         to_fn = getattr(module, "to", None)
         if not callable(to_fn):
@@ -815,6 +872,14 @@ def _maybe_cast_vae_inputs_to_dtype(vae: Any) -> None:
         setattr(vae, "_abstractvision_casts_inputs_to_dtype", True)
     except Exception:
         return
+
+
+@dataclass(frozen=True)
+class _DiffusersGGUFTransformerSpec:
+    base_model_id: str
+    gguf_repo_id: Optional[str]
+    gguf_patterns: Tuple[str, ...]
+    gguf_path: Optional[Path] = None
 
 
 @dataclass(frozen=True)
@@ -971,7 +1036,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
     def _task_spec(self, task: str) -> Optional[VisionTaskSpec]:
         reg = self._registry()
-        model_id = str(self._cfg.model_id or "").strip()
+        model_id = self._canonical_model_id()
         if reg is None or not model_id:
             return None
         try:
@@ -983,6 +1048,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         raw = str(model_id if model_id is not None else self._cfg.model_id or "").strip()
         if not raw:
             return ""
+        if model_id is None:
+            gguf_spec = self._diffusers_gguf_transformer_spec()
+            if gguf_spec is not None:
+                raw = gguf_spec.base_model_id
         reg = self._registry()
         if reg is not None:
             try:
@@ -990,6 +1059,163 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             except Exception:
                 return raw
         return raw
+
+    def _diffusers_gguf_transformer_spec(self) -> Optional[_DiffusersGGUFTransformerSpec]:
+        raw = str(self._cfg.model_id or "").strip()
+        if not raw:
+            return None
+
+        raw_path = Path(raw).expanduser()
+        if raw_path.is_file() and raw_path.suffix.lower() == ".gguf":
+            base = self._base_model_id_for_gguf_name(raw_path.name)
+            if base is None:
+                return None
+            return _DiffusersGGUFTransformerSpec(
+                base_model_id=base,
+                gguf_repo_id=None,
+                gguf_patterns=(raw_path.name,),
+                gguf_path=raw_path,
+            )
+        if raw_path.is_dir():
+            gguf_path = self._find_first_file(raw_path, ("*.gguf",))
+            if gguf_path is not None:
+                base = self._base_model_id_for_gguf_name(gguf_path.name)
+                if base is not None:
+                    return _DiffusersGGUFTransformerSpec(
+                        base_model_id=base,
+                        gguf_repo_id=None,
+                        gguf_patterns=(gguf_path.name,),
+                        gguf_path=gguf_path,
+                    )
+
+        try:
+            from ..model_downloads import find_model_preset
+
+            preset = find_model_preset(raw, target="gguf", engine="diffusers", require_8bit=True)
+            patterns = tuple(
+                str(pattern)
+                for pattern in preset.allow_patterns
+                if ".gguf" in str(pattern).strip().lower()
+            )
+            return _DiffusersGGUFTransformerSpec(
+                base_model_id=str(preset.upstream_repo_id or self._canonical_model_id(preset.repo_id)).strip(),
+                gguf_repo_id=str(preset.repo_id).strip(),
+                gguf_patterns=patterns or ("*.gguf",),
+            )
+        except Exception:
+            pass
+
+        lowered = raw.lower()
+        if lowered in {
+            "qwen-image-edit-2511-gguf",
+            "qwen-image-edit-2511-gguf-q8_0",
+            "unsloth/qwen-image-edit-2511-gguf",
+        }:
+            return _DiffusersGGUFTransformerSpec(
+                base_model_id="Qwen/Qwen-Image-Edit-2511",
+                gguf_repo_id="unsloth/Qwen-Image-Edit-2511-GGUF",
+                gguf_patterns=("qwen-image-edit-2511-Q8_0.gguf",),
+            )
+        return None
+
+    def _base_model_id_for_gguf_name(self, name: str) -> Optional[str]:
+        normalized = str(name or "").strip().lower().replace("_", "-")
+        if "qwen-image-edit-2511" in normalized:
+            return "Qwen/Qwen-Image-Edit-2511"
+        return None
+
+    def _find_first_file(self, root: Path, patterns: Sequence[str]) -> Optional[Path]:
+        for pattern in patterns:
+            try:
+                matches = sorted(path for path in root.glob(str(pattern)) if path.is_file())
+            except Exception:
+                matches = []
+            if matches:
+                return matches[0]
+        return None
+
+    def _resolve_gguf_transformer_path(self, spec: _DiffusersGGUFTransformerSpec) -> Path:
+        if spec.gguf_path is not None:
+            path = Path(spec.gguf_path).expanduser()
+            if path.is_file():
+                return path
+
+        repo_id = str(spec.gguf_repo_id or "").strip()
+        if repo_id:
+            snapshot = resolve_hf_repo_snapshot(
+                repo_id,
+                revision=str(self._cfg.revision or "main").strip() or "main",
+                extra_roots=self._hf_cache_roots(),
+                require_weight_files=True,
+            )
+            if snapshot is not None:
+                found = self._find_first_file(snapshot, spec.gguf_patterns)
+                if found is not None:
+                    return found
+
+            if bool(self._cfg.allow_download):
+                concrete_patterns = [
+                    p
+                    for p in spec.gguf_patterns
+                    if p.lower().endswith(".gguf") and "*" not in p and "?" not in p and "[" not in p
+                ]
+                if concrete_patterns:
+                    try:
+                        from huggingface_hub import hf_hub_download
+
+                        return Path(
+                            hf_hub_download(
+                                repo_id=repo_id,
+                                filename=concrete_patterns[0],
+                                repo_type="model",
+                                revision=str(self._cfg.revision or "main").strip() or None,
+                                cache_dir=str(self._cfg.cache_dir) if self._cfg.cache_dir else None,
+                                local_files_only=False,
+                            )
+                        )
+                    except Exception:
+                        pass
+
+        raise ValueError(
+            "Diffusers GGUF transformer artifact is not available locally. "
+            f"Expected {spec.gguf_patterns!r}"
+            + (f" in {repo_id!r}. " if repo_id else ". ")
+            + "Download it first with `abstractvision download qwen-image-edit-2511-gguf --provider diffusers`."
+        )
+
+    def _load_gguf_transformer(
+        self,
+        *,
+        spec: _DiffusersGGUFTransformerSpec,
+        gguf_path: Path,
+        torch: Any,
+        torch_dtype: Any,
+        device: str,
+    ) -> Any:
+        GGUFQuantizationConfig = _lazy_import_gguf_quantization_config()
+        QwenImageTransformer2DModel = _lazy_import_qwen_image_transformer_2d_model()
+        q_config = GGUFQuantizationConfig(compute_dtype=torch_dtype or getattr(torch, "bfloat16", None))
+
+        kwargs: Dict[str, Any] = {
+            "config": spec.base_model_id,
+            "subfolder": "transformer",
+            "quantization_config": q_config,
+            "torch_dtype": torch_dtype,
+            "local_files_only": not bool(self._cfg.allow_download),
+        }
+        if self._cfg.cache_dir:
+            kwargs["cache_dir"] = str(self._cfg.cache_dir)
+        if self._cfg.revision:
+            kwargs["revision"] = str(self._cfg.revision)
+            kwargs["config_revision"] = str(self._cfg.revision)
+
+        with _hf_offline_env(not bool(self._cfg.allow_download)):
+            transformer = QwenImageTransformer2DModel.from_single_file(str(gguf_path), **kwargs)
+
+        try:
+            return transformer.to(str(device))
+        except Exception:
+            return transformer
 
     def _needs_list_wrapped_i2i_image(self, pipe: Any = None) -> bool:
         model_id = self._canonical_model_id().lower()
@@ -1011,7 +1237,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         device_name = str(device or "").strip().lower()
         if not (device_name == "mps" or device_name.startswith("mps:")):
             return torch_dtype
-        model_hint = model_id.replace("_", "-")
+        gguf_spec = self._diffusers_gguf_transformer_spec()
+        model_hint = (gguf_spec.base_model_id if gguf_spec is not None else model_id).replace("_", "-").lower()
         wants_bf16 = model_hint == "zai-org/glm-image" or "qwen-image-edit" in model_hint
         if not wants_bf16:
             return torch_dtype
@@ -1067,7 +1294,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     def _supported_task_names(self, model_id: Optional[str] = None) -> List[str]:
         model_spec = None
         reg = self._registry()
-        resolved_model_id = str(model_id if model_id is not None else self._cfg.model_id or "").strip()
+        resolved_model_id = (
+            str(model_id).strip() if model_id is not None else self._canonical_model_id()
+        )
         if reg is not None and resolved_model_id:
             try:
                 model_spec = reg.get(resolved_model_id)
@@ -1652,6 +1881,23 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 )
             )
 
+        def task_specs_for_model(model_id: str, tasks: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+            try:
+                spec = VisionModelCapabilitiesRegistry().get(str(model_id))
+            except Exception:
+                return {}
+            allowed = {str(task_name) for task_name in tasks}
+            return {
+                str(task_name): {
+                    "inputs": list(task_spec.inputs),
+                    "outputs": list(task_spec.outputs),
+                    "params": dict(task_spec.params),
+                    "requires": dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None,
+                }
+                for task_name, task_spec in spec.tasks.items()
+                if str(task_name) in allowed
+            }
+
         try:
             from ..model_capabilities import VisionModelCapabilitiesRegistry
 
@@ -1682,6 +1928,54 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                             for task_name, task_spec in spec.tasks.items()
                             if str(task_name) in set(tasks)
                         },
+                    },
+                )
+        except Exception:
+            pass
+
+        try:
+            from ..model_downloads import model_presets
+
+            for preset in model_presets(
+                target="auto",
+                engine="diffusers",
+                include_non_8bit=True,
+                include_all_targets=False,
+            ):
+                if str(preset.target or "").strip().lower() != "gguf":
+                    continue
+                base_model_id = str(preset.upstream_repo_id or preset.repo_id).strip()
+                tasks = self._supported_task_names(base_model_id)
+                if task_s and task_s not in tasks:
+                    continue
+                if not tasks:
+                    continue
+                gguf_cached_in = cached_hf_model_sources(
+                    str(preset.repo_id),
+                    extra_roots=self._hf_cache_roots(),
+                    required_files=(),
+                    require_weight_files=True,
+                )
+                base_cached = self._is_hf_model_cached(base_model_id)
+                if (not gguf_cached_in or not base_cached) and not bool(self._cfg.allow_download):
+                    continue
+                add_model(
+                    str(preset.key),
+                    tasks=tasks,
+                    cached=bool(gguf_cached_in) and base_cached,
+                    raw_extra={
+                        "base_model_id": base_model_id,
+                        "canonical_model_id": base_model_id,
+                        "download_repo_id": str(preset.repo_id),
+                        "engine": str(preset.engine),
+                        "target": str(preset.target),
+                        "quantization_bits": preset.quantization_bits,
+                        "variant": str(preset.display_name),
+                        "local_cached": bool(gguf_cached_in) and base_cached,
+                        "gguf_local_cached": bool(gguf_cached_in),
+                        "base_local_cached": base_cached,
+                        "cached_in": list(gguf_cached_in),
+                        "task_specs": task_specs_for_model(base_model_id, tasks),
                     },
                 )
         except Exception:
@@ -1813,8 +2107,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 out.append(root)
         return out
 
-    def _resolve_snapshot_dir(self) -> Optional[Path]:
-        model_id = str(self._cfg.model_id).strip()
+    def _resolve_snapshot_dir(self, model_id: Optional[str] = None) -> Optional[Path]:
+        model_id = str(model_id if model_id is not None else self._cfg.model_id).strip()
         if not model_id:
             return None
 
@@ -1832,8 +2126,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             require_weight_files=True,
         )
 
-    def _resolve_any_snapshot_dir(self) -> Optional[Path]:
-        model_id = str(self._cfg.model_id).strip()
+    def _resolve_any_snapshot_dir(self, model_id: Optional[str] = None) -> Optional[Path]:
+        model_id = str(model_id if model_id is not None else self._cfg.model_id).strip()
         if not model_id or "/" not in model_id:
             return None
         return resolve_hf_repo_snapshot(
@@ -1843,8 +2137,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             reject_incomplete=False,
         )
 
-    def _preflight_check_model_index(self) -> None:
-        snap = self._resolve_snapshot_dir()
+    def _preflight_check_model_index(self, model_id: Optional[str] = None) -> None:
+        snap = self._resolve_snapshot_dir(model_id=model_id)
         if snap is None:
             return
         idx_path = snap / "model_index.json"
@@ -1935,7 +2229,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         device = self._effective_device(torch)
         _require_device_available(torch, device)
 
-        self._preflight_check_model_index()
+        gguf_spec = self._diffusers_gguf_transformer_spec()
+        preflight_model_id = gguf_spec.base_model_id if gguf_spec is not None else None
+        self._preflight_check_model_index(model_id=preflight_model_id)
         _maybe_patch_transformers_clip_position_ids()
 
         torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype)
@@ -1946,40 +2242,60 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if bool(self._cfg.low_cpu_mem_usage):
             common["low_cpu_mem_usage"] = True
 
+        gguf_transformer = None
+        if gguf_spec is not None:
+            if kind not in {"t2i", "i2i", "inpaint"}:
+                raise ValueError("Diffusers GGUF transformer loading is only supported for image pipelines.")
+            gguf_path = self._resolve_gguf_transformer_path(gguf_spec)
+            gguf_transformer = self._load_gguf_transformer(
+                spec=gguf_spec,
+                gguf_path=gguf_path,
+                torch=torch,
+                torch_dtype=torch_dtype,
+                device=str(device),
+            )
+
         # Auto-select checkpoint variants when appropriate (best-effort).
         # Prefer fp16 on GPU backends (CUDA/MPS) to cut memory/disk use, but never on CPU.
         #
         # Important: many repos do NOT ship an fp16 variant, so we must fall back cleanly.
         auto_variant: Optional[str] = None
-        if not str(getattr(self._cfg, "variant", "") or "").strip() and str(device).strip().lower() != "cpu":
+        if (
+            gguf_spec is None
+            and not str(getattr(self._cfg, "variant", "") or "").strip()
+            and str(device).strip().lower() != "cpu"
+        ):
             if torch_dtype == getattr(torch, "float16", object()):
                 auto_variant = "fp16"
 
-        load_model_id = str(self._cfg.model_id)
+        load_model_id = str(gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id)
         snap: Optional[Path] = None
         if not bool(self._cfg.allow_download):
-            snap = self._resolve_snapshot_dir()
+            snap = self._resolve_snapshot_dir(model_id=load_model_id)
             if snap is not None:
                 load_model_id = str(snap)
 
         def _from_pretrained(cls: Any) -> Any:
+            load_common = dict(common)
+            if gguf_transformer is not None:
+                load_common["transformer"] = gguf_transformer
             if auto_variant:
-                common2 = dict(common)
+                common2 = dict(load_common)
                 common2["variant"] = auto_variant
                 try:
                     return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **common2)
                 except Exception:
                     # If the repo doesn't provide the fp16 variant (common), fall back to regular weights.
-                    return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **common)
-            return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **common)
+                    return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **load_common)
+            return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **load_common)
 
         def _maybe_raise_offline_missing_model(e: Exception) -> None:
-            model_id = str(self._cfg.model_id or "").strip()
+            model_id = str(gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id or "").strip()
             if not model_id or "/" not in model_id:
                 return
             # If it's not in cache, provide a clearer message than the upstream
             # "does not appear to have a file named model_index.json" wording.
-            if self._resolve_snapshot_dir() is not None:
+            if self._resolve_snapshot_dir(model_id=model_id) is not None:
                 return
             msg = str(e)
             if "model_index.json" not in msg:
@@ -1992,8 +2308,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             ) from e
 
         def _maybe_raise_incomplete_snapshot_error(e: Exception) -> None:
-            model_id = str(self._cfg.model_id or "").strip()
-            snap = self._resolve_any_snapshot_dir()
+            model_id = str(gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id or "").strip()
+            snap = self._resolve_any_snapshot_dir(model_id=model_id)
             if not model_id or not snap:
                 return
             if hf_snapshot_is_usable(
@@ -2110,14 +2426,16 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             else:
                 raise ValueError(f"Unknown pipeline kind: {kind!r}")
 
-        pipe = _move_pipe_to_device(pipe, device=str(device), dtype=torch_dtype)
+        pipe = _move_pipe_to_device(pipe, device=str(device), dtype=None if gguf_transformer is not None else torch_dtype)
         template_snapshot = snap
         if template_snapshot is None:
             candidate = Path(str(load_model_id)).expanduser()
             if candidate.exists():
                 template_snapshot = candidate
             else:
-                template_snapshot = self._resolve_any_snapshot_dir()
+                template_snapshot = self._resolve_any_snapshot_dir(
+                    model_id=gguf_spec.base_model_id if gguf_spec is not None else None
+                )
         _ensure_pipeline_chat_templates(pipe, snapshot_dir=template_snapshot, model_id=str(self._cfg.model_id or ""))
         _maybe_cast_pipe_modules_to_dtype(pipe, dtype=torch_dtype)
         _maybe_upcast_vae_for_mps(torch, pipe, device, allow_fp32_vae=kind not in {"t2v", "i2v"})
@@ -2302,6 +2620,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     ) -> Optional[Any]:
         if not bool(getattr(self._cfg, "auto_retry_fp32", False)):
             return None
+        if _pipe_has_quantized_components(pipe):
+            return None
         if not _looks_like_dtype_mismatch_error(error):
             return None
 
@@ -2354,6 +2674,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         total_steps: Optional[int] = None,
     ) -> Optional[Any]:
         if not bool(getattr(self._cfg, "auto_retry_fp32", False)):
+            return None
+        if _pipe_has_quantized_components(pipe):
             return None
         torch = _lazy_import_torch()
         device = self._effective_device(torch)

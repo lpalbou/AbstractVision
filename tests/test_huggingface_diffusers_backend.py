@@ -767,6 +767,140 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(asset.mime_type, "image/png")
         self.assertTrue(fake_t2i_cls.from_pretrained.called)
 
+    def test_qwen_edit_gguf_loads_single_file_transformer_into_official_pipeline(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        class _FakeQuantizedTransformer:
+            is_quantized = True
+
+            def __init__(self):
+                self.to_calls = []
+
+            def to(self, *args, **kwargs):
+                self.to_calls.append({"args": args, "kwargs": dict(kwargs)})
+                return self
+
+        fake_transformer = _FakeQuantizedTransformer()
+        transformer_calls = []
+        q_configs = []
+
+        class _FakeQwenTransformer:
+            @classmethod
+            def from_single_file(cls, path, **kwargs):
+                transformer_calls.append({"path": str(path), "kwargs": dict(kwargs)})
+                return fake_transformer
+
+        class _FakeGGUFQuantizationConfig:
+            def __init__(self, compute_dtype=None):
+                self.compute_dtype = compute_dtype
+                q_configs.append(self)
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with tempfile.TemporaryDirectory() as td:
+            hf_home = Path(td)
+            base_repo = hf_home / "hub" / "models--Qwen--Qwen-Image-Edit-2511"
+            base_snap = base_repo / "snapshots" / "base123"
+            base_snap.mkdir(parents=True)
+            (base_snap / "model_index.json").write_text('{"_class_name":"DiffusionPipeline"}', encoding="utf-8")
+            (base_snap / "vae").mkdir(parents=True)
+            (base_snap / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            (base_repo / "refs").mkdir(parents=True)
+            (base_repo / "refs" / "main").write_text("base123", encoding="utf-8")
+
+            gguf_repo = hf_home / "hub" / "models--unsloth--Qwen-Image-Edit-2511-GGUF"
+            gguf_snap = gguf_repo / "snapshots" / "gguf123"
+            gguf_snap.mkdir(parents=True)
+            gguf_file = gguf_snap / "qwen-image-edit-2511-Q8_0.gguf"
+            gguf_file.write_bytes(b"GGUF")
+            (gguf_repo / "refs").mkdir(parents=True)
+            (gguf_repo / "refs" / "main").write_text("gguf123", encoding="utf-8")
+
+            def _from_pretrained(model_arg, **kwargs):
+                self.assertEqual(str(model_arg), str(base_snap))
+                self.assertIs(kwargs.get("transformer"), fake_transformer)
+                self.assertTrue(kwargs.get("local_files_only"))
+                fake_pipe.transformer = fake_transformer
+                fake_pipe.components = {"transformer": fake_transformer}
+                return fake_pipe
+
+            fake_i2i_cls.from_pretrained.side_effect = _from_pretrained
+
+            with patch.dict("os.environ", {"HF_HOME": str(hf_home)}, clear=False), patch(
+                "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+                return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+            ), patch(
+                "abstractvision.backends.huggingface_diffusers._lazy_import_qwen_image_transformer_2d_model",
+                return_value=_FakeQwenTransformer,
+            ), patch(
+                "abstractvision.backends.huggingface_diffusers._lazy_import_gguf_quantization_config",
+                return_value=_FakeGGUFQuantizationConfig,
+            ):
+                backend = HuggingFaceDiffusersVisionBackend(
+                    config=HuggingFaceDiffusersBackendConfig(
+                        model_id="qwen-image-edit-2511-gguf",
+                        device="cpu",
+                    )
+                )
+                asset = backend.edit_image(ImageEditRequest(prompt="watercolor", image=_png_bytes(), steps=1, seed=1))
+
+        self.assertEqual(asset.mime_type, "image/png")
+        self.assertEqual(transformer_calls[0]["path"], str(gguf_file))
+        self.assertEqual(transformer_calls[0]["kwargs"]["config"], "Qwen/Qwen-Image-Edit-2511")
+        self.assertEqual(transformer_calls[0]["kwargs"]["subfolder"], "transformer")
+        self.assertIs(transformer_calls[0]["kwargs"]["quantization_config"], q_configs[0])
+        self.assertEqual(fake_i2i_cls.from_pretrained.call_count, 1)
+        self.assertTrue(fake_transformer.to_calls)
+
+    def test_provider_models_lists_cached_diffusers_gguf_preset(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        with tempfile.TemporaryDirectory() as td:
+            cache = Path(td)
+            gguf_snap = cache / "models--unsloth--Qwen-Image-Edit-2511-GGUF" / "snapshots" / "gguf123"
+            gguf_snap.mkdir(parents=True)
+            (gguf_snap / "qwen-image-edit-2511-Q8_0.gguf").write_bytes(b"x")
+            gguf_refs = cache / "models--unsloth--Qwen-Image-Edit-2511-GGUF" / "refs"
+            gguf_refs.mkdir(parents=True, exist_ok=True)
+            (gguf_refs / "main").write_text("gguf123", encoding="utf-8")
+
+            base_snap = cache / "models--Qwen--Qwen-Image-Edit-2511" / "snapshots" / "base123"
+            (base_snap / "transformer").mkdir(parents=True)
+            (base_snap / "model_index.json").write_text("{}", encoding="utf-8")
+            (base_snap / "transformer" / "diffusion_pytorch_model.safetensors").write_bytes(b"x")
+            base_refs = cache / "models--Qwen--Qwen-Image-Edit-2511" / "refs"
+            base_refs.mkdir(parents=True, exist_ok=True)
+            (base_refs / "main").write_text("base123", encoding="utf-8")
+
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(
+                    model_id="Qwen/Qwen-Image-Edit-2511",
+                    cache_dir=str(cache),
+                    allow_download=False,
+                )
+            )
+            models = backend.list_provider_models(task="image_to_image")
+
+        chosen = next(model for model in models if model.id == "qwen-image-edit-2511-gguf")
+        self.assertIn("image_to_image", chosen.capabilities)
+        self.assertEqual(chosen.raw["model"], "diffusers/qwen-image-edit-2511-gguf")
+        self.assertEqual(chosen.raw["base_model_id"], "Qwen/Qwen-Image-Edit-2511")
+        self.assertEqual(chosen.raw["target"], "gguf")
+        self.assertEqual(chosen.raw["quantization_bits"], 8)
+        self.assertTrue(chosen.raw["local_cached"])
+        self.assertTrue(chosen.raw["gguf_local_cached"])
+        self.assertTrue(chosen.raw["base_local_cached"])
+
     def test_generate_image_does_not_auto_retry_on_invalid_cast_warning(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
         from abstractvision.types import ImageGenerationRequest

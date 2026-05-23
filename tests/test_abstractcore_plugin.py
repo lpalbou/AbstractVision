@@ -591,6 +591,92 @@ print("ok")
         self.assertTrue(out.startswith(b"\x89PNG"))
         self.assertEqual(seen["config"].model, "flux2-klein-9b")
 
+    def test_abstractcore_plugin_keeps_explicit_diffusers_provider_for_mflux_aliases(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {}
+
+        diffusers_backend = object()
+        mflux_backend = object()
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_diffusers_backend", return_value=diffusers_backend):
+            with patch.object(cap, "_make_mflux_backend", return_value=mflux_backend):
+                with patch("abstractvision.integrations.abstractcore_plugin._has_local_mflux_preset", return_value=True):
+                    with patch("abstractvision.integrations.abstractcore_plugin._is_known_mflux_model_alias", return_value=True):
+                        explicit_hf = cap._resolve_backend_binding(
+                            provider="huggingface",
+                            model="black-forest-labs/FLUX.2-klein-9B",
+                        )
+                        explicit_diffusers = cap._resolve_backend_binding(
+                            provider="diffusers",
+                            model="black-forest-labs/FLUX.2-klein-9B",
+                        )
+                        explicit_mflux = cap._resolve_backend_binding(
+                            provider="mflux",
+                            model="black-forest-labs/FLUX.2-klein-9B",
+                        )
+                        inferred = cap._resolve_backend_binding(
+                            model="black-forest-labs/FLUX.2-klein-9B",
+                        )
+
+        self.assertIs(explicit_hf["backend"], diffusers_backend)
+        self.assertEqual(explicit_hf["backend_kind"], "diffusers")
+        self.assertEqual(explicit_hf["provider"], "huggingface")
+        self.assertEqual(explicit_hf["model"], "black-forest-labs/FLUX.2-klein-9B")
+        self.assertEqual(explicit_hf["load_id"], "diffusers/black-forest-labs/FLUX.2-klein-9B")
+        self.assertIs(explicit_diffusers["backend"], diffusers_backend)
+        self.assertEqual(explicit_diffusers["backend_kind"], "diffusers")
+        self.assertIs(explicit_mflux["backend"], mflux_backend)
+        self.assertEqual(explicit_mflux["backend_kind"], "mflux")
+        self.assertIs(inferred["backend"], mflux_backend)
+        self.assertEqual(inferred["backend_kind"], "mflux")
+
+    def test_abstractcore_plugin_i2i_uses_explicit_diffusers_provider_for_mflux_aliases(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset, VisionBackendCapabilities
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _DummyOwner:
+            config = {}
+
+        class _FakeDiffusersBackend:
+            def get_capabilities(self):
+                return VisionBackendCapabilities(supported_tasks=["image_to_image"])
+
+            def edit_image(self, request):
+                seen["backend"] = "diffusers"
+                seen["request"] = request
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+        class _FakeMfluxBackend:
+            def get_capabilities(self):
+                return VisionBackendCapabilities(supported_tasks=["text_to_image"])
+
+            def edit_image(self, request):
+                seen["backend"] = "mflux"
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_diffusers_backend", return_value=_FakeDiffusersBackend()):
+            with patch.object(cap, "_make_mflux_backend", return_value=_FakeMfluxBackend()):
+                with patch("abstractvision.integrations.abstractcore_plugin._has_local_mflux_preset", return_value=True):
+                    with patch("abstractvision.integrations.abstractcore_plugin._is_known_mflux_model_alias", return_value=True):
+                        out = cap.i2i(
+                            "make it watercolor",
+                            image=png,
+                            provider="huggingface",
+                            model="black-forest-labs/FLUX.2-klein-9B",
+                        )
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        self.assertEqual(seen["backend"], "diffusers")
+        self.assertEqual(seen["request"].prompt, "make it watercolor")
+
     def test_abstractcore_plugin_canonicalizes_mflux_aliases_for_backend_reuse(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
 

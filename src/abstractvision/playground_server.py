@@ -16,7 +16,7 @@ from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from .errors import AbstractVisionError
@@ -208,10 +208,10 @@ def _cached_hf_model_sources(
 def _preset_cache_requirements(*, target: str, engine: str) -> tuple[Tuple[str, ...], bool]:
     t = str(target or "").strip().lower()
     e = str(engine or "").strip().lower()
-    if t == "diffusers" or e == "diffusers":
-        return ("model_index.json",), True
     if t in {"mlx", "gguf", "fp8", "hf-snapshot"}:
         return tuple(), True
+    if t == "diffusers" or e == "diffusers":
+        return ("model_index.json",), True
     if e in {"mflux", "stable-diffusion.cpp", "diffusers-component", "transformers"}:
         return tuple(), True
     return tuple(), False
@@ -653,9 +653,9 @@ class PlaygroundState:
             load_id: Optional[str] = None
             download_enabled = False
             runtime_available = True
-            if preset.engine == "diffusers" and preset.target == "diffusers":
+            if preset.engine == "diffusers" and preset.target in {"diffusers", "gguf"}:
                 backend = "diffusers"
-                load_id = model_id
+                load_id = model_id if preset.target == "diffusers" else f"diffusers/{preset.key}"
                 runtime_available = diffusers_runtime_available
                 download_enabled = runtime_available and allow_diffusers_download
             elif preset.engine == "mflux" and preset.target == "mlx":
@@ -678,12 +678,14 @@ class PlaygroundState:
             )
             cached_in: List[str]
             invalid_cached_in: Sequence[str]
+            fully_cached = False
             variant_label = preset.display_name
             bits = preset.quantization_bits
             if preset.engine == "mflux" and preset.target == "mlx":
                 discovered_model = mflux_cached.get(preset.key)
                 cached_in = [str(discovered_model.source_detail)] if discovered_model is not None else []
                 invalid_cached_in = mflux_invalid.get(preset.key, ())
+                fully_cached = bool(cached_in)
                 if discovered_model is not None:
                     variant_label = _mflux_variant_label(preset.display_name, discovered_model)
                     bits = _detected_mflux_bits(discovered_model) or bits
@@ -694,6 +696,17 @@ class PlaygroundState:
                     required_files=required_files,
                     require_weight_files=require_weight_files,
                 )
+                base_cached_in: List[str] = []
+                if preset.engine == "diffusers" and preset.target == "gguf":
+                    base_cached_in = _cached_hf_model_sources(
+                        model_id,
+                        cache_dir=self.config.diffusers_cache_dir,
+                        required_files=("model_index.json",),
+                        require_weight_files=True,
+                    )
+                fully_cached = bool(cached_in) and (
+                    preset.engine != "diffusers" or preset.target != "gguf" or bool(base_cached_in)
+                )
                 invalid_cached_in = incomplete_hf_model_sources(
                     preset.repo_id,
                     cache_dir=self.config.diffusers_cache_dir,
@@ -701,10 +714,13 @@ class PlaygroundState:
                     required_files=required_files,
                     require_weight_files=require_weight_files,
                 )
+                if base_cached_in:
+                    cached_in = [*cached_in, *[f"base Diffusers snapshot: {source}" for source in base_cached_in]]
             legacy_dir = legacy_root / preset.local_dir_name
             try:
                 if not cached_in and legacy_dir.exists():
                     cached_in = ["legacy model dir"]
+                    fully_cached = True
             except Exception:
                 pass
 
@@ -730,8 +746,17 @@ class PlaygroundState:
                 runtime_text = f"{backend or preset.engine} runtime missing"
                 if runtime_text not in display_sources:
                     display_sources.append(runtime_text)
+            if (
+                preset.engine == "diffusers"
+                and preset.target == "gguf"
+                and cached_in
+                and not fully_cached
+                and not download_enabled
+                and "base Diffusers snapshot missing" not in display_sources
+            ):
+                display_sources.append("base Diffusers snapshot missing")
 
-            loadable = bool(load_id) and runtime_available and (bool(cached_in) or download_enabled)
+            loadable = bool(load_id) and runtime_available and (fully_cached or download_enabled)
             models.append(
                 {
                     "id": model_id,
@@ -745,7 +770,7 @@ class PlaygroundState:
                     "download_repo_id": preset.repo_id,
                     "tasks": tasks,
                     "task_specs": task_specs,
-                    "cached": bool(cached_in),
+                    "cached": fully_cached,
                     "cached_in": display_sources,
                     "loadable": loadable,
                 }

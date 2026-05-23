@@ -336,12 +336,10 @@ If you want to run GGUF diffusion models locally, use the stable-diffusion.cpp b
 single-file Stable Diffusion model when possible; Qwen Image and FLUX GGUF component sets are heavier.
 
 Recommended:
-- **macOS (Apple Silicon / Metal)**: install `sd-cli` (stable-diffusion.cpp executable) from releases and use CLI mode for Metal acceleration.
-- Otherwise (pip-only convenience): `pip install "abstractvision[sdcpp]"` installs the stable-diffusion.cpp python bindings (`stable-diffusion-cpp-python>=0.4.2,<0.4.6`), but this may run CPU-only depending on the wheel build.
+- `abstractvision` auto-installs `sd-cli` into `~/.abstractvision/bin` on first use (set `ABSTRACTVISION_SDCPP_AUTO_INSTALL=0` to disable).
+- If you prefer python bindings: install `abstractvision[sdcpp]` (uses `stable-diffusion-cpp-python`).
 
-Alternative (external executable):
-
-- Install `sd-cli`: <https://github.com/leejet/stable-diffusion.cpp/releases>
+Alternative (external executable): install `sd-cli` from <https://github.com/leejet/stable-diffusion.cpp/releases>.
 
 In the REPL:
 
@@ -354,6 +352,7 @@ Curated FLUX/Qwen GGUF bundle example:
 
 ```bash
 abstractvision download flux2-klein-base-4b --provider sdcpp
+abstractvision download qwen-image-edit-2511-gguf --provider sdcpp
 ```
 
 ```text

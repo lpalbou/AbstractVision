@@ -152,6 +152,17 @@
       a {
         color: var(--muted);
       }
+      .coming-soon {
+        opacity: 0.45;
+        filter: grayscale(0.9);
+      }
+      .coming-soon input,
+      .coming-soon textarea,
+      .coming-soon select,
+      .coming-soon button,
+      .coming-soon a {
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
@@ -274,6 +285,33 @@
               <a id="i2iDownload" href="#" download="output.png">Download</a>
             </div>
             <div id="i2iLog" class="mono"></div>
+          </div>
+        </div>
+
+        <div class="card coming-soon" title="coming soon">
+          <h2 style="margin: 0 0 8px; font-size: 16px">Text → Video</h2>
+
+          <label for="t2vPrompt">Prompt</label>
+          <textarea id="t2vPrompt" disabled></textarea>
+
+          <div class="btns">
+            <button id="t2vBtn" disabled>Generate</button>
+            <span id="t2vStatus" class="status"></span>
+          </div>
+        </div>
+
+        <div class="card coming-soon" title="coming soon">
+          <h2 style="margin: 0 0 8px; font-size: 16px">Image → Video</h2>
+
+          <label for="i2vPrompt">Prompt (optional)</label>
+          <textarea id="i2vPrompt" disabled></textarea>
+
+          <label for="i2vImage">Input image</label>
+          <input id="i2vImage" type="file" accept="image/*" disabled />
+
+          <div class="btns">
+            <button id="i2vBtn" disabled>Generate</button>
+            <span id="i2vStatus" class="status"></span>
           </div>
         </div>
       </div>

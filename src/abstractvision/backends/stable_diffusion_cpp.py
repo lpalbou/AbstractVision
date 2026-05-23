@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import json
 import os
+import platform as _platform
 import shutil
 import subprocess
+import sys
 import tempfile
+import threading
+import urllib.request
+import zipfile
+from collections import deque
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -67,6 +74,18 @@ def _require_sd_cli(path: str) -> str:
 
     resolved = shutil.which(p)
     if not resolved:
+        # Managed install path (no PATH modification required).
+        managed_dir = Path.home() / ".abstractvision" / "bin"
+        managed = managed_dir / p
+        if managed.exists():
+            return str(managed)
+
+        # Best-effort: auto-download `sd-cli` for Apple Silicon so a fresh install can run
+        # GGUF models without manual steps (no compiler toolchain needed).
+        if p in {"sd-cli", "sd-cli.exe"} and _env_truthy("ABSTRACTVISION_SDCPP_AUTO_INSTALL", default=True):
+            installed = _try_auto_install_sd_cli(managed_dir)
+            if installed is not None:
+                return installed
         raise OptionalDependencyMissingError(
             f"stable-diffusion.cpp executable not found in PATH: {p!r}. "
             "Install from https://github.com/leejet/stable-diffusion.cpp/releases or install `abstractvision[sdcpp]`, "
@@ -75,6 +94,148 @@ def _require_sd_cli(path: str) -> str:
             "Diffusers backend instead."
         )
     return resolved
+
+
+def _env_truthy(key: str, *, default: bool = False) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return bool(default)
+    v = str(raw).strip().lower()
+    if v in {"", "0", "false", "no", "off"}:
+        return False
+    return True
+
+
+def _try_auto_install_sd_cli(dest_dir: Path) -> Optional[str]:
+    """Download and install `sd-cli` into `~/.abstractvision/bin` (best-effort).
+
+    This targets the stable-diffusion.cpp GitHub releases. We currently auto-install only on
+    macOS Apple Silicon (Metal) because it's the primary local-GGUF use-case and avoids requiring
+    a compiler toolchain for `stable-diffusion-cpp-python`.
+    """
+
+    try:
+        plat = sys.platform
+        machine = str(_platform.machine() or "").lower()
+
+        exe_name = "sd-cli.exe" if plat.startswith("win") else "sd-cli"
+        if plat == "darwin" and machine not in {"arm64", "aarch64"}:
+            return None
+        if plat == "linux" and machine not in {"x86_64", "amd64", "aarch64", "arm64"}:
+            return None
+
+        dest_dir = Path(dest_dir).expanduser().resolve()
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_cli = dest_dir / exe_name
+        if dest_cli.exists():
+            return str(dest_cli)
+
+        # Query latest release metadata.
+        api_url = "https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest"
+        req = urllib.request.Request(
+            api_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "abstractvision",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as r:
+            meta = json.loads(r.read().decode("utf-8", errors="replace"))
+
+        assets = meta.get("assets") or []
+
+        def pick_asset_url() -> Optional[str]:
+            scored: List[tuple[int, str]] = []
+            for a in assets:
+                name = str(a.get("name") or "")
+                url = str(a.get("browser_download_url") or "")
+                if not name or not url:
+                    continue
+                low = name.lower()
+                if not low.endswith(".zip"):
+                    continue
+
+                score = 0
+                if plat == "darwin":
+                    if "bin-darwin" not in low or "arm64" not in low:
+                        continue
+                    score = 100
+                elif plat.startswith("win"):
+                    if "bin-win" not in low or "x64" not in low:
+                        continue
+                    # Prefer CUDA build if present.
+                    if "cuda" in low:
+                        score += 50
+                    if "vulkan" in low:
+                        score += 10
+                elif plat == "linux":
+                    if "bin-linux" not in low:
+                        continue
+                    if "x86_64" not in low and "arm64" not in low and "aarch64" not in low:
+                        continue
+                    # Prefer Vulkan build when an NVIDIA runtime is present.
+                    if shutil.which("nvidia-smi") and "vulkan" in low:
+                        score += 30
+                    # Otherwise prefer the plain build.
+                    if "vulkan" not in low and "rocm" not in low:
+                        score += 5
+                else:
+                    continue
+                scored.append((score, url))
+            scored.sort(reverse=True, key=lambda x: x[0])
+            return scored[0][1] if scored else None
+
+        selected_url = pick_asset_url()
+        if not selected_url:
+            return None
+
+        # Download + extract.
+        with tempfile.TemporaryDirectory(prefix="abstractvision-sdcpp-bin-") as td:
+            td_p = Path(td)
+            zip_path = td_p / "sdcpp.zip"
+            dl_req = urllib.request.Request(selected_url, headers={"User-Agent": "abstractvision"})
+            with urllib.request.urlopen(dl_req, timeout=60) as r, zip_path.open("wb") as f:
+                shutil.copyfileobj(r, f)
+
+            extract_dir = td_p / "extract"
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(extract_dir)
+
+            cli_path: Optional[Path] = None
+            for root, _dirs, files in os.walk(extract_dir):
+                if exe_name in files:
+                    cli_path = Path(root) / exe_name
+                    break
+            if cli_path is None or not cli_path.exists():
+                return None
+
+            cli_dir = cli_path.parent
+            for item in cli_dir.iterdir():
+                if item.is_file():
+                    target = dest_dir / item.name
+                    shutil.copy2(item, target)
+
+        # Make executable + remove quarantine attribute (macOS Gatekeeper).
+        if not plat.startswith("win"):
+            try:
+                dest_cli.chmod(0o755)
+            except Exception:
+                pass
+        if plat == "darwin":
+            try:
+                subprocess.run(
+                    ["xattr", "-rd", "com.apple.quarantine", str(dest_dir)],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+
+        return str(dest_cli) if dest_cli.exists() else None
+    except Exception:
+        return None
 
 
 def _flatten(xs: Iterable[Any]) -> List[str]:
@@ -165,6 +326,10 @@ def _parse_sdcpp_extra_args(extra_args: Sequence[str]) -> tuple[Dict[str, Any], 
     for k, v in flags.items():
         if k == "offload_to_cpu" and bool(v):
             init_kwargs["offload_params_to_cpu"] = True
+        elif k == "vae_on_cpu" and bool(v):
+            init_kwargs["keep_vae_on_cpu"] = True
+        elif k == "clip_on_cpu" and bool(v):
+            init_kwargs["keep_clip_on_cpu"] = True
         elif k == "diffusion_fa" and bool(v):
             init_kwargs["diffusion_flash_attn"] = True
         elif k == "flow_shift":
@@ -218,6 +383,42 @@ def _filter_generate_kwargs(model: Any, kwargs: Dict[str, Any]) -> Dict[str, Any
 
     params = set(inspect.signature(model.generate_image).parameters.keys())
     return {k: v for k, v in kwargs.items() if k in params and v is not None}
+
+
+def _ensure_ggml_metal_resources() -> None:
+    """Ensure ggml's Metal backend can find its shader sources on macOS.
+
+    Some stable-diffusion.cpp builds rely on locating `ggml-metal.metal` via
+    the `GGML_METAL_PATH_RESOURCES` environment variable at runtime. AbstractVision
+    vendors a copy under `abstractvision/assets/ggml-metal.metal` so users don't
+    have to manage the resource path themselves.
+    """
+
+    if sys.platform != "darwin":
+        return
+    if str(os.environ.get("GGML_METAL_PATH_RESOURCES") or "").strip():
+        return
+    try:
+        from importlib import resources as importlib_resources  # py3.9+
+
+        import abstractvision.assets as av_assets
+
+        metal = importlib_resources.files(av_assets).joinpath("ggml-metal.metal")
+        with importlib_resources.as_file(metal) as metal_path:
+            if metal_path.exists():
+                os.environ.setdefault("GGML_METAL_PATH_RESOURCES", str(metal_path.parent))
+                return
+    except Exception:
+        pass
+
+    # #FALLBACK: when running from source trees, resolve relative to this file.
+    try:
+        assets_dir = Path(__file__).resolve().parents[1] / "assets"
+        metal_path = assets_dir / "ggml-metal.metal"
+        if metal_path.exists():
+            os.environ.setdefault("GGML_METAL_PATH_RESOURCES", str(assets_dir))
+    except Exception:
+        pass
 
 
 def _try_read_gguf_architecture(path: str) -> Optional[str]:
@@ -293,6 +494,66 @@ def _try_read_gguf_architecture(path: str) -> Optional[str]:
         return None
 
 
+def _infer_gguf_architecture(path: str) -> Optional[str]:
+    """Best-effort architecture inference.
+
+    Some community GGUFs (notably Qwen Image Edit) ship with `general.architecture=qwen_image`
+    even when they are edit-capable. stable-diffusion.cpp itself selects edit-specific codepaths
+    based on model identity, so we also use filename heuristics to distinguish the variants.
+    """
+
+    arch = _try_read_gguf_architecture(path)
+    if arch != "qwen_image":
+        return arch
+    name = Path(str(path)).name.lower()
+    if "qwen-image-edit" in name or "qwen_image_edit" in name or "image-edit" in name or "image_edit" in name:
+        return "qwen_image_edit"
+    return arch
+
+
+def _physical_memory_bytes() -> Optional[int]:
+    """Best-effort physical memory size (bytes). Stdlib-only and cross-platform-ish."""
+
+    # POSIX sysconf (works on most Linux/macOS builds).
+    try:
+        if hasattr(os, "sysconf"):
+            page_size = int(os.sysconf("SC_PAGE_SIZE"))  # type: ignore[arg-type]
+            phys_pages = int(os.sysconf("SC_PHYS_PAGES"))  # type: ignore[arg-type]
+            if page_size > 0 and phys_pages > 0:
+                return page_size * phys_pages
+    except Exception:
+        pass
+
+    # macOS fallback.
+    if sys.platform == "darwin":
+        try:
+            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], stderr=subprocess.DEVNULL)
+            return int(out.decode("utf-8", errors="replace").strip())
+        except Exception:
+            pass
+    return None
+
+
+def _is_high_memory_machine(*, min_gib: int = 64) -> bool:
+    b = _physical_memory_bytes()
+    if b is None:
+        return False
+    return b >= int(min_gib) * 1024 * 1024 * 1024
+
+
+def _cmd_has_flag(cmd: Sequence[str], flag: str) -> bool:
+    return any(str(x) == flag for x in cmd)
+
+
+def _cmd_has_opt(cmd: Sequence[str], opt: str) -> bool:
+    return any(str(x) == opt for x in cmd)
+
+
+def _is_metal_unsupported_op_error(msg: str) -> bool:
+    s = str(msg or "")
+    return ("unsupported op" in s) or ("ggml-metal-ops.cpp" in s) or ("ggml_metal_op_encode_impl" in s)
+
+
 @dataclass(frozen=True)
 class StableDiffusionCppBackendConfig:
     """Config for stable-diffusion.cpp backends.
@@ -315,7 +576,7 @@ class StableDiffusionCppBackendConfig:
     For Qwen Image GGUF models, stable-diffusion.cpp expects:
     - diffusion_model (GGUF)
     - vae (safetensors)
-    - llm (Qwen2.5-VL text encoder in GGUF)
+    - llm (Qwen2.5-VL text encoder; safetensors or GGUF depending on the variant)
     """
 
     sd_cli_path: str = "sd-cli"
@@ -431,6 +692,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             return self._mode
         except OptionalDependencyMissingError as cli_error:
             try:
+                _ensure_ggml_metal_resources()
                 import stable_diffusion_cpp  # type: ignore
             except Exception as e:
                 raise OptionalDependencyMissingError(
@@ -451,11 +713,30 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             raise RuntimeError("Internal error: python model requested while backend is in CLI mode.")
 
         init_kwargs, default_generate_kwargs = _parse_sdcpp_extra_args(self._cfg.extra_args)
+
+        diffusion_model = str(self._cfg.diffusion_model or "").strip()
+        if diffusion_model:
+            arch = _infer_gguf_architecture(diffusion_model)
+            if arch in {"qwen_image", "qwen_image_edit"}:
+                # stable-diffusion.cpp docs recommend flow_shift=3 for Qwen Image / Qwen Image Edit.
+                init_kwargs.setdefault("flow_shift", 3.0)
+                init_kwargs.setdefault("enable_mmap", True)
+                # Only default to CPU offload on smaller-memory machines; on high-memory Apple Silicon
+                # (e.g. 64–128+ GiB unified memory) this can unnecessarily suppress GPU residency.
+                if not (sys.platform == "darwin" and _is_high_memory_machine(min_gib=64)):
+                    init_kwargs.setdefault("offload_params_to_cpu", True)
+                # Speed: Qwen Image Edit benefits from flash-attn in the diffusion model when available.
+                init_kwargs.setdefault("diffusion_flash_attn", True)
+            # stable-diffusion.cpp: Qwen Image Edit 2511 requires `--qwen-image-zero-cond-t`
+            # (python bindings: qwen_image_zero_cond_t=True) or edit quality degrades significantly.
+            if arch == "qwen_image_edit" and "2511" in Path(diffusion_model).name:
+                init_kwargs.setdefault("qwen_image_zero_cond_t", True)
+
         self._py_init_kwargs = init_kwargs
         self._py_default_generate_kwargs = default_generate_kwargs
 
         model = str(self._cfg.model or "").strip()
-        diffusion_model = str(self._cfg.diffusion_model or "").strip()
+        diffusion_model = diffusion_model
         if not model and not diffusion_model:
             raise OptionalDependencyMissingError(
                 "StableDiffusionCppVisionBackend is not configured. "
@@ -480,30 +761,104 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         diffusion_model = str(self._cfg.diffusion_model or "").strip()
         if not diffusion_model:
             return
-        arch = _try_read_gguf_architecture(diffusion_model)
+        arch = _infer_gguf_architecture(diffusion_model)
         if arch not in {"qwen_image", "qwen_image_edit"}:
             return
         if not str(self._cfg.vae or "").strip():
             raise OptionalDependencyMissingError("Qwen Image GGUF requires `vae` (e.g. qwen_image_vae.safetensors).")
         if not str(self._cfg.llm or "").strip():
-            raise OptionalDependencyMissingError("Qwen Image GGUF requires `llm` (e.g. Qwen2.5-VL-7B-Instruct-*.gguf).")
+            raise OptionalDependencyMissingError(
+                "Qwen Image GGUF requires `llm` (e.g. qwen_2.5_vl_7b.safetensors or Qwen2.5-VL-7B-Instruct-*.gguf)."
+            )
+        llm_name = Path(str(self._cfg.llm)).name.lower()
+        if "fp8_scaled" in llm_name:
+            raise ValueError(
+                "Qwen Image stable-diffusion.cpp backend does not support fp8_scaled text encoders "
+                "(often produces blank/black outputs). Use `qwen_2.5_vl_7b.safetensors` instead."
+            )
 
     def _run(self, cmd: List[str]) -> None:
-        try:
-            subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(self._cfg.cwd) if self._cfg.cwd else None,
-                timeout=float(self._cfg.timeout_s),
+        _ensure_ggml_metal_resources()
+        stream_output = _env_truthy("ABSTRACTVISION_SDCPP_STREAM_OUTPUT", default=sys.stderr.isatty())
+        if stream_output and sys.stderr.isatty():
+            try:
+                exe = Path(str(cmd[0])).name
+            except Exception:
+                exe = str(cmd[0])
+            print(
+                f"[abstractvision] running {exe} (stable-diffusion.cpp). "
+                "The Python process may look idle because compute happens in the child process; "
+                "this can take several minutes on first load.",
+                file=sys.stderr,
+                flush=True,
             )
+        try:
+            if stream_output:
+                # Stream sd-cli output to stderr so our stdout stays machine-readable
+                # for the CLI JSON payload printed by AbstractVision.
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    cwd=str(self._cfg.cwd) if self._cfg.cwd else None,
+                )
+                if sys.stderr.isatty():
+                    print(f"[abstractvision] {Path(str(cmd[0])).name} pid={proc.pid}", file=sys.stderr, flush=True)
+
+                # Keep a bounded tail for error reporting without unbounded memory growth.
+                tail = deque(maxlen=128)  # 128 * 4096 = 512 KiB
+
+                def _pump() -> None:
+                    try:
+                        if proc.stdout is None:
+                            return
+                        while True:
+                            chunk = proc.stdout.read(4096)
+                            if not chunk:
+                                break
+                            tail.append(chunk)
+                            try:
+                                sys.stderr.buffer.write(chunk)
+                                sys.stderr.buffer.flush()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                t = threading.Thread(target=_pump, daemon=True)
+                t.start()
+                try:
+                    rc = proc.wait(timeout=float(self._cfg.timeout_s))
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    raise
+                finally:
+                    try:
+                        t.join(timeout=1.0)
+                    except Exception:
+                        pass
+
+                if rc != 0:
+                    out = b"".join(tail)
+                    raise subprocess.CalledProcessError(rc, cmd, output=out)
+            else:
+                subprocess.run(
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=str(self._cfg.cwd) if self._cfg.cwd else None,
+                    timeout=float(self._cfg.timeout_s),
+                )
         except subprocess.TimeoutExpired as e:
             raise RuntimeError(f"sd-cli timed out after {self._cfg.timeout_s}s") from e
         except subprocess.CalledProcessError as e:
-            out = (e.stdout or b"") + b"\n" + (e.stderr or b"")
-            msg = out.decode("utf-8", errors="replace")[:4000]
-            raise RuntimeError(f"sd-cli failed (exit={e.returncode}). Output:\n{msg}") from e
+            out = (getattr(e, "output", None) or getattr(e, "stdout", None) or b"") + b"\n" + (getattr(e, "stderr", None) or b"")
+            # Prefer the tail so we keep the most actionable lines (e.g. missing backend ops / abort reason).
+            decoded = out.decode("utf-8", errors="replace")
+            msg = decoded[-4000:].strip()
+            suffix = f" Output:\n{msg}" if msg else ""
+            raise RuntimeError(f"sd-cli failed (exit={e.returncode}).{suffix}") from e
         except FileNotFoundError as e:
             raise OptionalDependencyMissingError(
                 "stable-diffusion.cpp executable not found. "
@@ -659,7 +1014,42 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 cmd = self._base_cmd()
                 cmd.extend(["--output", str(out_path)])
                 cmd.extend(["--prompt", str(request.prompt)])
-                cmd.extend(["--init-img", str(init_path)])
+
+                diffusion_model = str(self._cfg.diffusion_model or "").strip()
+                arch = _infer_gguf_architecture(diffusion_model) if diffusion_model else None
+                qwen_ref_edit = (arch == "qwen_image_edit") and (mask_path is None)
+
+                # Qwen Image Edit uses ref images (not init-img) for the VLM+VAE dual-conditioning path.
+                # For mask workflows we still pass init-img so inpaint-style edits can work.
+                if qwen_ref_edit:
+                    # sd-cli uses `-r` for reference images (Qwen Edit uses ref images, not init-img).
+                    cmd.extend(["-r", str(init_path)])
+                    if "2511" in Path(diffusion_model).name and "--qwen-image-zero-cond-t" not in cmd:
+                        cmd.append("--qwen-image-zero-cond-t")
+                    if "--flow-shift" not in cmd:
+                        cmd.extend(["--flow-shift", "3"])
+                    if "--diffusion-fa" not in cmd:
+                        cmd.append("--diffusion-fa")
+                    if "--mmap" not in cmd:
+                        cmd.append("--mmap")
+                    if sys.platform == "darwin":
+                        # Prefer keeping the heavy diffusion loop on Metal. If the user already provided an
+                        # explicit backend assignment, do not override it.
+                        if not _cmd_has_opt(cmd, "--backend"):
+                            cmd.extend(["--backend", "diffusion=mtl0"])
+                        if not _cmd_has_opt(cmd, "--params-backend"):
+                            cmd.extend(["--params-backend", "diffusion=mtl0"])
+
+                        # On smaller-memory machines, keep the historical conservative defaults.
+                        if not _is_high_memory_machine(min_gib=64):
+                            if "--offload-to-cpu" not in cmd:
+                                cmd.append("--offload-to-cpu")
+                            if "--vae-on-cpu" not in cmd:
+                                cmd.append("--vae-on-cpu")
+                            if "--clip-on-cpu" not in cmd:
+                                cmd.append("--clip-on-cpu")
+                else:
+                    cmd.extend(["--init-img", str(init_path)])
                 if mask_path is not None:
                     cmd.extend(["--mask", str(mask_path)])
 
@@ -673,7 +1063,21 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                     cmd.extend(["--seed", str(int(request.seed))])
 
                 cmd.extend(_extra_to_cli_args(request.extra))
-                self._run(cmd)
+                try:
+                    self._run(cmd)
+                except RuntimeError as e:
+                    # Metal backend gaps: some operators used by Qwen Image Edit's VAE / text encoder
+                    # are not implemented on ggml-metal in many stable-diffusion.cpp builds.
+                    # Retry with the minimum targeted CPU fallbacks while keeping diffusion on Metal.
+                    if qwen_ref_edit and sys.platform == "darwin" and _is_metal_unsupported_op_error(str(e)):
+                        retry = list(cmd)
+                        if "--vae-on-cpu" not in retry:
+                            retry.append("--vae-on-cpu")
+                        if "--clip-on-cpu" not in retry:
+                            retry.append("--clip-on-cpu")
+                        self._run(retry)
+                    else:
+                        raise
 
                 data = out_path.read_bytes()
                 mime = _sniff_mime_type(data)
@@ -722,9 +1126,19 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         from PIL import Image  # pillow is a dependency of stable-diffusion-cpp-python
 
         init_img = Image.open(BytesIO(bytes(request.image)))
-        kwargs["init_image"] = init_img
-        if request.mask is not None:
-            kwargs["mask_image"] = Image.open(BytesIO(bytes(request.mask)))
+        arch = _infer_gguf_architecture(str(self._cfg.diffusion_model or "").strip()) if self._cfg.diffusion_model else None
+        if arch == "qwen_image_edit":
+            # Qwen Image Edit uses reference images for the VLM+VAE dual-conditioning path.
+            kwargs["ref_images"] = [init_img]
+            if request.mask is not None:
+                # Best-effort: keep init+mask for inpaint-style edits, while still
+                # providing the same image as reference to the Qwen conditioner.
+                kwargs["init_image"] = init_img
+                kwargs["mask_image"] = Image.open(BytesIO(bytes(request.mask)))
+        else:
+            kwargs["init_image"] = init_img
+            if request.mask is not None:
+                kwargs["mask_image"] = Image.open(BytesIO(bytes(request.mask)))
 
         if request.steps is not None:
             kwargs["sample_steps"] = int(request.steps)

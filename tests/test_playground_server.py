@@ -85,6 +85,47 @@ class TestPlaygroundServer(unittest.TestCase):
         self.assertTrue(models["stable-diffusion-v1-5/stable-diffusion-v1-5"]["cached"])
         self.assertIn("configured cache", models["stable-diffusion-v1-5/stable-diffusion-v1-5"]["cached_in"])
 
+    def test_lists_cached_diffusers_gguf_preset_as_loadable_image_edit_model(self):
+        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+
+        with tempfile.TemporaryDirectory() as td:
+            cache = Path(td)
+            gguf_snap = cache / "models--unsloth--Qwen-Image-Edit-2511-GGUF" / "snapshots" / "gguf123"
+            gguf_snap.mkdir(parents=True)
+            (gguf_snap / "qwen-image-edit-2511-Q8_0.gguf").write_bytes(b"x")
+            gguf_refs = cache / "models--unsloth--Qwen-Image-Edit-2511-GGUF" / "refs"
+            gguf_refs.mkdir(parents=True, exist_ok=True)
+            (gguf_refs / "main").write_text("gguf123", encoding="utf-8")
+
+            base_snap = cache / "models--Qwen--Qwen-Image-Edit-2511" / "snapshots" / "base123"
+            (base_snap / "transformer").mkdir(parents=True)
+            (base_snap / "model_index.json").write_text("{}", encoding="utf-8")
+            (base_snap / "transformer" / "diffusion_pytorch_model.safetensors").write_bytes(b"x")
+            base_refs = cache / "models--Qwen--Qwen-Image-Edit-2511" / "refs"
+            base_refs.mkdir(parents=True, exist_ok=True)
+            (base_refs / "main").write_text("base123", encoding="utf-8")
+
+            with patch("abstractvision.playground_server._local_runtime_available", return_value=True):
+                state = PlaygroundState(
+                    PlaygroundServerConfig(
+                        diffusers_cache_dir=str(cache),
+                        diffusers_allow_download=False,
+                        default_model_id="",
+                    )
+                )
+                out = state.list_models()
+
+        chosen = next(m for m in out["models"] if m["load_id"] == "diffusers/qwen-image-edit-2511-gguf")
+        self.assertEqual(chosen["id"], "Qwen/Qwen-Image-Edit-2511")
+        self.assertEqual(chosen["backend"], "diffusers")
+        self.assertEqual(chosen["target"], "gguf")
+        self.assertEqual(chosen["bits"], 8)
+        self.assertTrue(chosen["cached"])
+        self.assertTrue(chosen["loadable"])
+        self.assertIn("image_to_image", chosen["tasks"])
+        self.assertIn("configured cache", " ".join(chosen["cached_in"]))
+        self.assertIn("base Diffusers snapshot", " ".join(chosen["cached_in"]))
+
     def test_lists_cached_mflux_registry_variants(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
 
@@ -396,7 +437,8 @@ class TestPlaygroundServer(unittest.TestCase):
                 out = state.list_models()
 
         self.assertEqual(out["platform"], "apple-silicon")
-        self.assertTrue(all(m["target"] not in {"fp8", "gguf"} for m in out["models"]))
+        # Apple Silicon can run GGUF models via stable-diffusion.cpp (Metal); only fp8 is GPU-only.
+        self.assertTrue(all(m["target"] != "fp8" for m in out["models"]))
         self.assertIn("mlx", out["targets"])
 
     def test_playground_marks_mflux_as_not_loadable_when_runtime_is_missing(self):

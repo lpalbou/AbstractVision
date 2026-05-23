@@ -56,6 +56,7 @@ diffusers = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   # Needed by T5 tokenizers used in SD3/FLUX and some other diffusion pipelines.
   "sentencepiece>=0.1.99",
   # Some HF tokenizers/pipelines require protobuf at runtime.
@@ -64,12 +65,15 @@ diffusers = [
   "einops>=0.7.0",
   # LoRA adapter support in Diffusers.
   "peft>=0.10.0",
+  # GGUF transformer loading in Diffusers.
+  "gguf>=0.10.0",
   "Pillow>=9.0",
 ]
 
 # Local generation via stable-diffusion.cpp python bindings (pip-installable).
 sdcpp = [
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "huggingface_hub>=0.24.0",
   "Pillow>=9.0",
 ]
 
@@ -88,10 +92,12 @@ apple = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
   "Pillow>=9.0",
@@ -104,10 +110,12 @@ gpu = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "Pillow>=9.0",
 ]
 
@@ -119,10 +127,12 @@ huggingface = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "Pillow>=9.0",
 ]
 
@@ -134,10 +144,12 @@ local = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
@@ -150,10 +162,12 @@ all = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
   "Pillow>=9.0",
@@ -168,10 +182,12 @@ all-apple = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
   "Pillow>=9.0",
@@ -184,10 +200,12 @@ all-gpu = [
   "transformers>=4.0,<6.0.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "Pillow>=9.0",
 ]
@@ -203,10 +221,12 @@ diffusers-dev = [
   "transformers>=5.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "Pillow>=9.0",
 ]
 
@@ -218,10 +238,12 @@ huggingface-dev = [
   "transformers>=5.0",
   "accelerate>=0.0",
   "safetensors>=0.0",
+  "huggingface_hub>=0.24.0",
   "sentencepiece>=0.1.99",
   "protobuf>=3.20.0",
   "einops>=0.7.0",
   "peft>=0.10.0",
+  "gguf>=0.10.0",
   "Pillow>=9.0",
 ]
 
@@ -288,7 +310,7 @@ packages = [
 version = {attr = "abstractvision.__version__"}
 
 [tool.setuptools.package-data]
-abstractvision = ["assets/*.json", "playground/*.html"]
+abstractvision = ["assets/*.json", "assets/*.metal", "playground/*.html"]
 
 [tool.black]
 line-length = 100

@@ -222,7 +222,10 @@ def _resolve_cached_diffusers_model_id(model_id: str) -> str:
     try:
         preset = find_model_preset(candidate, target="diffusers", engine="diffusers", require_8bit=False)
     except Exception:
-        return candidate
+        try:
+            preset = find_model_preset(candidate, target="gguf", engine="diffusers", require_8bit=True)
+        except Exception:
+            return candidate
 
     legacy_root = default_legacy_model_root()
     legacy_dir = legacy_root / preset.local_dir_name
@@ -361,11 +364,14 @@ def _cmd_models(_: argparse.Namespace) -> int:
 def _cmd_tasks(_: argparse.Namespace) -> int:
     reg = VisionModelCapabilitiesRegistry()
     for t in reg.list_tasks():
-        desc = reg.get_task(t).get("description")
+        task_spec = reg.get_task(t)
+        desc = task_spec.get("description")
+        maturity = str(task_spec.get("maturity") or "").strip().lower()
+        maturity_suffix = " (experimental)" if maturity == "experimental" else ""
         if isinstance(desc, str) and desc.strip():
-            print(f"{t}: {desc.strip()}")
+            print(f"{t}{maturity_suffix}: {desc.strip()}")
         else:
-            print(t)
+            print(f"{t}{maturity_suffix}")
     return 0
 
 
@@ -759,6 +765,15 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                     note = "Official curated Diffusers snapshot (16-bit)."
                 print(note)
 
+        if preset.engine == "stable-diffusion.cpp":
+            # Ensure the runtime exists (auto-installs `sd-cli` on Apple Silicon by default).
+            try:
+                from abstractvision.backends.stable_diffusion_cpp import _require_sd_cli  # type: ignore
+
+                _require_sd_cli(os.environ.get("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli")
+            except Exception as e:
+                raise SystemExit(str(e)) from e
+
         try:
             path = download_model_preset(
                 preset,
@@ -941,6 +956,9 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
         seed=args.seed,
         requested_steps=args.steps,
     )
+    extra: Dict[str, Any] = {}
+    if getattr(args, "strength", None) is not None:
+        extra["strength"] = float(args.strength)
     out = vm.edit_image(
         args.prompt,
         image=image_bytes,
@@ -949,6 +967,7 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
         steps=steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
+        extra=extra,
     )
     _print_json(out)
     if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
@@ -983,6 +1002,31 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_i2v(args: argparse.Namespace) -> int:
+    vm = _build_manager_from_args(args)
+    image_bytes = Path(args.image).expanduser().read_bytes()
+    out = vm.image_to_video(
+        image_bytes,
+        prompt=args.prompt,
+        negative_prompt=args.negative_prompt,
+        width=args.width,
+        height=args.height,
+        fps=args.fps,
+        num_frames=args.num_frames,
+        steps=args.steps,
+        guidance_scale=args.guidance_scale,
+        seed=args.seed,
+    )
+    _print_json(out)
+    if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
+        p = vm.store.get_content_path(out["$artifact"])
+        if p is not None:
+            print(str(p))
+            if args.open:
+                _open_file(p)
+    return 0
+
+
 @dataclass
 class _ReplState:
     backend_kind: str = field(default_factory=_default_repl_backend)
@@ -991,7 +1035,7 @@ class _ReplState:
     model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_ID"))
     capabilities_model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_CAPABILITIES_MODEL_ID"))
     store_dir: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_STORE_DIR"))
-    timeout_s: float = field(default_factory=lambda: float(_env("ABSTRACTVISION_TIMEOUT_S", "300") or "300"))
+    timeout_s: float = field(default_factory=lambda: float(_env("ABSTRACTVISION_TIMEOUT_S", "3600") or "3600"))
 
     images_generations_path: str = field(
         default_factory=lambda: _env("ABSTRACTVISION_IMAGES_GENERATIONS_PATH", "/images/generations") or "/images/generations"
@@ -2083,8 +2127,16 @@ def build_parser() -> argparse.ArgumentParser:
         )
         ap.add_argument("--sdcpp-diffusion-model", default=_env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"), help="stable-diffusion.cpp diffusion_model path (GGUF).")
         ap.add_argument("--sdcpp-vae", default=_env("ABSTRACTVISION_SDCPP_VAE"), help="stable-diffusion.cpp VAE path (safetensors).")
-        ap.add_argument("--sdcpp-llm", default=_env("ABSTRACTVISION_SDCPP_LLM"), help="stable-diffusion.cpp LLM path (GGUF).")
-        ap.add_argument("--sdcpp-llm-vision", default=_env("ABSTRACTVISION_SDCPP_LLM_VISION"), help="stable-diffusion.cpp vision LLM path (GGUF).")
+        ap.add_argument(
+            "--sdcpp-llm",
+            default=_env("ABSTRACTVISION_SDCPP_LLM"),
+            help="stable-diffusion.cpp LLM path (safetensors or GGUF).",
+        )
+        ap.add_argument(
+            "--sdcpp-llm-vision",
+            default=_env("ABSTRACTVISION_SDCPP_LLM_VISION"),
+            help="stable-diffusion.cpp vision LLM path (GGUF; optional, used by some Qwen variants).",
+        )
         ap.add_argument("--sdcpp-extra-args", default=_env("ABSTRACTVISION_SDCPP_EXTRA_ARGS"), help="Extra args forwarded to sd-cli / bindings (quoted string).")
 
         # MFLUX provider config.
@@ -2104,7 +2156,12 @@ def build_parser() -> argparse.ArgumentParser:
         )
 
         ap.add_argument("--capabilities-model-id", default=_env("ABSTRACTVISION_CAPABILITIES_MODEL_ID"), help="Optional: enforce support using a registry model id.")
-        ap.add_argument("--timeout-s", type=float, default=float(_env("ABSTRACTVISION_TIMEOUT_S", "300") or "300"), help="HTTP timeout seconds (default: 300).")
+        ap.add_argument(
+            "--timeout-s",
+            type=float,
+            default=float(_env("ABSTRACTVISION_TIMEOUT_S", "3600") or "3600"),
+            help="Timeout seconds for HTTP calls and local runtimes (default: 3600).",
+        )
         ap.add_argument("--store-dir", default=_env("ABSTRACTVISION_STORE_DIR"), help="Local asset store dir (default: ~/.abstractvision/assets).")
         ap.add_argument("--images-generations-path", default=_env("ABSTRACTVISION_IMAGES_GENERATIONS_PATH", "/images/generations"), help="Path for image generations.")
         ap.add_argument("--images-edits-path", default=_env("ABSTRACTVISION_IMAGES_EDITS_PATH", "/images/edits"), help="Path for image edits.")
@@ -2133,6 +2190,12 @@ def build_parser() -> argparse.ArgumentParser:
     i2i.add_argument("--steps", type=int, default=None)
     i2i.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     i2i.add_argument("--seed", type=int, default=None)
+    i2i.add_argument(
+        "--strength",
+        type=float,
+        default=None,
+        help="Edit strength (img2img noising/unnoising; backend-dependent).",
+    )
     i2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     i2i.set_defaults(_fn=_cmd_i2i)
 
@@ -2149,6 +2212,21 @@ def build_parser() -> argparse.ArgumentParser:
     t2v.add_argument("--seed", type=int, default=None)
     t2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     t2v.set_defaults(_fn=_cmd_t2v)
+
+    i2v = sub.add_parser("i2v", help="One-shot image-to-video (experimental; stores output and prints artifact ref + path).")
+    _add_provider_flags(i2v)
+    i2v.add_argument("--image", required=True, help="Input image file path.")
+    i2v.add_argument("prompt", nargs="?", default=None, help="Optional guidance prompt.")
+    i2v.add_argument("--negative-prompt", default=None)
+    i2v.add_argument("--width", type=int, default=None)
+    i2v.add_argument("--height", type=int, default=None)
+    i2v.add_argument("--fps", type=int, default=None)
+    i2v.add_argument("--num-frames", type=int, default=None, dest="num_frames")
+    i2v.add_argument("--steps", type=int, default=None)
+    i2v.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
+    i2v.add_argument("--seed", type=int, default=None)
+    i2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
+    i2v.set_defaults(_fn=_cmd_i2v)
 
     return p
 

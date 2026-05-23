@@ -187,6 +187,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
 
     def test_generate_image_falls_back_to_python_bindings_when_sd_cli_missing(self):
         from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+        from abstractvision.errors import OptionalDependencyMissingError
         from abstractvision.types import ImageGenerationRequest
 
         class FakeImage:
@@ -236,7 +237,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         )
 
         with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}):
-            with patch("abstractvision.backends.stable_diffusion_cpp.shutil.which", return_value=None):
+            with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", side_effect=OptionalDependencyMissingError("no sd-cli")):
                 asset = backend.generate_image(
                     ImageGenerationRequest(
                         prompt="hello",
@@ -263,6 +264,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
 
     def test_preload_only_loads_python_model_once(self):
         from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+        from abstractvision.errors import OptionalDependencyMissingError
 
         _CountingStableDiffusion.init_calls = 0
         _CountingStableDiffusion.generate_calls = []
@@ -276,7 +278,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         )
 
         with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}):
-            with patch("abstractvision.backends.stable_diffusion_cpp.shutil.which", return_value=None):
+            with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", side_effect=OptionalDependencyMissingError("no sd-cli")):
                 backend.preload()
                 backend.preload()
 

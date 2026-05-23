@@ -600,12 +600,6 @@ class _AbstractVisionCapability:
                 if not provider_id:
                     provider_id = "openai" if head_id == "openai" else "openai-compatible"
                 model_id = _strip_openai_model_prefixes(model_id)
-        if (
-            model_id
-            and provider_id in {"huggingface", "hf", "diffusers", "hf-diffusers", "mlx"}
-            and (_has_local_mflux_preset(model_id) or _is_known_mflux_model_alias(model_id))
-        ):
-            provider_id = "mflux"
         if model_id and not provider_id and _has_local_mflux_preset(model_id):
             provider_id = "mflux"
         if (

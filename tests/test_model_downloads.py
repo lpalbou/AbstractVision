@@ -17,7 +17,7 @@ class TestModelDownloads(unittest.TestCase):
         with patch("abstractvision.model_downloads.local_model_profile", return_value="apple-silicon"):
             self.assertEqual(
                 catalog_target_scope(target="auto", engine=None, include_all_targets=False),
-                ("mlx", "diffusers", "hf-snapshot"),
+                ("mlx", "diffusers", "hf-snapshot", "gguf"),
             )
             preset = find_model_preset("qwen-image", target="auto", engine=None, require_8bit=True)
         self.assertEqual((preset.target, preset.engine), ("mlx", "mflux"))
@@ -76,6 +76,21 @@ class TestModelDownloads(unittest.TestCase):
             require_8bit=False,
         )
         self.assertEqual(preset.repo_id, "Qwen/Qwen-Image-Edit-2511")
+
+    def test_qwen_image_edit_2511_gguf_handle_resolves_diffusers_gguf_transformer(self):
+        from abstractvision.model_downloads import find_model_preset
+
+        preset = find_model_preset(
+            "qwen-image-edit-2511-gguf",
+            target="auto",
+            engine="diffusers",
+            require_8bit=True,
+        )
+
+        self.assertEqual(preset.repo_id, "unsloth/Qwen-Image-Edit-2511-GGUF")
+        self.assertEqual(preset.target, "gguf")
+        self.assertEqual(preset.engine, "diffusers")
+        self.assertEqual(preset.upstream_repo_id, "Qwen/Qwen-Image-Edit-2511")
 
     def test_generic_mlx_engine_is_rejected_and_flux1_mflux_presets_are_not_curated(self):
         from abstractvision.model_downloads import find_model_preset, model_presets, normalize_model_engine
@@ -187,22 +202,14 @@ class TestModelDownloads(unittest.TestCase):
                 cleanup_source=False,
             )
 
-            vae_dir = src_root / "qwen-vae"
-            (vae_dir / "vae").mkdir(parents=True, exist_ok=True)
-            (vae_dir / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            comfy_dir = src_root / "qwen-comfy"
+            (comfy_dir / "split_files" / "vae").mkdir(parents=True, exist_ok=True)
+            (comfy_dir / "split_files" / "vae" / "qwen_image_vae.safetensors").write_bytes(b"VAE")
+            (comfy_dir / "split_files" / "text_encoders").mkdir(parents=True, exist_ok=True)
+            (comfy_dir / "split_files" / "text_encoders" / "qwen_2.5_vl_7b.safetensors").write_bytes(b"LLM")
             import_directory_to_hf_cache(
-                vae_dir,
-                repo_id="Qwen/Qwen-Image",
-                cache_dir=str(cache_root),
-                cleanup_source=False,
-            )
-
-            llm_dir = src_root / "qwen-vl"
-            llm_dir.mkdir(parents=True, exist_ok=True)
-            (llm_dir / "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf").write_bytes(b"GGUF")
-            import_directory_to_hf_cache(
-                llm_dir,
-                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                comfy_dir,
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
                 cache_dir=str(cache_root),
                 cleanup_source=False,
             )
@@ -212,8 +219,8 @@ class TestModelDownloads(unittest.TestCase):
 
         self.assertIsNone(selection.model)
         self.assertTrue(str(selection.diffusion_model or "").endswith("qwen-image-Q8_0.gguf"))
-        self.assertTrue(str(selection.vae or "").endswith("vae/diffusion_pytorch_model.safetensors"))
-        self.assertTrue(str(selection.llm or "").endswith("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"))
+        self.assertTrue(str(selection.vae or "").endswith("split_files/vae/qwen_image_vae.safetensors"))
+        self.assertTrue(str(selection.llm or "").endswith("split_files/text_encoders/qwen_2.5_vl_7b.safetensors"))
 
     def test_resolve_sdcpp_model_selection_supports_qwen_image_edit_2509_bundle(self):
         from abstractvision.model_cache import import_directory_to_hf_cache
@@ -233,22 +240,14 @@ class TestModelDownloads(unittest.TestCase):
                 cleanup_source=False,
             )
 
-            vae_dir = src_root / "qwen-edit-vae"
-            (vae_dir / "vae").mkdir(parents=True, exist_ok=True)
-            (vae_dir / "vae" / "diffusion_pytorch_model.safetensors").write_bytes(b"VAE")
+            comfy_dir = src_root / "qwen-edit-comfy"
+            (comfy_dir / "split_files" / "vae").mkdir(parents=True, exist_ok=True)
+            (comfy_dir / "split_files" / "vae" / "qwen_image_vae.safetensors").write_bytes(b"VAE")
+            (comfy_dir / "split_files" / "text_encoders").mkdir(parents=True, exist_ok=True)
+            (comfy_dir / "split_files" / "text_encoders" / "qwen_2.5_vl_7b.safetensors").write_bytes(b"LLM")
             import_directory_to_hf_cache(
-                vae_dir,
-                repo_id="Qwen/Qwen-Image-Edit-2509",
-                cache_dir=str(cache_root),
-                cleanup_source=False,
-            )
-
-            llm_dir = src_root / "qwen-vl"
-            llm_dir.mkdir(parents=True, exist_ok=True)
-            (llm_dir / "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf").write_bytes(b"GGUF")
-            import_directory_to_hf_cache(
-                llm_dir,
-                repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                comfy_dir,
+                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
                 cache_dir=str(cache_root),
                 cleanup_source=False,
             )
@@ -258,8 +257,8 @@ class TestModelDownloads(unittest.TestCase):
 
         self.assertIsNone(selection.model)
         self.assertTrue(str(selection.diffusion_model or "").endswith("qwen-image-edit-2509-Q8_0.gguf"))
-        self.assertTrue(str(selection.vae or "").endswith("vae/diffusion_pytorch_model.safetensors"))
-        self.assertTrue(str(selection.llm or "").endswith("Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"))
+        self.assertTrue(str(selection.vae or "").endswith("split_files/vae/qwen_image_vae.safetensors"))
+        self.assertTrue(str(selection.llm or "").endswith("split_files/text_encoders/qwen_2.5_vl_7b.safetensors"))
 
 
 if __name__ == "__main__":
