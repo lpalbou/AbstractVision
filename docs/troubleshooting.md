@@ -14,7 +14,8 @@ using local backends, the playground, and the AbstractCore integration.
 ### Symptom
 
 - `OptionalDependencyMissingError`
-- import errors mentioning `diffusers`, `torch`, `stable_diffusion_cpp`, or `mflux`
+- import errors mentioning `diffusers`, `torch`, `torchvision`, `stable_diffusion_cpp`, or `mflux`
+- errors like `Qwen2VLVideoProcessor requires the Torchvision library...` when using `Qwen/Qwen-Image-Edit-*`
 
 ### Likely cause
 
@@ -24,6 +25,7 @@ unless you choose the matching extra.
 ### Fix
 
 - Diffusers: `pip install "abstractvision[diffusers]"`
+- If the error mentions missing `torchvision`: `pip install torchvision` (or upgrade/reinstall `abstractvision[diffusers]`)
 - stable-diffusion.cpp bindings: `pip install "abstractvision[sdcpp]"`
 - MFLUX on Apple Silicon: `pip install "abstractvision[mflux]"`
 

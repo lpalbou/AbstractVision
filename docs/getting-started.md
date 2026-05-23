@@ -349,18 +349,23 @@ Rapid-AIO weights separately before using repo ids here. If you intentionally wa
 export ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1
 ```
 
+Tip: Qwen Image Edit pipelines often default to a ~1MP output resolution when `width`/`height` are omitted. AbstractVision
+defaults to the input image size for image-to-image edits to avoid unexpected memory spikes. To request a specific output
+resolution, pass `--width`/`--height` flags in the REPL (forwarded via `request.extra`) or set them in the playground
+Extra JSON field.
+
 LoRA example (REPL; note: `loras_json` is forwarded via `request.extra`):
 
 ```text
-/backend diffusers Qwen/Qwen-Image-Edit-2511 mps float16
-/t2i "a cinematic photo of a red fox in snow" --steps 8 --guidance-scale 1 --loras_json '[{"source":"lightx2v/Qwen-Image-Edit-2511-Lightning","scale":1.0}]' --open
+/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
+/i2i --image ./input.png "make it watercolor" --steps 8 --guidance-scale 1 --loras_json '[{"source":"lightx2v/Qwen-Image-Edit-2511-Lightning","scale":1.0}]' --open
 ```
 
 Rapid-AIO example (distilled transformer override; Qwen Image Edit):
 
 ```text
-/backend diffusers Qwen/Qwen-Image-Edit-2511 mps float16
-/t2i "a cinematic photo of a red fox in snow" --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
+/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
+/i2i --image ./input.png "make it watercolor" --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
 ```
 
 ---

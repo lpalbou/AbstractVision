@@ -892,8 +892,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 self.generate_video(
                     self.normalize_video_generation_request(self._warmup_video_generation_request())
                 )
-            else:
+            elif kind == "t2i":
                 self.generate_image(self._warmup_generation_request())
+            elif kind == "i2i":
+                self.edit_image(self.normalize_image_edit_request(self._warmup_edit_request()))
+            else:
+                self._mark_pipeline_warm(kind, pipe)
 
     def unload(self) -> None:
         with self._backend_lock:
@@ -1001,11 +1005,19 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         torch: Any,
         torch_dtype: Any,
     ) -> Any:
-        if kind != "i2i":
+        if kind not in {"i2i", "inpaint"}:
             return torch_dtype
         model_id = self._canonical_model_id().lower()
         device_name = str(device or "").strip().lower()
-        if model_id != "zai-org/glm-image" or not (device_name == "mps" or device_name.startswith("mps:")):
+        if not (device_name == "mps" or device_name.startswith("mps:")):
+            return torch_dtype
+        model_hint = model_id.replace("_", "-")
+        wants_bf16 = model_hint == "zai-org/glm-image" or "qwen-image-edit" in model_hint
+        if not wants_bf16:
+            return torch_dtype
+        # Only override when dtype selection is automatic (no explicit torch_dtype was requested).
+        explicit = str(getattr(self._cfg, "torch_dtype", "") or "").strip().lower()
+        if explicit and explicit not in {"auto", "default"}:
             return torch_dtype
         bf16 = getattr(torch, "bfloat16", None)
         fp16 = getattr(torch, "float16", None)
@@ -1097,6 +1109,21 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             num_frames=9,
             fps=8,
             seed=0,
+        )
+
+    def _warmup_edit_request(self) -> ImageEditRequest:
+        Image = _lazy_import_pil()
+        img = Image.new("RGB", (256, 256), color=(180, 180, 180))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return ImageEditRequest(
+            prompt="abstractvision preload warmup",
+            image=buf.getvalue(),
+            # Some edit pipelines can return NaNs/all-black images at extremely low step counts.
+            # Keep this small, but not minimal, so warmup is reliable.
+            steps=2,
+            seed=0,
+            guidance_scale=1.0,
         )
 
     def _normalize_int_param(
@@ -1992,6 +2019,25 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 "Re-run `abstractvision download` for this model, or delete the broken cache snapshot and download it again."
             ) from e
 
+        def _maybe_raise_missing_torchvision(e: Exception) -> None:
+            msg = str(e or "")
+            lowered = msg.lower()
+            if "torchvision" not in lowered:
+                return
+            if "requires the torchvision library" not in lowered:
+                return
+            if "not found in your environment" not in lowered:
+                return
+            import sys
+
+            raise OptionalDependencyMissingError(
+                "Optional dependency missing: torchvision. "
+                "Some Transformers processors used by Qwen Image Edit pipelines (e.g. Qwen2VLVideoProcessor) "
+                "import torchvision at runtime. "
+                f"Install via: {_DIFFUSERS_RUNTIME_HINT} (or {_LOCAL_RUNTIME_HINT}); or `pip install torchvision` "
+                f"(python={sys.executable})"
+            ) from e
+
         pipe = None
         with _hf_offline_env(not bool(self._cfg.allow_download)):
             if kind == "t2i":
@@ -1999,9 +2045,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 if AutoPipelineForText2Image is not None:
                     try:
                         pipe = _from_pretrained(AutoPipelineForText2Image)
-                    except ValueError as e:
+                    except Exception as e:
                         _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
+                        _maybe_raise_missing_torchvision(e)
                         pipe = None
                 if pipe is None:
                     try:
@@ -2009,14 +2056,16 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     except Exception as e:
                         _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
+                        _maybe_raise_missing_torchvision(e)
                         raise
             elif kind == "i2i":
                 if AutoPipelineForImage2Image is not None:
                     try:
                         pipe = _from_pretrained(AutoPipelineForImage2Image)
-                    except ValueError as e:
+                    except Exception as e:
                         _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
+                        _maybe_raise_missing_torchvision(e)
                         pipe = None
                 if pipe is None:
                     try:
@@ -2024,6 +2073,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     except Exception as e:
                         _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
+                        _maybe_raise_missing_torchvision(e)
                         raise ValueError(
                             "Diffusers could not load an image-to-image pipeline for this model id. "
                             "Install/upgrade diffusers (and compatible transformers/torch), or use a model repo that "
@@ -2042,6 +2092,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 except Exception as e:
                     _maybe_raise_offline_missing_model(e)
                     _maybe_raise_incomplete_snapshot_error(e)
+                    _maybe_raise_missing_torchvision(e)
                     raise
             elif kind == "t2v":
                 try:
@@ -2049,6 +2100,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 except Exception as e:
                     _maybe_raise_offline_missing_model(e)
                     _maybe_raise_incomplete_snapshot_error(e)
+                    _maybe_raise_missing_torchvision(e)
                     raise ValueError(
                         "Diffusers could not load a text-to-video pipeline for this model id. "
                         "Install/upgrade diffusers (and compatible transformers/torch), or use a model repo that "
@@ -2502,6 +2554,23 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             img = self._pil_from_bytes(request.image)
             image_input: Any = [img] if request.mask is None and self._needs_list_wrapped_i2i_image(pipe) else img
             kwargs: Dict[str, Any] = {"prompt": request.prompt, "image": image_input}
+            # Some modern edit pipelines (notably Qwen Image Edit) default to ~1MP output when
+            # `width`/`height` are omitted, which can blow up memory unexpectedly. When the pipeline
+            # supports explicit `width`/`height` and the caller didn't supply them, default to the
+            # input image dimensions.
+            try:
+                extra = request.extra if isinstance(request.extra, dict) else {}
+                wants_width = call_params is None or "width" in call_params
+                wants_height = call_params is None or "height" in call_params
+                has_width = isinstance(extra, dict) and extra.get("width") is not None
+                has_height = isinstance(extra, dict) and extra.get("height") is not None
+                in_w, in_h = img.size
+                if wants_width and not has_width:
+                    kwargs["width"] = int(in_w)
+                if wants_height and not has_height:
+                    kwargs["height"] = int(in_h)
+            except Exception:
+                pass
             if request.mask is not None:
                 kwargs["mask_image"] = self._pil_from_bytes(request.mask)
             if request.negative_prompt is not None:

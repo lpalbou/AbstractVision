@@ -103,6 +103,37 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertIn(_default_torch_dtype_for_device(torch, "mps"), (torch.bfloat16, torch.float16))
         self.assertIn(_default_torch_dtype_for_device(torch, "mps:0"), (torch.bfloat16, torch.float16))
 
+    def test_qwen_image_edit_prefers_bf16_on_mps_for_edit_tasks(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        class _FakeTorch:
+            float16 = object()
+            bfloat16 = object()
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(
+                model_id="Qwen/Qwen-Image-Edit-2511",
+                device="mps",
+                torch_dtype=None,
+            )
+        )
+
+        picked = backend._preferred_torch_dtype_for_kind("i2i", "mps", _FakeTorch, _FakeTorch.float16)
+        self.assertIs(picked, _FakeTorch.bfloat16)
+
+        picked = backend._preferred_torch_dtype_for_kind("inpaint", "mps", _FakeTorch, _FakeTorch.float16)
+        self.assertIs(picked, _FakeTorch.bfloat16)
+
+        backend_explicit = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(
+                model_id="Qwen/Qwen-Image-Edit-2511",
+                device="mps",
+                torch_dtype="float16",
+            )
+        )
+        picked = backend_explicit._preferred_torch_dtype_for_kind("i2i", "mps", _FakeTorch, _FakeTorch.float16)
+        self.assertIs(picked, _FakeTorch.float16)
+
     def test_ensure_pipeline_chat_templates_reads_snapshot_files(self):
         from abstractvision.backends.huggingface_diffusers import _ensure_pipeline_chat_templates
 
@@ -535,6 +566,37 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertIn("generator", warmup)
         self.assertNotIn("width", warmup)
         self.assertNotIn("height", warmup)
+
+    def test_preload_warms_up_i2i_only_models_without_loading_t2i(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        # Make i2i load succeed; ensure t2i is never loaded for i2i-only models.
+        fake_i2i_cls.from_pretrained.return_value = fake_pipe
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="Qwen/Qwen-Image-Edit-2511", device="cpu")
+            )
+            backend.preload()
+            backend.preload()
+
+        self.assertEqual(fake_i2i_cls.from_pretrained.call_count, 1)
+        self.assertEqual(fake_t2i_cls.from_pretrained.call_count, 0)
+        self.assertEqual(len(fake_pipe.calls), 1)
 
     def test_preload_rejects_temporarily_disabled_glm_model(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
