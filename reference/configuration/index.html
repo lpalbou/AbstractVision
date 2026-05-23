@@ -932,6 +932,7 @@
 <li><code>ABSTRACTVISION_SDCPP_LLM</code> — text encoder path (often GGUF; required for component-mode models like Qwen Image GGUF and FLUX.2 GGUF)</li>
 <li><code>ABSTRACTVISION_SDCPP_LLM_VISION</code> — optional vision encoder GGUF path</li>
 <li><code>ABSTRACTVISION_SDCPP_EXTRA_ARGS</code> — extra <code>sd-cli</code> flags (string, split like a shell)</li>
+<li><code>ABSTRACTVISION_DISABLE_GGUF_ON_MACOS</code> — set to <code>1</code> to hide/disable GGUF/stable-diffusion.cpp catalog entries and execution on macOS (default: <code>0</code> / GGUF enabled)</li>
 </ul>
 <p>Curated bundle flow:
 - <code>abstractvision download flux2-klein-base-4b --provider sdcpp</code>

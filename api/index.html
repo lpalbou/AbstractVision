@@ -962,7 +962,7 @@
 - <code>OpenAICompatibleVisionBackend</code> (HTTP)
 - <code>HuggingFaceDiffusersVisionBackend</code> (local Diffusers images; local <code>text_to_video</code> groundwork is currently quarantined)
 - <code>StableDiffusionCppVisionBackend</code> (local stable-diffusion.cpp / GGUF)
-- <code>MFluxVisionBackend</code> (local Apple Silicon MFLUX bridge for curated MLX presets; currently <code>text_to_image</code> only)</p>
+- <code>MFluxVisionBackend</code> (local Apple Silicon MFLUX bridge for curated MLX presets; supports <code>text_to_image</code> and FLUX.2 klein <code>image_to_image</code> edits without masks)</p>
 <p>Backend config classes are re-exported from <code>abstractvision.backends</code> via lazy imports (see <a href="../src/abstractvision/backends/__init__.py"><code>../src/abstractvision/backends/__init__.py</code></a>).</p>
 <p>Provider catalog listing is exposed as a backend contract:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAICompatibleBackendConfig</span><span class="p">,</span> <span class="n">OpenAICompatibleVisionBackend</span>

@@ -802,7 +802,7 @@
 - <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
 <p>Built-in backends implement:
 - <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Current local policy</strong>: MFLUX is surfaced for <code>text_to_image</code> only; local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
+- <strong>Current local policy</strong>: MFLUX supports <code>text_to_image</code> and FLUX.2 klein <code>image_to_image</code> edits (no masks yet); local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
 - <strong>Video</strong>:
   - OpenAI-compatible HTTP for optional <code>text_to_video</code> / <code>image_to_video</code> when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
 <p>If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:

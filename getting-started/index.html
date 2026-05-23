@@ -1176,7 +1176,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
 <li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines</li>
-<li><strong>MFLUX (local Apple Silicon)</strong>: 8-bit MLX/MFLUX text-to-image generation via the optional MFLUX runtime</li>
+<li><strong>MFLUX (local Apple Silicon)</strong>: 8-bit MLX/MFLUX generation via the optional MFLUX runtime (<code>text_to_image</code> + FLUX.2 klein <code>image_to_image</code> edits without masks)</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
 <li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
@@ -1516,13 +1516,17 @@ transformer for faster Qwen Image Edit inference.</p>
 Rapid-AIO weights separately before using repo ids here. If you intentionally want runtime downloads, set:</p>
 <div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD</span><span class="o">=</span><span class="m">1</span>
 </code></pre></div>
+<p>Tip: Qwen Image Edit pipelines often default to a ~1MP output resolution when <code>width</code>/<code>height</code> are omitted. AbstractVision
+defaults to the input image size for image-to-image edits to avoid unexpected memory spikes. To request a specific output
+resolution, pass <code>--width</code>/<code>--height</code> flags in the REPL (forwarded via <code>request.extra</code>) or set them in the playground
+Extra JSON field.</p>
 <p>LoRA example (REPL; note: <code>loras_json</code> is forwarded via <code>request.extra</code>):</p>
-<div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-Edit-2511 mps float16
-/t2i &quot;a cinematic photo of a red fox in snow&quot; --steps 8 --guidance-scale 1 --loras_json &#39;[{&quot;source&quot;:&quot;lightx2v/Qwen-Image-Edit-2511-Lightning&quot;,&quot;scale&quot;:1.0}]&#39; --open
+<div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
+/i2i --image ./input.png &quot;make it watercolor&quot; --steps 8 --guidance-scale 1 --loras_json &#39;[{&quot;source&quot;:&quot;lightx2v/Qwen-Image-Edit-2511-Lightning&quot;,&quot;scale&quot;:1.0}]&#39; --open
 </code></pre></div>
 <p>Rapid-AIO example (distilled transformer override; Qwen Image Edit):</p>
-<div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-Edit-2511 mps float16
-/t2i &quot;a cinematic photo of a red fox in snow&quot; --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
+<div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
+/i2i --image ./input.png &quot;make it watercolor&quot; --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
 </code></pre></div>
 <hr />
 <h2 id="4-flux-2-diffusers">4) FLUX 2 (Diffusers)<a class="headerlink" href="#4-flux-2-diffusers" title="Permanent link">&para;</a></h2>

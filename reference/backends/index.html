@@ -783,7 +783,7 @@
 <tr>
 <td>MFLUX (local, Apple Silicon)</td>
 <td><a href="../../src/abstractvision/backends/mflux.py"><code>mflux.py</code></a></td>
-<td><code>text_to_image</code></td>
+<td><code>text_to_image</code> (+ FLUX.2 klein <code>image_to_image</code>)</td>
 <td>Requires <code>abstractvision[mflux]</code> (or <code>abstractvision[all-apple]</code>). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is legacy migration input only.</td>
 </tr>
 <tr>
@@ -889,7 +889,7 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
   - <code>abstractvision download flux2-klein-9b --provider mflux</code>
   - <code>abstractvision download qwen-image --provider mflux</code>
   - <code>abstractvision download z-image-turbo --provider mflux</code>
-- Current shipped backend coverage is limited to those curated MFLUX families for <code>text_to_image</code>: <code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>qwen-image</code>, and <code>z-image-turbo</code>.</p>
+- Current shipped backend coverage is limited to those curated MFLUX families for <code>text_to_image</code>: <code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>qwen-image</code>, and <code>z-image-turbo</code>. <code>image_to_image</code> edits are implemented for the FLUX.2 klein presets only (no masks yet).</p>
 <p>Config/env:
 - <code>ABSTRACTVISION_PROVIDER=mflux</code> (alias: <code>ABSTRACTVISION_BACKEND=mflux</code>)
 - <code>ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b</code> (or routed ids like <code>mflux/flux2-klein-4b</code>)
@@ -900,7 +900,7 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
   - Set <code>ABSTRACTVISION_MFLUX_MODEL</code> to that repo id or local path (base model usually auto-infers; override with <code>ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image</code> if needed).</p>
 <p>Runtime behavior notes:
 - MFLUX request normalization is also backend-level, so distilled FLUX-family constraints such as <code>guidance_scale=1.0</code>, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
-- Local MFLUX <code>image_to_image</code> is temporarily disabled pending the quality follow-up in <a href="../../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a>.</p>
+- Local MFLUX <code>image_to_image</code> is supported for the FLUX.2 klein presets (no masks). Edit strength is passed as <code>strength</code> and normalized to the underlying MFLUX <code>image_strength</code> parameter.</p>
 <p>Code pointers:
 - Config: <code>MFluxBackendConfig</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)
 - Backend: <code>MFluxVisionBackend</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)</p>
@@ -913,6 +913,7 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 <p>Notes:
 - If you care about <strong>GPU acceleration</strong> (macOS <strong>Metal</strong>, NVIDIA <strong>CUDA</strong>, etc.), prefer <strong>CLI mode</strong> via <code>sd-cli</code>.
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means <strong>CPU-only</strong>, so FLUX/Qwen-class models can be extremely slow.
+- Operators who want to hide GGUF presets (and reject GGUF execution) on macOS can set <code>ABSTRACTVISION_DISABLE_GGUF_ON_MACOS=1</code>.
 - The optional python binding is constrained below <code>0.4.6</code> because that sdist
   currently misses vendored CMake files needed by native Linux builds.
 - Interactive CLI selection supports both <code>/backend sdcpp &lt;model_key|model.gguf|model.safetensors&gt; [sd_cli_path]</code> and

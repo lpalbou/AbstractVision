@@ -835,7 +835,7 @@
 <h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Created: 2026-05-22</li>
-<li>Status: Planned</li>
+<li>Status: In Progress</li>
 <li>Priority: P1</li>
 <li>Completed: N/A</li>
 </ul>
@@ -852,12 +852,16 @@
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
 <p>AbstractVision currently has a clean packaged capability registry and backend-owned runtime gating, but recent operator testing showed that some local model/task combinations are not yet honest enough to expose as working local capabilities.</p>
-<p>Three cases need to stay quarantined until they are re-validated:</p>
+<p>Three cases were quarantined until they could be re-validated:</p>
 <ul>
 <li>local Diffusers <code>zai-org/GLM-Image</code> / <code>GLM-Image</code> for both <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX <code>image_to_image</code> for the current curated FLUX klein families;</li>
+<li>local MFLUX <code>image_to_image</code> for the current curated FLUX klein families (re-enabled for FLUX.2 klein on 2026-05-23; quality follow-up remains);</li>
 <li>local Diffusers <code>text_to_video</code> for the current CogVideoX path.</li>
 </ul>
+<p>Update (2026-05-23):
+- MFLUX <code>image_to_image</code> for the curated FLUX.2 klein presets (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>) has been re-enabled so it can be used from the playground/CLI/plugin surfaces.
+- Mask edits remain unsupported for MFLUX.
+- The operator-quality acceptance criteria below are still relevant: re-enabled means “wired + runnable”, not “quality bar fully met”.</p>
 <h2 id="current-code-reality">Current code reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
 <p>Files re-checked on 2026-05-22:</p>
 <ul>
@@ -871,7 +875,7 @@
 <p>The current runtime policy after the quarantine change is:</p>
 <ul>
 <li>local Diffusers <code>GLM-Image</code> is hidden from runtime-backed local surfaces and rejected by the backend for <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX advertises <code>text_to_image</code> only and rejects <code>image_to_image</code>;</li>
+<li>local MFLUX advertises <code>text_to_image</code> and also implements <code>image_to_image</code> for FLUX.2 klein presets (no masks);</li>
 <li>local Diffusers CogVideoX <code>text_to_video</code> is marked experimental and disabled from normal local surfaces.</li>
 </ul>
 <p>The packaged registry still records the broader model-family tasks. That is intentional: the registry says what the family can do in principle, while the backend says what AbstractVision can currently run honestly.</p>
@@ -907,7 +911,7 @@
 <p>Current quarantine policy:</p>
 <ul>
 <li>local Diffusers <code>GLM-Image</code>: disable <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX: disable <code>image_to_image</code>, keep <code>text_to_image</code>;</li>
+<li>local MFLUX: enable <code>image_to_image</code> for FLUX.2 klein presets (no masks), keep <code>text_to_image</code>;</li>
 <li>local Diffusers CogVideoX: disable <code>text_to_video</code> from normal local surfaces and describe it as experimental / not working.</li>
 </ul>
 <h2 id="why">Why<a class="headerlink" href="#why" title="Permanent link">&para;</a></h2>
@@ -970,7 +974,7 @@
 </ul>
 <h2 id="progress-checklist">Progress checklist<a class="headerlink" href="#progress-checklist" title="Permanent link">&para;</a></h2>
 <ul>
-<li>[ ] Preserve all current operator/runtime findings in this backlog item.</li>
+<li>[x] Preserve all current operator/runtime findings in this backlog item.</li>
 <li>[ ] Keep runtime-backed local surfacing aligned with the quarantine policy.</li>
 <li>[ ] Revisit each quarantined path with explicit acceptance criteria before re-enabling it.</li>
 </ul>
