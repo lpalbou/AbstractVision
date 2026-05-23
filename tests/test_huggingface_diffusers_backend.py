@@ -862,7 +862,42 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(fake_i2i_cls.from_pretrained.call_count, 1)
         self.assertTrue(fake_transformer.to_calls)
 
-    def test_provider_models_lists_cached_diffusers_gguf_preset(self):
+    def test_qwen_edit_gguf_rejects_mps_diffusers_route(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        class _FakeMps:
+            @staticmethod
+            def is_available():
+                return True
+
+        class _FakeBackends:
+            mps = _FakeMps()
+
+        class _FakeTorch:
+            backends = _FakeBackends()
+            float16 = object()
+            bfloat16 = object()
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ), patch("abstractvision.backends.huggingface_diffusers._lazy_import_torch", return_value=_FakeTorch):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(
+                    model_id="qwen-image-edit-2511-gguf",
+                    device="mps",
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "not a native Apple MPS 8-bit execution path"):
+                backend.edit_image(ImageEditRequest(prompt="watercolor", image=_png_bytes(), steps=1, seed=1))
+
+    def test_provider_models_do_not_list_diffusers_gguf_preset(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
 
         with tempfile.TemporaryDirectory() as td:
@@ -891,15 +926,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
             )
             models = backend.list_provider_models(task="image_to_image")
 
-        chosen = next(model for model in models if model.id == "qwen-image-edit-2511-gguf")
-        self.assertIn("image_to_image", chosen.capabilities)
-        self.assertEqual(chosen.raw["model"], "diffusers/qwen-image-edit-2511-gguf")
-        self.assertEqual(chosen.raw["base_model_id"], "Qwen/Qwen-Image-Edit-2511")
-        self.assertEqual(chosen.raw["target"], "gguf")
-        self.assertEqual(chosen.raw["quantization_bits"], 8)
-        self.assertTrue(chosen.raw["local_cached"])
-        self.assertTrue(chosen.raw["gguf_local_cached"])
-        self.assertTrue(chosen.raw["base_local_cached"])
+        self.assertFalse(any(model.id == "qwen-image-edit-2511-gguf" for model in models))
 
     def test_generate_image_does_not_auto_retry_on_invalid_cast_warning(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend

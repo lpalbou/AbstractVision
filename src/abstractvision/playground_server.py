@@ -658,6 +658,11 @@ class PlaygroundState:
                 load_id = model_id if preset.target == "diffusers" else f"diffusers/{preset.key}"
                 runtime_available = diffusers_runtime_available
                 download_enabled = runtime_available and allow_diffusers_download
+            elif preset.engine == "stable-diffusion.cpp" and preset.target == "gguf":
+                backend = "sdcpp"
+                load_id = f"sdcpp/{preset.key}"
+                runtime_available = sdcpp_runtime_available
+                download_enabled = False
             elif preset.engine == "mflux" and preset.target == "mlx":
                 backend = "mflux"
                 load_id = f"mflux/{preset.key}"

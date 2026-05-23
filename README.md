@@ -38,7 +38,7 @@ flowchart LR
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
 - Built-in backends implement images: `text_to_image` and `image_to_image`.
-- Local MFLUX currently surfaces `text_to_image` only.
+- Local MFLUX supports `text_to_image`, and supports `image_to_image` for the curated FLUX.2 klein presets (`flux2-klein-4b`, `flux2-klein-9b`) (mask edits are not supported yet).
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - `image_to_video` is currently supported only via the OpenAI-compatible backend **when** endpoints are configured.
 - `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
@@ -140,9 +140,9 @@ abstractvision t2i --provider mflux --model flux2-klein-4b "a product photo of a
 
 The shipped MFLUX backend currently supports the curated `flux2-klein-4b`,
 `flux2-klein-9b`, `qwen-image`, and `z-image-turbo` preset families for local
-`text_to_image`. Local MFLUX `image_to_image` is temporarily disabled pending
-the quality follow-up tracked in
-[`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
+`text_to_image`. For the FLUX.2 klein presets, it also supports `image_to_image`
+edits (mask edits are not supported yet). Edit strength is passed as `strength`
+and normalized to the underlying MFLUX `image_strength` parameter.
 
 Stable Diffusion does not currently have a curated MLX 8-bit preset in
 AbstractVision, so full Diffusers downloads remain explicit.
@@ -316,7 +316,7 @@ Current behavior:
 - The UI is split into task tabs (`Text→Image`, `Image→Image`, `Text→Video`, and a placeholder `Image→Video` tab for later work).
 - Each active task tab has its own model selector and unload button. Switching models in a tab unloads the current active backend first to free memory before loading the replacement.
 - The Image→Image tab is enabled only for models that both advertise `image_to_image` in the packaged capability registry and remain enabled by the selected backend.
-- MFLUX models are intentionally surfaced only in `Text→Image` for now.
+- MFLUX FLUX.2 klein presets are surfaced for `Image→Image` edits (mask edits are not supported yet).
 - The Text→Video tab is experimental; the bundled local server currently does not advertise a shipped local model there.
 - Model-specific request normalization happens at the API/backend layer, not just in the page.
 - Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.

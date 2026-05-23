@@ -1660,31 +1660,13 @@
           "notes": "Official Diffusers snapshot (full model weights)."
         },
         {
-          "key": "qwen-image-edit-2511",
+          "key": "qwen-image-edit-2511-gguf",
           "engine": "stable-diffusion.cpp",
           "target": "gguf",
           "bits": 8,
           "repo_id": "unsloth/Qwen-Image-Edit-2511-GGUF",
           "source": "curated-community-gguf",
           "notes": "Qwen Image Edit GGUF bundle for stable-diffusion.cpp; requires a separate VAE safetensors file and a Qwen2.5-VL 7B text encoder (safetensors recommended; fp8_scaled is not supported)."
-        },
-        {
-          "key": "qwen-image-edit-2511-gguf",
-          "engine": "diffusers",
-          "target": "gguf",
-          "bits": 8,
-          "repo_id": "unsloth/Qwen-Image-Edit-2511-GGUF",
-          "source": "curated-community-gguf",
-          "notes": "8-bit GGUF transformer for the Diffusers Qwen Image Edit 2511 pipeline; official Diffusers snapshot supplies tokenizer, text encoder, scheduler, and VAE."
-        },
-        {
-          "key": "qwen-image-edit-2511-gguf",
-          "engine": "stable-diffusion.cpp",
-          "target": "gguf",
-          "bits": 8,
-          "repo_id": "unsloth/Qwen-Image-Edit-2511-GGUF",
-          "source": "curated-community-gguf",
-          "notes": "Alias for the 8-bit stable-diffusion.cpp GGUF bundle (same repo; use this key when you explicitly want GGUF)."
         }
       ],
       "tasks": {

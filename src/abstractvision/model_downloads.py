@@ -26,6 +26,38 @@ _GENERIC_MLX_BACKEND_ERROR = (
     "(or `mflux/<preset>`) for MFLUX-compatible 8-bit MLX models."
 )
 
+_MACOS_GGUF_DISABLED_ERROR = (
+    "GGUF 8-bit stable-diffusion.cpp presets are disabled on this macOS host. "
+    "This is controlled by `ABSTRACTVISION_DISABLE_GGUF_ON_MACOS=1` (intended for operators who want to "
+    "hide the stable-diffusion.cpp catalog entries on Apple Silicon)."
+)
+
+
+class MacOSGGUFUnsupportedError(ValueError):
+    """Raised when a macOS host requests a disabled GGUF/stable-diffusion.cpp preset."""
+
+
+def _env_truthy(key: str, *, default: bool = False) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return bool(default)
+    v = str(raw).strip().lower()
+    if v in {"", "0", "false", "no", "off"}:
+        return False
+    return True
+
+
+def _macos_gguf_disabled() -> bool:
+    if sys.platform != "darwin":
+        return False
+    if local_model_profile() != "apple-silicon":
+        return False
+    return _env_truthy("ABSTRACTVISION_DISABLE_GGUF_ON_MACOS", default=False)
+
+
+def _raise_macos_gguf_disabled() -> None:
+    raise MacOSGGUFUnsupportedError(_MACOS_GGUF_DISABLED_ERROR)
+
 
 @dataclass(frozen=True)
 class VisionModelDownloadPreset:
@@ -503,46 +535,6 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source_priority=80,
     ),
     VisionModelDownloadPreset(
-        key="qwen-image-edit-2511",
-        display_name="Qwen-Image-Edit-2511 GGUF Q8_0",
-        repo_id="unsloth/Qwen-Image-Edit-2511-GGUF",
-        target="gguf",
-        engine="stable-diffusion.cpp",
-        local_dir_name="qwen-image-edit-2511-q8_0-gguf",
-        quantization_bits=8,
-        upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
-        source="curated-community-gguf",
-        aliases=("qwen-image-edit-2511", "Qwen/Qwen-Image-Edit-2511"),
-        allow_patterns=("README.md", "LICENSE*", "qwen-image-edit-2511-Q8_0.gguf"),
-        notes=(
-            "Qwen Image Edit 2511 GGUF bundle for stable-diffusion.cpp; requires a separate VAE "
-            "safetensors file and a Qwen2.5-VL 7B text encoder (safetensors) at runtime."
-        ),
-        source_priority=30,
-    ),
-    VisionModelDownloadPreset(
-        key="qwen-image-edit-2511-gguf",
-        display_name="Qwen-Image-Edit-2511 GGUF Q8_0 (Diffusers)",
-        repo_id="unsloth/Qwen-Image-Edit-2511-GGUF",
-        target="gguf",
-        engine="diffusers",
-        local_dir_name="qwen-image-edit-2511-gguf-q8_0-diffusers",
-        quantization_bits=8,
-        upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
-        source="curated-community-gguf",
-        aliases=(
-            "qwen-image-edit-2511-gguf",
-            "qwen-image-edit-2511-gguf-q8_0",
-            "unsloth/Qwen-Image-Edit-2511-GGUF",
-        ),
-        allow_patterns=("README.md", "LICENSE*", "qwen-image-edit-2511-Q8_0.gguf"),
-        notes=(
-            "8-bit GGUF transformer for the Diffusers Qwen Image Edit 2511 pipeline. "
-            "The official Diffusers snapshot supplies tokenizer, text encoder, scheduler, and VAE."
-        ),
-        source_priority=20,
-    ),
-    VisionModelDownloadPreset(
         key="qwen-image-edit-2511-gguf",
         display_name="Qwen-Image-Edit-2511 GGUF Q8_0",
         repo_id="unsloth/Qwen-Image-Edit-2511-GGUF",
@@ -553,6 +545,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
         source="curated-community-gguf",
         aliases=(
+            "qwen-image-edit-2511",
             "qwen-image-edit-2511-gguf",
             "qwen-image-edit-2511-gguf-q8_0",
             "unsloth/Qwen-Image-Edit-2511-GGUF",
@@ -560,10 +553,10 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         ),
         allow_patterns=("README.md", "LICENSE*", "qwen-image-edit-2511-Q8_0.gguf"),
         notes=(
-            "Alias preset for qwen-image-edit-2511 GGUF (stable-diffusion.cpp). "
-            "Use this key when you explicitly want the GGUF runtime artifact."
+            "Qwen Image Edit 2511 GGUF bundle for stable-diffusion.cpp; requires a separate VAE "
+            "safetensors file and a Qwen2.5-VL 7B text encoder (safetensors) at runtime."
         ),
-        source_priority=31,
+        source_priority=30,
     ),
     VisionModelDownloadPreset(
         key="glm-image",
@@ -1018,24 +1011,6 @@ _SDCPP_BUNDLES: Dict[str, _SdcppBundleSpec] = {
             ),
         ),
     ),
-    "qwen-image-edit-2511": _SdcppBundleSpec(
-        mode="component",
-        model_patterns=("qwen-image-edit-2511-Q8_0.gguf",),
-        components=(
-            _SdcppBundleComponentSpec(
-                role="vae",
-                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
-                allow_patterns=("split_files/vae/qwen_image_vae.safetensors",),
-            ),
-            _SdcppBundleComponentSpec(
-                role="llm",
-                repo_id="Comfy-Org/Qwen-Image_ComfyUI",
-                # NOTE: fp8_scaled variants contain tensors not supported by stable-diffusion.cpp and
-                # can lead to blank/black outputs. Prefer the full safetensors encoder.
-                allow_patterns=("split_files/text_encoders/qwen_2.5_vl_7b.safetensors",),
-            ),
-        ),
-    ),
     "qwen-image-edit-2509": _SdcppBundleSpec(
         mode="component",
         model_patterns=(
@@ -1294,9 +1269,9 @@ def local_model_profile() -> str:
 def local_catalog_targets() -> Tuple[str, ...]:
     profile = local_model_profile()
     if profile == "apple-silicon":
-        # Include GGUF (stable-diffusion.cpp) because a number of models (e.g. Qwen Image Edit)
-        # have good 8-bit presets there, and Apple Silicon can run it efficiently via Metal.
-        return ("mlx", "diffusers", "hf-snapshot", "gguf")
+        # Apple Silicon can run GGUF models via stable-diffusion.cpp (Metal). Operators who
+        # want to hide these entries can set `ABSTRACTVISION_DISABLE_GGUF_ON_MACOS=1`.
+        return ("mlx", "diffusers", "hf-snapshot") if _macos_gguf_disabled() else ("mlx", "gguf", "diffusers", "hf-snapshot")
     if profile == "cuda":
         return ("fp8", "gguf", "diffusers", "hf-snapshot")
     return ("diffusers", "hf-snapshot", "gguf")
@@ -1313,11 +1288,13 @@ def catalog_target_scope(
     if include_all_targets:
         preferred = list(local_catalog_targets())
         for preset in _all_presets():
+            if _macos_gguf_disabled() and preset.target == "gguf":
+                continue
             if preset.target not in preferred:
                 preferred.append(preset.target)
         return tuple(preferred)
     if raw_target in {"", "auto", "default"} and selected_engine == "diffusers":
-        return ("diffusers", "gguf")
+        return ("diffusers",) if _macos_gguf_disabled() else ("diffusers", "gguf")
     if raw_target in {"", "auto", "default"} and selected_engine is None:
         return local_catalog_targets()
     return (selected_target,)
@@ -1392,8 +1369,13 @@ def resolve_model_target_and_engine(
         }
         inferred = engine_to_target.get(selected_engine)
         if inferred:
+            if inferred == "gguf" and _macos_gguf_disabled():
+                _raise_macos_gguf_disabled()
             return inferred, selected_engine
-    return normalize_model_target(target), selected_engine
+    selected_target = normalize_model_target(target)
+    if selected_target == "gguf" and _macos_gguf_disabled():
+        _raise_macos_gguf_disabled()
+    return selected_target, selected_engine
 
 
 def model_presets(
@@ -1407,6 +1389,8 @@ def model_presets(
     selected_engine = resolve_model_target_and_engine(target=target, engine=engine)[1]
     out: List[VisionModelDownloadPreset] = []
     for preset in _all_presets():
+        if _macos_gguf_disabled() and preset.target == "gguf":
+            continue
         if preset.target not in selected_targets:
             continue
         if selected_engine is not None and preset.engine != selected_engine:
@@ -1759,6 +1743,8 @@ def resolve_sdcpp_model_selection(
     requested = str(name or "").strip()
     if not requested:
         raise ValueError("Missing stable-diffusion.cpp model selection.")
+    if _macos_gguf_disabled():
+        _raise_macos_gguf_disabled()
 
     preset = find_model_preset(
         requested,

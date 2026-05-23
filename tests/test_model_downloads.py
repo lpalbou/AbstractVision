@@ -15,12 +15,27 @@ class TestModelDownloads(unittest.TestCase):
         from abstractvision.model_downloads import catalog_target_scope, find_model_preset
 
         with patch("abstractvision.model_downloads.local_model_profile", return_value="apple-silicon"):
-            self.assertEqual(
-                catalog_target_scope(target="auto", engine=None, include_all_targets=False),
-                ("mlx", "diffusers", "hf-snapshot", "gguf"),
-            )
-            preset = find_model_preset("qwen-image", target="auto", engine=None, require_8bit=True)
+            with patch("abstractvision.model_downloads.sys.platform", "darwin"):
+                self.assertEqual(
+                    catalog_target_scope(target="auto", engine=None, include_all_targets=False),
+                    ("mlx", "gguf", "diffusers", "hf-snapshot"),
+                )
+                preset = find_model_preset("qwen-image", target="auto", engine=None, require_8bit=True)
         self.assertEqual((preset.target, preset.engine), ("mlx", "mflux"))
+
+    def test_sdcpp_gguf_presets_can_be_disabled_on_apple_silicon(self):
+        from abstractvision.model_downloads import (
+            MacOSGGUFUnsupportedError,
+            catalog_target_scope,
+            model_presets,
+        )
+
+        with patch("abstractvision.model_downloads.local_model_profile", return_value="apple-silicon"):
+            with patch("abstractvision.model_downloads.sys.platform", "darwin"):
+                with patch.dict("os.environ", {"ABSTRACTVISION_DISABLE_GGUF_ON_MACOS": "1"}, clear=False):
+                    self.assertTrue(all(preset.target != "gguf" for preset in model_presets(include_all_targets=True)))
+                    with self.assertRaisesRegex(MacOSGGUFUnsupportedError, "disabled on this macOS host"):
+                        catalog_target_scope(target="auto", engine="sdcpp", include_all_targets=False)
 
     def test_auto_scope_prefers_gpu_fp8_before_other_targets(self):
         from abstractvision.model_downloads import catalog_target_scope, find_model_preset
@@ -58,12 +73,13 @@ class TestModelDownloads(unittest.TestCase):
     def test_qwen_image_edit_handle_resolves_legacy_sdcpp_bundle(self):
         from abstractvision.model_downloads import find_model_preset
 
-        preset = find_model_preset(
-            "qwen-image-edit",
-            target="gguf",
-            engine="stable-diffusion.cpp",
-            require_8bit=True,
-        )
+        with patch("abstractvision.model_downloads.local_model_profile", return_value="cuda"):
+            preset = find_model_preset(
+                "qwen-image-edit",
+                target="gguf",
+                engine="stable-diffusion.cpp",
+                require_8bit=True,
+            )
         self.assertEqual(preset.repo_id, "unsloth/Qwen-Image-Edit-GGUF")
 
     def test_qwen_image_edit_2511_handle_resolves_dated_release(self):
@@ -77,19 +93,20 @@ class TestModelDownloads(unittest.TestCase):
         )
         self.assertEqual(preset.repo_id, "Qwen/Qwen-Image-Edit-2511")
 
-    def test_qwen_image_edit_2511_gguf_handle_resolves_diffusers_gguf_transformer(self):
+    def test_qwen_image_edit_2511_gguf_handle_resolves_sdcpp_bundle(self):
         from abstractvision.model_downloads import find_model_preset
 
-        preset = find_model_preset(
-            "qwen-image-edit-2511-gguf",
-            target="auto",
-            engine="diffusers",
-            require_8bit=True,
-        )
+        with patch("abstractvision.model_downloads.local_model_profile", return_value="cuda"):
+            preset = find_model_preset(
+                "qwen-image-edit-2511-gguf",
+                target="auto",
+                engine="stable-diffusion.cpp",
+                require_8bit=True,
+            )
 
         self.assertEqual(preset.repo_id, "unsloth/Qwen-Image-Edit-2511-GGUF")
         self.assertEqual(preset.target, "gguf")
-        self.assertEqual(preset.engine, "diffusers")
+        self.assertEqual(preset.engine, "stable-diffusion.cpp")
         self.assertEqual(preset.upstream_repo_id, "Qwen/Qwen-Image-Edit-2511")
 
     def test_generic_mlx_engine_is_rejected_and_flux1_mflux_presets_are_not_curated(self):
@@ -152,8 +169,9 @@ class TestModelDownloads(unittest.TestCase):
                 cleanup_source=False,
             )
 
-            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
-                selection = resolve_sdcpp_model_selection("flux2-klein-base-4b", allow_download=False)
+            with patch("abstractvision.model_downloads.local_model_profile", return_value="cuda"):
+                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                    selection = resolve_sdcpp_model_selection("flux2-klein-base-4b", allow_download=False)
 
         self.assertIsNone(selection.model)
         self.assertTrue(str(selection.diffusion_model or "").endswith("flux-2-klein-base-4b-Q8_0.gguf"))
@@ -177,9 +195,10 @@ class TestModelDownloads(unittest.TestCase):
                 cleanup_source=False,
             )
 
-            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
-                with self.assertRaises(RuntimeError) as ctx:
-                    resolve_sdcpp_model_selection("flux2-klein-base-4b", allow_download=False)
+            with patch("abstractvision.model_downloads.local_model_profile", return_value="cuda"):
+                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        resolve_sdcpp_model_selection("flux2-klein-base-4b", allow_download=False)
 
         self.assertIn("flux2-klein-base-4b", str(ctx.exception))
         self.assertIn("download flux2-klein-base-4b --provider sdcpp", str(ctx.exception))
@@ -214,8 +233,9 @@ class TestModelDownloads(unittest.TestCase):
                 cleanup_source=False,
             )
 
-            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
-                selection = resolve_sdcpp_model_selection("unsloth/Qwen-Image-GGUF", allow_download=False)
+            with patch("abstractvision.model_downloads.local_model_profile", return_value="cuda"):
+                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                    selection = resolve_sdcpp_model_selection("unsloth/Qwen-Image-GGUF", allow_download=False)
 
         self.assertIsNone(selection.model)
         self.assertTrue(str(selection.diffusion_model or "").endswith("qwen-image-Q8_0.gguf"))
@@ -252,8 +272,9 @@ class TestModelDownloads(unittest.TestCase):
                 cleanup_source=False,
             )
 
-            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
-                selection = resolve_sdcpp_model_selection("qwen-image-edit-2509", allow_download=False)
+            with patch("abstractvision.model_downloads.local_model_profile", return_value="cuda"):
+                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                    selection = resolve_sdcpp_model_selection("qwen-image-edit-2509", allow_download=False)
 
         self.assertIsNone(selection.model)
         self.assertTrue(str(selection.diffusion_model or "").endswith("qwen-image-edit-2509-Q8_0.gguf"))

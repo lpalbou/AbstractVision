@@ -557,6 +557,11 @@ def _require_device_available(torch: Any, device: str) -> None:
             )
 
 
+def _is_mps_device(device: Any) -> bool:
+    d = str(device or "").strip().lower()
+    return d == "mps" or d.startswith("mps:")
+
+
 def _call_param_names(fn: Any) -> Optional[set[str]]:
     try:
         sig = inspect.signature(fn)
@@ -1180,7 +1185,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             "Diffusers GGUF transformer artifact is not available locally. "
             f"Expected {spec.gguf_patterns!r}"
             + (f" in {repo_id!r}. " if repo_id else ". ")
-            + "Download it first with `abstractvision download qwen-image-edit-2511-gguf --provider diffusers`."
+            + "Download the GGUF artifact first with `abstractvision download qwen-image-edit-2511-gguf --provider sdcpp`."
         )
 
     def _load_gguf_transformer(
@@ -2230,6 +2235,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         _require_device_available(torch, device)
 
         gguf_spec = self._diffusers_gguf_transformer_spec()
+        if gguf_spec is not None and _is_mps_device(device):
+            raise ValueError(
+                "Diffusers GGUF is not a native Apple MPS 8-bit execution path. "
+                "Diffusers currently dequantizes GGUF weights for non-CUDA linear layers, which can be slower "
+                "and use similar peak memory to BF16/FP16 on MPS. Use the stable-diffusion.cpp provider instead: "
+                "`abstractvision i2i --provider sdcpp --model qwen-image-edit-2511-gguf ...`."
+            )
         preflight_model_id = gguf_spec.base_model_id if gguf_spec is not None else None
         self._preflight_check_model_index(model_id=preflight_model_id)
         _maybe_patch_transformers_clip_position_ids()

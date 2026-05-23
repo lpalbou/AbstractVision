@@ -1,5 +1,6 @@
 import base64
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -261,6 +262,113 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("sample_method"), "euler")
         self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("sample_steps"), 12)
         self.assertEqual(FakeStableDiffusion.last_generate_kwargs.get("cfg_scale"), 2.5)
+
+    def test_qwen_edit_python_defaults_keep_unsupported_metal_parts_on_cpu(self):
+        from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+        from abstractvision.errors import OptionalDependencyMissingError
+
+        class FakeStableDiffusion:
+            last_init_kwargs = None
+
+            def __init__(self, **kwargs):
+                FakeStableDiffusion.last_init_kwargs = dict(kwargs)
+
+        fake_mod = types.SimpleNamespace(__version__="0.0.0", StableDiffusion=FakeStableDiffusion)
+
+        backend = StableDiffusionCppVisionBackend(
+            config=StableDiffusionCppBackendConfig(
+                sd_cli_path="sd-cli",
+                diffusion_model="qwen-image-edit-2511-Q8_0.gguf",
+                vae="vae.safetensors",
+                llm="llm.safetensors",
+            )
+        )
+
+        with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}), patch(
+            "abstractvision.backends.stable_diffusion_cpp._require_sd_cli",
+            side_effect=OptionalDependencyMissingError("no sd-cli"),
+        ), patch(
+            "abstractvision.backends.stable_diffusion_cpp._try_read_gguf_architecture",
+            return_value="qwen_image",
+        ), patch(
+            "abstractvision.backends.stable_diffusion_cpp._is_high_memory_machine",
+            return_value=True,
+        ), patch(
+            "abstractvision.backends.stable_diffusion_cpp.sys.platform",
+            "darwin",
+        ):
+            backend.preload()
+
+        self.assertEqual(FakeStableDiffusion.last_init_kwargs.get("keep_vae_on_cpu"), True)
+        self.assertEqual(FakeStableDiffusion.last_init_kwargs.get("keep_clip_on_cpu"), True)
+        self.assertNotIn("offload_params_to_cpu", FakeStableDiffusion.last_init_kwargs)
+
+    def test_qwen_edit_cli_assigns_unsupported_metal_parts_to_cpu(self):
+        from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        backend = StableDiffusionCppVisionBackend(
+            config=StableDiffusionCppBackendConfig(
+                sd_cli_path="sd-cli",
+                diffusion_model="qwen-image-edit-2511-Q8_0.gguf",
+                vae="vae.safetensors",
+                llm="llm.safetensors",
+            )
+        )
+
+        def fake_run(cmd, check, stdout, stderr, cwd, timeout):
+            out_path = cmd[cmd.index("--output") + 1]
+            Path(out_path).write_bytes(PNG_1X1)
+
+        with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"), patch(
+            "abstractvision.backends.stable_diffusion_cpp.subprocess.run",
+            side_effect=fake_run,
+        ) as run_mock, patch(
+            "abstractvision.backends.stable_diffusion_cpp._try_read_gguf_architecture",
+            return_value="qwen_image",
+        ), patch(
+            "abstractvision.backends.stable_diffusion_cpp._is_high_memory_machine",
+            return_value=True,
+        ), patch(
+            "abstractvision.backends.stable_diffusion_cpp.sys.platform",
+            "darwin",
+        ):
+            asset = backend.edit_image(ImageEditRequest(prompt="watercolor", image=PNG_1X1, steps=1, seed=1))
+
+        self.assertEqual(asset.mime_type, "image/png")
+        cmd = run_mock.call_args[0][0]
+        self.assertIn("-r", cmd)
+        self.assertIn("--qwen-image-zero-cond-t", cmd)
+        self.assertEqual(cmd[cmd.index("--backend") + 1], "diffusion=mtl0,clip=cpu,vae=cpu")
+        self.assertEqual(cmd[cmd.index("--params-backend") + 1], "diffusion=mtl0,clip=cpu,vae=cpu")
+        self.assertNotIn("--offload-to-cpu", cmd)
+
+    def test_provider_models_lists_cached_sdcpp_gguf_presets(self):
+        from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
+
+        with tempfile.TemporaryDirectory() as td:
+            cache = Path(td)
+            gguf_snap = cache / "hub" / "models--unsloth--Qwen-Image-Edit-2511-GGUF" / "snapshots" / "gguf123"
+            gguf_snap.mkdir(parents=True)
+            (gguf_snap / "qwen-image-edit-2511-Q8_0.gguf").write_bytes(b"GGUF")
+            gguf_refs = cache / "hub" / "models--unsloth--Qwen-Image-Edit-2511-GGUF" / "refs"
+            gguf_refs.mkdir(parents=True, exist_ok=True)
+            (gguf_refs / "main").write_text("gguf123", encoding="utf-8")
+
+            backend = StableDiffusionCppVisionBackend(
+                config=StableDiffusionCppBackendConfig(sd_cli_path="sd-cli", diffusion_model="model.gguf")
+            )
+            with patch.dict("os.environ", {"HF_HOME": str(cache)}, clear=False):
+                models = backend.list_provider_models(task="image_to_image")
+
+        matching = [model for model in models if model.id == "qwen-image-edit-2511-gguf"]
+        self.assertEqual(len(matching), 1)
+        chosen = matching[0]
+        self.assertIn("image_to_image", chosen.capabilities)
+        self.assertEqual(chosen.raw["model"], "sdcpp/qwen-image-edit-2511-gguf")
+        self.assertEqual(chosen.raw["engine"], "stable-diffusion.cpp")
+        self.assertEqual(chosen.raw["target"], "gguf")
+        self.assertEqual(chosen.raw["quantization_bits"], 8)
 
     def test_preload_only_loads_python_model_once(self):
         from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend

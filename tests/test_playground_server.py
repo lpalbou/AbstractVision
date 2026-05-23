@@ -85,7 +85,7 @@ class TestPlaygroundServer(unittest.TestCase):
         self.assertTrue(models["stable-diffusion-v1-5/stable-diffusion-v1-5"]["cached"])
         self.assertIn("configured cache", models["stable-diffusion-v1-5/stable-diffusion-v1-5"]["cached_in"])
 
-    def test_lists_cached_diffusers_gguf_preset_as_loadable_image_edit_model(self):
+    def test_lists_cached_sdcpp_gguf_preset_as_loadable_image_edit_model(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
 
         with tempfile.TemporaryDirectory() as td:
@@ -97,34 +97,30 @@ class TestPlaygroundServer(unittest.TestCase):
             gguf_refs.mkdir(parents=True, exist_ok=True)
             (gguf_refs / "main").write_text("gguf123", encoding="utf-8")
 
-            base_snap = cache / "models--Qwen--Qwen-Image-Edit-2511" / "snapshots" / "base123"
-            (base_snap / "transformer").mkdir(parents=True)
-            (base_snap / "model_index.json").write_text("{}", encoding="utf-8")
-            (base_snap / "transformer" / "diffusion_pytorch_model.safetensors").write_bytes(b"x")
-            base_refs = cache / "models--Qwen--Qwen-Image-Edit-2511" / "refs"
-            base_refs.mkdir(parents=True, exist_ok=True)
-            (base_refs / "main").write_text("base123", encoding="utf-8")
+            with patch("abstractvision.model_downloads.local_model_profile", return_value="cpu"):
+                with patch("abstractvision.playground_server.local_model_profile", return_value="cpu"):
+                    with patch("abstractvision.playground_server._local_runtime_available", return_value=True):
+                        state = PlaygroundState(
+                            PlaygroundServerConfig(
+                                diffusers_cache_dir=str(cache),
+                                diffusers_allow_download=False,
+                                default_model_id="",
+                            )
+                        )
+                        out = state.list_models()
 
-            with patch("abstractvision.playground_server._local_runtime_available", return_value=True):
-                state = PlaygroundState(
-                    PlaygroundServerConfig(
-                        diffusers_cache_dir=str(cache),
-                        diffusers_allow_download=False,
-                        default_model_id="",
-                    )
-                )
-                out = state.list_models()
-
-        chosen = next(m for m in out["models"] if m["load_id"] == "diffusers/qwen-image-edit-2511-gguf")
+        matching = [m for m in out["models"] if m["load_id"] == "sdcpp/qwen-image-edit-2511-gguf"]
+        self.assertEqual(len(matching), 1)
+        chosen = matching[0]
         self.assertEqual(chosen["id"], "Qwen/Qwen-Image-Edit-2511")
-        self.assertEqual(chosen["backend"], "diffusers")
+        self.assertEqual(chosen["backend"], "sdcpp")
+        self.assertEqual(chosen["engine"], "stable-diffusion.cpp")
         self.assertEqual(chosen["target"], "gguf")
         self.assertEqual(chosen["bits"], 8)
         self.assertTrue(chosen["cached"])
         self.assertTrue(chosen["loadable"])
         self.assertIn("image_to_image", chosen["tasks"])
         self.assertIn("configured cache", " ".join(chosen["cached_in"]))
-        self.assertIn("base Diffusers snapshot", " ".join(chosen["cached_in"]))
 
     def test_lists_cached_mflux_registry_variants(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
@@ -286,7 +282,7 @@ class TestPlaygroundServer(unittest.TestCase):
 
         self.assertFalse(any(m["id"] == "zai-org/CogVideoX-2b" for m in out["models"]))
 
-    def test_catalog_surfaces_mflux_flux2_klein_for_text_to_image_only(self):
+    def test_catalog_surfaces_mflux_flux2_klein_for_image_to_image_and_text_to_image(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
         from abstractvision.model_downloads import model_presets as real_model_presets
 
@@ -316,8 +312,8 @@ class TestPlaygroundServer(unittest.TestCase):
             out = state.list_models()
 
         flux2 = next(m for m in out["models"] if m["load_id"] == "mflux/flux2-klein-9b")
-        self.assertEqual(flux2["tasks"], ["text_to_image"])
-        self.assertNotIn("image_to_image", flux2["task_specs"])
+        self.assertEqual(flux2["tasks"], ["image_to_image", "text_to_image"])
+        self.assertIn("image_to_image", flux2["task_specs"])
 
     def test_surface_tasks_for_backend_preserves_registry_tasks_when_diffusers_probe_fails(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState

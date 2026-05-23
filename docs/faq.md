@@ -31,7 +31,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MFLUX is currently surfaced for `text_to_image` only.
+- Local MFLUX supports `text_to_image` and FLUX.2 klein `image_to_image` edits (no masks yet).
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - `image_to_video` still works only via the OpenAI-compatible backend **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).

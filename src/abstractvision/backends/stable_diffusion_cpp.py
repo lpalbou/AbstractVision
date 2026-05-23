@@ -18,16 +18,40 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..model_capabilities import VisionModelCapabilitiesRegistry
+from ..model_cache import cached_hf_model_sources
 from ..types import (
     GeneratedAsset,
     ImageEditRequest,
     ImageGenerationRequest,
     ImageToVideoRequest,
     MultiAngleRequest,
+    ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
 from .base_backend import VisionBackend
+
+_MACOS_GGUF_DISABLED_ERROR = (
+    "GGUF 8-bit stable-diffusion.cpp execution is disabled on this macOS host. "
+    "This is controlled by `ABSTRACTVISION_DISABLE_GGUF_ON_MACOS=1`."
+)
+
+
+def _looks_like_gguf_reference(value: Any) -> bool:
+    s = str(value or "").strip()
+    if not s:
+        return False
+    name = Path(s).name.lower()
+    return Path(s).suffix.lower() == ".gguf" or "gguf" in name
+
+
+def _raise_if_macos_gguf_requested(*values: Any) -> None:
+    if sys.platform != "darwin":
+        return
+    if not _env_truthy("ABSTRACTVISION_DISABLE_GGUF_ON_MACOS", default=False):
+        return
+    if any(_looks_like_gguf_reference(value) for value in values):
+        raise CapabilityNotSupportedError(_MACOS_GGUF_DISABLED_ERROR)
 
 
 def _sniff_mime_type(data: bytes) -> str:
@@ -80,8 +104,8 @@ def _require_sd_cli(path: str) -> str:
         if managed.exists():
             return str(managed)
 
-        # Best-effort: auto-download `sd-cli` for Apple Silicon so a fresh install can run
-        # GGUF models without manual steps (no compiler toolchain needed).
+        # Best-effort: auto-download `sd-cli` for local checkpoint execution without
+        # requiring users to compile stable-diffusion.cpp.
         if p in {"sd-cli", "sd-cli.exe"} and _env_truthy("ABSTRACTVISION_SDCPP_AUTO_INSTALL", default=True):
             installed = _try_auto_install_sd_cli(managed_dir)
             if installed is not None:
@@ -106,12 +130,42 @@ def _env_truthy(key: str, *, default: bool = False) -> bool:
     return True
 
 
+def _is_high_memory_machine(*, min_memory_gb: float = 18.0) -> bool:
+    """Best-effort RAM heuristic for backend selection decisions.
+
+    Tests patch this helper directly; keep it stdlib-only and fast.
+    """
+
+    try:
+        if hasattr(os, "sysconf"):
+            page_size = float(os.sysconf("SC_PAGE_SIZE"))
+            pages = float(os.sysconf("SC_PHYS_PAGES"))
+            total_bytes = page_size * pages
+            return total_bytes >= float(min_memory_gb) * 1024.0 * 1024.0 * 1024.0
+    except Exception:
+        pass
+    if sys.platform == "darwin":
+        try:
+            proc = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=1.0,
+            )
+            if proc.returncode == 0:
+                total_bytes = float(str(proc.stdout or "").strip() or "0")
+                return total_bytes >= float(min_memory_gb) * 1024.0 * 1024.0 * 1024.0
+        except Exception:
+            pass
+    return False
+
+
 def _try_auto_install_sd_cli(dest_dir: Path) -> Optional[str]:
     """Download and install `sd-cli` into `~/.abstractvision/bin` (best-effort).
 
-    This targets the stable-diffusion.cpp GitHub releases. We currently auto-install only on
-    macOS Apple Silicon (Metal) because it's the primary local-GGUF use-case and avoids requiring
-    a compiler toolchain for `stable-diffusion-cpp-python`.
+    This targets the stable-diffusion.cpp GitHub releases and avoids requiring a
+    compiler toolchain for `stable-diffusion-cpp-python`.
     """
 
     try:
@@ -511,47 +565,8 @@ def _infer_gguf_architecture(path: str) -> Optional[str]:
     return arch
 
 
-def _physical_memory_bytes() -> Optional[int]:
-    """Best-effort physical memory size (bytes). Stdlib-only and cross-platform-ish."""
-
-    # POSIX sysconf (works on most Linux/macOS builds).
-    try:
-        if hasattr(os, "sysconf"):
-            page_size = int(os.sysconf("SC_PAGE_SIZE"))  # type: ignore[arg-type]
-            phys_pages = int(os.sysconf("SC_PHYS_PAGES"))  # type: ignore[arg-type]
-            if page_size > 0 and phys_pages > 0:
-                return page_size * phys_pages
-    except Exception:
-        pass
-
-    # macOS fallback.
-    if sys.platform == "darwin":
-        try:
-            out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], stderr=subprocess.DEVNULL)
-            return int(out.decode("utf-8", errors="replace").strip())
-        except Exception:
-            pass
-    return None
-
-
-def _is_high_memory_machine(*, min_gib: int = 64) -> bool:
-    b = _physical_memory_bytes()
-    if b is None:
-        return False
-    return b >= int(min_gib) * 1024 * 1024 * 1024
-
-
 def _cmd_has_flag(cmd: Sequence[str], flag: str) -> bool:
     return any(str(x) == flag for x in cmd)
-
-
-def _cmd_has_opt(cmd: Sequence[str], opt: str) -> bool:
-    return any(str(x) == opt for x in cmd)
-
-
-def _is_metal_unsupported_op_error(msg: str) -> bool:
-    s = str(msg or "")
-    return ("unsupported op" in s) or ("ggml-metal-ops.cpp" in s) or ("ggml_metal_op_encode_impl" in s)
 
 
 @dataclass(frozen=True)
@@ -620,6 +635,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         self._py_default_generate_kwargs: Optional[Dict[str, Any]] = None
 
     def preload(self) -> None:
+        self._validate_macos_gguf_supported()
         mode = self._select_mode()
         if mode == "python":
             self._ensure_python_model()
@@ -637,6 +653,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             pass
 
     def get_capabilities(self) -> VisionBackendCapabilities:
+        self._validate_macos_gguf_supported()
         supported_tasks = ["text_to_image", "image_to_image"]
         capability_model_id = str(self._cfg.capabilities_model_id or "").strip()
         if capability_model_id:
@@ -650,7 +667,57 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             supports_mask="image_to_image" in set(supported_tasks),
         )
 
+    def _supported_task_names(self, model_id: str) -> List[str]:
+        try:
+            reg = VisionModelCapabilitiesRegistry()
+            return sorted(str(task_name) for task_name in reg.get(str(model_id)).tasks.keys())
+        except Exception:
+            return ["image_to_image", "text_to_image"]
+
+    def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
+        if sys.platform == "darwin" and _env_truthy("ABSTRACTVISION_DISABLE_GGUF_ON_MACOS", default=False):
+            return []
+        task_s = str(task or "").strip()
+        out: List[ProviderModelInfo] = []
+        try:
+            from ..model_downloads import model_presets
+        except Exception:
+            return out
+
+        for preset in model_presets(target="gguf", engine="stable-diffusion.cpp", include_non_8bit=False):
+            cached_in = cached_hf_model_sources(str(preset.repo_id), require_weight_files=True)
+            if not cached_in:
+                continue
+            model_id = str(preset.upstream_repo_id or preset.repo_id)
+            tasks = self._supported_task_names(model_id)
+            if task_s and task_s not in tasks:
+                continue
+            out.append(
+                ProviderModelInfo(
+                    id=str(preset.key),
+                    object="model",
+                    owned_by="stable-diffusion.cpp",
+                    capabilities=tuple(tasks),
+                    raw={
+                        "provider": "sdcpp",
+                        "backend": "sdcpp",
+                        "engine": "stable-diffusion.cpp",
+                        "target": str(preset.target),
+                        "model": f"sdcpp/{preset.key}",
+                        "routed_model": f"sdcpp/{preset.key}",
+                        "repo_id": str(preset.repo_id),
+                        "upstream_repo_id": str(preset.upstream_repo_id or ""),
+                        "download_repo_id": str(preset.repo_id),
+                        "quantization_bits": preset.quantization_bits,
+                        "local_cached": True,
+                        "cached_in": list(cached_in),
+                    },
+                )
+            )
+        return out
+
     def _base_cmd(self) -> List[str]:
+        self._validate_macos_gguf_supported()
         sd_cli = _require_sd_cli(self._cfg.sd_cli_path)
         cmd: List[str] = [sd_cli]
 
@@ -683,6 +750,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         return cmd
 
     def _select_mode(self) -> str:
+        self._validate_macos_gguf_supported()
         if self._mode:
             return self._mode
 
@@ -704,6 +772,17 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             self._mode = "python"
             return self._mode
 
+    def _validate_macos_gguf_supported(self) -> None:
+        _raise_if_macos_gguf_requested(
+            self._cfg.model,
+            self._cfg.diffusion_model,
+            self._cfg.llm,
+            self._cfg.llm_vision,
+            self._cfg.clip_l,
+            self._cfg.clip_g,
+            self._cfg.t5xxl,
+        )
+
     def _ensure_python_model(self) -> Any:
         if self._py_model is not None:
             return self._py_model
@@ -721,12 +800,18 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 # stable-diffusion.cpp docs recommend flow_shift=3 for Qwen Image / Qwen Image Edit.
                 init_kwargs.setdefault("flow_shift", 3.0)
                 init_kwargs.setdefault("enable_mmap", True)
-                # Only default to CPU offload on smaller-memory machines; on high-memory Apple Silicon
-                # (e.g. 64–128+ GiB unified memory) this can unnecessarily suppress GPU residency.
-                if not (sys.platform == "darwin" and _is_high_memory_machine(min_gib=64)):
-                    init_kwargs.setdefault("offload_params_to_cpu", True)
                 # Speed: Qwen Image Edit benefits from flash-attn in the diffusion model when available.
                 init_kwargs.setdefault("diffusion_flash_attn", True)
+                if sys.platform == "darwin":
+                    # #FALLBACK: stable-diffusion.cpp Metal backend does not reliably support
+                    # Qwen Image Edit's CLIP/VAE paths; keep them on CPU for correctness.
+                    init_kwargs.setdefault("keep_vae_on_cpu", True)
+                    init_kwargs.setdefault("keep_clip_on_cpu", True)
+                    # Only offload diffusion params on memory-constrained machines.
+                    if not _is_high_memory_machine():
+                        init_kwargs.setdefault("offload_params_to_cpu", True)
+                else:
+                    init_kwargs.setdefault("offload_params_to_cpu", True)
             # stable-diffusion.cpp: Qwen Image Edit 2511 requires `--qwen-image-zero-cond-t`
             # (python bindings: qwen_image_zero_cond_t=True) or edit quality degrades significantly.
             if arch == "qwen_image_edit" and "2511" in Path(diffusion_model).name:
@@ -942,6 +1027,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         request: ImageGenerationRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
+        self._validate_macos_gguf_supported()
         self._validate_qwen_image_components()
         mode = self._select_mode()
         if mode == "cli":
@@ -994,6 +1080,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         request: ImageEditRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
+        self._validate_macos_gguf_supported()
         self._validate_qwen_image_components()
         mode = self._select_mode()
         if mode == "cli":
@@ -1032,22 +1119,12 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                         cmd.append("--diffusion-fa")
                     if "--mmap" not in cmd:
                         cmd.append("--mmap")
-                    if sys.platform == "darwin":
-                        # Prefer keeping the heavy diffusion loop on Metal. If the user already provided an
-                        # explicit backend assignment, do not override it.
-                        if not _cmd_has_opt(cmd, "--backend"):
-                            cmd.extend(["--backend", "diffusion=mtl0"])
-                        if not _cmd_has_opt(cmd, "--params-backend"):
-                            cmd.extend(["--params-backend", "diffusion=mtl0"])
-
-                        # On smaller-memory machines, keep the historical conservative defaults.
-                        if not _is_high_memory_machine(min_gib=64):
-                            if "--offload-to-cpu" not in cmd:
-                                cmd.append("--offload-to-cpu")
-                            if "--vae-on-cpu" not in cmd:
-                                cmd.append("--vae-on-cpu")
-                            if "--clip-on-cpu" not in cmd:
-                                cmd.append("--clip-on-cpu")
+                    if sys.platform == "darwin" and _is_high_memory_machine():
+                        backend_spec = "diffusion=mtl0,clip=cpu,vae=cpu"
+                        if "--backend" not in cmd:
+                            cmd.extend(["--backend", backend_spec])
+                        if "--params-backend" not in cmd:
+                            cmd.extend(["--params-backend", backend_spec])
                 else:
                     cmd.extend(["--init-img", str(init_path)])
                 if mask_path is not None:
@@ -1063,21 +1140,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                     cmd.extend(["--seed", str(int(request.seed))])
 
                 cmd.extend(_extra_to_cli_args(request.extra))
-                try:
-                    self._run(cmd)
-                except RuntimeError as e:
-                    # Metal backend gaps: some operators used by Qwen Image Edit's VAE / text encoder
-                    # are not implemented on ggml-metal in many stable-diffusion.cpp builds.
-                    # Retry with the minimum targeted CPU fallbacks while keeping diffusion on Metal.
-                    if qwen_ref_edit and sys.platform == "darwin" and _is_metal_unsupported_op_error(str(e)):
-                        retry = list(cmd)
-                        if "--vae-on-cpu" not in retry:
-                            retry.append("--vae-on-cpu")
-                        if "--clip-on-cpu" not in retry:
-                            retry.append("--clip-on-cpu")
-                        self._run(retry)
-                    else:
-                        raise
+                self._run(cmd)
 
                 data = out_path.read_bytes()
                 mime = _sniff_mime_type(data)

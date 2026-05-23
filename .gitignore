@@ -139,3 +139,4 @@ Thumbs.db
 
 # Local artifacts (generated outputs, cached downloads, scratch notes)
 untracked/
+runtime/

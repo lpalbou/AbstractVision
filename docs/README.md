@@ -38,7 +38,7 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MFLUX is surfaced for `text_to_image` only; local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MFLUX supports `text_to_image` and FLUX.2 klein `image_to_image` edits (no masks yet); local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 

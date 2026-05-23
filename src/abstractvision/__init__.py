@@ -10,7 +10,7 @@ from .model_capabilities import VisionModelCapabilitiesRegistry
 from .types import ProviderModelInfo
 from .vision_manager import VisionManager
 
-__version__ = "0.3.12"
+__version__ = "0.3.13"
 __author__ = "Laurent-Philippe Albou"
 __email__ = "contact@abstractcore.ai"
 

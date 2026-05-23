@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.13 - 2026-05-23
+
+- MFLUX edits: enable `image_to_image` for the curated FLUX.2 klein presets (`flux2-klein-4b`, `flux2-klein-9b`) so they surface in the playground edit UI and can be called through `VisionManager.edit_image(...)` (mask edits are not supported yet).
+- Request normalization: map edit `strength` into the underlying MFLUX `image_strength` parameter and infer width/height from the input image when omitted so the UI/CLI behave consistently across backends.
+- macOS GGUF policy: re-enable stable-diffusion.cpp GGUF presets on Apple Silicon by default and add an explicit opt-out (`ABSTRACTVISION_DISABLE_GGUF_ON_MACOS=1`) to hide GGUF catalog entries and reject GGUF execution for operators who want that behavior.
+- Docs/tests: refresh README + core docs for the new MFLUX edit surface and the GGUF opt-out, and expand regression coverage for catalog surfacing and edit parameter plumbing.
+
 ## 0.3.12 - 2026-05-22
 
 - Release packaging: publish the current clean tracked repository state as a fresh patch release.

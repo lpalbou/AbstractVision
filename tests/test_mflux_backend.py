@@ -384,16 +384,35 @@ class TestMFluxVisionBackend(unittest.TestCase):
         backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
         caps = backend.get_capabilities()
 
-        self.assertEqual(caps.supported_tasks, ["text_to_image"])
+        self.assertEqual(caps.supported_tasks, ["image_to_image", "text_to_image"])
         self.assertFalse(caps.supports_mask)
 
-    def test_edit_image_is_temporarily_disabled_for_mflux(self):
+    def test_edit_image_passes_strength_and_input_dimensions(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageEditRequest
 
-        backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
-        with self.assertRaisesRegex(Exception, "temporarily disabled"):
-            backend.edit_image(ImageEditRequest(prompt="watercolor", image=b"input"))
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AITRADER/FLUX2-klein-4B-mlx-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                ):
+                    asset = backend.edit_image(
+                        ImageEditRequest(
+                            prompt="watercolor",
+                            image=PNG_1X1,
+                            extra={"strength": 0.75},
+                            seed=123,
+                        )
+                    )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertIn("image_path", _FakeFlux2.last_generate)
+        self.assertEqual(_FakeFlux2.last_generate["image_strength"], 0.75)
+        self.assertEqual(_FakeFlux2.last_generate["width"], 1)
+        self.assertEqual(_FakeFlux2.last_generate["height"], 1)
 
     def test_runtime_serializes_model_init_and_generate_on_same_thread(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend

@@ -110,22 +110,28 @@ Use another local Diffusers image model for now, for example:
 The follow-up investigation is tracked in:
 - [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
 
-## MFLUX `image_to_image` is temporarily disabled
+## MFLUX `image_to_image` is missing or rejected
 
 ### Symptom
 
-- MFLUX models do not appear in the playground `Image→Image` tab
-- local MFLUX `i2i` calls raise a temporary capability error
+- `flux2-klein-4b` / `flux2-klein-9b` (MFLUX) do not appear in the playground `Image→Image` tab; or
+- local MFLUX `image_to_image` calls raise `CapabilityNotSupportedError`
 
 ### Likely cause
 
-Operator tests showed that the current MFLUX `image_to_image` path does not yet
-preserve scene structure reliably enough.
+- You are on an older AbstractVision version where MFLUX `image_to_image` was quarantined.
+- The optional MFLUX extra is not installed (`abstractvision[mflux]`).
+- You are attempting a mask/inpaint edit (not supported by MFLUX yet).
 
 ### Fix
 
-- use MFLUX for `text_to_image` only for now; and
-- use local Diffusers or `stable-diffusion.cpp` for `image_to_image`.
+- Upgrade AbstractVision to a version that supports MFLUX FLUX.2 klein edits (v0.3.13+).
+- Install the backend extra: `pip install "abstractvision[mflux]"`
+- For mask edits/inpainting, use local Diffusers or `stable-diffusion.cpp` instead.
+
+Notes:
+- MFLUX edit strength is passed as `strength` and normalized to the underlying MFLUX `image_strength` parameter.
+- If you need stricter scene preservation, Diffusers often remains the more conservative baseline for `image_to_image`.
 
 ## `mps` was requested but is unavailable
 

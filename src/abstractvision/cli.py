@@ -33,6 +33,7 @@ from .model_downloads import (
     HuggingFaceAccessError,
     local_model_profile,
     looks_like_hf_repo_id,
+    MacOSGGUFUnsupportedError,
     model_presets,
     normalize_model_engine,
     normalize_model_target,
@@ -224,6 +225,8 @@ def _resolve_cached_diffusers_model_id(model_id: str) -> str:
     except Exception:
         try:
             preset = find_model_preset(candidate, target="gguf", engine="diffusers", require_8bit=True)
+        except MacOSGGUFUnsupportedError:
+            raise
         except Exception:
             return candidate
 
@@ -288,7 +291,10 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
         model_id = str(model_value or DEFAULT_DIFFUSERS_MODEL_ID).strip()
         if not model_id:
             model_id = DEFAULT_DIFFUSERS_MODEL_ID
-        model_id = _resolve_cached_diffusers_model_id(model_id)
+        try:
+            model_id = _resolve_cached_diffusers_model_id(model_id)
+        except MacOSGGUFUnsupportedError as e:
+            raise SystemExit(str(e)) from e
         backend = HuggingFaceDiffusersVisionBackend(
             config=HuggingFaceDiffusersBackendConfig(
                 model_id=model_id,
@@ -310,6 +316,8 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
             if not candidate_path.exists():
                 try:
                     resolved_sdcpp = resolve_sdcpp_model_selection(str(sdcpp_model), allow_download=False)
+                except MacOSGGUFUnsupportedError as e:
+                    raise SystemExit(str(e)) from e
                 except ValueError:
                     resolved_sdcpp = None
                 except RuntimeError as e:

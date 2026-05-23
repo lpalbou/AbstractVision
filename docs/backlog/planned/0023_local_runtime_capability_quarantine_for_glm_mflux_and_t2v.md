@@ -2,7 +2,7 @@
 
 ## Metadata
 - Created: 2026-05-22
-- Status: Planned
+- Status: In Progress
 - Priority: P1
 - Completed: N/A
 
@@ -19,11 +19,16 @@
 ## Context
 AbstractVision currently has a clean packaged capability registry and backend-owned runtime gating, but recent operator testing showed that some local model/task combinations are not yet honest enough to expose as working local capabilities.
 
-Three cases need to stay quarantined until they are re-validated:
+Three cases were quarantined until they could be re-validated:
 
 - local Diffusers `zai-org/GLM-Image` / `GLM-Image` for both `text_to_image` and `image_to_image`;
-- local MFLUX `image_to_image` for the current curated FLUX klein families;
+- local MFLUX `image_to_image` for the current curated FLUX klein families (re-enabled for FLUX.2 klein on 2026-05-23; quality follow-up remains);
 - local Diffusers `text_to_video` for the current CogVideoX path.
+
+Update (2026-05-23):
+- MFLUX `image_to_image` for the curated FLUX.2 klein presets (`flux2-klein-4b`, `flux2-klein-9b`) has been re-enabled so it can be used from the playground/CLI/plugin surfaces.
+- Mask edits remain unsupported for MFLUX.
+- The operator-quality acceptance criteria below are still relevant: re-enabled means “wired + runnable”, not “quality bar fully met”.
 
 ## Current code reality
 Files re-checked on 2026-05-22:
@@ -38,7 +43,7 @@ Files re-checked on 2026-05-22:
 The current runtime policy after the quarantine change is:
 
 - local Diffusers `GLM-Image` is hidden from runtime-backed local surfaces and rejected by the backend for `text_to_image` and `image_to_image`;
-- local MFLUX advertises `text_to_image` only and rejects `image_to_image`;
+- local MFLUX advertises `text_to_image` and also implements `image_to_image` for FLUX.2 klein presets (no masks);
 - local Diffusers CogVideoX `text_to_video` is marked experimental and disabled from normal local surfaces.
 
 The packaged registry still records the broader model-family tasks. That is intentional: the registry says what the family can do in principle, while the backend says what AbstractVision can currently run honestly.
@@ -75,7 +80,7 @@ Quarantine the unreliable local task paths now and only re-enable them after a t
 Current quarantine policy:
 
 - local Diffusers `GLM-Image`: disable `text_to_image` and `image_to_image`;
-- local MFLUX: disable `image_to_image`, keep `text_to_image`;
+- local MFLUX: enable `image_to_image` for FLUX.2 klein presets (no masks), keep `text_to_image`;
 - local Diffusers CogVideoX: disable `text_to_video` from normal local surfaces and describe it as experimental / not working.
 
 ## Why
@@ -131,7 +136,7 @@ Not included:
 - Verify docs and release notes state the quarantine explicitly.
 
 ## Progress checklist
-- [ ] Preserve all current operator/runtime findings in this backlog item.
+- [x] Preserve all current operator/runtime findings in this backlog item.
 - [ ] Keep runtime-backed local surfacing aligned with the quarantine policy.
 - [ ] Revisit each quarantined path with explicit acceptance criteria before re-enabling it.
 

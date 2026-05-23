@@ -13,7 +13,7 @@ See also:
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. Local `text_to_video` groundwork exists but is currently experimental and disabled from the normal local surfaces. |
-| MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image` | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
+| MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image` (+ FLUX.2 klein `image_to_image`) | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
@@ -131,7 +131,7 @@ Model presets:
   - `abstractvision download flux2-klein-9b --provider mflux`
   - `abstractvision download qwen-image --provider mflux`
   - `abstractvision download z-image-turbo --provider mflux`
-- Current shipped backend coverage is limited to those curated MFLUX families for `text_to_image`: `flux2-klein-4b`, `flux2-klein-9b`, `qwen-image`, and `z-image-turbo`.
+- Current shipped backend coverage is limited to those curated MFLUX families for `text_to_image`: `flux2-klein-4b`, `flux2-klein-9b`, `qwen-image`, and `z-image-turbo`. `image_to_image` edits are implemented for the FLUX.2 klein presets only (no masks yet).
 
 Config/env:
 - `ABSTRACTVISION_PROVIDER=mflux` (alias: `ABSTRACTVISION_BACKEND=mflux`)
@@ -145,7 +145,7 @@ Non-curated MFLUX models:
 
 Runtime behavior notes:
 - MFLUX request normalization is also backend-level, so distilled FLUX-family constraints such as `guidance_scale=1.0`, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
-- Local MFLUX `image_to_image` is temporarily disabled pending the quality follow-up in [`../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
+- Local MFLUX `image_to_image` is supported for the FLUX.2 klein presets (no masks). Edit strength is passed as `strength` and normalized to the underlying MFLUX `image_strength` parameter.
 
 Code pointers:
 - Config: `MFluxBackendConfig` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
@@ -163,6 +163,7 @@ Runtime modes (auto-selected):
 Notes:
 - If you care about **GPU acceleration** (macOS **Metal**, NVIDIA **CUDA**, etc.), prefer **CLI mode** via `sd-cli`.
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means **CPU-only**, so FLUX/Qwen-class models can be extremely slow.
+- Operators who want to hide GGUF presets (and reject GGUF execution) on macOS can set `ABSTRACTVISION_DISABLE_GGUF_ON_MACOS=1`.
 - The optional python binding is constrained below `0.4.6` because that sdist
   currently misses vendored CMake files needed by native Linux builds.
 - Interactive CLI selection supports both `/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]` and

@@ -113,6 +113,7 @@ Playground-only Diffusers vars:
 - `ABSTRACTVISION_SDCPP_LLM` — text encoder path (often GGUF; required for component-mode models like Qwen Image GGUF and FLUX.2 GGUF)
 - `ABSTRACTVISION_SDCPP_LLM_VISION` — optional vision encoder GGUF path
 - `ABSTRACTVISION_SDCPP_EXTRA_ARGS` — extra `sd-cli` flags (string, split like a shell)
+- `ABSTRACTVISION_DISABLE_GGUF_ON_MACOS` — set to `1` to hide/disable GGUF/stable-diffusion.cpp catalog entries and execution on macOS (default: `0` / GGUF enabled)
 
 Curated bundle flow:
 - `abstractvision download flux2-klein-base-4b --provider sdcpp`

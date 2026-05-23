@@ -182,16 +182,17 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("flux2-klein-4b", out)
         self.assertNotIn("stable-diffusion-3-medium", out)
 
-    def test_model_presets_lists_diffusers_gguf_qwen_edit(self):
+    def test_model_presets_lists_sdcpp_gguf_qwen_edit(self):
         from abstractvision.cli import main
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = main(["model-presets", "--provider", "diffusers"])
+            rc = main(["model-presets", "--provider", "sdcpp"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
-        self.assertIn("provider/engine: diffusers", out)
+        self.assertIn("provider/engine: stable-diffusion.cpp", out)
         self.assertIn("qwen-image-edit-2511-gguf", out)
+        self.assertEqual(out.count("qwen-image-edit-2511-gguf"), 1)
         self.assertIn("unsloth/Qwen-Image-Edit-2511-GGUF", out)
         self.assertIn("gguf", out)
 
@@ -230,12 +231,12 @@ class TestCliSmoke(unittest.TestCase):
         self.assertNotIn("Qwen/Qwen-Image-2512", out)
         self.assertNotIn("zai-org/GLM-Image", out)
 
-    def test_model_catalog_task_filter_lists_diffusers_gguf_qwen_edit(self):
+    def test_model_catalog_task_filter_lists_sdcpp_gguf_qwen_edit(self):
         from abstractvision.cli import main
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = main(["model-catalog", "--task", "image_to_image", "--provider", "diffusers", "--json"])
+            rc = main(["model-catalog", "--task", "image_to_image", "--provider", "sdcpp", "--json"])
         self.assertEqual(rc, 0)
         payload = json.loads(buf.getvalue())
         qwen = next(entry for entry in payload if entry.get("model_id") == "Qwen/Qwen-Image-Edit-2511")
@@ -244,12 +245,12 @@ class TestCliSmoke(unittest.TestCase):
             for item in qwen.get("downloads", [])
             if item.get("key") == "qwen-image-edit-2511-gguf"
             and item.get("target") == "gguf"
-            and item.get("engine") == "diffusers"
+            and item.get("engine") == "stable-diffusion.cpp"
         ]
-        self.assertTrue(matching)
+        self.assertEqual(len(matching), 1)
         self.assertIn("image_to_image", matching[0].get("tasks", []))
 
-    def test_model_catalog_task_filter_hides_mflux_i2i_rows(self):
+    def test_model_catalog_task_filter_lists_mflux_i2i_rows(self):
         from abstractvision.cli import main
 
         buf = io.StringIO()
@@ -257,8 +258,8 @@ class TestCliSmoke(unittest.TestCase):
             rc = main(["catalog", "--task", "image_to_image", "--provider", "mflux"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
-        self.assertNotIn("flux2-klein-4b", out)
-        self.assertNotIn("flux2-klein-9b", out)
+        self.assertIn("flux2-klein-4b", out)
+        self.assertIn("flux2-klein-9b", out)
 
     def test_model_catalog_json_is_parseable(self):
         from abstractvision.cli import main

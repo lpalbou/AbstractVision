@@ -133,16 +133,16 @@ _MFLUX_BASE_MODEL_REGISTRY_IDS: Dict[str, str] = {
 
 
 _MFLUX_BASE_MODEL_FALLBACK_TASKS: Dict[str, Tuple[str, ...]] = {
-    "flux2-klein-4b": ("text_to_image",),
-    "flux2-klein-9b": ("text_to_image",),
+    "flux2-klein-4b": ("image_to_image", "text_to_image"),
+    "flux2-klein-9b": ("image_to_image", "text_to_image"),
     "qwen-image": ("text_to_image",),
     "z-image-turbo": ("text_to_image",),
 }
 
 
 _MFLUX_RUNTIME_ALLOWED_TASKS: Dict[str, Tuple[str, ...]] = {
-    "flux2-klein-4b": ("text_to_image",),
-    "flux2-klein-9b": ("text_to_image",),
+    "flux2-klein-4b": ("image_to_image", "text_to_image"),
+    "flux2-klein-9b": ("image_to_image", "text_to_image"),
     "qwen-image": ("text_to_image",),
     "z-image-turbo": ("text_to_image",),
 }
@@ -720,7 +720,8 @@ class MFluxVisionBackend(VisionBackend):
                 )
             except Exception:
                 pass
-        return list(_MFLUX_BASE_MODEL_FALLBACK_TASKS.get(resolved_base, ("text_to_image",)))
+        fallback = _MFLUX_BASE_MODEL_FALLBACK_TASKS.get(resolved_base, ("text_to_image",))
+        return sorted(str(task_name) for task_name in fallback if str(task_name) in allowed)
 
     def get_capabilities(self) -> VisionBackendCapabilities:
         return VisionBackendCapabilities(
@@ -1006,12 +1007,96 @@ class MFluxVisionBackend(VisionBackend):
         negative_prompt = request.negative_prompt
         if negative_prompt and not model_def.supports_negative_prompt:
             negative_prompt = None
+
+        extra = dict(request.extra or {})
+        if "image_strength" not in extra and "strength" in extra:
+            extra["image_strength"] = extra.get("strength")
+        if "image_strength" in extra and extra.get("image_strength") is not None:
+            try:
+                strength = float(extra.get("image_strength"))
+                if strength < 0.0:
+                    strength = 0.0
+                if strength > 1.0:
+                    strength = 1.0
+                extra["image_strength"] = strength
+            except Exception:
+                extra.pop("image_strength", None)
+        for key in ("width", "height"):
+            if key in extra and extra.get(key) is not None:
+                try:
+                    extra[key] = int(extra[key])
+                except Exception:
+                    extra.pop(key, None)
         return replace(
             request,
             steps=steps,
             guidance_scale=guidance,
             negative_prompt=negative_prompt,
+            extra=extra,
         )
+
+    def _sniff_image_suffix(self, image: bytes) -> str:
+        if len(image) >= 8 and image[:8] == b"\x89PNG\r\n\x1a\n":
+            return ".png"
+        if len(image) >= 3 and image[:3] == b"\xff\xd8\xff":
+            return ".jpg"
+        return ".img"
+
+    def _sniff_image_dimensions(self, image: bytes) -> Optional[Tuple[int, int]]:
+        if len(image) >= 24 and image[:8] == b"\x89PNG\r\n\x1a\n" and image[12:16] == b"IHDR":
+            try:
+                width = int.from_bytes(image[16:20], "big")
+                height = int.from_bytes(image[20:24], "big")
+                if width > 0 and height > 0:
+                    return width, height
+            except Exception:
+                return None
+        if len(image) >= 4 and image[:2] == b"\xff\xd8":
+            i = 2
+            n = len(image)
+            while i + 1 < n:
+                if image[i] != 0xFF:
+                    i += 1
+                    continue
+                while i < n and image[i] == 0xFF:
+                    i += 1
+                if i >= n:
+                    break
+                marker = image[i]
+                i += 1
+                if marker in {0xD8, 0xD9} or 0xD0 <= marker <= 0xD7 or marker == 0x01:
+                    continue
+                if i + 1 >= n:
+                    break
+                seg_len = int.from_bytes(image[i : i + 2], "big")
+                if seg_len < 2 or i + seg_len > n:
+                    break
+                if marker in {
+                    0xC0,
+                    0xC1,
+                    0xC2,
+                    0xC3,
+                    0xC5,
+                    0xC6,
+                    0xC7,
+                    0xC9,
+                    0xCA,
+                    0xCB,
+                    0xCD,
+                    0xCE,
+                    0xCF,
+                }:
+                    try:
+                        height = int.from_bytes(image[i + 3 : i + 5], "big")
+                        width = int.from_bytes(image[i + 5 : i + 7], "big")
+                        if width > 0 and height > 0:
+                            return width, height
+                    except Exception:
+                        return None
+                i += seg_len
+                if marker == 0xDA:
+                    break
+        return None
 
     def _generate_impl(
         self,
@@ -1049,7 +1134,9 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["negative_prompt"] = str(request.negative_prompt)
         if image_path is not None:
             kwargs["image_path"] = image_path
-            kwargs["image_strength"] = float(image_strength if image_strength is not None else extra.pop("image_strength", 0.4))
+            kwargs["image_strength"] = float(
+                image_strength if image_strength is not None else extra.pop("image_strength", 0.4)
+            )
 
         generated = model.generate_image(**kwargs)
         if self._model_key is not None:
@@ -1058,6 +1145,7 @@ class MFluxVisionBackend(VisionBackend):
         buf = BytesIO()
         pil_image.save(buf, format="PNG")
         data = buf.getvalue()
+        image_strength_used = kwargs.get("image_strength") if image_path is not None else None
         return GeneratedAsset(
             media_type="image",
             data=data,
@@ -1071,6 +1159,7 @@ class MFluxVisionBackend(VisionBackend):
                 "steps": steps,
                 "width": width,
                 "height": height,
+                **({"image_strength": image_strength_used} if image_strength_used is not None else {}),
             },
         )
 
@@ -1078,11 +1167,59 @@ class MFluxVisionBackend(VisionBackend):
         return self._run_on_runtime_thread(self._generate_impl, request)
 
     def _edit_image_impl(self, request: ImageEditRequest) -> GeneratedAsset:
-        _ = request
-        raise CapabilityNotSupportedError(
-            "MFLUX backend currently supports text_to_image only. "
-            "Local image_to_image is temporarily disabled pending quality investigation."
+        request = self.normalize_image_edit_request(request)
+        if request.mask is not None:
+            raise CapabilityNotSupportedError("MFLUX backend does not implement mask-based image edits yet.")
+
+        _model, model_def = self._ensure_model_impl()
+        if model_def.family != "flux2":
+            raise CapabilityNotSupportedError(
+                f"MFLUX image_to_image is only implemented for flux2 models today (got {model_def.family!r})."
+            )
+
+        extra = dict(request.extra or {})
+        width = extra.get("width")
+        height = extra.get("height")
+        if width is None or height is None:
+            sniffed = self._sniff_image_dimensions(request.image)
+            if sniffed is not None:
+                width, height = sniffed
+        strength = extra.get("image_strength")
+        if strength is None:
+            strength = extra.get("strength")
+        image_strength: Optional[float] = None
+        if strength is not None:
+            try:
+                image_strength = float(strength)
+            except Exception:
+                image_strength = None
+
+        gen_request = ImageGenerationRequest(
+            prompt=str(request.prompt),
+            negative_prompt=str(request.negative_prompt) if request.negative_prompt else None,
+            width=int(width) if width is not None else None,
+            height=int(height) if height is not None else None,
+            seed=int(request.seed) if request.seed is not None else None,
+            steps=int(request.steps) if request.steps is not None else None,
+            guidance_scale=float(request.guidance_scale) if request.guidance_scale is not None else None,
+            extra=extra,
         )
+
+        suffix = self._sniff_image_suffix(request.image)
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=suffix, delete=False) as fp:
+            tmp_path = Path(fp.name)
+            fp.write(request.image)
+        try:
+            return self._generate_impl(
+                gen_request,
+                image_path=tmp_path,
+                image_strength=image_strength,
+            )
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         return self._run_on_runtime_thread(self._edit_image_impl, request)

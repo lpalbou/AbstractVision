@@ -92,7 +92,7 @@ The public API includes `text_to_video`, `image_to_video`, and `multi_view_image
   - Diffusers backend ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
   - stable-diffusion.cpp backend ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
   - MFLUX backend for curated Apple Silicon MLX presets ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py))
-- Local MFLUX is currently surfaced for `text_to_image` only.
+- Local MFLUX supports `text_to_image` and FLUX.2 klein `image_to_image` edits (no masks yet).
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local surfaces.
 - `image_to_video` is still supported **only** by the OpenAI-compatible backend, and only when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).
 - No built-in backend implements `multi_view_image` yet (they raise `CapabilityNotSupportedError` in `generate_angles(...)`).

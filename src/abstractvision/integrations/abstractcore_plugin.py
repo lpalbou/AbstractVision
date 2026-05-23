@@ -1035,7 +1035,7 @@ class _AbstractVisionCapability:
             StableDiffusionCppBackendConfig,
             StableDiffusionCppVisionBackend,
         )
-        from ..model_downloads import resolve_sdcpp_model_selection
+        from ..model_downloads import MacOSGGUFUnsupportedError, resolve_sdcpp_model_selection
 
         vae = _owner_cfg(self._owner, "vision_sdcpp_vae") or _env("ABSTRACTVISION_SDCPP_VAE")
         llm = _owner_cfg(self._owner, "vision_sdcpp_llm") or _env("ABSTRACTVISION_SDCPP_LLM")
@@ -1052,6 +1052,8 @@ class _AbstractVisionCapability:
             if model_path is None or not model_path.exists():
                 try:
                     resolved_sdcpp = resolve_sdcpp_model_selection(str(model), allow_download=False)
+                except MacOSGGUFUnsupportedError as e:
+                    raise AbstractVisionError(str(e)) from e
                 except ValueError:
                     resolved_sdcpp = None
                 except RuntimeError as e:
