@@ -854,6 +854,62 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIsNone(args.height)
         self.assertIsNone(args.steps)
 
+    def test_t2i_provider_mflux_alias_routes_to_mlx_gen_backend(self):
+        from abstractvision.backends.mflux import MFluxVisionBackend
+        from abstractvision.cli import _build_manager_from_args, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "t2i",
+                "--provider",
+                "mflux",
+                "--model",
+                "qwen-image-2512",
+                "hello",
+            ]
+        )
+
+        vm = _build_manager_from_args(args)
+
+        self.assertIsInstance(vm.backend, MFluxVisionBackend)
+        self.assertEqual(getattr(vm.backend, "_cfg").model, "qwen-image-2512")
+
+    def test_t2i_model_prefix_mflux_alias_routes_to_mlx_gen_backend(self):
+        from abstractvision.backends.mflux import MFluxVisionBackend
+        from abstractvision.cli import _build_manager_from_args, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["t2i", "--model", "mflux/qwen-image-2512", "hello"])
+
+        vm = _build_manager_from_args(args)
+
+        self.assertIsInstance(vm.backend, MFluxVisionBackend)
+        self.assertEqual(getattr(vm.backend, "_cfg").model, "qwen-image-2512")
+
+    def test_i2i_provider_mflux_alias_routes_to_mlx_gen_backend(self):
+        from abstractvision.backends.mflux import MFluxVisionBackend
+        from abstractvision.cli import _build_manager_from_args, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "i2i",
+                "--provider",
+                "mflux",
+                "--model",
+                "qwen-image-edit-2511",
+                "--image",
+                "input.png",
+                "hello",
+            ]
+        )
+
+        vm = _build_manager_from_args(args)
+
+        self.assertIsInstance(vm.backend, MFluxVisionBackend)
+        self.assertEqual(getattr(vm.backend, "_cfg").model, "qwen-image-edit-2511")
+
     def test_resolve_i2i_steps_prefers_backend_recommended_default(self):
         from dataclasses import replace
 

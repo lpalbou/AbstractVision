@@ -219,7 +219,7 @@ def _split_provider_prefix(model: Optional[str]) -> Tuple[Optional[str], Optiona
         "stable-diffusion-cpp",
         "stable_diffusion_cpp",
     }:
-        return head, tail.strip() or None
+        return _normalize_cli_provider(head), tail.strip() or None
     return None, s or None
 
 
@@ -2178,7 +2178,7 @@ def build_parser() -> argparse.ArgumentParser:
         ap.add_argument("--sdcpp-extra-args", default=_env("ABSTRACTVISION_SDCPP_EXTRA_ARGS"), help="Extra args forwarded to sd-cli / bindings (quoted string).")
 
         # MLX-Gen provider config (env var names preserve MFLUX compatibility).
-        ap.add_argument("--mflux-base-model", default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"), help="MLX-Gen base model: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, z-image, z-image-turbo, qwen-image, or qwen-image-edit-2511.")
+        ap.add_argument("--mflux-base-model", default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"), help="MLX-Gen base model: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, or ernie-image-turbo.")
         ap.add_argument(
             "--mflux-model-dir",
             "--model-dir",
