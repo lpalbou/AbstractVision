@@ -783,7 +783,7 @@
 - Compatible HTTP: set <code>OPENAI_BASE_URL</code> to a local/remote compatible <code>/v1</code> server. Set <code>ABSTRACTVISION_BACKEND=openai-compatible</code> when you want to force compatible-endpoint semantics.
 - Legacy <code>abstractvision:openai-compatible</code>: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another supported Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set. Local <code>text_to_video</code> groundwork exists but is currently experimental and disabled from the normal local plugin surfaces.
-- Local MLX-Gen (Apple Silicon): install <code>abstractvision[mlx-gen]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mlx-gen</code>. Download an AbstractFramework q4 prepared preset with <code>abstractvision download flux2-klein-4b --provider mlx-gen</code> or <code>abstractvision download ernie-image-turbo --provider mlx-gen --bits 4</code>; select q8 explicitly with commands such as <code>abstractvision download ernie-image-turbo --provider mlx-gen --bits 8</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed model ids such as <code>mlx-gen/flux2-klein-4b</code> or <code>mlx-gen/ernie-image-turbo</code>. q4 is the default recommendation for memory efficiency; q8 variants remain available for quality-focused runs. Legacy <code>mflux</code> provider values remain accepted as aliases.
+- Local MLX-Gen (Apple Silicon): install <code>abstractvision[mlx-gen]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mlx-gen</code>. Download exact model repos such as <code>abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-gen</code>, <code>abstractvision download briaai/FIBO --provider mlx-gen</code>, or <code>abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed exact model ids such as <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code> or <code>mlx-gen/Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>. q4 repos are the memory-efficient default recommendation when a q4/q8 AbstractFramework pair exists; q8 repos remain available for quality-focused runs. Quantization is metadata of the selected model folder, not an AbstractCore request parameter. Legacy <code>mflux</code> provider values remain accepted as aliases.
 - stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure either a model path or a curated model key such as <code>flux2-klein-base-4b</code>. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.
 - Gateway/Core should pass process-level config or <code>owner.config</code> and report readiness; they should not mutate AbstractVision environment variables per request.</p>
@@ -793,7 +793,7 @@
 - <code>vision_model_id</code> (Diffusers/OpenAI-compatible model id; default <code>gpt-image-1</code> only for the official OpenAI profile and <code>runwayml/stable-diffusion-v1-5</code> for Diffusers)
 - <code>vision_device</code> / <code>vision_torch_dtype</code> / <code>vision_allow_download</code> / <code>vision_auto_retry_fp32</code> (Diffusers)
 - <code>vision_base_url</code> / <code>vision_api_key</code> (OpenAI or compatible HTTP)
-- <code>vision_mflux_model</code> / <code>vision_mflux_base_model</code> / <code>vision_mflux_quantize</code> / <code>vision_mflux_allow_download</code> (MLX-Gen; env/config names keep MFLUX compatibility)
+- <code>vision_mflux_model</code> / <code>vision_mflux_base_model</code> / <code>vision_mflux_allow_download</code> (MLX-Gen; env/config names keep MFLUX compatibility)
 - <code>vision_model_dir</code> (legacy preset import root used by MLX-Gen compatibility/migration helpers; new downloads land in the Hugging Face cache)
 - <code>vision_sdcpp_model</code> / <code>vision_sdcpp_diffusion_model</code> / <code>vision_sdcpp_bin</code> (stable-diffusion.cpp; <code>vision_sdcpp_model</code> may be a curated model key such as <code>flux2-klein-base-4b</code>)
 - <code>vision_sdcpp_vae</code> / <code>vision_sdcpp_llm</code> / <code>vision_sdcpp_llm_vision</code> / <code>vision_sdcpp_clip_l</code> / <code>vision_sdcpp_clip_g</code> / <code>vision_sdcpp_t5xxl</code> / <code>vision_sdcpp_extra_args</code> (stable-diffusion.cpp component mode)
@@ -820,6 +820,66 @@
 <span class="n">llm</span> <span class="o">=</span> <span class="n">create_llm</span><span class="p">(</span><span class="s2">&quot;openai&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">)</span>
 <span class="n">png_bytes</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2i</span><span class="p">(</span><span class="s2">&quot;a red square&quot;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
 </code></pre></div>
+<p>Per-call routing can select the same backend/model ids used by the
+<code>abstractvision</code> shell commands. For MLX-Gen, pass the exact published model
+repo id; there is no separate quantization parameter.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractcore</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_llm</span>
+
+<span class="n">llm</span> <span class="o">=</span> <span class="n">create_llm</span><span class="p">(</span><span class="s2">&quot;openai&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">)</span>
+
+<span class="n">png_bytes</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2i</span><span class="p">(</span>
+    <span class="s2">&quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot;</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-2512-4bit&quot;</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">edited_png</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">i2i</span><span class="p">(</span>
+    <span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="p">,</span>
+    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;./input.png&quot;</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-edit-2511-4bit&quot;</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">2.5</span><span class="p">,</span>
+    <span class="n">strength</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">on_video_progress</span><span class="p">(</span><span class="n">event</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">phase</span><span class="si">}</span><span class="s2">: frame </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">frame</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_frames</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="n">mp4_bytes</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2v</span><span class="p">(</span>
+    <span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;Wan-AI/Wan2.2-TI2V-5B-Diffusers&quot;</span><span class="p">,</span>
+    <span class="n">num_frames</span><span class="o">=</span><span class="mi">121</span><span class="p">,</span>
+    <span class="n">fps</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
+    <span class="n">max_sequence_length</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="n">on_video_progress</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">first_frame_mp4</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">i2v</span><span class="p">(</span>
+    <span class="s2">&quot;./first-frame.png&quot;</span><span class="p">,</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;slow camera push-in&quot;</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;Wan-AI/Wan2.2-TI2V-5B-Diffusers&quot;</span><span class="p">,</span>
+    <span class="n">num_frames</span><span class="o">=</span><span class="mi">121</span><span class="p">,</span>
+    <span class="n">fps</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
+    <span class="n">max_sequence_length</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="n">on_video_progress</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>llm.vision.i2i(...)</code> accepts <code>image</code> as bytes, a local file path, or an
+artifact ref dict when an <code>artifact_store</code> is supplied. Without an artifact
+store the plugin returns bytes; with <code>artifact_store=...</code> it returns the stored
+artifact ref, matching the runtime/gateway artifact path.
+<code>llm.vision.t2v(...)</code> and <code>llm.vision.i2v(...)</code> forward <code>on_progress</code> to local
+video backends; MLX-Gen Wan emits normalized <code>VideoProgressEvent</code> objects with
+frame and diffusion-step counters.</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># OpenAI API.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>...
 <span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_IMAGE_MODEL</span><span class="o">=</span>gpt-image-1
@@ -847,14 +907,17 @@ cache-backed snapshots rather than a separate <code>~/models</code> download tre
 <p>Core/Gateway hosts can also control in-process local model residency through the same capability
 object:</p>
 <div class="highlight"><pre><span></span><code><span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">load_resident_model</span><span class="p">(</span>
-    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span> <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">}</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span> <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;AbstractFramework/flux.2-klein-4b-4bit&quot;</span><span class="p">}</span>
+<span class="p">)</span>
+<span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">load_resident_model</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;text_to_video&quot;</span><span class="p">,</span> <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;Wan-AI/Wan2.2-TI2V-5B-Diffusers&quot;</span><span class="p">}</span>
 <span class="p">)</span>
 
 <span class="n">loaded</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_loaded_models</span><span class="p">()</span>
 <span class="n">resident</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_resident_models</span><span class="p">()</span>
 
 <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">unload_resident_model</span><span class="p">(</span>
-    <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">}</span>
+    <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;AbstractFramework/flux.2-klein-4b-4bit&quot;</span><span class="p">}</span>
 <span class="p">)</span>
 </code></pre></div>
 <p>Notes:</p>

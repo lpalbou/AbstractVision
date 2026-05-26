@@ -850,11 +850,22 @@
 <li><code>abstractvision cli</code> — interactive testing (supports <code>openai</code>, <code>diffusers</code>, <code>mlx-gen</code>, <code>sdcpp</code>; legacy alias: <code>abstractvision repl</code>; <code>mflux</code> is accepted as a compatibility alias)</li>
 <li><code>abstractvision playground [--host 127.0.0.1] [--port 8091]</code> — self-contained local web UI and <code>/v1/vision/*</code> API</li>
 <li><code>abstractvision serve [--host 127.0.0.1] [--port 8091]</code> — alias for <code>abstractvision playground</code></li>
-<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> / <code>abstractvision t2v ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mlx-gen</code>, and <code>sdcpp</code>, with <code>t2v</code> currently implemented locally through Diffusers)</li>
+<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> / <code>abstractvision t2v ...</code> / <code>abstractvision i2v ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mlx-gen</code>, and <code>sdcpp</code>; MLX-Gen 0.18.6+ provides Wan <code>t2v</code>/<code>i2v</code>)</li>
 </ul>
 <p>Note:
-- <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers via <code>--provider diffusers|mlx-gen|sdcpp</code> (legacy alias: <code>--backend</code>; <code>mflux</code> remains accepted).
-- Local Diffusers requires <code>abstractvision[diffusers]</code>. stable-diffusion.cpp python binding fallback requires <code>abstractvision[sdcpp]</code>; external <code>sd-cli</code> can be used without the binding.</p>
+- <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> / <code>abstractvision i2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers via <code>--provider diffusers|mlx-gen|sdcpp</code> (legacy alias: <code>--backend</code>; <code>mflux</code> remains accepted).
+- Local Diffusers requires <code>abstractvision[diffusers]</code>. stable-diffusion.cpp python binding fallback requires <code>abstractvision[sdcpp]</code>; external <code>sd-cli</code> can be used without the binding.
+- One-shot image commands write to <code>ABSTRACTVISION_STORE_DIR</code> or <code>--store-dir</code> and print JSON artifact metadata followed by the local content path. They do not take an <code>--output</code> path flag.</p>
+<p>Examples:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
+abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/FIBO<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
+</code></pre></div>
+<p>For MLX-Gen Wan, one-shot <code>t2v</code> and <code>i2v</code> show frame/step progress on stderr
+by default. Add <code>--no-progress</code> when you need quiet shell output.</p>
 <h2 id="interactive-cli-backend-selection">Interactive CLI backend selection<a class="headerlink" href="#interactive-cli-backend-selection" title="Permanent link">&para;</a></h2>
 <p>Inside <code>abstractvision cli</code>:</p>
 <ul>
@@ -866,7 +877,20 @@
 <li><code>/backend sdcpp &lt;diffusion_model.gguf&gt; &lt;vae.safetensors&gt; &lt;llm.gguf&gt; [sd_cli_path]</code></li>
 </ul>
 <p>Run <code>/help</code> in the interactive CLI to see the full command list (generated by <code>_repl_help()</code> in <a href="../../src/abstractvision/cli.py"><code>../../src/abstractvision/cli.py</code></a>).</p>
-<p>Interactive generation commands include <code>/t2i</code>, <code>/i2i</code>, and <code>/t2v</code>. The local <code>t2v</code> command remains available for backend-dependent routes, but the bundled local Diffusers <code>text_to_video</code> path is currently experimental and disabled from the normal local surfaces.</p>
+<p>Interactive generation commands include <code>/t2i</code>, <code>/i2i</code>, <code>/t2v</code>, and <code>/i2v</code>. The local Diffusers <code>text_to_video</code> path remains experimental and disabled from the normal local surfaces, while MLX-Gen Wan supports local <code>t2v</code> and <code>i2v</code>.</p>
+<p>Examples:</p>
+<div class="highlight"><pre><span></span><code>/backend mlx-gen AbstractFramework/qwen-image-2512-4bit
+/t2i &quot;a studio product photo of a white ceramic mug&quot; --steps 20 --guidance-scale 1.0 --open
+/backend mlx-gen AbstractFramework/qwen-image-edit-2511-4bit
+/i2i --image ./input.png &quot;replace the background with a clean white studio setup&quot; --steps 20 --guidance-scale 2.5 --strength 0.75 --open
+/backend mlx-gen briaai/FIBO
+/t2i &quot;a studio product photo of a white ceramic mug&quot; --steps 50 --guidance-scale 4.0 --open
+/backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
+/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+</code></pre></div>
+<p>Interactive <code>/t2v</code> and <code>/i2v</code> also show video progress by default and accept
+<code>--no-progress</code>.</p>
 <p>Important runtime note:
 - Model-specific request adjustments are not implemented only in the interactive UI. The shared backend normalization hooks are applied by <code>VisionManager</code> and by the playground API server, so the same parameter corrections reach <code>abstractvision cli</code>, the legacy <code>repl</code> alias, one-shot CLI commands, the playground, and the AbstractCore plugin.</p>
 <h2 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
@@ -917,12 +941,11 @@
 - <code>ABSTRACTVISION_DIFFUSERS_VARIANT</code> — optional model variant</p>
 <h3 id="mlx-gen-backend-apple-silicon">MLX-Gen backend (Apple Silicon)<a class="headerlink" href="#mlx-gen-backend-apple-silicon" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — preset key, local model path, or repo id (examples: <code>flux2-klein-4b</code>, <code>mlx-gen/flux2-klein-4b</code>, <code>ernie-image-turbo</code>, <code>/path/to/preset-dir</code>, <code>AbstractFramework/qwen-image-2512-4bit</code>)</li>
-<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional explicit base model (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>flux2-klein-base-4b</code>, <code>flux2-klein-base-9b</code>, <code>z-image</code>, <code>z-image-turbo</code>, <code>qwen-image</code>, <code>qwen-image-edit-2511</code>, <code>ernie-image-turbo</code>)</li>
-<li><code>ABSTRACTVISION_MFLUX_QUANTIZE</code> — optional quantization override for the MLX-Gen runtime</li>
+<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — exact published MLX-Gen repo id, local model path, or custom repo id (examples: <code>AbstractFramework/flux.2-klein-4b-4bit</code>, <code>AbstractFramework/ernie-image-turbo-8bit</code>, <code>briaai/FIBO</code>, <code>briaai/Fibo-Edit</code>, <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>, <code>/path/to/preset-dir</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional base family for local paths or custom repos (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>flux2-klein-base-4b</code>, <code>flux2-klein-base-9b</code>, <code>z-image</code>, <code>z-image-turbo</code>, <code>qwen-image</code>, <code>qwen-image-edit-2511</code>, <code>ernie-image-turbo</code>, <code>fibo</code>, <code>fibo-lite</code>, <code>fibo-edit</code>, <code>fibo-edit-rmbg</code>, <code>wan2.2-ti2v-5b</code>)</li>
 <li><code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code> — <code>0</code> (default) or <code>1</code> to permit runtime downloads when a preset/repo is missing from the local cache</li>
 <li><code>ABSTRACTVISION_MODEL_DIR</code> — legacy preset root only; curated downloads now land in the Hugging Face cache</li>
-<li>Canonical provider/model routing is <code>mlx-gen</code> / <code>mlx-gen/&lt;preset&gt;</code>. Legacy <code>mflux</code> provider values, routed ids, and env var names are accepted for compatibility.</li>
+<li>Canonical provider/model routing is <code>mlx-gen</code> / <code>mlx-gen/&lt;exact-huggingface-repo&gt;</code>, for example <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code>. Legacy <code>mflux</code> provider values, routed ids, and env var names are accepted for compatibility, but the model id itself should be the exact published repo id.</li>
 </ul>
 <h3 id="stable-diffusioncpp-backend">stable-diffusion.cpp backend<a class="headerlink" href="#stable-diffusioncpp-backend" title="Permanent link">&para;</a></h3>
 <ul>

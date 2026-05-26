@@ -691,15 +691,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#local-text_to_video-is-experimental-and-currently-disabled" class="md-nav__link">
+  <a href="#local-diffusers-text_to_video-is-experimental-and-currently-disabled" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Local text_to_video is experimental and currently disabled
+        Local Diffusers text_to_video is experimental and currently disabled
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Local text_to_video is experimental and currently disabled">
+    <nav class="md-nav" aria-label="Local Diffusers text_to_video is experimental and currently disabled">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1112,18 +1112,20 @@ abstractvision<span class="w"> </span>download<span class="w"> </span>qwen-image
 <li><code>abstractvision catalog --provider diffusers</code></li>
 <li><code>abstractvision show-model Qwen/Qwen-Image-Edit-2511</code></li>
 </ul>
-<h2 id="local-text_to_video-is-experimental-and-currently-disabled">Local <code>text_to_video</code> is experimental and currently disabled<a class="headerlink" href="#local-text_to_video-is-experimental-and-currently-disabled" title="Permanent link">&para;</a></h2>
+<h2 id="local-diffusers-text_to_video-is-experimental-and-currently-disabled">Local Diffusers <code>text_to_video</code> is experimental and currently disabled<a class="headerlink" href="#local-diffusers-text_to_video-is-experimental-and-currently-disabled" title="Permanent link">&para;</a></h2>
 <h3 id="symptom_2">Symptom<a class="headerlink" href="#symptom_2" title="Permanent link">&para;</a></h3>
 <ul>
 <li>the local playground has no active local <code>Text→Video</code> model choices</li>
 <li>local Diffusers <code>t2v</code> raises a capability/disabled error</li>
 </ul>
 <h3 id="likely-cause_2">Likely cause<a class="headerlink" href="#likely-cause_2" title="Permanent link">&para;</a></h3>
-<p>AbstractVision intentionally quarantines the current local <code>text_to_video</code>
-groundwork because the operator validation bar is not met yet.</p>
+<p>AbstractVision intentionally quarantines the current local Diffusers
+<code>text_to_video</code> groundwork because the operator validation bar is not met yet.
+This does not apply to the MLX-Gen Wan path.</p>
 <h3 id="fix_2">Fix<a class="headerlink" href="#fix_2" title="Permanent link">&para;</a></h3>
 <ul>
-<li>use the OpenAI-compatible backend if you need <code>text_to_video</code> today; or</li>
+<li>use MLX-Gen Wan on Apple Silicon: <code>abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "prompt"</code>; or</li>
+<li>use the OpenAI-compatible backend when video is served remotely; or</li>
 <li>follow the backlog item that tracks the local re-validation work:
   <a href="../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a></li>
 </ul>
@@ -1161,8 +1163,8 @@ capability.</p>
 <ul>
 <li>Upgrade AbstractVision to a version that supports MLX-Gen q4/q8 presets.</li>
 <li>Install the backend extra: <code>pip install "abstractvision[mlx-gen]"</code></li>
-<li>Download the prepared model first, for example <code>abstractvision download qwen-image-edit-2511 --provider mlx-gen</code>.</li>
-<li>For mask edits/inpainting, use local Diffusers or <code>stable-diffusion.cpp</code> instead.</li>
+<li>Download the prepared model first, for example <code>abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen</code>.</li>
+<li>For MLX-Gen mask edits, select a model that supports masks, such as <code>briaai/Fibo-Edit</code> or <code>briaai/Fibo-Edit-RMBG</code>; otherwise use local Diffusers or <code>stable-diffusion.cpp</code> for inpainting.</li>
 </ul>
 <p>Notes:
 - MLX-Gen edit strength is passed as <code>strength</code> and normalized to the runtime <code>image_strength</code> parameter where the model supports it.
@@ -1203,7 +1205,8 @@ packaged capability registry, or the backend cannot really execute that task.</p
 <p>Choose a model that advertises the task:</p>
 <ul>
 <li>image edits: a model with <code>image_to_image</code></li>
-<li>local text-to-video: none are currently shipped as enabled local options in the bundled server</li>
+<li>local MLX-Gen text-to-video: <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code></li>
+<li>remote text-to-video: an OpenAI-compatible backend configured with a video endpoint</li>
 </ul>
 <h3 id="verify_3">Verify<a class="headerlink" href="#verify_3" title="Permanent link">&para;</a></h3>
 <ul>

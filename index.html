@@ -773,7 +773,7 @@
 <p>This folder contains the user-facing documentation for <code>abstractvision</code>.</p>
 <h2 id="start-here-new-users">Start here (new users)<a class="headerlink" href="#start-here-new-users" title="Permanent link">&para;</a></h2>
 <p>1) <a href="../README.md">Project overview + quickstart</a><br />
-2) <a href="getting-started/">Getting started</a> (first image with Stable Diffusion 1.5; then klein-4B, GGUF, OpenAI-compatible HTTP, Playground)
+2) <a href="getting-started/">Getting started</a> (shell and interactive <code>t2i</code>/<code>i2i</code>; then Diffusers, MLX-Gen, GGUF, OpenAI-compatible HTTP, Playground)
 3) <a href="architecture/">Architecture</a> (how the pieces fit together)</p>
 <h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
 <ul>
@@ -802,8 +802,9 @@
 - <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
 <p>Built-in backends implement:
 - <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Current local policy</strong>: MLX-Gen supports curated q4/q8 Apple Silicon <code>text_to_image</code> presets and <code>image_to_image</code> for FLUX.2 klein/base plus Qwen Image Edit (no masks yet); local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
+- <strong>Current local policy</strong>: MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V video; local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
 - <strong>Video</strong>:
+  - MLX-Gen for Wan 2.2 TI2V local <code>text_to_video</code> and first-frame <code>image_to_video</code>
   - OpenAI-compatible HTTP for optional <code>text_to_video</code> / <code>image_to_video</code> when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
 <p>If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
 <a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>../src/abstractvision/assets/vision_model_capabilities.json</code></a> (loaded by <code>VisionModelCapabilitiesRegistry</code> in <a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>).

@@ -1198,7 +1198,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
 <li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines</li>
-<li><strong>MLX-Gen (local Apple Silicon)</strong>: q4/q8 AbstractFramework MLX-optimized generation via the optional MLX-Gen runtime (<code>text_to_image</code> plus FLUX.2 klein/base and Qwen Image Edit <code>image_to_image</code> edits without masks)</li>
+<li><strong>MLX-Gen (local Apple Silicon)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official MLX-Gen 0.18.6+ FIBO image models, and Wan 2.2 TI2V <code>text_to_video</code> / first-frame <code>image_to_video</code></li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
 <li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
@@ -1270,7 +1270,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 </tr>
 <tr>
 <td><code>mlx-gen</code></td>
-<td>Installs the optional MLX-Gen runtime for Apple Silicon MLX image generation.</td>
+<td>Installs the optional MLX-Gen runtime for Apple Silicon MLX image/video generation.</td>
 </tr>
 <tr>
 <td><code>mflux</code></td>
@@ -1347,7 +1347,7 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 <p>AbstractVision can run “locally” via three main routes:</p>
 <ul>
 <li><strong>Diffusers backend</strong>: uses Torch device selection (<code>cuda</code> / <code>mps</code> / <code>cpu</code>).</li>
-<li><strong>MLX-Gen backend (<code>mlx-gen</code>)</strong>: Apple Silicon MLX generation through the optional MLX-Gen runtime. q4 AbstractFramework presets are the default recommendation; q8 variants are available when quality is paramount.</li>
+<li><strong>MLX-Gen backend (<code>mlx-gen</code>)</strong>: Apple Silicon MLX generation through the optional MLX-Gen runtime. q4 AbstractFramework model repos are the default recommendation; q8 variants are separate exact model ids for quality-focused runs.</li>
 <li><strong>stable-diffusion.cpp backend (<code>sdcpp</code>)</strong>: runs GGUF diffusion models using:</li>
 <li><code>sd-cli</code> (<strong>recommended</strong> when you want GPU backends like <strong>Metal</strong> or <strong>CUDA</strong>)</li>
 <li>or <code>stable-diffusion-cpp-python</code> (convenient, but often <strong>CPU-only</strong>, especially on macOS)</li>
@@ -1427,9 +1427,9 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 </table>
 <p>macOS Metal (Apple Silicon) quick picks:</p>
 <ul>
-<li>If you want <strong>local quantized FLUX.2</strong> on Metal: prefer the MLX-Gen q4 presets first (<code>abstractvision download flux2-klein-4b --provider mlx-gen</code>), then use q8 when quality is more important than memory.</li>
-<li>If you want a fast local FLUX.2 for iteration: <code>flux2-klein-4b</code> through MLX-Gen is usually the most practical Apple Silicon starting point.</li>
-<li>If you want strong prompt following + text rendering: use <code>qwen-image</code> or <code>ernie-image-turbo</code> through MLX-Gen q4 for Apple-local generation, select q8 explicitly when quality is more important than memory, or use <code>Qwen/Qwen-Image-2512</code> / <code>baidu/ERNIE-Image-Turbo</code> through Diffusers on <code>mps</code> when you want the full Diffusers path.</li>
+<li>If you want <strong>local quantized FLUX.2</strong> on Metal: start with <code>AbstractFramework/flux.2-klein-4b-4bit</code>, then use <code>AbstractFramework/flux.2-klein-4b-8bit</code> when quality is more important than memory.</li>
+<li>If you want a fast local FLUX.2 for iteration: <code>AbstractFramework/flux.2-klein-4b-4bit</code> through MLX-Gen is usually the most practical Apple Silicon starting point.</li>
+<li>If you want strong prompt following + text rendering: use exact MLX-Gen ids such as <code>AbstractFramework/qwen-image-2512-4bit</code> or <code>AbstractFramework/ernie-image-turbo-4bit</code>, select the matching <code>-8bit</code> repo when quality is more important than memory, or use <code>Qwen/Qwen-Image-2512</code> / <code>baidu/ERNIE-Image-Turbo</code> through Diffusers on <code>mps</code> when you want the full Diffusers path.</li>
 </ul>
 <p>Recommended default (local, cross-platform) — Stable Diffusion 1.5:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers]&quot;</span>
@@ -1437,7 +1437,7 @@ abstractvision<span class="w"> </span>download<span class="w"> </span>stable-dif
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_DIFFUSERS_DEVICE</span><span class="o">=</span>auto
-abstractvision<span class="w"> </span>repl
+abstractvision<span class="w"> </span>cli
 </code></pre></div>
 <p>Then type a prompt (plain text runs <code>/t2i</code>), or use <code>/t2i "..." --open</code>.</p>
 <p>Jump to detailed recipes:
@@ -1470,8 +1470,8 @@ abstractvision<span class="w"> </span>repl
 <div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import torch; print(&#39;mps&#39;, torch.backends.mps.is_available(), &#39;cuda&#39;, torch.cuda.is_available())&quot;</span>
 </code></pre></div>
 <p>If you have an NVIDIA GPU but <code>cuda</code> is <code>False</code>, you likely installed a CPU-only PyTorch build. Follow the PyTorch install guide to install a CUDA-enabled wheel, then re-run the sanity check: <a href="https://pytorch.org/get-started/locally/">https://pytorch.org/get-started/locally/</a>.</p>
-<p>Start the REPL:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>repl
+<p>Start the interactive CLI (<code>abstractvision repl</code> remains an alias):</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>cli
 </code></pre></div>
 <p>With <code>ABSTRACTVISION_BACKEND=diffusers</code> and <code>ABSTRACTVISION_MODEL_ID</code> set above, the REPL uses <code>runwayml/stable-diffusion-v1-5</code>:</p>
 <div class="highlight"><pre><span></span><code>/set guidance_scale 7
@@ -1505,8 +1505,8 @@ abstractvision<span class="w"> </span>provider-models<span class="w"> </span>--b
 <p>One-shot (stores output via <code>LocalAssetStore</code> and prints an artifact ref + file path):</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:1234/v1<span class="w"> </span><span class="s2">&quot;a watercolor painting of a lighthouse&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">512</span><span class="w"> </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--open
 </code></pre></div>
-<p>Interactive REPL:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>repl
+<p>Interactive CLI/REPL:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>cli
 </code></pre></div>
 <div class="highlight"><pre><span></span><code>/backend openai http://localhost:1234/v1
 /t2i &quot;a watercolor painting of a lighthouse&quot; --width 512 --height 512 --steps 10 --open
@@ -1514,31 +1514,62 @@ abstractvision<span class="w"> </span>provider-models<span class="w"> </span>--b
 <p>If your server also supports video endpoints, configure them via <code>ABSTRACTVISION_TEXT_TO_VIDEO_PATH</code> / <code>ABSTRACTVISION_IMAGE_TO_VIDEO_PATH</code> (see <a href="../reference/configuration/">docs/reference/configuration.md</a>).</p>
 <hr />
 <h2 id="22-apple-silicon-mlx-gen-q4-first">2.2) Apple Silicon MLX-Gen (q4 first)<a class="headerlink" href="#22-apple-silicon-mlx-gen-q4-first" title="Permanent link">&para;</a></h2>
-<p>Use this path on Apple Silicon when you want local MLX-optimized image models
+<p>Use this path on Apple Silicon when you want local MLX-optimized image/video models
 without running a separate server. AbstractVision uses the <code>mlx-gen</code> Python API
 in-process and expects prepared model folders to exist in the Hugging Face
 cache. It does not silently download weights during generation.</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[models,mlx-gen]&quot;</span>
 abstractvision<span class="w"> </span>catalog<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
-abstractvision<span class="w"> </span>download<span class="w"> </span>flux2-klein-4b<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
-abstractvision<span class="w"> </span>download<span class="w"> </span>qwen-image<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
-abstractvision<span class="w"> </span>download<span class="w"> </span>qwen-image-edit-2511<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
-abstractvision<span class="w"> </span>download<span class="w"> </span>ernie-image-turbo<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--bits<span class="w"> </span><span class="m">4</span>
-abstractvision<span class="w"> </span>download<span class="w"> </span>ernie-image-turbo<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--bits<span class="w"> </span><span class="m">8</span>
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/flux.2-klein-4b-4bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/ernie-image-turbo-4bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/ernie-image-turbo-8bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>briaai/FIBO<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>briaai/Fibo-lite<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 </code></pre></div>
-<p>The default prepared choices are q4 from the
+<p>The default prepared choices are q4 repos from the
 <a href="https://huggingface.co/collections/AbstractFramework/mlx-gen/">AbstractFramework/mlx-gen Hugging Face collection</a>.
-Select q8 variants explicitly when quality is paramount and memory permits it.
+Select q8 variants by passing the exact <code>AbstractFramework/...-8bit</code> model id
+when quality is paramount and memory permits it. Quantization is part of the
+published model folder, not a generation-time parameter.
 Qwen and ERNIE q4 folders can mix q4 and q8 components, but remain the default
 prepared choice.</p>
-<p>Text-to-image:</p>
-<div class="highlight"><pre><span></span><code>/backend mlx-gen flux2-klein-4b
+<p>One-shot shell commands store the output in the local asset store and print the
+artifact ref followed by the local content path. Add <code>--open</code> to open the output
+after generation, or <code>--store-dir &lt;dir&gt;</code> to select the store directory.</p>
+<p>Text-to-image from the shell:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
+</code></pre></div>
+<p>Image-to-image/edit from the shell:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+</code></pre></div>
+<p>Text-to-video and first-frame image-to-video from the shell:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
+</code></pre></div>
+<p>MLX-Gen video commands print frame/step progress while the video is running.
+Use <code>--no-progress</code> for quiet scripts.</p>
+<p>Interactive CLI/REPL (<code>abstractvision cli</code>; <code>abstractvision repl</code> remains an
+alias) uses the same backend and request normalization:</p>
+<div class="highlight"><pre><span></span><code>/backend mlx-gen AbstractFramework/flux.2-klein-4b-4bit
 /t2i &quot;a product photo of a matte black espresso machine&quot; --steps 4 --guidance-scale 1.0 --open
-</code></pre></div>
-<p>Image-to-image/edit:</p>
-<div class="highlight"><pre><span></span><code>/backend mlx-gen qwen-image-edit-2511
+
+/backend mlx-gen AbstractFramework/qwen-image-edit-2511-4bit
 /i2i --image ./input.png &quot;make it watercolor&quot; --steps 20 --guidance-scale 2.5 --open
+
+/backend mlx-gen briaai/FIBO
+/t2i &quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot; --steps 50 --guidance-scale 4.0 --open
+
+/backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
+/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
 </code></pre></div>
+<p>Interactive <code>/t2v</code> and <code>/i2v</code> use the same default progress display; add
+<code>--no-progress</code> to suppress it.</p>
 <p>Legacy <code>mflux</code> provider names and routed ids still work as aliases, but new
 configuration should use <code>mlx-gen</code>.</p>
 <hr />
@@ -1649,7 +1680,7 @@ install <code>sd-cli</code> and re-run in CLI mode.</p>
 <h3 id="62-single-file-stable-diffusion-model">6.2 Single-file Stable Diffusion model<a class="headerlink" href="#62-single-file-stable-diffusion-model" title="Permanent link">&para;</a></h3>
 <p>This is the lowest-friction <code>sdcpp</code> shape: one model file plus an optional <code>sd-cli</code> path. Use it for Stable Diffusion
 1.x/2.x/SDXL checkpoints or GGUF conversions that stable-diffusion.cpp can load as <code>--model</code>.</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>repl
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>cli
 </code></pre></div>
 <div class="highlight"><pre><span></span><code>/backend sdcpp /path/to/sd-v1-5.gguf /path/to/sd-cli
 /t2i &quot;a watercolor painting of a lighthouse&quot; --width 512 --height 512 --steps 10 --open
@@ -1671,7 +1702,7 @@ abstractvision<span class="w"> </span>download<span class="w"> </span>flux2-klei
 <p>If a required companion file is missing, the package now fails early with a precise <code>download ... --provider sdcpp</code>
 hint instead of starting generation and then failing deep in the runtime.</p>
 <h3 id="64-run-qwen-image-with-sdcpp">6.4 Run Qwen Image with <code>sdcpp</code><a class="headerlink" href="#64-run-qwen-image-with-sdcpp" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>repl
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>cli
 </code></pre></div>
 <p>Then:</p>
 <div class="highlight"><pre><span></span><code>/backend sdcpp qwen-image /path/to/sd-cli
@@ -1712,17 +1743,16 @@ authentication, and browser-origin policy.</p>
 - The API Base URL defaults to the same process that serves the page
 - Each task tab has its own model selector and unload button
 - Switching models in a tab unloads the previously active backend first to free memory before the replacement model is loaded
-- Generate (T2I), upload an input image (I2I), or inspect the experimental Text→Video tab status. The bundled local server currently does not ship an enabled local <code>t2v</code> model there.</p>
+- Generate (T2I), upload an input image (I2I), or inspect video-capable backend status. The Playground is still a dev surface; prefer the shell/REPL or AbstractCore for MLX-Gen Wan video smoke tests.</p>
 <p>For the endpoint list, see <code>playground/README.md</code>.</p>
 <h3 id="72-local-textvideo-status">7.2 Local text→video status<a class="headerlink" href="#72-local-textvideo-status" title="Permanent link">&para;</a></h3>
 <p>The packaged local Diffusers <code>text_to_video</code> groundwork remains experimental and
-is currently disabled from the normal local surfaces.</p>
+is currently disabled from the normal local surfaces. The practical local Apple
+Silicon video path is MLX-Gen Wan 2.2 TI2V.</p>
 <p>Current policy:
-- do not treat bundled local <code>t2v</code> as production-ready;
-- use the OpenAI-compatible backend if you need a working <code>text_to_video</code>
-  surface today; and
-- track the local follow-up in
-  <a href="../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a>.</p>
+- use <code>abstractvision t2v/i2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers</code> for local Apple Silicon video;
+- use the OpenAI-compatible backend when video is served remotely; and
+- keep Diffusers local video behind the experimental follow-up in <a href="../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a>.</p>
 
 
 

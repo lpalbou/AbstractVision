@@ -432,6 +432,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#local-example-mlx-gen-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local example (MLX-Gen backend)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -858,6 +869,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#local-example-mlx-gen-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local example (MLX-Gen backend)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -960,9 +982,9 @@
 <p>Backends are execution engines that implement the <code>VisionBackend</code> interface (<a href="../src/abstractvision/backends/base_backend.py"><code>../src/abstractvision/backends/base_backend.py</code></a>).</p>
 <p>Built-in backends live in <a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>:
 - <code>OpenAICompatibleVisionBackend</code> (HTTP)
-- <code>HuggingFaceDiffusersVisionBackend</code> (local Diffusers images; local <code>text_to_video</code> groundwork is currently quarantined)
+- <code>HuggingFaceDiffusersVisionBackend</code> (local Diffusers images; local Diffusers <code>text_to_video</code> groundwork is currently quarantined)
 - <code>StableDiffusionCppVisionBackend</code> (local stable-diffusion.cpp / GGUF)
-- <code>MLXGenVisionBackend</code> / compatibility alias <code>MFluxVisionBackend</code> (local Apple Silicon MLX-Gen bridge for curated AbstractFramework q4/q8 MLX presets; supports <code>text_to_image</code> and FLUX.2 klein/base plus Qwen Image Edit <code>image_to_image</code> edits without masks)</p>
+- <code>MLXGenVisionBackend</code> / compatibility alias <code>MFluxVisionBackend</code> (local Apple Silicon MLX-Gen bridge for curated AbstractFramework q4/q8 MLX presets, official FIBO snapshots, and Wan video)</p>
 <p>Backend config classes are re-exported from <code>abstractvision.backends</code> via lazy imports (see <a href="../src/abstractvision/backends/__init__.py"><code>../src/abstractvision/backends/__init__.py</code></a>).</p>
 <p>Provider catalog listing is exposed as a backend contract:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAICompatibleBackendConfig</span><span class="p">,</span> <span class="n">OpenAICompatibleVisionBackend</span>
@@ -1021,7 +1043,49 @@ returns JSON-safe dictionaries so Core/Gateway route code can avoid private back
 <span class="n">asset</span> <span class="o">=</span> <span class="n">vm</span><span class="o">.</span><span class="n">generate_image</span><span class="p">(</span><span class="s2">&quot;a watercolor painting of a lighthouse&quot;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <p>Note: <code>allow_download=False</code> is the default. Pre-download model weights separately, or set <code>allow_download=True</code> only when you want runtime downloads.</p>
-<p><code>generate_video(...)</code> remains part of the public API, but the bundled local <code>text_to_video</code> path is currently experimental and disabled from the normal local surfaces. Generated MP4 outputs still require an <code>ffmpeg</code> executable on <code>PATH</code> whenever a backend returns frame sequences for local packaging.</p>
+<p><code>generate_video(...)</code> and <code>image_to_video(...)</code> are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.6+ supports Wan <code>text_to_video</code> and first-frame <code>image_to_video</code>. Generated MP4 outputs still require an <code>ffmpeg</code> executable on <code>PATH</code> whenever a backend returns frame sequences for local packaging.</p>
+<h3 id="local-example-mlx-gen-backend">Local example (MLX-Gen backend)<a class="headerlink" href="#local-example-mlx-gen-backend" title="Permanent link">&para;</a></h3>
+<p>Install <code>abstractvision[mlx-gen]</code> and pre-download the exact model repo first, for example <code>abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">VisionManager</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">MLXGenBackendConfig</span><span class="p">,</span> <span class="n">MLXGenVisionBackend</span>
+
+<span class="n">backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span>
+    <span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;Wan-AI/Wan2.2-TI2V-5B-Diffusers&quot;</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="n">vm</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">on_progress</span><span class="p">(</span><span class="n">event</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">phase</span><span class="si">}</span><span class="s2">: frame </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">frame</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_frames</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="n">asset</span> <span class="o">=</span> <span class="n">vm</span><span class="o">.</span><span class="n">generate_video</span><span class="p">(</span>
+    <span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="p">,</span>
+    <span class="n">num_frames</span><span class="o">=</span><span class="mi">121</span><span class="p">,</span>
+    <span class="n">fps</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
+    <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;max_sequence_length&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">},</span>
+<span class="p">)</span>
+
+<span class="n">first_frame_asset</span> <span class="o">=</span> <span class="n">vm</span><span class="o">.</span><span class="n">image_to_video</span><span class="p">(</span>
+    <span class="n">image</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./first-frame.png&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(),</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;slow camera push-in&quot;</span><span class="p">,</span>
+    <span class="n">num_frames</span><span class="o">=</span><span class="mi">121</span><span class="p">,</span>
+    <span class="n">fps</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
+    <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;max_sequence_length&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">},</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>For MLX-Gen Wan, <code>on_progress</code> receives an
+<code>abstractvision.VideoProgressEvent</code> with <code>phase</code>, <code>frame</code>, <code>total_frames</code>,
+<code>step</code>, <code>total_steps</code>, and normalized <code>progress</code> fields. The lower-level
+<code>backend.generate_video_with_progress(...)</code> and
+<code>backend.image_to_video_with_progress(...)</code> methods keep the existing
+two-argument <code>(current, total)</code> callback for backend-agnostic progress bars.</p>
 <h2 id="passing-advanced-backend-parameters-extra">Passing advanced backend parameters (<code>extra</code>)<a class="headerlink" href="#passing-advanced-backend-parameters-extra" title="Permanent link">&para;</a></h2>
 <p>Request dataclasses include an <code>extra: dict</code> field (<a href="../src/abstractvision/types.py"><code>../src/abstractvision/types.py</code></a>). Use it to pass backend-specific parameters in a controlled way:</p>
 <div class="highlight"><pre><span></span><code><span class="n">asset_or_ref</span> <span class="o">=</span> <span class="n">vm</span><span class="o">.</span><span class="n">generate_image</span><span class="p">(</span>

@@ -783,8 +783,8 @@
 <tr>
 <td>MLX-Gen (local, Apple Silicon)</td>
 <td><a href="../../src/abstractvision/backends/mflux.py"><code>mflux.py</code></a></td>
-<td><code>text_to_image</code> (+ FLUX.2 klein/base and Qwen Image Edit <code>image_to_image</code>)</td>
-<td>Requires <code>abstractvision[mlx-gen]</code> (or compatibility extra <code>abstractvision[mflux]</code>, or <code>abstractvision[all-apple]</code>). Uses downloaded AbstractFramework q4/q8 MLX-Gen preset snapshots from the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is legacy migration input only.</td>
+<td><code>text_to_image</code>, <code>image_to_image</code>, <code>text_to_video</code>, <code>image_to_video</code></td>
+<td>Requires <code>abstractvision[mlx-gen]</code> (or compatibility extra <code>abstractvision[mflux]</code>, or <code>abstractvision[all-apple]</code>). Uses downloaded AbstractFramework q4/q8 MLX-Gen image preset snapshots plus official FIBO/Wan runtime snapshots from the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is legacy migration input only.</td>
 </tr>
 <tr>
 <td>stable-diffusion.cpp (local GGUF/checkpoints)</td>
@@ -878,7 +878,9 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 <h2 id="mlx-gen-backend-local-apple-silicon">MLX-Gen backend (local Apple Silicon)<a class="headerlink" href="#mlx-gen-backend-local-apple-silicon" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
 - You are on Apple Silicon and want local quantized MLX generation through the optional MLX-Gen runtime.
-- You want the AbstractFramework-published q4/q8 prepared folders from the <a href="https://huggingface.co/collections/AbstractFramework/mlx-gen/">AbstractFramework/mlx-gen Hugging Face collection</a>.</p>
+- You want the AbstractFramework-published q4/q8 prepared folders from the <a href="https://huggingface.co/collections/AbstractFramework/mlx-gen/">AbstractFramework/mlx-gen Hugging Face collection</a>.
+- You want the official MLX-Gen 0.18.6+ FIBO snapshots (<code>briaai/FIBO</code>, <code>briaai/Fibo-lite</code>, <code>briaai/Fibo-Edit</code>, <code>briaai/Fibo-Edit-RMBG</code>).
+- You want local Wan 2.2 TI2V video generation (<code>text_to_video</code> and first-frame <code>image_to_video</code>) through MLX-Gen 0.18.6+.</p>
 <p>Install:
 - <code>pip install "abstractvision[mlx-gen]"</code> (or <code>pip install "abstractvision[all-apple]"</code>)
 - <code>pip install "abstractvision[mflux]"</code> remains a compatibility alias for older install instructions.</p>
@@ -886,21 +888,55 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 - See what's downloadable for your machine/engine:
   - <code>abstractvision catalog --provider mlx-gen</code> (add <code>--all</code> for full fallback list)
   - Tip: <code>--provider mlx-gen</code> implies <code>--target mlx</code> (you usually set one or the other).
-- Download a curated preset into the Hugging Face cache (legacy <code>~/models</code> trees auto-migrate when encountered):
-  - <code>abstractvision download flux2-klein-4b --provider mlx-gen</code>
-  - <code>abstractvision download flux2-klein-9b --provider mlx-gen</code>
-  - <code>abstractvision download qwen-image --provider mlx-gen</code>
-  - <code>abstractvision download qwen-image-edit-2511 --provider mlx-gen</code>
-  - <code>abstractvision download z-image --provider mlx-gen</code>
-  - <code>abstractvision download z-image-turbo --provider mlx-gen</code>
-  - <code>abstractvision download ernie-image-turbo --provider mlx-gen --bits 4</code>
-  - <code>abstractvision download ernie-image-turbo --provider mlx-gen --bits 8</code>
-- q4 presets are the default recommendation for memory efficiency. Use the <code>-8bit</code> / q8 preset variants explicitly when quality is paramount. Qwen and ERNIE q4 prepared folders can mix q4 and q8 components, but remain the default prepared choice.
-- Current shipped backend coverage includes <code>text_to_image</code> for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, and ERNIE Image Turbo. <code>image_to_image</code> edits are implemented for FLUX.2 klein/base and Qwen Image Edit presets (no masks yet).</p>
+- Download an exact published model repo into the Hugging Face cache (legacy <code>~/models</code> trees auto-migrate when encountered):
+  - <code>abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen</code>
+  - <code>abstractvision download AbstractFramework/flux.2-klein-4b-8bit --provider mlx-gen</code>
+  - <code>abstractvision download AbstractFramework/qwen-image-2512-4bit --provider mlx-gen</code>
+  - <code>abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen</code>
+  - <code>abstractvision download AbstractFramework/z-image-4bit --provider mlx-gen</code>
+  - <code>abstractvision download AbstractFramework/z-image-turbo-4bit --provider mlx-gen</code>
+  - <code>abstractvision download AbstractFramework/ernie-image-turbo-4bit --provider mlx-gen</code>
+  - <code>abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-gen</code>
+  - <code>abstractvision download briaai/FIBO --provider mlx-gen</code>
+  - <code>abstractvision download briaai/Fibo-lite --provider mlx-gen</code>
+  - <code>abstractvision download briaai/Fibo-Edit --provider mlx-gen</code>
+  - <code>abstractvision download briaai/Fibo-Edit-RMBG --provider mlx-gen</code>
+  - <code>abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen</code>
+- q4 repos are the default recommendation for memory efficiency. Use the exact
+  matching <code>AbstractFramework/...-8bit</code> model id when quality is paramount. Qwen
+  and ERNIE q4 prepared folders can mix q4 and q8 components, but remain the
+  default prepared choice.
+- <code>abstractvision t2i</code>, <code>abstractvision i2i</code>, and Python callers select q4/q8
+  by exact model id. Quantization is metadata of the published folder, not a
+  generation-time parameter.
+- Current shipped backend coverage includes <code>text_to_image</code> for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, ERNIE Image Turbo, FIBO, and Fibo-lite. <code>image_to_image</code> edits are implemented for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, Fibo-lite, Fibo-Edit, and Fibo-Edit-RMBG; FIBO Edit snapshots support masks where the runtime supports them.</p>
+<p>One-shot shell commands:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
+abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/FIBO<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
+</code></pre></div>
+<p>MLX-Gen Wan video progress is surfaced as normalized progress events. Shell
+commands and the interactive CLI render frame/step progress by default; Python
+and AbstractCore callers can pass <code>on_progress(event)</code> to receive the same
+events.</p>
+<p>Interactive CLI/REPL commands:</p>
+<div class="highlight"><pre><span></span><code>/backend mlx-gen AbstractFramework/qwen-image-2512-4bit
+/t2i &quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot; --steps 20 --guidance-scale 1.0 --open
+/backend mlx-gen AbstractFramework/qwen-image-edit-2511-4bit
+/i2i --image ./input.png &quot;replace the background with a clean white studio setup&quot; --steps 20 --guidance-scale 2.5 --strength 0.75 --open
+/backend mlx-gen briaai/FIBO
+/t2i &quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot; --steps 50 --guidance-scale 4.0 --open
+/backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
+/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+</code></pre></div>
 <p>Config/env:
 - <code>ABSTRACTVISION_PROVIDER=mlx-gen</code> (alias: <code>ABSTRACTVISION_BACKEND=mlx-gen</code>)
-- <code>ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b</code> (or routed ids like <code>mlx-gen/flux2-klein-4b</code>)
-- Optional: <code>ABSTRACTVISION_MFLUX_BASE_MODEL</code>, <code>ABSTRACTVISION_MFLUX_QUANTIZE</code>, <code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code>, <code>ABSTRACTVISION_MODEL_DIR</code> (legacy migration root only)
+- <code>ABSTRACTVISION_MFLUX_MODEL=AbstractFramework/flux.2-klein-4b-4bit</code> (or routed ids like <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code>)
+- Optional: <code>ABSTRACTVISION_MFLUX_BASE_MODEL</code>, <code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code>, <code>ABSTRACTVISION_MODEL_DIR</code> (legacy migration root only)
 - Legacy <code>mflux</code> provider values and routed ids remain accepted as compatibility aliases.</p>
 <p>Non-curated MLX-Gen models:
 - If you have an MLX-Gen-compatible Hugging Face repo id that is not in <code>model-presets</code>, you can still use it:
@@ -908,7 +944,9 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
   - Set <code>ABSTRACTVISION_MFLUX_MODEL</code> to that repo id or local path (base model usually auto-infers; override with <code>ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image</code> if needed).</p>
 <p>Runtime behavior notes:
 - MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
-- Local MLX-Gen <code>image_to_image</code> is supported for FLUX.2 klein/base and Qwen Image Edit presets (no masks). Edit strength is passed as <code>strength</code> and normalized to MLX-Gen's <code>image_strength</code> parameter where the runtime supports it.
+- Local MLX-Gen <code>image_to_image</code> is supported for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models. Edit strength is passed as <code>strength</code> and normalized to MLX-Gen's <code>image_strength</code> parameter where the runtime supports it.
+- Local MLX-Gen video is implemented for <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>. Defaults are 1280x704, 121 frames, 50 steps, 24 fps, and guidance 5.0; lower values are useful only for smoke tests.
+- Wan requests can pass <code>max_sequence_length</code> through Python <code>extra={...}</code> or CLI/REPL <code>--max-sequence-length</code>.
 - Generation does not silently download model files. Missing-cache errors tell you which <code>abstractvision download ... --provider mlx-gen</code> or <code>mlxgen</code> preparation step is needed.</p>
 <p>Code pointers:
 - Config: <code>MLXGenBackendConfig</code> / compatibility alias <code>MFluxBackendConfig</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)

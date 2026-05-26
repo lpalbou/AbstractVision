@@ -913,9 +913,9 @@ text→image, image→image (and optionally video when a backend supports it).</
 <li>Diffusers backend (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>)</li>
 <li>stable-diffusion.cpp backend (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)</li>
 <li>MLX-Gen backend for curated Apple Silicon MLX presets (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>)</li>
-<li>Local MLX-Gen supports <code>text_to_image</code> for curated q4/q8 FLUX.2, Qwen Image, Z-Image, and ERNIE Image Turbo presets, and supports <code>image_to_image</code> for FLUX.2 klein/base plus Qwen Image Edit (no masks yet).</li>
+<li>Local MLX-Gen supports <code>text_to_image</code> for curated q4/q8 FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, and official FIBO snapshots; supports <code>image_to_image</code> for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V for <code>text_to_video</code> and first-frame <code>image_to_video</code>.</li>
 <li>Local Diffusers <code>text_to_video</code> remains experimental and is temporarily disabled from the normal local surfaces.</li>
-<li><code>image_to_video</code> is still supported <strong>only</strong> by the OpenAI-compatible backend, and only when <code>text_to_video_path</code> / <code>image_to_video_path</code> are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>).</li>
+<li>OpenAI-compatible HTTP can also support <code>text_to_video</code> / <code>image_to_video</code> when <code>text_to_video_path</code> / <code>image_to_video_path</code> are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>).</li>
 <li>No built-in backend implements <code>multi_view_image</code> yet (they raise <code>CapabilityNotSupportedError</code> in <code>generate_angles(...)</code>).</li>
 </ul>
 <p>For a detailed support matrix and configuration options, see <a href="../reference/backends/">docs/reference/backends.md</a>.</p>
