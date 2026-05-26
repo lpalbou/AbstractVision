@@ -65,7 +65,7 @@ def _local_runtime_available(backend: Optional[str]) -> bool:
         return True
     if kind in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
         return importlib.util.find_spec("diffusers") is not None and importlib.util.find_spec("torch") is not None
-    if kind in {"mflux", "m-flux", "mlx"}:
+    if kind in {"mflux", "m-flux", "mlx-gen", "mlxgen", "mlx"}:
         return sys.platform == "darwin" and importlib.util.find_spec("mflux") is not None and importlib.util.find_spec("mlx") is not None
     if kind in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
         return importlib.util.find_spec("stable_diffusion_cpp") is not None
@@ -153,8 +153,9 @@ def normalize_model_id_for_backend(model_id: str) -> Tuple[str, Optional[str]]:
         return "diffusers", DEFAULT_DIFFUSERS_MODEL_ID if _is_default_alias(rest) else rest
     if prefix == "mlx":
         raise ValueError(
-            "AbstractVision does not have a generic MLX image backend yet. "
-            "Use `mflux/<preset>` for MFLUX-compatible 8-bit MLX models."
+            "AbstractVision does not have a generic MLX image/video backend yet. "
+            "Use `mlx-gen/<exact-huggingface-repo>` for MLX-Gen models, for example "
+            "`mlx-gen/AbstractFramework/flux.2-klein-4b-4bit`."
         )
     if prefix == "mflux":
         return "mflux", None if _is_default_alias(rest) else rest
@@ -588,7 +589,7 @@ class PlaygroundState:
         allow_diffusers_download = bool(self.config.diffusers_allow_download)
         allow_mflux_download = bool(self.config.mflux_allow_download)
         diffusers_runtime_available = _local_runtime_available("diffusers")
-        mflux_runtime_available = _local_runtime_available("mflux")
+        mflux_runtime_available = _local_runtime_available("mlx-gen")
         sdcpp_runtime_available = _local_runtime_available("sdcpp")
         platform_profile = local_model_profile()
         visible_targets = catalog_target_scope(target="auto", engine=None, include_all_targets=False)
@@ -605,32 +606,12 @@ class PlaygroundState:
             "stable-diffusion-cpp",
         }:
             configured_backend = "sdcpp"
-        if not configured and configured_backend == "mflux":
+        if not configured and configured_backend in {"mflux", "mlx-gen", "mlxgen", "m-flux"}:
             configured = str(self.config.mflux_model or "").strip()
 
         seen_load_ids: set[str] = set()
         legacy_root = default_legacy_model_root()
         playground_tasks = {"text_to_image", "image_to_image", "text_to_video", "image_to_video"}
-        mflux_cached: Dict[str, Any] = {}
-        mflux_invalid: Dict[str, Tuple[str, ...]] = {}
-        if "mlx" in visible_targets:
-            try:
-                from .backends.mflux import (
-                    discover_cached_mflux_models,
-                    discover_incomplete_mflux_sources,
-                )
-
-                mflux_cached = discover_cached_mflux_models(
-                    model_dir=str(self.config.mflux_model_dir) if self.config.mflux_model_dir else None,
-                    cache_dir=self.config.diffusers_cache_dir,
-                )
-                mflux_invalid = discover_incomplete_mflux_sources(
-                    model_dir=str(self.config.mflux_model_dir) if self.config.mflux_model_dir else None,
-                    cache_dir=self.config.diffusers_cache_dir,
-                )
-            except Exception:
-                mflux_cached = {}
-                mflux_invalid = {}
 
         for preset in model_presets(
             target="auto",
@@ -638,9 +619,14 @@ class PlaygroundState:
             include_non_8bit=True,
             include_all_targets=False,
         ):
-            model_id = str(preset.upstream_repo_id or preset.repo_id)
+            registry_model_id = str(preset.upstream_repo_id or preset.repo_id)
+            model_id = (
+                str(preset.repo_id)
+                if preset.engine in {"mflux", "mlx-gen"} and preset.target == "mlx"
+                else registry_model_id
+            )
             try:
-                spec = self.registry.get(model_id)
+                spec = self.registry.get(registry_model_id)
                 tasks = sorted(spec.tasks.keys())
                 provider = spec.provider
                 task_specs = _serialize_task_specs(spec)
@@ -664,13 +650,13 @@ class PlaygroundState:
                 runtime_available = sdcpp_runtime_available
                 download_enabled = False
             elif preset.engine in {"mflux", "mlx-gen"} and preset.target == "mlx":
-                backend = "mflux"
-                load_id = f"mflux/{preset.key}"
+                backend = "mlx-gen"
+                load_id = f"mlx-gen/{preset.repo_id}"
                 runtime_available = mflux_runtime_available
                 download_enabled = runtime_available and "mlx" in visible_targets and allow_mflux_download
             tasks, task_specs = self._surface_tasks_for_backend(
                 backend=backend or preset.engine,
-                model_id=model_id,
+                model_id=registry_model_id,
                 tasks=[str(task) for task in tasks],
                 task_specs=task_specs,
             )
@@ -687,13 +673,20 @@ class PlaygroundState:
             variant_label = preset.display_name
             bits = preset.quantization_bits
             if preset.engine in {"mflux", "mlx-gen"} and preset.target == "mlx":
-                discovered_model = mflux_cached.get(preset.key)
-                cached_in = [str(discovered_model.source_detail)] if discovered_model is not None else []
-                invalid_cached_in = mflux_invalid.get(preset.key, ())
+                cached_in = _cached_hf_model_sources(
+                    preset.repo_id,
+                    cache_dir=self.config.diffusers_cache_dir,
+                    required_files=required_files,
+                    require_weight_files=require_weight_files,
+                )
+                invalid_cached_in = incomplete_hf_model_sources(
+                    preset.repo_id,
+                    cache_dir=self.config.diffusers_cache_dir,
+                    extra_roots=framework_hf_cache_roots(),
+                    required_files=required_files,
+                    require_weight_files=require_weight_files,
+                )
                 fully_cached = bool(cached_in)
-                if discovered_model is not None:
-                    variant_label = _mflux_variant_label(preset.display_name, discovered_model)
-                    bits = _detected_mflux_bits(discovered_model) or bits
             else:
                 cached_in = _cached_hf_model_sources(
                     preset.repo_id,
@@ -738,13 +731,9 @@ class PlaygroundState:
                 list(cached_in)
                 if cached_in
                 else (
-                    list(invalid_cached_in)
-                    if (preset.engine in {"mflux", "mlx-gen"} and invalid_cached_in)
-                    else (
-                        _format_incomplete_sources(invalid_cached_in)
-                        if invalid_cached_in
-                        else (["download enabled"] if download_enabled else ["download only"])
-                    )
+                    _format_incomplete_sources(invalid_cached_in)
+                    if invalid_cached_in
+                    else (["download enabled"] if download_enabled else ["download only"])
                 )
             )
             if not runtime_available:
@@ -801,11 +790,13 @@ class PlaygroundState:
                 load_id = label
                 backend = "openai"
                 cached_in = ["configured remote"]
-            elif configured_backend == "mflux":
+            elif configured_backend in {"mflux", "mlx-gen", "mlxgen", "m-flux"}:
                 label = configured
-                load_id = configured if prefix == "mflux" else f"mflux/{configured}"
-                backend = "mflux"
-                cached_in = ["configured local preset"]
+                load_id = configured if prefix in {"mflux", "mlx-gen", "mlxgen", "m-flux"} else f"mlx-gen/{configured}"
+                if load_id.startswith("mflux/"):
+                    load_id = "mlx-gen/" + load_id.split("/", 1)[1]
+                backend = "mlx-gen"
+                cached_in = ["configured local model"]
             else:
                 label = configured
                 load_id = configured

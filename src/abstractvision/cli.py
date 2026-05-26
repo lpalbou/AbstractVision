@@ -42,7 +42,7 @@ from .model_downloads import (
     resolve_sdcpp_model_selection,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
-from .types import ImageEditRequest, ImageGenerationRequest
+from .types import ImageEditRequest, ImageGenerationRequest, VideoProgressEvent
 from .vision_manager import VisionManager
 
 DEFAULT_REPL_BACKEND = ""
@@ -54,11 +54,47 @@ DEFAULT_T2I_STEPS = 10
 DEFAULT_I2I_STEPS = 15
 
 
+class _CliVideoProgress:
+    def __init__(self, *, enabled: bool = True, stream: Any = None) -> None:
+        self.enabled = bool(enabled)
+        self.stream = stream if stream is not None else sys.stderr
+        self._wrote = False
+
+    def __call__(self, event: VideoProgressEvent) -> None:
+        if not self.enabled:
+            return
+        total_frames = event.total_frames
+        if total_frames is not None and total_frames > 0:
+            frame_part = f"{event.frame}/{total_frames} frames"
+        else:
+            frame_part = f"{event.frame} frames"
+        if event.progress is not None:
+            progress_part = f" ({max(0.0, min(1.0, float(event.progress))) * 100:5.1f}%)"
+        else:
+            progress_part = ""
+        step_part = ""
+        if event.step is not None:
+            if event.total_steps is not None and event.total_steps > 0:
+                step_part = f" step {event.step}/{event.total_steps}"
+            else:
+                step_part = f" step {event.step}"
+        message = f"Generating video: {frame_part}{progress_part} {event.phase}{step_part}"
+        print("\r" + message, end="", file=self.stream, flush=True)
+        self._wrote = True
+        if str(event.phase or "").lower() == "complete":
+            self.close()
+
+    def close(self) -> None:
+        if self.enabled and self._wrote:
+            print(file=self.stream, flush=True)
+            self._wrote = False
+
+
 def _generic_mlx_backend_error() -> str:
     return (
-        "AbstractVision does not have a generic MLX image backend yet. "
+        "AbstractVision does not have a generic MLX image/video backend yet. "
         "Use `--target mlx` to browse MLX artifacts and `--provider mlx-gen` "
-        "(or `mlx-gen/<preset>`) for MLX-Gen-compatible q4/q8 MLX models."
+        "(or `mlx-gen/<exact-model-id>`) for MLX-Gen-compatible MLX image/video models."
     )
 
 
@@ -67,6 +103,19 @@ def _normalize_cli_provider(value: Any) -> str:
     if provider in {"mflux", "m-flux", "mlxgen", "mlx-gen"}:
         return "mlx-gen"
     return provider
+
+
+def _normalize_catalog_task_filter(value: Any) -> str:
+    raw = str(value or "").strip().lower().replace("-", "_")
+    return {
+        "t2i": "text_to_image",
+        "i2i": "image_to_image",
+        "image_edit": "image_to_image",
+        "t2v": "text_to_video",
+        "i2v": "image_to_video",
+        "video": "text_to_video",
+        "video_generation": "text_to_video",
+    }.get(raw, raw)
 
 
 def _env(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -102,7 +151,9 @@ def _runtime_supported_tasks_for_catalog_preset(
                 )
             )
         elif engine in {"mflux", "mlx-gen"}:
-            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=str(getattr(preset, "key", model_id))))
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model=str(getattr(preset, "key", model_id)))
+            )
         elif engine == "stable-diffusion.cpp":
             backend = StableDiffusionCppVisionBackend(
                 config=StableDiffusionCppBackendConfig(
@@ -156,7 +207,9 @@ def _interactive_hf_token_retry(
         return None
     print(error, file=sys.stderr)
     if current_token:
-        prompt = "Paste a different Hugging Face token to retry now (input hidden, blank to abort): "
+        prompt = (
+            "Paste a different Hugging Face token to retry now (input hidden, blank to abort): "
+        )
     else:
         prompt = "Paste a Hugging Face token to retry now (input hidden, blank to abort): "
     try:
@@ -230,10 +283,14 @@ def _resolve_cached_diffusers_model_id(model_id: str) -> str:
     if not candidate:
         return candidate
     try:
-        preset = find_model_preset(candidate, target="diffusers", engine="diffusers", require_8bit=False)
+        preset = find_model_preset(
+            candidate, target="diffusers", engine="diffusers", require_8bit=False
+        )
     except Exception:
         try:
-            preset = find_model_preset(candidate, target="gguf", engine="diffusers", require_8bit=True)
+            preset = find_model_preset(
+                candidate, target="gguf", engine="diffusers", require_8bit=True
+            )
         except MacOSGGUFUnsupportedError:
             raise
         except Exception:
@@ -305,13 +362,21 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
         backend = HuggingFaceDiffusersVisionBackend(
             config=HuggingFaceDiffusersBackendConfig(
                 model_id=model_id,
-                device=str(getattr(args, "diffusers_device", DEFAULT_DIFFUSERS_DEVICE) or DEFAULT_DIFFUSERS_DEVICE),
+                device=str(
+                    getattr(args, "diffusers_device", DEFAULT_DIFFUSERS_DEVICE)
+                    or DEFAULT_DIFFUSERS_DEVICE
+                ),
                 torch_dtype=str(getattr(args, "diffusers_torch_dtype", None) or "") or None,
                 allow_download=bool(getattr(args, "diffusers_allow_download", False)),
                 auto_retry_fp32=bool(getattr(args, "diffusers_auto_retry_fp32", True)),
             )
         )
-    elif provider_kind in {"sdcpp", "stable-diffusion.cpp", "stable-diffusion-cpp", "stable_diffusion_cpp"}:
+    elif provider_kind in {
+        "sdcpp",
+        "stable-diffusion.cpp",
+        "stable-diffusion-cpp",
+        "stable_diffusion_cpp",
+    }:
         sdcpp_model = str(model_value or getattr(args, "sdcpp_model", None) or "") or None
         sdcpp_diffusion_model = str(getattr(args, "sdcpp_diffusion_model", None) or "") or None
         sdcpp_vae = str(getattr(args, "sdcpp_vae", None) or "") or None
@@ -322,7 +387,9 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
             candidate_path = Path(str(sdcpp_model)).expanduser()
             if not candidate_path.exists():
                 try:
-                    resolved_sdcpp = resolve_sdcpp_model_selection(str(sdcpp_model), allow_download=False)
+                    resolved_sdcpp = resolve_sdcpp_model_selection(
+                        str(sdcpp_model), allow_download=False
+                    )
                 except MacOSGGUFUnsupportedError as e:
                     raise SystemExit(str(e)) from e
                 except ValueError:
@@ -337,12 +404,16 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
                     resolved_sdcpp.capabilities_model_id if resolved_sdcpp is not None else None
                 ),
                 diffusion_model=(
-                    resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else sdcpp_diffusion_model or None
+                    resolved_sdcpp.diffusion_model
+                    if resolved_sdcpp is not None
+                    else sdcpp_diffusion_model or None
                 ),
                 vae=resolved_sdcpp.vae if resolved_sdcpp is not None else sdcpp_vae or None,
                 llm=resolved_sdcpp.llm if resolved_sdcpp is not None else sdcpp_llm or None,
                 llm_vision=(
-                    resolved_sdcpp.llm_vision if resolved_sdcpp is not None else sdcpp_llm_vision or None
+                    resolved_sdcpp.llm_vision
+                    if resolved_sdcpp is not None
+                    else sdcpp_llm_vision or None
                 ),
                 extra_args=tuple(
                     shlex.split(str(getattr(args, "sdcpp_extra_args", "") or ""))
@@ -359,14 +430,18 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
         )
     reg = VisionModelCapabilitiesRegistry()
 
-    cap_model_id = str(args.capabilities_model_id) if getattr(args, "capabilities_model_id", None) else None
+    cap_model_id = (
+        str(args.capabilities_model_id) if getattr(args, "capabilities_model_id", None) else None
+    )
     if cap_model_id and cap_model_id not in set(reg.list_models()):
         raise SystemExit(
             f"--capabilities-model-id '{cap_model_id}' is not present in the registry. "
             "Use `abstractvision models` to list known ids, or omit this flag to disable gating."
         )
 
-    return VisionManager(backend=backend, store=store, model_id=cap_model_id, registry=reg if cap_model_id else None)
+    return VisionManager(
+        backend=backend, store=store, model_id=cap_model_id, registry=reg if cap_model_id else None
+    )
 
 
 def _cmd_models(_: argparse.Namespace) -> int:
@@ -414,8 +489,20 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
         if ts.requires:
             print(f"      requires: {json.dumps(ts.requires, sort_keys=True)}")
         if ts.params:
-            required = sorted([k for k, v in ts.params.items() if isinstance(v, dict) and v.get("required") is True])
-            optional = sorted([k for k, v in ts.params.items() if isinstance(v, dict) and v.get("required") is False])
+            required = sorted(
+                [
+                    k
+                    for k, v in ts.params.items()
+                    if isinstance(v, dict) and v.get("required") is True
+                ]
+            )
+            optional = sorted(
+                [
+                    k
+                    for k, v in ts.params.items()
+                    if isinstance(v, dict) and v.get("required") is False
+                ]
+            )
             if required:
                 print(f"      required params: {', '.join(required)}")
             if optional:
@@ -462,8 +549,12 @@ def _cmd_model_presets(args: argparse.Namespace) -> int:
     include_non_8bit = all_flag
     include_all_targets = bool(getattr(args, "all_targets", False))
     try:
-        resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
-        selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets)
+        resolved_target, resolved_engine = resolve_model_target_and_engine(
+            target=target, engine=engine
+        )
+        selected_targets = catalog_target_scope(
+            target=target, engine=engine, include_all_targets=include_all_targets
+        )
         presets = model_presets(
             target=target,
             engine=engine,
@@ -488,22 +579,32 @@ def _cmd_model_presets(args: argparse.Namespace) -> int:
 
     selected_target = "all" if include_all_targets else ",".join(selected_targets)
     selected_engine = resolved_engine or "any"
-    if not include_all_targets and str(target).strip().lower() in {"", "auto", "default"} and resolved_engine is None:
+    if (
+        not include_all_targets
+        and str(target).strip().lower() in {"", "auto", "default"}
+        and resolved_engine is None
+    ):
         print(f"platform: {local_model_profile()}")
     print(f"target: {selected_target} (auto default: {default_model_target()})")
     print(f"provider/engine: {selected_engine}")
     if all_flag:
         print("policy: showing all presets (including explicit non-8-bit fallbacks)")
     elif resolved_target == "mlx" or resolved_engine == "mlx-gen":
-        print("policy: MLX-Gen q4/q8 presets by default; q4 is recommended first, q8 is quality-focused")
+        print(
+            "policy: MLX-Gen models are exact published repo ids; q4 is recommended first, q8 is quality-focused; video fallbacks are listed when no q4/q8 artifact exists"
+        )
     elif resolved_target == "diffusers":
         print("policy: Diffusers target includes full snapshots (16-bit/FP) by default")
     elif resolved_target == "hf-snapshot":
         print("policy: HF snapshot targets include full snapshots by default")
     else:
-        print("policy: quantized presets only by default; pass --all to show explicit non-quantized fallbacks")
+        print(
+            "policy: quantized presets only by default; pass --all to show explicit non-quantized fallbacks"
+        )
     print("tip: `abstractvision catalog` joins presets with the capability registry (tasks)")
-    print("tip: `download org/name` downloads arbitrary Hugging Face repos (not shown here) into the HF cache")
+    print(
+        "tip: `download org/name` downloads arbitrary Hugging Face repos (not shown here) into the HF cache"
+    )
     print()
     for line in format_model_preset_rows(presets):
         print(line)
@@ -513,10 +614,7 @@ def _cmd_model_presets(args: argparse.Namespace) -> int:
 def _format_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> List[str]:
     if not rows:
         return [" ".join(headers)]
-    widths = [
-        max(len(str(row[i])) for row in [headers, *rows])
-        for i in range(len(headers))
-    ]
+    widths = [max(len(str(row[i])) for row in [headers, *rows]) for i in range(len(headers))]
     fmt = "  ".join(f"{{:{w}}}" for w in widths)
     out = [fmt.format(*headers), fmt.format(*("-" * w for w in widths))]
     for row in rows:
@@ -527,14 +625,18 @@ def _format_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> List
 def _cmd_model_catalog(args: argparse.Namespace) -> int:
     """List capability models that have curated download presets."""
 
-    task = str(getattr(args, "task", "") or "").strip()
+    task = _normalize_catalog_task_filter(getattr(args, "task", "") or "")
     target = str(getattr(args, "target", "auto") or "auto")
     engine = str(getattr(args, "engine", "auto") or "auto")
     include_non_8bit = bool(getattr(args, "all", False))
     include_all_targets = bool(getattr(args, "all_targets", False))
     try:
-        resolved_target, resolved_engine = resolve_model_target_and_engine(target=target, engine=engine)
-        selected_targets = catalog_target_scope(target=target, engine=engine, include_all_targets=include_all_targets)
+        resolved_target, resolved_engine = resolve_model_target_and_engine(
+            target=target, engine=engine
+        )
+        selected_targets = catalog_target_scope(
+            target=target, engine=engine, include_all_targets=include_all_targets
+        )
     except ValueError as e:
         raise SystemExit(str(e)) from e
 
@@ -560,22 +662,35 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                 p
                 for p in group_presets
                 if p.quantization_bits == 8
-                or (p.target == "mlx" and p.engine in {"mflux", "mlx-gen"} and p.quantization_bits in {4, 8})
+                or (
+                    p.target == "mlx"
+                    and p.engine in {"mflux", "mlx-gen"}
+                    and p.quantization_bits in {4, 8}
+                )
             ]
             if quantized:
                 filtered.extend(sorted(quantized, key=lambda p: (p.source_priority, p.repo_id)))
             else:
-                filtered.append(sorted(group_presets, key=lambda p: (p.source_priority, p.repo_id))[0])
+                filtered.append(
+                    sorted(group_presets, key=lambda p: (p.source_priority, p.repo_id))[0]
+                )
         presets = sorted(filtered, key=lambda p: (p.key, p.source_priority, p.repo_id))
 
     rows: List[Sequence[Any]] = []
     for preset in presets:
-        model_id = str(preset.upstream_repo_id or preset.repo_id)
+        registry_model_id = str(preset.upstream_repo_id or preset.repo_id)
+        model_id = (
+            str(preset.repo_id)
+            if preset.target == "mlx"
+            and preset.engine == "mlx-gen"
+            and preset.source == "abstractframework-mlx-gen"
+            else registry_model_id
+        )
         try:
-            spec = reg.get(model_id)
+            spec = reg.get(registry_model_id)
             supported_tasks = _runtime_supported_tasks_for_catalog_preset(
                 preset,
-                model_id=model_id,
+                model_id=registry_model_id,
                 registry_tasks=sorted(spec.tasks.keys()),
             )
         except Exception:
@@ -589,7 +704,6 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         rows.append(
             (
                 model_id,
-                preset.key,
                 preset.target,
                 preset.engine,
                 str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a",
@@ -601,8 +715,35 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
 
     if bool(getattr(args, "json", False)):
         out: List[Dict[str, Any]] = []
-        for model_id in sorted({str(p.upstream_repo_id or p.repo_id) for p in presets}):
-            spec = reg.get(model_id) if model_id in reg.list_models() else None
+        json_ids = {
+            (
+                str(p.repo_id)
+                if p.target == "mlx"
+                and p.engine == "mlx-gen"
+                and p.source == "abstractframework-mlx-gen"
+                else str(p.upstream_repo_id or p.repo_id)
+            )
+            for p in presets
+        }
+        for model_id in sorted(json_ids):
+            matching_presets = [
+                p
+                for p in presets
+                if (
+                    str(p.repo_id)
+                    if p.target == "mlx"
+                    and p.engine == "mlx-gen"
+                    and p.source == "abstractframework-mlx-gen"
+                    else str(p.upstream_repo_id or p.repo_id)
+                )
+                == model_id
+            ]
+            registry_model_id = (
+                str((matching_presets[0].upstream_repo_id or matching_presets[0].repo_id))
+                if matching_presets
+                else model_id
+            )
+            spec = reg.get(registry_model_id) if registry_model_id in reg.list_models() else None
             matching = [
                 {
                     **p.to_dict(),
@@ -612,8 +753,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                         registry_tasks=sorted(spec.tasks.keys()) if spec else [],
                     ),
                 }
-                for p in presets
-                if str(p.upstream_repo_id or p.repo_id) == model_id
+                for p in matching_presets
             ]
             if not matching:
                 continue
@@ -638,7 +778,11 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                                 "inputs": list(task_spec.inputs),
                                 "outputs": list(task_spec.outputs),
                                 "params": dict(task_spec.params),
-                                "requires": dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None,
+                                "requires": (
+                                    dict(task_spec.requires)
+                                    if isinstance(task_spec.requires, dict)
+                                    else None
+                                ),
                             }
                             for task_name, task_spec in sorted(spec.tasks.items())
                             if task_name in runtime_tasks
@@ -655,15 +799,21 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     selected_target = "all" if include_all_targets else ",".join(selected_targets)
     selected_engine = resolved_engine or "any"
     print(f"task: {task or 'any'}")
-    if not include_all_targets and str(target).strip().lower() in {"", "auto", "default"} and resolved_engine is None:
+    if (
+        not include_all_targets
+        and str(target).strip().lower() in {"", "auto", "default"}
+        and resolved_engine is None
+    ):
         print(f"platform: {local_model_profile()}")
     print(f"target: {selected_target} (auto default: {default_model_target()})")
     print(f"provider/engine: {selected_engine}")
-    print("policy: recommend quantized presets; MLX-Gen prefers q4 by default and keeps q8 available for quality-focused runs (pass --all for full list)")
+    print(
+        "policy: lists exact published model ids; MLX-Gen q4/q8 artifacts are separate models; video fallbacks appear when no quantized artifact exists (pass --all for full list)"
+    )
     print("tip: `abstractvision model-presets --all-targets --all` shows the raw preset table")
     print()
     for line in _format_table(
-        ("model_id", "key", "target", "engine", "bits", "repo", "source", "tasks"),
+        ("model_id", "target", "engine", "bits", "repo", "source", "tasks"),
         rows,
     ):
         print(line)
@@ -690,13 +840,17 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
         normalized_engine = normalize_model_engine(engine)
         if len(names) >= 2:
             prefix_engine = _maybe_engine_prefix(names[0])
-            if prefix_engine is not None and (normalized_engine is None or normalized_engine == prefix_engine):
+            if prefix_engine is not None and (
+                normalized_engine is None or normalized_engine == prefix_engine
+            ):
                 engine = prefix_engine
                 normalized_engine = prefix_engine
                 names = names[1:]
         if len(names) == 1:
             solo_engine = _maybe_engine_prefix(names[0])
-            if solo_engine is not None and (normalized_engine is None or normalized_engine == solo_engine):
+            if solo_engine is not None and (
+                normalized_engine is None or normalized_engine == solo_engine
+            ):
                 raise SystemExit(
                     f"Missing model name after engine prefix {names[0]!r}. "
                     f"List presets with: abstractvision model-presets --provider {names[0]}"
@@ -704,10 +858,14 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
     except ValueError as e:
         raise SystemExit(str(e)) from e
     if not names:
-        raise SystemExit("Missing model name. Use `abstractvision model-presets` to list curated presets.")
+        raise SystemExit(
+            "Missing model name. Use `abstractvision model-presets` to list curated presets."
+        )
 
     try:
-        selected_target, _selected_engine = resolve_model_target_and_engine(target=target, engine=engine)
+        selected_target, _selected_engine = resolve_model_target_and_engine(
+            target=target, engine=engine
+        )
     except ValueError as e:
         raise SystemExit(str(e)) from e
     model_dir = Path(str(args.model_dir)).expanduser() if getattr(args, "model_dir", None) else None
@@ -716,7 +874,6 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
     cli_token = resolve_hf_token(str(getattr(args, "token", None) or "") or None)
     allow_non_8bit = bool(getattr(args, "allow_non_8bit", False))
     require_8bit = not allow_non_8bit
-    bits = getattr(args, "bits", None)
     if raw_target in {"diffusers", "hf-snapshot"} or raw_engine in {"diffusers", "transformers"}:
         # Diffusers targets are full pipeline snapshots; do not force an 8-bit-only policy.
         require_8bit = False
@@ -732,14 +889,43 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 target=target,
                 engine=engine,
                 require_8bit=require_8bit,
-                bits=bits,
             )
         except ValueError as e:
-            if looks_like_hf_repo_id(name):
+            mlx_gen_non_quantized_ok = raw_engine in {
+                "mflux",
+                "m-flux",
+                "mlx-gen",
+                "mlxgen",
+                "mlx_gen",
+            } or raw_target in {"mlx", "apple", "mac", "macos", "osx", "metal"}
+            if require_8bit and mlx_gen_non_quantized_ok:
+                try:
+                    preset = find_model_preset(
+                        name,
+                        target=target,
+                        engine=engine,
+                        require_8bit=False,
+                    )
+                except ValueError:
+                    preset = None
+                if preset is not None:
+                    # Exact non-quantized MLX-Gen/runtime snapshots such as Wan
+                    # and FIBO are valid curated models even though no q4/q8
+                    # artifact exists for them.
+                    pass
+                else:
+                    preset = None
+            else:
+                preset = None
+            if preset is not None:
+                pass
+            elif looks_like_hf_repo_id(name):
                 if not json_mode:
                     print(f"selected_repo_id: {name}")
                     print("download: huggingface_hub snapshot (HF cache)")
-                    print("#FALLBACK: repo id is not a curated preset; downloading full snapshot to the HF cache.")
+                    print(
+                        "#FALLBACK: repo id is not a curated preset; downloading full snapshot to the HF cache."
+                    )
                 try:
                     path = download_hf_repo_snapshot(
                         name,
@@ -748,7 +934,9 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                         max_workers=int(getattr(args, "max_workers", 4) or 4),
                     )
                 except HuggingFaceAccessError as e2:
-                    retry_token = _interactive_hf_token_retry(e2, current_token=cli_token, json_mode=json_mode)
+                    retry_token = _interactive_hf_token_retry(
+                        e2, current_token=cli_token, json_mode=json_mode
+                    )
                     if retry_token is None:
                         raise SystemExit(str(e2)) from e2
                     try:
@@ -764,17 +952,24 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 except RuntimeError as e2:
                     raise SystemExit(str(e2)) from e2
 
-                item = {"repo_id": name, "snapshot_dir": str(path), "source": "huggingface_hub_cache"}
+                item = {
+                    "repo_id": name,
+                    "snapshot_dir": str(path),
+                    "source": "huggingface_hub_cache",
+                }
                 results.append(item)
                 if not json_mode:
                     print(f"snapshot_dir: {path}")
                 continue
-            raise SystemExit(str(e)) from e
+            else:
+                raise SystemExit(str(e)) from e
 
         if not json_mode:
             print(f"selected: {preset.repo_id}")
             print(f"target: {selected_target}")
-            print(f"artifact: {preset.target}; bits: {preset.quantization_bits or 'n/a'}; provider/engine: {preset.engine}")
+            print(
+                f"artifact: {preset.target}; bits: {preset.quantization_bits or 'n/a'}; provider/engine: {preset.engine}"
+            )
             if preset.upstream_repo_id and preset.source != "official":
                 print(
                     f"#FALLBACK: upstream source is {preset.upstream_repo_id}; using {preset.source} artifact for {selected_target}."
@@ -806,7 +1001,9 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 max_workers=int(getattr(args, "max_workers", 4) or 4),
             )
         except HuggingFaceAccessError as e:
-            retry_token = _interactive_hf_token_retry(e, current_token=cli_token, json_mode=json_mode)
+            retry_token = _interactive_hf_token_retry(
+                e, current_token=cli_token, json_mode=json_mode
+            )
             if retry_token is None:
                 raise SystemExit(str(e)) from e
             try:
@@ -1005,17 +1202,27 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
 
 def _cmd_t2v(args: argparse.Namespace) -> int:
     vm = _build_manager_from_args(args)
-    out = vm.generate_video(
-        args.prompt,
-        negative_prompt=args.negative_prompt,
-        width=args.width,
-        height=args.height,
-        fps=args.fps,
-        num_frames=args.num_frames,
-        steps=args.steps,
-        guidance_scale=args.guidance_scale,
-        seed=args.seed,
-    )
+    extra: Dict[str, Any] = {}
+    if getattr(args, "max_sequence_length", None) is not None:
+        extra["max_sequence_length"] = int(args.max_sequence_length)
+    progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", True)))
+    if progress.enabled:
+        extra["on_progress"] = progress
+    try:
+        out = vm.generate_video(
+            args.prompt,
+            negative_prompt=args.negative_prompt,
+            width=args.width,
+            height=args.height,
+            fps=args.fps,
+            num_frames=args.num_frames,
+            steps=args.steps,
+            guidance_scale=args.guidance_scale,
+            seed=args.seed,
+            extra=extra or None,
+        )
+    finally:
+        progress.close()
     _print_json(out)
     if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
         p = vm.store.get_content_path(out["$artifact"])
@@ -1029,18 +1236,28 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
 def _cmd_i2v(args: argparse.Namespace) -> int:
     vm = _build_manager_from_args(args)
     image_bytes = Path(args.image).expanduser().read_bytes()
-    out = vm.image_to_video(
-        image_bytes,
-        prompt=args.prompt,
-        negative_prompt=args.negative_prompt,
-        width=args.width,
-        height=args.height,
-        fps=args.fps,
-        num_frames=args.num_frames,
-        steps=args.steps,
-        guidance_scale=args.guidance_scale,
-        seed=args.seed,
-    )
+    extra: Dict[str, Any] = {}
+    if getattr(args, "max_sequence_length", None) is not None:
+        extra["max_sequence_length"] = int(args.max_sequence_length)
+    progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", True)))
+    if progress.enabled:
+        extra["on_progress"] = progress
+    try:
+        out = vm.image_to_video(
+            image_bytes,
+            prompt=args.prompt,
+            negative_prompt=args.negative_prompt,
+            width=args.width,
+            height=args.height,
+            fps=args.fps,
+            num_frames=args.num_frames,
+            steps=args.steps,
+            guidance_scale=args.guidance_scale,
+            seed=args.seed,
+            extra=extra or None,
+        )
+    finally:
+        progress.close()
     _print_json(out)
     if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
         p = vm.store.get_content_path(out["$artifact"])
@@ -1057,40 +1274,75 @@ class _ReplState:
     base_url: Optional[str] = field(default_factory=lambda: _env("OPENAI_BASE_URL"))
     api_key: Optional[str] = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_ID"))
-    capabilities_model_id: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_CAPABILITIES_MODEL_ID"))
+    capabilities_model_id: Optional[str] = field(
+        default_factory=lambda: _env("ABSTRACTVISION_CAPABILITIES_MODEL_ID")
+    )
     store_dir: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_STORE_DIR"))
-    timeout_s: float = field(default_factory=lambda: float(_env("ABSTRACTVISION_TIMEOUT_S", "3600") or "3600"))
+    timeout_s: float = field(
+        default_factory=lambda: float(_env("ABSTRACTVISION_TIMEOUT_S", "3600") or "3600")
+    )
 
     images_generations_path: str = field(
-        default_factory=lambda: _env("ABSTRACTVISION_IMAGES_GENERATIONS_PATH", "/images/generations") or "/images/generations"
+        default_factory=lambda: _env(
+            "ABSTRACTVISION_IMAGES_GENERATIONS_PATH", "/images/generations"
+        )
+        or "/images/generations"
     )
     images_edits_path: str = field(
-        default_factory=lambda: _env("ABSTRACTVISION_IMAGES_EDITS_PATH", "/images/edits") or "/images/edits"
+        default_factory=lambda: _env("ABSTRACTVISION_IMAGES_EDITS_PATH", "/images/edits")
+        or "/images/edits"
     )
-    models_path: str = field(default_factory=lambda: _env("ABSTRACTVISION_MODELS_PATH", "/models") or "/models")
-    text_to_video_path: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH"))
-    image_to_video_path: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH"))
-    image_to_video_mode: str = field(default_factory=lambda: _env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart") or "multipart")
+    models_path: str = field(
+        default_factory=lambda: _env("ABSTRACTVISION_MODELS_PATH", "/models") or "/models"
+    )
+    text_to_video_path: Optional[str] = field(
+        default_factory=lambda: _env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH")
+    )
+    image_to_video_path: Optional[str] = field(
+        default_factory=lambda: _env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH")
+    )
+    image_to_video_mode: str = field(
+        default_factory=lambda: _env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart")
+        or "multipart"
+    )
 
     diffusers_device: str = field(
-        default_factory=lambda: _env("ABSTRACTVISION_DIFFUSERS_DEVICE", DEFAULT_DIFFUSERS_DEVICE) or DEFAULT_DIFFUSERS_DEVICE
+        default_factory=lambda: _env("ABSTRACTVISION_DIFFUSERS_DEVICE", DEFAULT_DIFFUSERS_DEVICE)
+        or DEFAULT_DIFFUSERS_DEVICE
     )
-    diffusers_torch_dtype: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE"))
-    diffusers_allow_download: bool = field(default_factory=lambda: _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False))
-    diffusers_auto_retry_fp32: bool = field(default_factory=lambda: _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True))
+    diffusers_torch_dtype: Optional[str] = field(
+        default_factory=lambda: _env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE")
+    )
+    diffusers_allow_download: bool = field(
+        default_factory=lambda: _env_bool("ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD", False)
+    )
+    diffusers_auto_retry_fp32: bool = field(
+        default_factory=lambda: _env_bool("ABSTRACTVISION_DIFFUSERS_AUTO_RETRY_FP32", True)
+    )
 
-    sdcpp_bin: str = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli")
+    sdcpp_bin: str = field(
+        default_factory=lambda: _env("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli"
+    )
     sdcpp_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_MODEL"))
-    sdcpp_diffusion_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"))
+    sdcpp_diffusion_model: Optional[str] = field(
+        default_factory=lambda: _env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL")
+    )
     sdcpp_vae: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_VAE"))
     sdcpp_llm: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_LLM"))
-    sdcpp_llm_vision: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_LLM_VISION"))
-    sdcpp_extra_args: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_SDCPP_EXTRA_ARGS"))
+    sdcpp_llm_vision: Optional[str] = field(
+        default_factory=lambda: _env("ABSTRACTVISION_SDCPP_LLM_VISION")
+    )
+    sdcpp_extra_args: Optional[str] = field(
+        default_factory=lambda: _env("ABSTRACTVISION_SDCPP_EXTRA_ARGS")
+    )
     mflux_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MFLUX_MODEL"))
-    mflux_base_model: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MFLUX_BASE_MODEL"))
+    mflux_base_model: Optional[str] = field(
+        default_factory=lambda: _env("ABSTRACTVISION_MFLUX_BASE_MODEL")
+    )
     mflux_model_dir: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MODEL_DIR"))
-    mflux_quantize: Optional[str] = field(default_factory=lambda: _env("ABSTRACTVISION_MFLUX_QUANTIZE"))
-    mflux_allow_download: bool = field(default_factory=lambda: _env_bool("ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD", False))
+    mflux_allow_download: bool = field(
+        default_factory=lambda: _env_bool("ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD", False)
+    )
 
     defaults: Dict[str, Any] = None
     _cached_backend_key: Optional[Tuple[Any, ...]] = None
@@ -1118,8 +1370,23 @@ class _ReplState:
                     "seed": None,
                     "negative_prompt": None,
                 },
-                "i2i": {"steps": None, "guidance_scale": None, "seed": None, "negative_prompt": None},
+                "i2i": {
+                    "steps": None,
+                    "guidance_scale": None,
+                    "seed": None,
+                    "negative_prompt": None,
+                },
                 "t2v": {
+                    "width": None,
+                    "height": None,
+                    "fps": None,
+                    "num_frames": None,
+                    "steps": None,
+                    "guidance_scale": None,
+                    "seed": None,
+                    "negative_prompt": None,
+                },
+                "i2v": {
                     "width": None,
                     "height": None,
                     "fps": None,
@@ -1155,7 +1422,7 @@ def _repl_help() -> str:
         "  /backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]\n"
         "      use a cached model key for curated Qwen/FLUX bundles; component mode remains available for explicit wiring\n"
         "  /backend mlx-gen <preset_or_local_path> [base_model]\n"
-        "      Apple Silicon MLX-Gen engine for AbstractFramework q4/q8 MLX presets (requires abstractvision[mlx-gen])\n"
+        "      Apple Silicon MLX-Gen engine for exact MLX-Gen image/video model ids (requires abstractvision[mlx-gen])\n"
         "\n"
         "Defaults and output:\n"
         "  /cap-model <id|off>         Set capability-gating model id (from registry) or 'off'\n"
@@ -1168,36 +1435,40 @@ def _repl_help() -> str:
         "Generation:\n"
         "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
         "  /i2i --image path <prompt...> [--mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
-        "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
+        "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open] [--no-progress]\n"
+        "  /i2v --image path [prompt...] [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open] [--no-progress]\n"
         "      extra flags are forwarded through request.extra\n"
         "\n"
         "Quick examples:\n"
         "  # Local model download policy: q4 MLX-Gen on macOS, q8 available for quality, cache-backed by default\n"
         "  abstractvision model-presets\n"
-        "  abstractvision download flux2-klein-4b --provider mlx-gen\n"
-        "  /backend mlx-gen flux2-klein-4b\n"
-        "  /t2i \"a product photo of a matte black espresso machine\" --steps 4 --guidance-scale 1.0 --open\n"
+        "  abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen\n"
+        "  /backend mlx-gen AbstractFramework/flux.2-klein-4b-4bit\n"
+        '  /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open\n'
+        "  abstractvision download briaai/FIBO --provider mlx-gen\n"
+        "  /backend mlx-gen briaai/FIBO\n"
+        '  /t2i "a studio product photo of a white ceramic mug" --steps 50 --guidance-scale 4.0 --open\n'
+        "  abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen\n"
+        "  /backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers\n"
+        '  /t2v "a red fox walking through a snowy forest" --num-frames 121 --steps 50 --fps 24 --max-sequence-length 256 --open\n'
+        '  /i2v --image ./first-frame.png "slow camera push-in" --num-frames 121 --steps 50 --fps 24 --max-sequence-length 256 --open\n'
         "\n"
         "  # Local Diffusers path: Stable Diffusion 1.5 (requires abstractvision[diffusers])\n"
         "  /backend diffusers runwayml/stable-diffusion-v1-5 auto\n"
-        "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
-        "\n"
-        "  # Local Diffusers video path: CogVideoX-2b on Apple Silicon / MPS\n"
-        "  /backend diffusers zai-org/CogVideoX-2b mps float16\n"
-        "  /t2v \"a red fox walking through snowy forest, cinematic\" --num-frames 49 --steps 50 --open\n"
+        '  /t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open\n'
         "\n"
         "  # Modern small FLUX path: FLUX.2-klein-4B (requires Diffusers main today)\n"
         "  /backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16\n"
-        "  /t2i \"a product photo of a matte black espresso machine\" --steps 4 --guidance-scale 1.0 --open\n"
+        '  /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open\n'
         "\n"
         "  # stable-diffusion.cpp single-model path, preferably with an sd-cli binary for GPU acceleration\n"
         "  /backend sdcpp /path/to/sd-v1-5.gguf /path/to/sd-cli\n"
-        "  /t2i \"a watercolor painting of a lighthouse\" --width 512 --height 512 --steps 10 --open\n"
+        '  /t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open\n'
         "\n"
         "  # Curated stable-diffusion.cpp bundle path for FLUX/Qwen-class models\n"
         "  abstractvision download flux2-klein-base-4b --provider sdcpp\n"
         "  /backend sdcpp flux2-klein-base-4b /path/to/sd-cli\n"
-        "  /t2i \"a product photo of a matte black espresso machine\" --steps 4 --guidance-scale 1.0 --open\n"
+        '  /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open\n'
         "\n"
         "Tip: typing plain text runs /t2i with that prompt.\n"
     )
@@ -1284,6 +1555,16 @@ def _coerce_scalar(v: Any) -> Any:
         return s
 
 
+def _video_progress_enabled_from_flags(flags: Dict[str, Any]) -> bool:
+    if bool(_coerce_scalar(flags.get("no_progress"))):
+        return False
+    if "progress" in flags:
+        value = _coerce_scalar(flags.get("progress"))
+        if value is not None:
+            return bool(value)
+    return True
+
+
 def _build_openai_backend_from_state(state: _ReplState) -> OpenAICompatibleVisionBackend:
     backend_kind = _normalize_cli_provider(state.backend_kind)
     if backend_kind in {"openai-compatible", "openai_compatible", "proxy"}:
@@ -1292,7 +1573,9 @@ def _build_openai_backend_from_state(state: _ReplState) -> OpenAICompatibleVisio
         raise ValueError("Provider model listing requires an OpenAI-compatible backend.")
     base_url = str(state.base_url or "").strip()
     if not base_url:
-        raise ValueError("Backend is not configured. Use: /backend openai <base_url> [api_key] [model_id]")
+        raise ValueError(
+            "Backend is not configured. Use: /backend openai <base_url> [api_key] [model_id]"
+        )
     return OpenAICompatibleVisionBackend(
         config=OpenAICompatibleBackendConfig(
             base_url=base_url,
@@ -1303,7 +1586,9 @@ def _build_openai_backend_from_state(state: _ReplState) -> OpenAICompatibleVisio
             image_generations_path=str(state.images_generations_path),
             image_edits_path=str(state.images_edits_path),
             text_to_video_path=str(state.text_to_video_path) if state.text_to_video_path else None,
-            image_to_video_path=str(state.image_to_video_path) if state.image_to_video_path else None,
+            image_to_video_path=(
+                str(state.image_to_video_path) if state.image_to_video_path else None
+            ),
             image_to_video_mode=str(state.image_to_video_mode),
         )
     )
@@ -1322,13 +1607,20 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
         backend_kind = "openai"
     elif backend_kind in {"huggingface", "hf", "hf-diffusers"}:
         backend_kind = "diffusers"
-    elif backend_kind in {"sd-cpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
+    elif backend_kind in {
+        "sd-cpp",
+        "stable-diffusion.cpp",
+        "stable_diffusion_cpp",
+        "stable-diffusion-cpp",
+    }:
         backend_kind = "sdcpp"
     backend_key: Tuple[Any, ...]
     if backend_kind == "openai":
         base_url = str(state.base_url or "").strip()
         if not base_url:
-            raise ValueError("Backend is not configured. Use: /backend openai <base_url> [api_key] [model_id]")
+            raise ValueError(
+                "Backend is not configured. Use: /backend openai <base_url> [api_key] [model_id]"
+            )
         backend_key = (
             "openai",
             base_url,
@@ -1353,8 +1645,12 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
                 models_path=str(state.models_path),
                 image_generations_path=str(state.images_generations_path),
                 image_edits_path=str(state.images_edits_path),
-                text_to_video_path=str(state.text_to_video_path) if state.text_to_video_path else None,
-                image_to_video_path=str(state.image_to_video_path) if state.image_to_video_path else None,
+                text_to_video_path=(
+                    str(state.text_to_video_path) if state.text_to_video_path else None
+                ),
+                image_to_video_path=(
+                    str(state.image_to_video_path) if state.image_to_video_path else None
+                ),
                 image_to_video_mode=str(state.image_to_video_mode),
             )
             backend = OpenAICompatibleVisionBackend(config=cfg)
@@ -1363,7 +1659,9 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
     elif backend_kind == "diffusers":
         model_id = str(state.model_id or "").strip()
         if not model_id:
-            raise ValueError("Diffusers backend is not configured. Use: /backend diffusers <model_id_or_path> [device]")
+            raise ValueError(
+                "Diffusers backend is not configured. Use: /backend diffusers <model_id_or_path> [device]"
+            )
         model_id = _resolve_cached_diffusers_model_id(model_id)
         backend_key = (
             "diffusers",
@@ -1379,16 +1677,25 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             cfg = HuggingFaceDiffusersBackendConfig(
                 model_id=model_id,
                 device=str(state.diffusers_device),
-                torch_dtype=str(state.diffusers_torch_dtype) if state.diffusers_torch_dtype else None,
+                torch_dtype=(
+                    str(state.diffusers_torch_dtype) if state.diffusers_torch_dtype else None
+                ),
                 allow_download=bool(state.diffusers_allow_download),
                 auto_retry_fp32=bool(state.diffusers_auto_retry_fp32),
             )
             backend = HuggingFaceDiffusersVisionBackend(config=cfg)
             state._cached_backend = backend
             state._cached_backend_key = backend_key
-    elif backend_kind in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
+    elif backend_kind in {
+        "sdcpp",
+        "stable-diffusion.cpp",
+        "stable_diffusion_cpp",
+        "stable-diffusion-cpp",
+    }:
         sdcpp_model = str(state.sdcpp_model) if state.sdcpp_model else None
-        sdcpp_diffusion_model = str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None
+        sdcpp_diffusion_model = (
+            str(state.sdcpp_diffusion_model) if state.sdcpp_diffusion_model else None
+        )
         sdcpp_vae = str(state.sdcpp_vae) if state.sdcpp_vae else None
         sdcpp_llm = str(state.sdcpp_llm) if state.sdcpp_llm else None
         sdcpp_llm_vision = str(state.sdcpp_llm_vision) if state.sdcpp_llm_vision else None
@@ -1397,7 +1704,9 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             candidate_path = Path(str(sdcpp_model)).expanduser()
             if not candidate_path.exists():
                 try:
-                    resolved_sdcpp = resolve_sdcpp_model_selection(str(sdcpp_model), allow_download=False)
+                    resolved_sdcpp = resolve_sdcpp_model_selection(
+                        str(sdcpp_model), allow_download=False
+                    )
                 except ValueError:
                     resolved_sdcpp = None
                 except RuntimeError as e:
@@ -1422,12 +1731,18 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
                     resolved_sdcpp.capabilities_model_id if resolved_sdcpp is not None else None
                 ),
                 diffusion_model=(
-                    resolved_sdcpp.diffusion_model if resolved_sdcpp is not None else sdcpp_diffusion_model
+                    resolved_sdcpp.diffusion_model
+                    if resolved_sdcpp is not None
+                    else sdcpp_diffusion_model
                 ),
                 vae=resolved_sdcpp.vae if resolved_sdcpp is not None else sdcpp_vae,
                 llm=resolved_sdcpp.llm if resolved_sdcpp is not None else sdcpp_llm,
-                llm_vision=resolved_sdcpp.llm_vision if resolved_sdcpp is not None else sdcpp_llm_vision,
-                extra_args=shlex.split(str(state.sdcpp_extra_args)) if state.sdcpp_extra_args else (),
+                llm_vision=(
+                    resolved_sdcpp.llm_vision if resolved_sdcpp is not None else sdcpp_llm_vision
+                ),
+                extra_args=(
+                    shlex.split(str(state.sdcpp_extra_args)) if state.sdcpp_extra_args else ()
+                ),
             )
             backend = StableDiffusionCppVisionBackend(config=cfg)
             state._cached_backend = backend
@@ -1438,7 +1753,6 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             str(state.mflux_model) if state.mflux_model else None,
             str(state.mflux_base_model) if state.mflux_base_model else None,
             str(state.mflux_model_dir) if state.mflux_model_dir else None,
-            str(state.mflux_quantize) if state.mflux_quantize else None,
             bool(state.mflux_allow_download),
         )
         if state._cached_backend is not None and state._cached_backend_key == backend_key:
@@ -1448,7 +1762,6 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
                 model=str(state.mflux_model) if state.mflux_model else None,
                 base_model=str(state.mflux_base_model) if state.mflux_base_model else None,
                 model_dir=str(state.mflux_model_dir) if state.mflux_model_dir else None,
-                quantize=int(state.mflux_quantize) if state.mflux_quantize else None,
                 allow_download=bool(state.mflux_allow_download),
             )
             backend = MFluxVisionBackend(config=cfg)
@@ -1460,13 +1773,17 @@ def _build_manager_from_state(state: _ReplState) -> VisionManager:
             "/backend mlx-gen <preset_or_path>, /backend diffusers <model_id_or_path>, or /backend sdcpp <model_key_or_path>."
         )
     else:
-        raise ValueError(f"Unknown backend kind: {backend_kind!r} (expected 'openai', 'mlx-gen', 'diffusers', or 'sdcpp')")
+        raise ValueError(
+            f"Unknown backend kind: {backend_kind!r} (expected 'openai', 'mlx-gen', 'diffusers', or 'sdcpp')"
+        )
 
     reg = VisionModelCapabilitiesRegistry()
     cap_id = str(state.capabilities_model_id) if state.capabilities_model_id else None
     if cap_id and cap_id not in set(reg.list_models()):
         raise ValueError(f"capability model id not in registry: {cap_id!r}")
-    return VisionManager(backend=backend, store=store, model_id=cap_id, registry=reg if cap_id else None)
+    return VisionManager(
+        backend=backend, store=store, model_id=cap_id, registry=reg if cap_id else None
+    )
 
 
 def _cmd_repl(_: argparse.Namespace) -> int:
@@ -1574,7 +1891,6 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     "mflux_model": state.mflux_model,
                     "mflux_base_model": state.mflux_base_model,
                     "mflux_model_dir": state.mflux_model_dir,
-                    "mflux_quantize": state.mflux_quantize,
                     "mflux_allow_download": state.mflux_allow_download,
                     "defaults": state.defaults,
                 }
@@ -1609,12 +1925,24 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     state.model_id = args[1]
                     # Allow: /backend diffusers <model> [device] [torch_dtype]
                     # And also: /backend diffusers <model> <torch_dtype>  (keeps existing device)
-                    dtype_tokens = {"auto", "float16", "fp16", "bfloat16", "bf16", "float32", "fp32"}
+                    dtype_tokens = {
+                        "auto",
+                        "float16",
+                        "fp16",
+                        "bfloat16",
+                        "bf16",
+                        "float32",
+                        "fp32",
+                    }
                     if len(args) >= 3 and str(args[2]).strip().lower() in dtype_tokens:
                         state.diffusers_torch_dtype = str(args[2]).strip()
                     else:
-                        state.diffusers_device = args[2] if len(args) >= 3 else state.diffusers_device
-                        state.diffusers_torch_dtype = str(args[3]).strip() if len(args) >= 4 else state.diffusers_torch_dtype
+                        state.diffusers_device = (
+                            args[2] if len(args) >= 3 else state.diffusers_device
+                        )
+                        state.diffusers_torch_dtype = (
+                            str(args[3]).strip() if len(args) >= 4 else state.diffusers_torch_dtype
+                        )
                     state.model_id = _resolve_cached_diffusers_model_id(str(state.model_id))
                     print("ok")
                     continue
@@ -1742,7 +2070,17 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 extra = {
                     k: _coerce_scalar(v)
                     for k, v in d.items()
-                    if k not in {"width", "height", "steps", "guidance_scale", "seed", "negative_prompt", "open"} and v is not None
+                    if k
+                    not in {
+                        "width",
+                        "height",
+                        "steps",
+                        "guidance_scale",
+                        "seed",
+                        "negative_prompt",
+                        "open",
+                    }
+                    and v is not None
                 }
                 request = _resolve_t2i_request(
                     vm,
@@ -1766,7 +2104,11 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     extra=extra,
                 )
                 _print_json(out)
-                if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
+                if (
+                    isinstance(vm.store, LocalAssetStore)
+                    and isinstance(out, dict)
+                    and is_artifact_ref(out)
+                ):
                     p = vm.store.get_content_path(out["$artifact"])
                     if p is not None:
                         print(str(p))
@@ -1794,7 +2136,17 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 extra = {
                     k: _coerce_scalar(v)
                     for k, v in d.items()
-                    if k not in {"image", "mask", "steps", "guidance_scale", "seed", "negative_prompt", "open"} and v is not None
+                    if k
+                    not in {
+                        "image",
+                        "mask",
+                        "steps",
+                        "guidance_scale",
+                        "seed",
+                        "negative_prompt",
+                        "open",
+                    }
+                    and v is not None
                 }
                 img = Path(str(image_path)).expanduser().read_bytes()
                 mask = Path(str(mask_path)).expanduser().read_bytes() if mask_path else None
@@ -1819,7 +2171,11 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     extra=extra,
                 )
                 _print_json(out)
-                if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
+                if (
+                    isinstance(vm.store, LocalAssetStore)
+                    and isinstance(out, dict)
+                    and is_artifact_ref(out)
+                ):
                     p = vm.store.get_content_path(out["$artifact"])
                     if p is not None:
                         print(str(p))
@@ -1828,7 +2184,9 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 continue
             if cmd == "t2v":
                 if not args:
-                    print("Usage: /t2v <prompt...> [--width ... --height ... --fps ... --num-frames ...]")
+                    print(
+                        "Usage: /t2v <prompt...> [--width ... --height ... --fps ... --num-frames ... --max-sequence-length ...]"
+                    )
                     continue
                 flags, rest = _parse_flags_and_rest(args)
                 prompt = " ".join(rest).strip()
@@ -1839,6 +2197,8 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 vm = _build_manager_from_state(state)
                 d = dict(state.defaults.get("t2v", {}))
                 d.update(flags)
+                if d.get("num_frames") is None and d.get("frames") is not None:
+                    d["num_frames"] = d.get("frames")
                 extra = {
                     k: _coerce_scalar(v)
                     for k, v in d.items()
@@ -1847,29 +2207,113 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                         "width",
                         "height",
                         "fps",
+                        "frames",
                         "num_frames",
                         "steps",
                         "guidance_scale",
                         "seed",
                         "negative_prompt",
                         "open",
+                        "progress",
+                        "no_progress",
                     }
                     and v is not None
                 }
-                out = vm.generate_video(
-                    prompt,
-                    negative_prompt=d.get("negative_prompt"),
-                    width=_coerce_int(d.get("width")),
-                    height=_coerce_int(d.get("height")),
-                    fps=_coerce_int(d.get("fps")),
-                    num_frames=_coerce_int(d.get("num_frames")),
-                    steps=_coerce_int(d.get("steps")),
-                    guidance_scale=_coerce_float(d.get("guidance_scale")),
-                    seed=_coerce_int(d.get("seed")),
-                    extra=extra,
-                )
+                progress = _CliVideoProgress(enabled=_video_progress_enabled_from_flags(d))
+                if progress.enabled:
+                    extra["on_progress"] = progress
+                try:
+                    out = vm.generate_video(
+                        prompt,
+                        negative_prompt=d.get("negative_prompt"),
+                        width=_coerce_int(d.get("width")),
+                        height=_coerce_int(d.get("height")),
+                        fps=_coerce_int(d.get("fps")),
+                        num_frames=_coerce_int(d.get("num_frames")),
+                        steps=_coerce_int(d.get("steps")),
+                        guidance_scale=_coerce_float(d.get("guidance_scale")),
+                        seed=_coerce_int(d.get("seed")),
+                        extra=extra,
+                    )
+                finally:
+                    progress.close()
                 _print_json(out)
-                if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
+                if (
+                    isinstance(vm.store, LocalAssetStore)
+                    and isinstance(out, dict)
+                    and is_artifact_ref(out)
+                ):
+                    p = vm.store.get_content_path(out["$artifact"])
+                    if p is not None:
+                        print(str(p))
+                        if bool(flags.get("open")):
+                            _open_file(p)
+                continue
+            if cmd == "i2v":
+                if not args:
+                    print(
+                        "Usage: /i2v --image path [prompt...] [--width ... --height ... --fps ... --num-frames ... --max-sequence-length ...]"
+                    )
+                    continue
+                flags, rest = _parse_flags_and_rest(args)
+                image_path = flags.get("image")
+                if not image_path:
+                    print("Missing --image path")
+                    continue
+                prompt = " ".join(rest).strip() or None
+
+                vm = _build_manager_from_state(state)
+                d = dict(state.defaults.get("i2v", {}))
+                d.update(flags)
+                if d.get("num_frames") is None and d.get("frames") is not None:
+                    d["num_frames"] = d.get("frames")
+                extra = {
+                    k: _coerce_scalar(v)
+                    for k, v in d.items()
+                    if k
+                    not in {
+                        "image",
+                        "width",
+                        "height",
+                        "fps",
+                        "frames",
+                        "num_frames",
+                        "steps",
+                        "guidance_scale",
+                        "seed",
+                        "negative_prompt",
+                        "open",
+                        "progress",
+                        "no_progress",
+                    }
+                    and v is not None
+                }
+                img = Path(str(image_path)).expanduser().read_bytes()
+                progress = _CliVideoProgress(enabled=_video_progress_enabled_from_flags(d))
+                if progress.enabled:
+                    extra["on_progress"] = progress
+                try:
+                    out = vm.image_to_video(
+                        img,
+                        prompt=prompt,
+                        negative_prompt=d.get("negative_prompt"),
+                        width=_coerce_int(d.get("width")),
+                        height=_coerce_int(d.get("height")),
+                        fps=_coerce_int(d.get("fps")),
+                        num_frames=_coerce_int(d.get("num_frames")),
+                        steps=_coerce_int(d.get("steps")),
+                        guidance_scale=_coerce_float(d.get("guidance_scale")),
+                        seed=_coerce_int(d.get("seed")),
+                        extra=extra,
+                    )
+                finally:
+                    progress.close()
+                _print_json(out)
+                if (
+                    isinstance(vm.store, LocalAssetStore)
+                    and isinstance(out, dict)
+                    and is_artifact_ref(out)
+                ):
                     p = vm.store.get_content_path(out["$artifact"])
                     if p is not None:
                         print(str(p))
@@ -1890,10 +2334,14 @@ def _cmd_playground(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="abstractvision", description="AbstractVision CLI (capabilities + generation).")
+    p = argparse.ArgumentParser(
+        prog="abstractvision", description="AbstractVision CLI (capabilities + generation)."
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("models", help="List known model ids (from capability registry).").set_defaults(_fn=_cmd_models)
+    sub.add_parser("models", help="List known model ids (from capability registry).").set_defaults(
+        _fn=_cmd_models
+    )
     pm = sub.add_parser(
         "provider-models",
         aliases=["openai-models", "remote-models"],
@@ -1921,9 +2369,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Best-effort task filter (e.g. text_to_image, image_to_image).",
     )
     pm.add_argument("--timeout-s", type=float, default=30.0, help="HTTP timeout seconds.")
-    pm.add_argument("--json", action="store_true", help="Print full provider model entries as JSON.")
+    pm.add_argument(
+        "--json", action="store_true", help="Print full provider model entries as JSON."
+    )
     pm.set_defaults(_fn=_cmd_provider_models)
-    sub.add_parser("tasks", help="List known task keys (from capability registry).").set_defaults(_fn=_cmd_tasks)
+    sub.add_parser("tasks", help="List known task keys (from capability registry).").set_defaults(
+        _fn=_cmd_tasks
+    )
 
     presets = sub.add_parser(
         "model-presets",
@@ -1961,8 +2413,12 @@ def build_parser() -> argparse.ArgumentParser:
         ],
         help="Runtime provider/engine filter (default: any for the selected target). Use --provider mlx-gen for the Apple Silicon runtime; use --target mlx to browse MLX artifacts.",
     )
-    presets.add_argument("--all", action="store_true", help="Also show explicit non-quantized fallbacks.")
-    presets.add_argument("--all-targets", action="store_true", help="Show presets for every target.")
+    presets.add_argument(
+        "--all", action="store_true", help="Also show explicit non-quantized fallbacks."
+    )
+    presets.add_argument(
+        "--all-targets", action="store_true", help="Show presets for every target."
+    )
     presets.add_argument("--json", action="store_true", help="Print full preset metadata as JSON.")
     presets.set_defaults(_fn=_cmd_model_presets)
 
@@ -2007,8 +2463,12 @@ def build_parser() -> argparse.ArgumentParser:
         ],
         help="Runtime provider/engine filter (default: any for the selected target). Use --provider mlx-gen for the Apple Silicon runtime; use --target mlx to browse MLX artifacts.",
     )
-    catalog.add_argument("--all", action="store_true", help="Also include explicit non-quantized fallbacks.")
-    catalog.add_argument("--all-targets", action="store_true", help="Show downloadable presets for every target.")
+    catalog.add_argument(
+        "--all", action="store_true", help="Also include explicit non-quantized fallbacks."
+    )
+    catalog.add_argument(
+        "--all-targets", action="store_true", help="Show downloadable presets for every target."
+    )
     catalog.add_argument("--json", action="store_true", help="Print the catalog as JSON.")
     catalog.set_defaults(_fn=_cmd_model_catalog)
 
@@ -2021,9 +2481,9 @@ def build_parser() -> argparse.ArgumentParser:
         "names",
         nargs="+",
         help=(
-            "Preset name/alias (e.g. flux2-klein-4b, flux2-klein-9b, z-image-turbo) "
-            "or a Hugging Face repo id (org/name). You can pass multiple names to download them in sequence. "
-            "Shorthand: `download mlx-gen flux2-klein-4b` (provider/engine prefix)."
+            "Exact model id or Hugging Face repo id (e.g. AbstractFramework/flux.2-klein-4b-4bit). "
+            "You can pass multiple names to download them in sequence. "
+            "Shorthand: `download mlx-gen AbstractFramework/flux.2-klein-4b-4bit` (provider/engine prefix)."
         ),
     )
     dl.add_argument(
@@ -2062,21 +2522,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=_env("ABSTRACTVISION_MODEL_DIR"),
         help="Legacy preset root to import from (downloads now land in the Hugging Face cache).",
     )
-    dl.add_argument("--token", default=_env("HUGGINGFACE_HUB_TOKEN") or _env("HF_TOKEN"), help="Hugging Face token, if needed.")
-    dl.add_argument("--max-workers", type=int, default=4, help="Hugging Face download workers (default: 4).")
     dl.add_argument(
-        "--bits",
-        type=int,
-        choices=[4, 8],
-        default=None,
-        help="Select a curated quantized artifact when a preset has q4/q8 variants, especially MLX-Gen.",
+        "--token",
+        default=_env("HUGGINGFACE_HUB_TOKEN") or _env("HF_TOKEN"),
+        help="Hugging Face token, if needed.",
+    )
+    dl.add_argument(
+        "--max-workers", type=int, default=4, help="Hugging Face download workers (default: 4)."
     )
     dl.add_argument(
         "--allow-non-8bit",
         action="store_true",
         help="Permit explicit fallback presets when no quantized artifact is curated.",
     )
-    dl.add_argument("--json", action="store_true", help="Print selected preset + snapshot path as JSON.")
+    dl.add_argument(
+        "--json", action="store_true", help="Print selected preset + snapshot path as JSON."
+    )
     dl.set_defaults(_fn=_cmd_download_model)
 
     sm = sub.add_parser("show-model", help="Show a model's supported tasks and params.")
@@ -2095,7 +2556,9 @@ def build_parser() -> argparse.ArgumentParser:
         aliases=["serve"],
         help="Run the self-contained local web playground and API server.",
     )
-    playground.add_argument("--host", default="127.0.0.1", help="Host/interface to bind (default: 127.0.0.1).")
+    playground.add_argument(
+        "--host", default="127.0.0.1", help="Host/interface to bind (default: 127.0.0.1)."
+    )
     playground.add_argument("--port", type=int, default=8091, help="Port to bind (default: 8091).")
     playground.set_defaults(_fn=_cmd_playground)
 
@@ -2126,7 +2589,11 @@ def build_parser() -> argparse.ArgumentParser:
         )
 
         # OpenAI/OpenAI-compatible provider config.
-        ap.add_argument("--base-url", default=_env("OPENAI_BASE_URL"), help="OpenAI-compatible base URL (e.g. http://localhost:1234/v1).")
+        ap.add_argument(
+            "--base-url",
+            default=_env("OPENAI_BASE_URL"),
+            help="OpenAI-compatible base URL (e.g. http://localhost:1234/v1).",
+        )
         ap.add_argument("--api-key", default=_env("OPENAI_API_KEY"), help="API key (Bearer).")
 
         # Local Diffusers provider config.
@@ -2135,7 +2602,11 @@ def build_parser() -> argparse.ArgumentParser:
             default=_env("ABSTRACTVISION_DIFFUSERS_DEVICE", DEFAULT_DIFFUSERS_DEVICE),
             help="Diffusers device: cpu|cuda|mps|auto (default: auto).",
         )
-        ap.add_argument("--diffusers-torch-dtype", default=_env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE"), help="Diffusers torch dtype (e.g. float16).")
+        ap.add_argument(
+            "--diffusers-torch-dtype",
+            default=_env("ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE"),
+            help="Diffusers torch dtype (e.g. float16).",
+        )
         ap.add_argument(
             "--diffusers-allow-download",
             action="store_true",
@@ -2157,14 +2628,26 @@ def build_parser() -> argparse.ArgumentParser:
         )
 
         # stable-diffusion.cpp provider config.
-        ap.add_argument("--sdcpp-bin", default=_env("ABSTRACTVISION_SDCPP_BIN", "sd-cli"), help="Path to sd-cli (default: sd-cli).")
+        ap.add_argument(
+            "--sdcpp-bin",
+            default=_env("ABSTRACTVISION_SDCPP_BIN", "sd-cli"),
+            help="Path to sd-cli (default: sd-cli).",
+        )
         ap.add_argument(
             "--sdcpp-model",
             default=_env("ABSTRACTVISION_SDCPP_MODEL"),
             help="stable-diffusion.cpp model key or single-model path (overrides --model).",
         )
-        ap.add_argument("--sdcpp-diffusion-model", default=_env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"), help="stable-diffusion.cpp diffusion_model path (GGUF).")
-        ap.add_argument("--sdcpp-vae", default=_env("ABSTRACTVISION_SDCPP_VAE"), help="stable-diffusion.cpp VAE path (safetensors).")
+        ap.add_argument(
+            "--sdcpp-diffusion-model",
+            default=_env("ABSTRACTVISION_SDCPP_DIFFUSION_MODEL"),
+            help="stable-diffusion.cpp diffusion_model path (GGUF).",
+        )
+        ap.add_argument(
+            "--sdcpp-vae",
+            default=_env("ABSTRACTVISION_SDCPP_VAE"),
+            help="stable-diffusion.cpp VAE path (safetensors).",
+        )
         ap.add_argument(
             "--sdcpp-llm",
             default=_env("ABSTRACTVISION_SDCPP_LLM"),
@@ -2175,10 +2658,18 @@ def build_parser() -> argparse.ArgumentParser:
             default=_env("ABSTRACTVISION_SDCPP_LLM_VISION"),
             help="stable-diffusion.cpp vision LLM path (GGUF; optional, used by some Qwen variants).",
         )
-        ap.add_argument("--sdcpp-extra-args", default=_env("ABSTRACTVISION_SDCPP_EXTRA_ARGS"), help="Extra args forwarded to sd-cli / bindings (quoted string).")
+        ap.add_argument(
+            "--sdcpp-extra-args",
+            default=_env("ABSTRACTVISION_SDCPP_EXTRA_ARGS"),
+            help="Extra args forwarded to sd-cli / bindings (quoted string).",
+        )
 
         # MLX-Gen provider config (env var names preserve MFLUX compatibility).
-        ap.add_argument("--mflux-base-model", default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"), help="MLX-Gen base model: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, or ernie-image-turbo.")
+        ap.add_argument(
+            "--mflux-base-model",
+            default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"),
+            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, or wan2.2-ti2v-5b.",
+        )
         ap.add_argument(
             "--mflux-model-dir",
             "--model-dir",
@@ -2193,21 +2684,51 @@ def build_parser() -> argparse.ArgumentParser:
             help="Allow MLX-Gen to resolve/download non-local model ids (repo ids).",
         )
 
-        ap.add_argument("--capabilities-model-id", default=_env("ABSTRACTVISION_CAPABILITIES_MODEL_ID"), help="Optional: enforce support using a registry model id.")
+        ap.add_argument(
+            "--capabilities-model-id",
+            default=_env("ABSTRACTVISION_CAPABILITIES_MODEL_ID"),
+            help="Optional: enforce support using a registry model id.",
+        )
         ap.add_argument(
             "--timeout-s",
             type=float,
             default=float(_env("ABSTRACTVISION_TIMEOUT_S", "3600") or "3600"),
             help="Timeout seconds for HTTP calls and local runtimes (default: 3600).",
         )
-        ap.add_argument("--store-dir", default=_env("ABSTRACTVISION_STORE_DIR"), help="Local asset store dir (default: ~/.abstractvision/assets).")
-        ap.add_argument("--images-generations-path", default=_env("ABSTRACTVISION_IMAGES_GENERATIONS_PATH", "/images/generations"), help="Path for image generations.")
-        ap.add_argument("--images-edits-path", default=_env("ABSTRACTVISION_IMAGES_EDITS_PATH", "/images/edits"), help="Path for image edits.")
-        ap.add_argument("--text-to-video-path", default=_env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH"), help="Optional path for text-to-video.")
-        ap.add_argument("--image-to-video-path", default=_env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH"), help="Optional path for image-to-video.")
-        ap.add_argument("--image-to-video-mode", default=_env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart"), help="image_to_video mode: multipart|json_b64.")
+        ap.add_argument(
+            "--store-dir",
+            default=_env("ABSTRACTVISION_STORE_DIR"),
+            help="Local asset store dir (default: ~/.abstractvision/assets).",
+        )
+        ap.add_argument(
+            "--images-generations-path",
+            default=_env("ABSTRACTVISION_IMAGES_GENERATIONS_PATH", "/images/generations"),
+            help="Path for image generations.",
+        )
+        ap.add_argument(
+            "--images-edits-path",
+            default=_env("ABSTRACTVISION_IMAGES_EDITS_PATH", "/images/edits"),
+            help="Path for image edits.",
+        )
+        ap.add_argument(
+            "--text-to-video-path",
+            default=_env("ABSTRACTVISION_TEXT_TO_VIDEO_PATH"),
+            help="Optional path for text-to-video.",
+        )
+        ap.add_argument(
+            "--image-to-video-path",
+            default=_env("ABSTRACTVISION_IMAGE_TO_VIDEO_PATH"),
+            help="Optional path for image-to-video.",
+        )
+        ap.add_argument(
+            "--image-to-video-mode",
+            default=_env("ABSTRACTVISION_IMAGE_TO_VIDEO_MODE", "multipart"),
+            help="image_to_video mode: multipart|json_b64.",
+        )
 
-    t2i = sub.add_parser("t2i", help="One-shot text-to-image (stores output and prints artifact ref + path).")
+    t2i = sub.add_parser(
+        "t2i", help="One-shot text-to-image (stores output and prints artifact ref + path)."
+    )
     _add_provider_flags(t2i)
     t2i.add_argument("prompt")
     t2i.add_argument("--negative-prompt", default=None)
@@ -2219,7 +2740,9 @@ def build_parser() -> argparse.ArgumentParser:
     t2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     t2i.set_defaults(_fn=_cmd_t2i)
 
-    i2i = sub.add_parser("i2i", help="One-shot image-to-image edit (stores output and prints artifact ref + path).")
+    i2i = sub.add_parser(
+        "i2i", help="One-shot image-to-image edit (stores output and prints artifact ref + path)."
+    )
     _add_provider_flags(i2i)
     i2i.add_argument("--image", required=True, help="Input image file path.")
     i2i.add_argument("--mask", default=None, help="Optional mask file path.")
@@ -2237,21 +2760,40 @@ def build_parser() -> argparse.ArgumentParser:
     i2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     i2i.set_defaults(_fn=_cmd_i2i)
 
-    t2v = sub.add_parser("t2v", help="One-shot text-to-video (stores output and prints artifact ref + path).")
+    t2v = sub.add_parser(
+        "t2v", help="One-shot text-to-video (stores output and prints artifact ref + path)."
+    )
     _add_provider_flags(t2v)
     t2v.add_argument("prompt")
     t2v.add_argument("--negative-prompt", default=None)
     t2v.add_argument("--width", type=int, default=None)
     t2v.add_argument("--height", type=int, default=None)
     t2v.add_argument("--fps", type=int, default=None)
-    t2v.add_argument("--num-frames", type=int, default=None, dest="num_frames")
+    t2v.add_argument("--num-frames", "--frames", type=int, default=None, dest="num_frames")
+    t2v.add_argument("--max-sequence-length", type=int, default=None)
     t2v.add_argument("--steps", type=int, default=None)
     t2v.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     t2v.add_argument("--seed", type=int, default=None)
     t2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
+    t2v.add_argument(
+        "--progress",
+        dest="progress",
+        action="store_true",
+        default=True,
+        help="Show video generation progress on stderr.",
+    )
+    t2v.add_argument(
+        "--no-progress",
+        dest="progress",
+        action="store_false",
+        help="Disable video generation progress output.",
+    )
     t2v.set_defaults(_fn=_cmd_t2v)
 
-    i2v = sub.add_parser("i2v", help="One-shot image-to-video (experimental; stores output and prints artifact ref + path).")
+    i2v = sub.add_parser(
+        "i2v",
+        help="One-shot image-to-video (experimental; stores output and prints artifact ref + path).",
+    )
     _add_provider_flags(i2v)
     i2v.add_argument("--image", required=True, help="Input image file path.")
     i2v.add_argument("prompt", nargs="?", default=None, help="Optional guidance prompt.")
@@ -2259,11 +2801,25 @@ def build_parser() -> argparse.ArgumentParser:
     i2v.add_argument("--width", type=int, default=None)
     i2v.add_argument("--height", type=int, default=None)
     i2v.add_argument("--fps", type=int, default=None)
-    i2v.add_argument("--num-frames", type=int, default=None, dest="num_frames")
+    i2v.add_argument("--num-frames", "--frames", type=int, default=None, dest="num_frames")
+    i2v.add_argument("--max-sequence-length", type=int, default=None)
     i2v.add_argument("--steps", type=int, default=None)
     i2v.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     i2v.add_argument("--seed", type=int, default=None)
     i2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
+    i2v.add_argument(
+        "--progress",
+        dest="progress",
+        action="store_true",
+        default=True,
+        help="Show video generation progress on stderr.",
+    )
+    i2v.add_argument(
+        "--no-progress",
+        dest="progress",
+        action="store_false",
+        help="Disable video generation progress output.",
+    )
     i2v.set_defaults(_fn=_cmd_i2v)
 
     return p

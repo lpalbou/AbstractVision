@@ -154,6 +154,35 @@ print("ok")
         self.assertEqual(seen["request"].width, 1024)
         self.assertEqual(seen["request"].height, 1024)
 
+    def test_abstractcore_plugin_routes_exact_mlx_gen_model_id(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _FakeBackend:
+            def generate_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        class _DummyOwner:
+            config = {}
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        with patch.object(cap, "_make_mflux_backend", return_value=_FakeBackend()) as make_backend:
+            out = cap.t2i(
+                "a red square",
+                provider="mlx-gen",
+                model="AbstractFramework/qwen-image-2512-8bit",
+            )
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        make_backend.assert_called_once_with(model_id="AbstractFramework/qwen-image-2512-8bit")
+        self.assertFalse(hasattr(seen["request"], "quantization_bits"))
+
     def test_abstractcore_plugin_uses_openai_key_for_official_openai(self):
         import abstractvision.backends.openai_compatible as openai_backend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -360,7 +389,9 @@ print("ok")
             def __init__(self, *, config):
                 seen["config"] = config
 
-            def normalize_image_generation_request(self, request: ImageGenerationRequest) -> ImageGenerationRequest:
+            def normalize_image_generation_request(
+                self, request: ImageGenerationRequest
+            ) -> ImageGenerationRequest:
                 return ImageGenerationRequest(
                     prompt=request.prompt,
                     negative_prompt=None,
@@ -384,7 +415,14 @@ print("ok")
         with patch.object(hf_backend, "HuggingFaceDiffusersVisionBackend", _FakeBackend):
             with patch.dict("os.environ", {}, clear=True):
                 cap = _AbstractVisionCapability(_DummyOwner())
-                out = cap.t2i("a red square", width=64, height=64, steps=1, guidance_scale=7.0, negative_prompt="blur")
+                out = cap.t2i(
+                    "a red square",
+                    width=64,
+                    height=64,
+                    steps=1,
+                    guidance_scale=7.0,
+                    negative_prompt="blur",
+                )
 
         self.assertTrue(out.startswith(b"\x89PNG"))
         self.assertEqual(seen["request"].steps, 2)
@@ -443,7 +481,9 @@ print("ok")
 
             def generate_image(self, request):
                 seen["request"] = request
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
         with tempfile.TemporaryDirectory() as cache_td, tempfile.TemporaryDirectory() as src_td:
             cache_root = Path(cache_td)
@@ -520,7 +560,7 @@ print("ok")
         class _DummyOwner:
             config = {
                 "vision_backend": "mflux",
-                "vision_mflux_model": "flux2-klein-4b",
+                "vision_mflux_model": "AbstractFramework/flux.2-klein-4b-4bit",
                 "vision_mflux_base_model": "flux2-klein-4b",
             }
 
@@ -531,7 +571,7 @@ print("ok")
 
         self.assertTrue(out.startswith(b"\x89PNG"))
         cfg = seen["config"]
-        self.assertEqual(cfg.model, "flux2-klein-4b")
+        self.assertEqual(cfg.model, "AbstractFramework/flux.2-klein-4b-4bit")
         self.assertEqual(cfg.base_model, "flux2-klein-4b")
         self.assertEqual(seen["request"].width, 64)
         self.assertEqual(seen["request"].height, 64)
@@ -549,7 +589,9 @@ print("ok")
                 seen["config"] = config
 
             def generate_image(self, request):
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
         class _DummyOwner:
             config = {}
@@ -557,12 +599,12 @@ print("ok")
         with patch.object(mflux_backend, "MFluxVisionBackend", _FakeBackend):
             with patch.dict("os.environ", {}, clear=True):
                 cap = _AbstractVisionCapability(_DummyOwner())
-                out = cap.t2i("a red square", model="mflux/flux2-klein-9b")
+                out = cap.t2i("a red square", model="mflux/AbstractFramework/flux.2-klein-9b-4bit")
 
         self.assertTrue(out.startswith(b"\x89PNG"))
-        self.assertEqual(seen["config"].model, "flux2-klein-9b")
+        self.assertEqual(seen["config"].model, "AbstractFramework/flux.2-klein-9b-4bit")
 
-    def test_abstractcore_plugin_prefers_cached_mflux_for_known_raw_model(self):
+    def test_abstractcore_plugin_prefers_cached_mflux_for_exact_mlx_gen_model(self):
         import abstractvision.backends.mflux as mflux_backend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset
@@ -575,21 +617,27 @@ print("ok")
                 seen["config"] = config
 
             def generate_image(self, request):
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
         class _DummyOwner:
             config = {}
 
         with tempfile.TemporaryDirectory() as cache_td:
-            _make_hf_snapshot(Path(cache_td), "deepsweet/FLUX.2-klein-9B-MLX-Q8")
+            _make_hf_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-9b-8bit")
             with patch.object(mflux_backend, "MFluxVisionBackend", _FakeBackend):
-                with patch("abstractvision.integrations.abstractcore_plugin.sys.platform", "darwin"):
+                with patch(
+                    "abstractvision.integrations.abstractcore_plugin.sys.platform", "darwin"
+                ):
                     with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                         cap = _AbstractVisionCapability(_DummyOwner())
-                        out = cap.t2i("a red square", model="black-forest-labs/FLUX.2-klein-9B")
+                        out = cap.t2i(
+                            "a red square", model="AbstractFramework/flux.2-klein-9b-8bit"
+                        )
 
         self.assertTrue(out.startswith(b"\x89PNG"))
-        self.assertEqual(seen["config"].model, "flux2-klein-9b")
+        self.assertEqual(seen["config"].model, "AbstractFramework/flux.2-klein-9b-8bit")
 
     def test_abstractcore_plugin_keeps_explicit_diffusers_provider_for_mflux_aliases(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -603,8 +651,14 @@ print("ok")
 
         with patch.object(cap, "_make_diffusers_backend", return_value=diffusers_backend):
             with patch.object(cap, "_make_mflux_backend", return_value=mflux_backend):
-                with patch("abstractvision.integrations.abstractcore_plugin._has_local_mflux_preset", return_value=True):
-                    with patch("abstractvision.integrations.abstractcore_plugin._is_known_mflux_model_alias", return_value=True):
+                with patch(
+                    "abstractvision.integrations.abstractcore_plugin._has_local_mflux_preset",
+                    return_value=True,
+                ):
+                    with patch(
+                        "abstractvision.integrations.abstractcore_plugin._is_known_mflux_model_alias",
+                        return_value=True,
+                    ):
                         explicit_hf = cap._resolve_backend_binding(
                             provider="huggingface",
                             model="black-forest-labs/FLUX.2-klein-9B",
@@ -650,7 +704,9 @@ print("ok")
             def edit_image(self, request):
                 seen["backend"] = "diffusers"
                 seen["request"] = request
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
         class _FakeMfluxBackend:
             def get_capabilities(self):
@@ -658,14 +714,22 @@ print("ok")
 
             def edit_image(self, request):
                 seen["backend"] = "mflux"
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
         cap = _AbstractVisionCapability(_DummyOwner())
 
         with patch.object(cap, "_make_diffusers_backend", return_value=_FakeDiffusersBackend()):
             with patch.object(cap, "_make_mflux_backend", return_value=_FakeMfluxBackend()):
-                with patch("abstractvision.integrations.abstractcore_plugin._has_local_mflux_preset", return_value=True):
-                    with patch("abstractvision.integrations.abstractcore_plugin._is_known_mflux_model_alias", return_value=True):
+                with patch(
+                    "abstractvision.integrations.abstractcore_plugin._has_local_mflux_preset",
+                    return_value=True,
+                ):
+                    with patch(
+                        "abstractvision.integrations.abstractcore_plugin._is_known_mflux_model_alias",
+                        return_value=True,
+                    ):
                         out = cap.i2i(
                             "make it watercolor",
                             image=png,
@@ -677,7 +741,7 @@ print("ok")
         self.assertEqual(seen["backend"], "diffusers")
         self.assertEqual(seen["request"].prompt, "make it watercolor")
 
-    def test_abstractcore_plugin_canonicalizes_mflux_aliases_for_backend_reuse(self):
+    def test_abstractcore_plugin_canonicalizes_exact_mlx_gen_repo_slug_for_backend_reuse(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
 
         class _DummyOwner:
@@ -689,24 +753,28 @@ print("ok")
         with patch.object(cap, "_make_mflux_backend", return_value=backend) as make_backend:
             first = cap._resolve_backend_binding(
                 provider="mflux",
-                model="black-forest-labs/FLUX.2-klein-9B",
+                model="AbstractFramework/flux.2-klein-9b-4bit",
             )
             second = cap._resolve_backend_binding(
                 provider="mflux",
-                model="flux2-klein-9b",
+                model="flux.2-klein-9b-4bit",
             )
 
         self.assertIs(first["backend"], backend)
         self.assertIs(second["backend"], backend)
-        self.assertEqual(first["backend_key"], ("mlx-gen", "flux2-klein-9b"))
-        self.assertEqual(second["backend_key"], ("mlx-gen", "flux2-klein-9b"))
-        self.assertEqual(first["model"], "flux2-klein-9b")
-        self.assertEqual(second["model"], "flux2-klein-9b")
-        self.assertEqual(first["load_id"], "mlx-gen/flux2-klein-9b")
-        self.assertEqual(second["load_id"], "mlx-gen/flux2-klein-9b")
+        self.assertEqual(
+            first["backend_key"], ("mlx-gen", "AbstractFramework/flux.2-klein-9b-4bit")
+        )
+        self.assertEqual(
+            second["backend_key"], ("mlx-gen", "AbstractFramework/flux.2-klein-9b-4bit")
+        )
+        self.assertEqual(first["model"], "AbstractFramework/flux.2-klein-9b-4bit")
+        self.assertEqual(second["model"], "AbstractFramework/flux.2-klein-9b-4bit")
+        self.assertEqual(first["load_id"], "mlx-gen/AbstractFramework/flux.2-klein-9b-4bit")
+        self.assertEqual(second["load_id"], "mlx-gen/AbstractFramework/flux.2-klein-9b-4bit")
         self.assertEqual(make_backend.call_count, 1)
 
-    def test_abstractcore_plugin_keeps_explicit_mlx_gen_quantized_variants_distinct(self):
+    def test_abstractcore_plugin_keeps_exact_mlx_gen_model_ids_distinct(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
 
         class _DummyOwner:
@@ -721,14 +789,21 @@ print("ok")
             return backend
 
         with patch.object(cap, "_make_mflux_backend", side_effect=make_backend):
-            q4 = cap._resolve_backend_binding(provider="mlx-gen", model="flux2-klein-9b")
-            q8 = cap._resolve_backend_binding(provider="mlx-gen", model="flux2-klein-9b-q8")
+            q4 = cap._resolve_backend_binding(
+                provider="mlx-gen", model="AbstractFramework/flux.2-klein-9b-4bit"
+            )
+            q8 = cap._resolve_backend_binding(
+                provider="mlx-gen", model="AbstractFramework/flux.2-klein-9b-8bit"
+            )
 
-        self.assertEqual(q4["backend_key"], ("mlx-gen", "flux2-klein-9b"))
-        self.assertEqual(q8["backend_key"], ("mlx-gen", "flux2-klein-9b-q8"))
-        self.assertEqual(q4["load_id"], "mlx-gen/flux2-klein-9b")
-        self.assertEqual(q8["load_id"], "mlx-gen/flux2-klein-9b-q8")
-        self.assertEqual([item[0] for item in made], ["flux2-klein-9b", "flux2-klein-9b-q8"])
+        self.assertEqual(q4["backend_key"], ("mlx-gen", "AbstractFramework/flux.2-klein-9b-4bit"))
+        self.assertEqual(q8["backend_key"], ("mlx-gen", "AbstractFramework/flux.2-klein-9b-8bit"))
+        self.assertEqual(q4["load_id"], "mlx-gen/AbstractFramework/flux.2-klein-9b-4bit")
+        self.assertEqual(q8["load_id"], "mlx-gen/AbstractFramework/flux.2-klein-9b-8bit")
+        self.assertEqual(
+            [item[0] for item in made],
+            ["AbstractFramework/flux.2-klein-9b-4bit", "AbstractFramework/flux.2-klein-9b-8bit"],
+        )
 
     def test_abstractcore_plugin_request_scoped_sdcpp_overrides_configured_backend(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -767,7 +842,7 @@ print("ok")
             config = {}
 
         with tempfile.TemporaryDirectory() as cache_td:
-            _make_hf_snapshot(Path(cache_td), "deepsweet/FLUX.2-klein-9B-MLX-Q8")
+            _make_hf_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-9b-8bit")
             with patch("abstractvision.integrations.abstractcore_plugin.sys.platform", "darwin"):
                 with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                     cap = _AbstractVisionCapability(_DummyOwner())
@@ -789,15 +864,30 @@ print("ok")
                 seen["config"] = config
 
             def generate_image(self, request):
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
         class _Meta:
             def __init__(self, artifact_id: str):
                 self.artifact_id = artifact_id
 
         class _Store:
-            def store(self, content, *, content_type="application/octet-stream", run_id=None, tags=None, artifact_id=None):
-                seen["stored"] = {"content": bytes(content), "content_type": content_type, "run_id": run_id, "tags": tags}
+            def store(
+                self,
+                content,
+                *,
+                content_type="application/octet-stream",
+                run_id=None,
+                tags=None,
+                artifact_id=None,
+            ):
+                seen["stored"] = {
+                    "content": bytes(content),
+                    "content_type": content_type,
+                    "run_id": run_id,
+                    "tags": tags,
+                }
                 return _Meta(artifact_id or "img-1")
 
         class _DummyOwner:
@@ -809,14 +899,14 @@ print("ok")
                 out = cap.t2i(
                     "a red square",
                     provider="mflux",
-                    model="flux2-klein-4b",
+                    model="AbstractFramework/flux.2-klein-4b-4bit",
                     artifact_store=_Store(),
                     run_id="run-1",
                     tags={"node_id": "n1"},
                 )
 
         self.assertEqual(out.get("$artifact"), "img-1")
-        self.assertEqual(seen["config"].model, "flux2-klein-4b")
+        self.assertEqual(seen["config"].model, "AbstractFramework/flux.2-klein-4b-4bit")
         self.assertEqual(seen["stored"]["content"], png)
         self.assertEqual(seen["stored"]["run_id"], "run-1")
         self.assertEqual(seen["stored"]["tags"]["node_id"], "n1")
@@ -834,7 +924,12 @@ print("ok")
                 self.unloaded = 0
 
             def generate_image(self, request):
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={"backend": self.name})
+                return GeneratedAsset(
+                    media_type="image",
+                    data=png,
+                    mime_type="image/png",
+                    metadata={"backend": self.name},
+                )
 
             def unload(self):
                 self.unloaded += 1
@@ -849,7 +944,11 @@ print("ok")
         with patch.object(cap, "_make_mflux_backend", return_value=mflux_backend):
             with patch.object(cap, "_make_diffusers_backend", return_value=diffusers_backend):
                 with patch.dict("os.environ", {}, clear=True):
-                    first = cap.t2i("a red square", provider="mflux", model="flux2-klein-9b")
+                    first = cap.t2i(
+                        "a red square",
+                        provider="mflux",
+                        model="AbstractFramework/flux.2-klein-9b-4bit",
+                    )
                     second = cap.t2i(
                         "a red square",
                         provider="diffusers",
@@ -901,8 +1000,12 @@ print("ok")
             self.assertEqual(len(loaded), 1)
             self.assertEqual(len(resident), 1)
             self.assertEqual(loaded[0]["source"], "explicit_preload")
-            self.assertEqual(cap.list_loaded_models({"provider": "hf"})[0]["backend_kind"], "diffusers")
-            self.assertEqual(cap.list_resident_models({"backend": "diffusers"})[0]["provider"], "huggingface")
+            self.assertEqual(
+                cap.list_loaded_models({"provider": "hf"})[0]["backend_kind"], "diffusers"
+            )
+            self.assertEqual(
+                cap.list_resident_models({"backend": "diffusers"})[0]["provider"], "huggingface"
+            )
 
             out = cap.unload_resident_model(
                 {
@@ -931,10 +1034,14 @@ print("ok")
                 self.unloaded = 0
 
             def generate_image(self, request):
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
             def edit_image(self, request):
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
             def unload(self):
                 self.unloaded += 1
@@ -992,7 +1099,9 @@ print("ok")
         class FakeOpenAIBackend:
             def edit_image(self, request):
                 seen["request"] = request
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
 
         cap = _AbstractVisionCapability(_DummyOwner())
         binding = {"local_control": False}
@@ -1010,6 +1119,62 @@ print("ok")
         self.assertEqual(seen["request"].extra.get("size"), "1024x1024")
         self.assertEqual(seen["request"].extra.get("model"), "image-2")
 
+    def test_abstractcore_plugin_i2i_accepts_image_path_and_edit_parameters(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMlxGenBackend:
+            def edit_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        binding = {
+            "backend_key": ("mlx-gen", "AbstractFramework/qwen-image-edit-2511-4bit"),
+            "backend_kind": "mlx-gen",
+            "provider": "mlx-gen",
+            "model": "AbstractFramework/qwen-image-edit-2511-4bit",
+            "load_id": "mlx-gen/AbstractFramework/qwen-image-edit-2511-4bit",
+            "local_control": True,
+        }
+        with tempfile.TemporaryDirectory() as td:
+            image_path = Path(td) / "input.png"
+            image_path.write_bytes(png)
+            with patch.object(cap, "_resolve_backend_binding", return_value=binding):
+                with patch.object(
+                    cap, "_activate_request_backend", return_value=FakeMlxGenBackend()
+                ):
+                    out = cap.i2i(
+                        "replace the background",
+                        image=str(image_path),
+                        provider="mlx-gen",
+                        model="AbstractFramework/qwen-image-edit-2511-4bit",
+                        steps=20,
+                        guidance_scale=2.5,
+                        strength=0.75,
+                        width=1024,
+                        height=1024,
+                    )
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        self.assertEqual(seen["request"].image, png)
+        self.assertEqual(seen["request"].steps, 20)
+        self.assertEqual(seen["request"].guidance_scale, 2.5)
+        self.assertEqual(seen["request"].extra.get("strength"), 0.75)
+        self.assertEqual(seen["request"].extra.get("width"), 1024)
+        self.assertEqual(seen["request"].extra.get("height"), 1024)
+        loaded = cap.list_loaded_models({"task": "i2i"})
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0]["model"], "AbstractFramework/qwen-image-edit-2511-4bit")
+
     def test_abstractcore_plugin_tracks_text_to_video_request_models(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset
@@ -1019,12 +1184,17 @@ print("ok")
         class _DummyOwner:
             config = {}
 
+        seen = {}
+
         class FakeDiffusersBackend:
             def __init__(self):
                 self.unloaded = 0
 
             def generate_video(self, request):
-                return GeneratedAsset(media_type="video", data=mp4, mime_type="video/mp4", metadata={})
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="video", data=mp4, mime_type="video/mp4", metadata={}
+                )
 
             def unload(self):
                 self.unloaded += 1
@@ -1032,14 +1202,19 @@ print("ok")
         backend = FakeDiffusersBackend()
         cap = _AbstractVisionCapability(_DummyOwner())
 
+        def progress_callback(event):
+            return None
+
         with patch.object(cap, "_make_diffusers_backend", return_value=backend):
             out = cap.t2v(
                 "animate the square",
                 provider="diffusers",
                 model="zai-org/CogVideoX-2b",
+                on_progress=progress_callback,
             )
 
             self.assertTrue(out.startswith(b"ftyp"))
+            self.assertIs(seen["request"].extra.get("on_progress"), progress_callback)
             loaded = cap.list_loaded_models({"task": "t2v"})
             self.assertEqual(len(loaded), 1)
             self.assertEqual(loaded[0]["model"], "zai-org/CogVideoX-2b")
@@ -1054,6 +1229,48 @@ print("ok")
 
         self.assertEqual(backend.unloaded, 1)
         self.assertEqual(cap.list_loaded_models(), [])
+
+    def test_abstractcore_plugin_i2v_routes_unknown_kwargs_to_extra(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        mp4 = b"ftyp" + (b"\x00" * 16)
+        seen = {}
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMFluxBackend:
+            def image_to_video(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="video", data=mp4, mime_type="video/mp4", metadata={}
+                )
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_mflux_backend", return_value=FakeMFluxBackend()):
+
+            def progress_callback(event):
+                return None
+
+            out = cap.i2v(
+                b"image-bytes",
+                provider="mlx-gen",
+                model="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+                prompt="move slowly",
+                fps=12,
+                num_frames=9,
+                max_sequence_length=128,
+                on_progress=progress_callback,
+            )
+
+        self.assertTrue(out.startswith(b"ftyp"))
+        self.assertEqual(seen["request"].prompt, "move slowly")
+        self.assertEqual(seen["request"].fps, 12)
+        self.assertEqual(seen["request"].num_frames, 9)
+        self.assertEqual(seen["request"].extra.get("max_sequence_length"), 128)
+        self.assertIs(seen["request"].extra.get("on_progress"), progress_callback)
 
     def test_abstractcore_plugin_resident_backend_survives_model_switches(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -1073,7 +1290,12 @@ print("ok")
                 self.preloaded += 1
 
             def generate_image(self, request):
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={"backend": "mflux"})
+                return GeneratedAsset(
+                    media_type="image",
+                    data=png,
+                    mime_type="image/png",
+                    metadata={"backend": "mflux"},
+                )
 
             def unload(self):
                 self.unloaded += 1
@@ -1083,7 +1305,12 @@ print("ok")
                 self.unloaded = 0
 
             def generate_image(self, request):
-                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={"backend": "diffusers"})
+                return GeneratedAsset(
+                    media_type="image",
+                    data=png,
+                    mime_type="image/png",
+                    metadata={"backend": "diffusers"},
+                )
 
             def unload(self):
                 self.unloaded += 1
@@ -1098,7 +1325,7 @@ print("ok")
                     {
                         "task": "text_to_image",
                         "provider": "mflux",
-                        "model": "flux2-klein-9b",
+                        "model": "AbstractFramework/flux.2-klein-9b-4bit",
                     }
                 )
                 cap.t2i(
@@ -1109,7 +1336,7 @@ print("ok")
                 cap.t2i(
                     "a red square",
                     provider="mflux",
-                    model="flux2-klein-9b",
+                    model="AbstractFramework/flux.2-klein-9b-4bit",
                 )
                 cap.t2i(
                     "a red square",
@@ -1125,9 +1352,11 @@ print("ok")
         resident = cap.list_resident_models()
         self.assertEqual(len(loaded), 2)
         self.assertEqual(len(resident), 1)
-        self.assertEqual(resident[0]["load_id"], "mlx-gen/flux2-klein-9b")
+        self.assertEqual(resident[0]["load_id"], "mlx-gen/AbstractFramework/flux.2-klein-9b-4bit")
         self.assertTrue(resident[0]["resident"])
-        self.assertIn("diffusers/runwayml/stable-diffusion-v1-5", {item["load_id"] for item in loaded})
+        self.assertIn(
+            "diffusers/runwayml/stable-diffusion-v1-5", {item["load_id"] for item in loaded}
+        )
 
     def test_abstractcore_plugin_rejects_ambiguous_unload_requests(self):
         from abstractvision.errors import AbstractVisionError
@@ -1164,7 +1393,9 @@ print("ok")
 
         self.assertIn("Ambiguous unload request", str(ctx.exception))
 
-    def test_abstractcore_plugin_supports_residency_for_injected_local_backend_when_kind_is_configured(self):
+    def test_abstractcore_plugin_supports_residency_for_injected_local_backend_when_kind_is_configured(
+        self,
+    ):
         from abstractvision.backends.base_backend import VisionBackend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import (
@@ -1188,10 +1419,14 @@ print("ok")
                 self.unloaded += 1
 
             def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
-                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=b"x", mime_type="image/png", metadata={}
+                )
 
             def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
-                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=b"x", mime_type="image/png", metadata={}
+                )
 
             def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
                 raise NotImplementedError
@@ -1239,7 +1474,9 @@ print("ok")
                     }
                 )
 
-        self.assertIn("only available for in-process local AbstractVision backends", str(ctx.exception))
+        self.assertIn(
+            "only available for in-process local AbstractVision backends", str(ctx.exception)
+        )
 
     def test_abstractcore_plugin_default_openai_backend_requires_api_key(self):
         from abstractvision.errors import AbstractVisionError
@@ -1380,14 +1617,24 @@ print("ok")
 
         class _NeverCalledBackend:
             def __init__(self, *, config):
-                raise AssertionError("remote catalog backend should not be constructed when offline")
+                raise AssertionError(
+                    "remote catalog backend should not be constructed when offline"
+                )
 
         class _DummyOwner:
             config = {}
 
         with patch.object(openai_backend, "OpenAICompatibleVisionBackend", _NeverCalledBackend):
-            with patch.object(_AbstractVisionCapability, "_make_mflux_backend", side_effect=RuntimeError("disabled")):
-                with patch.object(_AbstractVisionCapability, "_make_diffusers_backend", side_effect=RuntimeError("disabled")):
+            with patch.object(
+                _AbstractVisionCapability,
+                "_make_mflux_backend",
+                side_effect=RuntimeError("disabled"),
+            ):
+                with patch.object(
+                    _AbstractVisionCapability,
+                    "_make_diffusers_backend",
+                    side_effect=RuntimeError("disabled"),
+                ):
                     with patch.dict(
                         "os.environ",
                         {"OPENAI_API_KEY": "sk-test", "ABSTRACTVISION_ASSUME_OFFLINE": "1"},

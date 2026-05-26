@@ -14,7 +14,7 @@ class TestModelCache(unittest.TestCase):
     def test_migrates_legacy_tree_into_hf_snapshot(self):
         from abstractvision.model_cache import ensure_hf_repo_snapshot, hf_repo_dir, resolve_hf_repo_snapshot
 
-        repo_id = "AITRADER/FLUX2-klein-4B-mlx-8bit"
+        repo_id = "AbstractFramework/flux.2-klein-4b-8bit"
 
         with tempfile.TemporaryDirectory() as legacy_td, tempfile.TemporaryDirectory() as cache_td:
             legacy_root = Path(legacy_td)

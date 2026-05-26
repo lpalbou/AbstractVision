@@ -24,7 +24,9 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
 
             def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
                 self.edit_called = True
-                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=b"x", mime_type="image/png", metadata={}
+                )
 
             def generate_angles(self, request):  # pragma: no cover
                 raise NotImplementedError
@@ -51,13 +53,17 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
 
         class NoMaskBackend(VisionBackend):
             def get_capabilities(self) -> VisionBackendCapabilities:
-                return VisionBackendCapabilities(supported_tasks=["image_to_image"], supports_mask=False)
+                return VisionBackendCapabilities(
+                    supported_tasks=["image_to_image"], supports_mask=False
+                )
 
             def generate_image(self, request):  # pragma: no cover
                 raise NotImplementedError
 
             def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
-                return GeneratedAsset(media_type="image", data=b"ok", mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=b"ok", mime_type="image/png", metadata={}
+                )
 
             def generate_angles(self, request):  # pragma: no cover
                 raise NotImplementedError
@@ -119,7 +125,9 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         seen = {}
 
         class NormalizingBackend(VisionBackend):
-            def normalize_image_generation_request(self, request: ImageGenerationRequest) -> ImageGenerationRequest:
+            def normalize_image_generation_request(
+                self, request: ImageGenerationRequest
+            ) -> ImageGenerationRequest:
                 return ImageGenerationRequest(
                     prompt=request.prompt,
                     negative_prompt=None,
@@ -161,26 +169,42 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
 
             def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
                 seen["t2i"] = request
-                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=b"x", mime_type="image/png", metadata={}
+                )
 
             def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
                 seen["i2i"] = request
-                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
+                return GeneratedAsset(
+                    media_type="image", data=b"x", mime_type="image/png", metadata={}
+                )
 
             def generate_angles(self, request):  # pragma: no cover
                 raise NotImplementedError
 
             def generate_video(self, request):
                 seen["t2v"] = request
-                return GeneratedAsset(media_type="video", data=b"v", mime_type="video/mp4", metadata={})
+                return GeneratedAsset(
+                    media_type="video", data=b"v", mime_type="video/mp4", metadata={}
+                )
 
             def image_to_video(self, request):  # pragma: no cover
                 raise NotImplementedError
 
         vm = VisionManager(backend=NormalizingBackend())
+
+        def progress_callback(event):
+            return None
+
         vm.generate_image("hello", steps=1, guidance_scale=7.0, negative_prompt="blur")
         vm.edit_image("hello", image=b"img", steps=1, guidance_scale=7.0, negative_prompt="blur")
-        vm.generate_video("hello", steps=1, guidance_scale=7.0, negative_prompt="blur")
+        vm.generate_video(
+            "hello",
+            steps=1,
+            guidance_scale=7.0,
+            negative_prompt="blur",
+            on_progress=progress_callback,
+        )
 
         self.assertEqual(seen["t2i"].steps, 2)
         self.assertEqual(seen["t2i"].guidance_scale, 1.0)
@@ -193,6 +217,7 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         self.assertEqual(seen["t2v"].fps, 8)
         self.assertEqual(seen["t2v"].num_frames, 9)
         self.assertIsNone(seen["t2v"].negative_prompt)
+        self.assertIs(seen["t2v"].extra.get("on_progress"), progress_callback)
 
 
 if __name__ == "__main__":

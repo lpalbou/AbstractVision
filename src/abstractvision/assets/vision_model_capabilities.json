@@ -103,6 +103,51 @@
         }
       ],
       "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false
+            },
+            "height": {
+              "required": false
+            },
+            "steps": {
+              "required": false,
+              "default": 8
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 1.0
+            },
+            "strength": {
+              "required": false,
+              "default": 0.4
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
+          }
+        },
         "text_to_image": {
           "inputs": [
             "text"
@@ -646,7 +691,7 @@
     "black-forest-labs/FLUX.2-klein-4B": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Official open 4B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download flux2-klein-4b --provider mlx-gen so macOS uses the AbstractFramework MLX-Gen q4 prepared folder instead of the full repo.",
+      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Official open 4B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen so macOS uses the exact AbstractFramework MLX-Gen q4 prepared folder instead of the full repo.",
       "downloads": [
         {
           "key": "flux2-klein-4b",
@@ -896,7 +941,7 @@
     "black-forest-labs/FLUX.2-klein-9B": {
       "provider": "huggingface",
       "license": "flux-non-commercial-license",
-      "notes": "FLUX 2 klein (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official gated 9B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download flux2-klein-9b --provider mlx-gen so macOS uses the AbstractFramework MLX-Gen q4 prepared folder instead of the full repo.",
+      "notes": "FLUX 2 klein (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official gated 9B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download AbstractFramework/flux.2-klein-9b-4bit --provider mlx-gen so macOS uses the exact AbstractFramework MLX-Gen q4 prepared folder instead of the full repo.",
       "downloads": [
         {
           "key": "flux2-klein-9b",
@@ -3989,8 +4034,17 @@
     "Wan-AI/Wan2.2-TI2V-5B-Diffusers": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Unified Wan 2.2 TI2V 5B Diffusers checkpoint. Supports both text-to-video and image-to-video at 720p/24fps; the official Diffusers path currently points to diffusers from source. AbstractVision catalogs the download, but does not yet ship a local Diffusers video backend.",
+      "notes": "Unified Wan 2.2 TI2V 5B Diffusers checkpoint. Supports both text-to-video and image-to-video at 720p/24fps. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
       "downloads": [
+        {
+          "key": "wan2.2-ti2v-5b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+          "source": "official",
+          "notes": "Official Wan TI2V snapshot consumed by MLX-Gen 0.18.6+ for both text-to-video and image-to-video. This is not a prepared q4/q8 folder."
+        },
         {
           "key": "wan2.2-ti2v-5b",
           "engine": "diffusers",
@@ -4043,7 +4097,8 @@
             }
           },
           "requires": {
-            "backend": "not_supported"
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
           }
         },
         "image_to_video": {
@@ -4091,7 +4146,8 @@
             }
           },
           "requires": {
-            "backend": "not_supported"
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
           }
         }
       }
@@ -4389,6 +4445,342 @@
             "seed": {
               "required": false
             }
+          }
+        }
+      }
+    },
+    "briaai/FIBO": {
+      "provider": "huggingface",
+      "license": "bria-ai-open-rail-m",
+      "notes": "FIBO text-to-image model. MLX-Gen 0.18.6+ can run the official snapshot locally and can optionally condition on one image through image_strength.",
+      "downloads": [
+        {
+          "key": "fibo",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "briaai/FIBO",
+          "source": "official",
+          "notes": "Official FIBO snapshot consumed directly by MLX-Gen 0.18.6+. This is not a prepared q4/q8 folder."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 1024
+            },
+            "height": {
+              "required": false,
+              "default": 1024
+            },
+            "steps": {
+              "required": false,
+              "default": 50
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 4.0
+            },
+            "seed": {
+              "required": false
+            },
+            "strength": {
+              "required": false,
+              "default": 0.4
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
+          }
+        },
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 1024
+            },
+            "height": {
+              "required": false,
+              "default": 1024
+            },
+            "steps": {
+              "required": false,
+              "default": 50
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 4.0
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
+          }
+        }
+      }
+    },
+    "briaai/Fibo-lite": {
+      "provider": "huggingface",
+      "license": "bria-ai-open-rail-m",
+      "notes": "FIBO lite distilled image model. MLX-Gen 0.18.6+ can run the official snapshot locally for faster text-to-image and image-conditioned generation.",
+      "downloads": [
+        {
+          "key": "fibo-lite",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "briaai/Fibo-lite",
+          "source": "official",
+          "notes": "Official FIBO lite snapshot consumed directly by MLX-Gen 0.18.6+. This is not a prepared q4/q8 folder."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 1024
+            },
+            "height": {
+              "required": false,
+              "default": 1024
+            },
+            "steps": {
+              "required": false,
+              "default": 8
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 1.0
+            },
+            "seed": {
+              "required": false
+            },
+            "strength": {
+              "required": false,
+              "default": 0.4
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
+          }
+        },
+        "text_to_image": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 1024
+            },
+            "height": {
+              "required": false,
+              "default": 1024
+            },
+            "steps": {
+              "required": false,
+              "default": 8
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 1.0
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
+          }
+        }
+      }
+    },
+    "briaai/Fibo-Edit": {
+      "provider": "huggingface",
+      "license": "bria-ai-open-rail-m",
+      "notes": "FIBO Edit image-to-image model. MLX-Gen 0.18.6+ can run the official snapshot locally and accepts an optional mask.",
+      "downloads": [
+        {
+          "key": "fibo-edit",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "briaai/Fibo-Edit",
+          "source": "official",
+          "notes": "Official FIBO Edit snapshot consumed directly by MLX-Gen 0.18.6+. This is not a prepared q4/q8 folder."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 1024
+            },
+            "height": {
+              "required": false,
+              "default": 1024
+            },
+            "steps": {
+              "required": false,
+              "default": 50
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 4.0
+            },
+            "seed": {
+              "required": false
+            },
+            "mask": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
+          }
+        }
+      }
+    },
+    "briaai/Fibo-Edit-RMBG": {
+      "provider": "huggingface",
+      "license": "bria-ai-open-rail-m",
+      "notes": "FIBO Edit RMBG image-to-image model. MLX-Gen 0.18.6+ can run the official snapshot locally and accepts an optional mask.",
+      "downloads": [
+        {
+          "key": "fibo-edit-rmbg",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "briaai/Fibo-Edit-RMBG",
+          "source": "official",
+          "notes": "Official FIBO Edit RMBG snapshot consumed directly by MLX-Gen 0.18.6+. This is not a prepared q4/q8 folder."
+        }
+      ],
+      "tasks": {
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 1024
+            },
+            "height": {
+              "required": false,
+              "default": 1024
+            },
+            "steps": {
+              "required": false,
+              "default": 10
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 4.0
+            },
+            "seed": {
+              "required": false
+            },
+            "mask": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.6"
           }
         }
       }

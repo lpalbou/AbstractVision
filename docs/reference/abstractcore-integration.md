@@ -26,7 +26,7 @@ Current behavior:
 - Compatible HTTP: set `OPENAI_BASE_URL` to a local/remote compatible `/v1` server. Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another supported Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set. Local `text_to_video` groundwork exists but is currently experimental and disabled from the normal local plugin surfaces.
-- Local MLX-Gen (Apple Silicon): install `abstractvision[mlx-gen]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mlx-gen`. Download an AbstractFramework q4 prepared preset with `abstractvision download flux2-klein-4b --provider mlx-gen` or `abstractvision download ernie-image-turbo --provider mlx-gen --bits 4`; select q8 explicitly with commands such as `abstractvision download ernie-image-turbo --provider mlx-gen --bits 8` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed model ids such as `mlx-gen/flux2-klein-4b` or `mlx-gen/ernie-image-turbo`. q4 is the default recommendation for memory efficiency; q8 variants remain available for quality-focused runs. Legacy `mflux` provider values remain accepted as aliases.
+- Local MLX-Gen (Apple Silicon): install `abstractvision[mlx-gen]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mlx-gen`. Download exact model repos such as `abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen`, `abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-gen`, `abstractvision download briaai/FIBO --provider mlx-gen`, or `abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed exact model ids such as `mlx-gen/AbstractFramework/flux.2-klein-4b-4bit` or `mlx-gen/Wan-AI/Wan2.2-TI2V-5B-Diffusers`. q4 repos are the memory-efficient default recommendation when a q4/q8 AbstractFramework pair exists; q8 repos remain available for quality-focused runs. Quantization is metadata of the selected model folder, not an AbstractCore request parameter. Legacy `mflux` provider values remain accepted as aliases.
 - stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure either a model path or a curated model key such as `flux2-klein-base-4b`. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 - Gateway/Core should pass process-level config or `owner.config` and report readiness; they should not mutate AbstractVision environment variables per request.
@@ -37,7 +37,7 @@ Key config keys (owner.config):
 - `vision_model_id` (Diffusers/OpenAI-compatible model id; default `gpt-image-1` only for the official OpenAI profile and `runwayml/stable-diffusion-v1-5` for Diffusers)
 - `vision_device` / `vision_torch_dtype` / `vision_allow_download` / `vision_auto_retry_fp32` (Diffusers)
 - `vision_base_url` / `vision_api_key` (OpenAI or compatible HTTP)
-- `vision_mflux_model` / `vision_mflux_base_model` / `vision_mflux_quantize` / `vision_mflux_allow_download` (MLX-Gen; env/config names keep MFLUX compatibility)
+- `vision_mflux_model` / `vision_mflux_base_model` / `vision_mflux_allow_download` (MLX-Gen; env/config names keep MFLUX compatibility)
 - `vision_model_dir` (legacy preset import root used by MLX-Gen compatibility/migration helpers; new downloads land in the Hugging Face cache)
 - `vision_sdcpp_model` / `vision_sdcpp_diffusion_model` / `vision_sdcpp_bin` (stable-diffusion.cpp; `vision_sdcpp_model` may be a curated model key such as `flux2-klein-base-4b`)
 - `vision_sdcpp_vae` / `vision_sdcpp_llm` / `vision_sdcpp_llm_vision` / `vision_sdcpp_clip_l` / `vision_sdcpp_clip_g` / `vision_sdcpp_t5xxl` / `vision_sdcpp_extra_args` (stable-diffusion.cpp component mode)
@@ -70,6 +70,70 @@ from abstractcore import create_llm
 llm = create_llm("openai", model="gpt-4o-mini")
 png_bytes = llm.vision.t2i("a red square", width=512, height=512, steps=20)
 ```
+
+Per-call routing can select the same backend/model ids used by the
+`abstractvision` shell commands. For MLX-Gen, pass the exact published model
+repo id; there is no separate quantization parameter.
+
+```python
+from abstractcore import create_llm
+
+llm = create_llm("openai", model="gpt-4o-mini")
+
+png_bytes = llm.vision.t2i(
+    "a studio product photo of a white ceramic mug with the AbstractFramework logo",
+    provider="mlx-gen",
+    model="AbstractFramework/qwen-image-2512-4bit",
+    steps=20,
+    guidance_scale=1.0,
+)
+
+edited_png = llm.vision.i2i(
+    "replace the background with a clean white studio setup",
+    image="./input.png",
+    provider="mlx-gen",
+    model="AbstractFramework/qwen-image-edit-2511-4bit",
+    steps=20,
+    guidance_scale=2.5,
+    strength=0.75,
+)
+
+def on_video_progress(event):
+    print(f"{event.phase}: frame {event.frame}/{event.total_frames}")
+
+mp4_bytes = llm.vision.t2v(
+    "a red fox walking through a snowy forest, cinematic",
+    provider="mlx-gen",
+    model="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+    num_frames=121,
+    fps=24,
+    steps=50,
+    guidance_scale=5.0,
+    max_sequence_length=256,
+    on_progress=on_video_progress,
+)
+
+first_frame_mp4 = llm.vision.i2v(
+    "./first-frame.png",
+    prompt="slow camera push-in",
+    provider="mlx-gen",
+    model="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+    num_frames=121,
+    fps=24,
+    steps=50,
+    guidance_scale=5.0,
+    max_sequence_length=256,
+    on_progress=on_video_progress,
+)
+```
+
+`llm.vision.i2i(...)` accepts `image` as bytes, a local file path, or an
+artifact ref dict when an `artifact_store` is supplied. Without an artifact
+store the plugin returns bytes; with `artifact_store=...` it returns the stored
+artifact ref, matching the runtime/gateway artifact path.
+`llm.vision.t2v(...)` and `llm.vision.i2v(...)` forward `on_progress` to local
+video backends; MLX-Gen Wan emits normalized `VideoProgressEvent` objects with
+frame and diffusion-step counters.
 
 ```bash
 # OpenAI API.
@@ -111,14 +175,17 @@ object:
 
 ```python
 llm.vision.load_resident_model(
-    {"task": "text_to_image", "provider": "mlx-gen", "model": "flux2-klein-4b"}
+    {"task": "text_to_image", "provider": "mlx-gen", "model": "AbstractFramework/flux.2-klein-4b-4bit"}
+)
+llm.vision.load_resident_model(
+    {"task": "text_to_video", "provider": "mlx-gen", "model": "Wan-AI/Wan2.2-TI2V-5B-Diffusers"}
 )
 
 loaded = llm.vision.list_loaded_models()
 resident = llm.vision.list_resident_models()
 
 llm.vision.unload_resident_model(
-    {"provider": "mlx-gen", "model": "flux2-klein-4b"}
+    {"provider": "mlx-gen", "model": "AbstractFramework/flux.2-klein-4b-4bit"}
 )
 ```
 

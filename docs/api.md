@@ -40,9 +40,9 @@ Backends are execution engines that implement the `VisionBackend` interface ([`.
 
 Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/):
 - `OpenAICompatibleVisionBackend` (HTTP)
-- `HuggingFaceDiffusersVisionBackend` (local Diffusers images; local `text_to_video` groundwork is currently quarantined)
+- `HuggingFaceDiffusersVisionBackend` (local Diffusers images; local Diffusers `text_to_video` groundwork is currently quarantined)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
-- `MLXGenVisionBackend` / compatibility alias `MFluxVisionBackend` (local Apple Silicon MLX-Gen bridge for curated AbstractFramework q4/q8 MLX presets; supports `text_to_image` and FLUX.2 klein/base plus Qwen Image Edit `image_to_image` edits without masks)
+- `MLXGenVisionBackend` / compatibility alias `MFluxVisionBackend` (local Apple Silicon MLX-Gen bridge for curated AbstractFramework q4/q8 MLX presets, official FIBO snapshots, and Wan video)
 
 Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 
@@ -121,7 +121,54 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
-`generate_video(...)` remains part of the public API, but the bundled local `text_to_video` path is currently experimental and disabled from the normal local surfaces. Generated MP4 outputs still require an `ffmpeg` executable on `PATH` whenever a backend returns frame sequences for local packaging.
+`generate_video(...)` and `image_to_video(...)` are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.6+ supports Wan `text_to_video` and first-frame `image_to_video`. Generated MP4 outputs still require an `ffmpeg` executable on `PATH` whenever a backend returns frame sequences for local packaging.
+
+### Local example (MLX-Gen backend)
+
+Install `abstractvision[mlx-gen]` and pre-download the exact model repo first, for example `abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen`.
+
+```python
+from pathlib import Path
+
+from abstractvision import VisionManager
+from abstractvision.backends import MLXGenBackendConfig, MLXGenVisionBackend
+
+backend = MLXGenVisionBackend(
+    config=MLXGenBackendConfig(model="Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+)
+vm = VisionManager(backend=backend)
+
+def on_progress(event):
+    print(f"{event.phase}: frame {event.frame}/{event.total_frames}")
+
+asset = vm.generate_video(
+    "a red fox walking through a snowy forest, cinematic",
+    num_frames=121,
+    fps=24,
+    steps=50,
+    guidance_scale=5.0,
+    on_progress=on_progress,
+    extra={"max_sequence_length": 256},
+)
+
+first_frame_asset = vm.image_to_video(
+    image=Path("./first-frame.png").read_bytes(),
+    prompt="slow camera push-in",
+    num_frames=121,
+    fps=24,
+    steps=50,
+    guidance_scale=5.0,
+    on_progress=on_progress,
+    extra={"max_sequence_length": 256},
+)
+```
+
+For MLX-Gen Wan, `on_progress` receives an
+`abstractvision.VideoProgressEvent` with `phase`, `frame`, `total_frames`,
+`step`, `total_steps`, and normalized `progress` fields. The lower-level
+`backend.generate_video_with_progress(...)` and
+`backend.image_to_video_with_progress(...)` methods keep the existing
+two-argument `(current, total)` callback for backend-agnostic progress bars.
 
 ## Passing advanced backend parameters (`extra`)
 

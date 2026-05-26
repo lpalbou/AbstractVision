@@ -69,7 +69,7 @@ abstractvision download qwen-image-edit-2511 --provider diffusers
 - `abstractvision catalog --provider diffusers`
 - `abstractvision show-model Qwen/Qwen-Image-Edit-2511`
 
-## Local `text_to_video` is experimental and currently disabled
+## Local Diffusers `text_to_video` is experimental and currently disabled
 
 ### Symptom
 
@@ -78,12 +78,14 @@ abstractvision download qwen-image-edit-2511 --provider diffusers
 
 ### Likely cause
 
-AbstractVision intentionally quarantines the current local `text_to_video`
-groundwork because the operator validation bar is not met yet.
+AbstractVision intentionally quarantines the current local Diffusers
+`text_to_video` groundwork because the operator validation bar is not met yet.
+This does not apply to the MLX-Gen Wan path.
 
 ### Fix
 
-- use the OpenAI-compatible backend if you need `text_to_video` today; or
+- use MLX-Gen Wan on Apple Silicon: `abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "prompt"`; or
+- use the OpenAI-compatible backend when video is served remotely; or
 - follow the backlog item that tracks the local re-validation work:
   [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
 
@@ -128,8 +130,8 @@ The follow-up investigation is tracked in:
 
 - Upgrade AbstractVision to a version that supports MLX-Gen q4/q8 presets.
 - Install the backend extra: `pip install "abstractvision[mlx-gen]"`
-- Download the prepared model first, for example `abstractvision download qwen-image-edit-2511 --provider mlx-gen`.
-- For mask edits/inpainting, use local Diffusers or `stable-diffusion.cpp` instead.
+- Download the prepared model first, for example `abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen`.
+- For MLX-Gen mask edits, select a model that supports masks, such as `briaai/Fibo-Edit` or `briaai/Fibo-Edit-RMBG`; otherwise use local Diffusers or `stable-diffusion.cpp` for inpainting.
 
 Notes:
 - MLX-Gen edit strength is passed as `strength` and normalized to the runtime `image_strength` parameter where the model supports it.
@@ -181,7 +183,8 @@ packaged capability registry, or the backend cannot really execute that task.
 Choose a model that advertises the task:
 
 - image edits: a model with `image_to_image`
-- local text-to-video: none are currently shipped as enabled local options in the bundled server
+- local MLX-Gen text-to-video: `Wan-AI/Wan2.2-TI2V-5B-Diffusers`
+- remote text-to-video: an OpenAI-compatible backend configured with a video endpoint
 
 ### Verify
 

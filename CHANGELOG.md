@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.3.16 - 2026-05-26
+
+- MLX-Gen video progress: surface Wan `text_to_video` / `image_to_video` progress events through one-shot `abstractvision t2v` / `i2v`, interactive `/t2v` / `/i2v`, and Python/Core `on_progress(event)` callbacks.
+- Backend API: add normalized `VideoProgressEvent` objects with phase, frame, total frame, step, total step, and progress fields while preserving backend `*_with_progress(...)` two-argument callbacks for generic progress bars.
+- Capability filtering: keep Diffusers task support aligned with backend-specific registry requirements so MLX-Gen-only edit paths do not leak into Diffusers capability reports.
+- AbstractCore integration: forward `on_progress` through plugin `t2v` / `i2v` requests so gateway/runtime callers can observe local MLX-Gen video runs without hardcoded backend plumbing.
+- Docs/tests: document video progress usage across shell, REPL, Python, and AbstractCore examples; expand regression coverage for MLX-Gen progress bridging and quiet CLI flags.
+
 ## 0.3.15 - 2026-05-26
 
 - CLI compatibility: canonicalize legacy `mflux/<model>` model prefixes to the `mlx-gen` runtime path for one-shot commands, matching `--provider mflux` and canonical `--provider mlx-gen` behavior.

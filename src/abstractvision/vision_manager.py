@@ -57,15 +57,21 @@ class VisionManager:
         except Exception:
             return None
 
-    def _require_backend_support(self, backend: VisionBackend, task: str) -> Optional[VisionBackendCapabilities]:
+    def _require_backend_support(
+        self, backend: VisionBackend, task: str
+    ) -> Optional[VisionBackendCapabilities]:
         caps = self._backend_caps(backend)
         if caps is None:
             return None
-        if caps.supported_tasks is not None and str(task) not in {str(t) for t in caps.supported_tasks}:
+        if caps.supported_tasks is not None and str(task) not in {
+            str(t) for t in caps.supported_tasks
+        }:
             raise CapabilityNotSupportedError(f"Backend does not support task '{task}'.")
         return caps
 
-    def _maybe_store(self, asset: GeneratedAsset, *, tags: Optional[Dict[str, str]] = None) -> Union[GeneratedAsset, Dict[str, Any]]:
+    def _maybe_store(
+        self, asset: GeneratedAsset, *, tags: Optional[Dict[str, str]] = None
+    ) -> Union[GeneratedAsset, Dict[str, Any]]:
         if self.store is None:
             return asset
         return self.store.store_bytes(
@@ -74,6 +80,18 @@ class VisionManager:
             metadata=asset.metadata,
             tags=tags,
         )
+
+    def _move_video_progress_callbacks_to_extra(self, kwargs: Dict[str, Any]) -> None:
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in ("on_progress", "progress_event_callback", "progress_callback"):
+            if key not in kwargs:
+                continue
+            callback = kwargs.pop(key)
+            if callback is not None:
+                merged_extra[key] = callback
+        if merged_extra:
+            kwargs["extra"] = merged_extra
 
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
         """List models advertised by the configured provider backend, if supported."""
@@ -89,23 +107,33 @@ class VisionManager:
         if callable(normalize):
             request = normalize(request)
         asset = backend.generate_image(request)
-        return self._maybe_store(asset, tags={"kind": "generated_media", "modality": "image", "task": "text_to_image"})
+        return self._maybe_store(
+            asset, tags={"kind": "generated_media", "modality": "image", "task": "text_to_image"}
+        )
 
-    def edit_image(self, prompt: str, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
+    def edit_image(
+        self, prompt: str, image: bytes, **kwargs
+    ) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("image_to_image")
         caps = self._require_backend_support(backend, "image_to_image")
         mask = kwargs.get("mask")
         if mask is not None and caps is not None and caps.supports_mask is False:
-            raise CapabilityNotSupportedError("Backend does not support masked image edits (mask parameter).")
+            raise CapabilityNotSupportedError(
+                "Backend does not support masked image edits (mask parameter)."
+            )
         request = ImageEditRequest(prompt=prompt, image=image, **kwargs)
         normalize = getattr(backend, "normalize_image_edit_request", None)
         if callable(normalize):
             request = normalize(request)
         asset = backend.edit_image(request)
-        return self._maybe_store(asset, tags={"kind": "generated_media", "modality": "image", "task": "image_to_image"})
+        return self._maybe_store(
+            asset, tags={"kind": "generated_media", "modality": "image", "task": "image_to_image"}
+        )
 
-    def generate_angles(self, prompt: str, **kwargs) -> Union[List[GeneratedAsset], List[Dict[str, Any]]]:
+    def generate_angles(
+        self, prompt: str, **kwargs
+    ) -> Union[List[GeneratedAsset], List[Dict[str, Any]]]:
         backend = self._require_backend()
         self._require_model_support("multi_view_image")
         self._require_backend_support(backend, "multi_view_image")
@@ -118,20 +146,26 @@ class VisionManager:
         backend = self._require_backend()
         self._require_model_support("text_to_video")
         self._require_backend_support(backend, "text_to_video")
+        self._move_video_progress_callbacks_to_extra(kwargs)
         request = VideoGenerationRequest(prompt=prompt, **kwargs)
         normalize = getattr(backend, "normalize_video_generation_request", None)
         if callable(normalize):
             request = normalize(request)
         asset = backend.generate_video(request)
-        return self._maybe_store(asset, tags={"kind": "generated_media", "modality": "video", "task": "text_to_video"})
+        return self._maybe_store(
+            asset, tags={"kind": "generated_media", "modality": "video", "task": "text_to_video"}
+        )
 
     def image_to_video(self, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("image_to_video")
         self._require_backend_support(backend, "image_to_video")
+        self._move_video_progress_callbacks_to_extra(kwargs)
         request = ImageToVideoRequest(image=image, **kwargs)
         normalize = getattr(backend, "normalize_image_to_video_request", None)
         if callable(normalize):
             request = normalize(request)
         asset = backend.image_to_video(request)
-        return self._maybe_store(asset, tags={"kind": "generated_media", "modality": "video", "task": "image_to_video"})
+        return self._maybe_store(
+            asset, tags={"kind": "generated_media", "modality": "video", "task": "image_to_video"}
+        )

@@ -38,6 +38,19 @@ class VisionBackendCapabilities:
 
 
 @dataclass(frozen=True)
+class VideoProgressEvent:
+    """Normalized progress event for video generation backends."""
+
+    phase: str
+    frame: int
+    total_frames: Optional[int] = None
+    step: Optional[int] = None
+    total_steps: Optional[int] = None
+    progress: Optional[float] = None
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ImageGenerationRequest:
     prompt: str
     negative_prompt: Optional[str] = None

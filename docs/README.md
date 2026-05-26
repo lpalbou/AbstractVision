@@ -5,7 +5,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 ## Start here (new users)
 
 1) [Project overview + quickstart](../README.md)  
-2) [Getting started](getting-started.md) (first image with Stable Diffusion 1.5; then klein-4B, GGUF, OpenAI-compatible HTTP, Playground)
+2) [Getting started](getting-started.md) (shell and interactive `t2i`/`i2i`; then Diffusers, MLX-Gen, GGUF, OpenAI-compatible HTTP, Playground)
 3) [Architecture](architecture.md) (how the pieces fit together)
 
 ## Quick reference
@@ -38,8 +38,9 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MLX-Gen supports curated q4/q8 Apple Silicon `text_to_image` presets and `image_to_image` for FLUX.2 klein/base plus Qwen Image Edit (no masks yet); local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V video; local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
+  - MLX-Gen for Wan 2.2 TI2V local `text_to_video` and first-frame `image_to_video`
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
 If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:

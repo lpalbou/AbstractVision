@@ -20,9 +20,20 @@ class TestModelDownloads(unittest.TestCase):
                     catalog_target_scope(target="auto", engine=None, include_all_targets=False),
                     ("mlx", "gguf", "diffusers", "hf-snapshot"),
                 )
-                preset = find_model_preset("qwen-image", target="auto", engine=None, require_8bit=True)
+                preset = find_model_preset(
+                    "AbstractFramework/qwen-image-2512-4bit",
+                    target="auto",
+                    engine=None,
+                    require_8bit=True,
+                )
         self.assertEqual((preset.target, preset.engine), ("mlx", "mlx-gen"))
         self.assertEqual(preset.repo_id, "AbstractFramework/qwen-image-2512-4bit")
+
+    def test_mlx_gen_family_aliases_are_rejected_as_ambiguous(self):
+        from abstractvision.model_downloads import find_model_preset
+
+        with self.assertRaisesRegex(ValueError, "not an exact published model id"):
+            find_model_preset("qwen-image", target="mlx", engine="mlx-gen", require_8bit=True)
 
     def test_mlx_gen_catalog_covers_abstractframework_q4_q8_collection(self):
         from abstractvision.model_downloads import model_presets
@@ -61,44 +72,93 @@ class TestModelDownloads(unittest.TestCase):
 
         self.assertTrue(expected.issubset(repos))
 
-    def test_mlx_gen_defaults_prefer_q4_and_keep_q8_explicit(self):
+    def test_mlx_gen_exact_repo_ids_select_q4_and_q8_artifacts(self):
         from abstractvision.model_downloads import find_model_preset
 
-        default_flux = find_model_preset("flux2-klein-4b", target="mlx", engine="mlx-gen", require_8bit=True)
-        quality_flux = find_model_preset("flux2-klein-4b-q8", target="mlx", engine="mlx-gen", require_8bit=True)
-        quality_flux_by_bits = find_model_preset(
-            "flux2-klein-4b",
+        default_flux = find_model_preset(
+            "AbstractFramework/flux.2-klein-4b-4bit",
             target="mlx",
             engine="mlx-gen",
             require_8bit=True,
-            bits=8,
         )
-        default_qwen_edit = find_model_preset("qwen-image-edit", target="mlx", engine="mlx-gen", require_8bit=True)
-        legacy_qwen_edit = find_model_preset("qwen-image-edit-legacy", target="mlx", engine="mlx-gen", require_8bit=True)
-        default_ernie = find_model_preset(
-            "ernie-image-turbo",
+        quality_flux = find_model_preset(
+            "flux.2-klein-4b-8bit",
             target="mlx",
             engine="mlx-gen",
             require_8bit=True,
-            bits=4,
+        )
+        quality_qwen_2512 = find_model_preset(
+            "AbstractFramework/qwen-image-2512-8bit",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=True,
+        )
+        default_qwen_edit = find_model_preset(
+            "AbstractFramework/qwen-image-edit-2511-4bit",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=True,
+        )
+        legacy_qwen_edit = find_model_preset(
+            "qwen-image-edit-4bit",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=True,
+        )
+        default_ernie = find_model_preset(
+            "AbstractFramework/ernie-image-turbo-4bit",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=True,
         )
         quality_ernie = find_model_preset(
-            "ernie-image-turbo",
+            "ernie-image-turbo-8bit",
             target="mlx",
             engine="mlx-gen",
             require_8bit=True,
-            bits=8,
         )
 
         self.assertEqual(default_flux.repo_id, "AbstractFramework/flux.2-klein-4b-4bit")
         self.assertEqual(quality_flux.repo_id, "AbstractFramework/flux.2-klein-4b-8bit")
-        self.assertEqual(quality_flux_by_bits.repo_id, "AbstractFramework/flux.2-klein-4b-8bit")
+        self.assertEqual(quality_qwen_2512.repo_id, "AbstractFramework/qwen-image-2512-8bit")
         self.assertEqual(default_qwen_edit.repo_id, "AbstractFramework/qwen-image-edit-2511-4bit")
         self.assertEqual(legacy_qwen_edit.repo_id, "AbstractFramework/qwen-image-edit-4bit")
         self.assertEqual(default_ernie.repo_id, "AbstractFramework/ernie-image-turbo-4bit")
         self.assertEqual(quality_ernie.repo_id, "AbstractFramework/ernie-image-turbo-8bit")
         self.assertEqual(default_ernie.local_dir_name, "ernie-image-turbo-mlx-gen-4bit")
         self.assertEqual(quality_ernie.local_dir_name, "ernie-image-turbo-mlx-gen-8bit")
+
+    def test_wan_mlx_gen_preset_is_available_as_non_quantized_video_fallback(self):
+        from abstractvision.model_downloads import find_model_preset, model_presets
+
+        presets = model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True)
+        wan = next(p for p in presets if p.repo_id == "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+
+        self.assertEqual(wan.key, "wan2.2-ti2v-5b")
+        self.assertEqual(wan.target, "mlx")
+        self.assertEqual(wan.engine, "mlx-gen")
+        self.assertEqual(wan.quantization_bits, 16)
+        self.assertEqual(wan.source, "official")
+
+        selected = find_model_preset("Wan-AI/Wan2.2-TI2V-5B-Diffusers", target="mlx", engine="mlx-gen", require_8bit=False)
+        self.assertEqual(selected.repo_id, "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+
+    def test_fibo_mlx_gen_presets_are_exact_non_quantized_runtime_models(self):
+        from abstractvision.model_downloads import find_model_preset, model_presets
+
+        presets = model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True)
+        fibo = next(p for p in presets if p.repo_id == "briaai/FIBO")
+        fibo_edit = next(p for p in presets if p.repo_id == "briaai/Fibo-Edit")
+
+        self.assertEqual(fibo.key, "fibo")
+        self.assertEqual(fibo.target, "mlx")
+        self.assertEqual(fibo.engine, "mlx-gen")
+        self.assertEqual(fibo.quantization_bits, 16)
+        self.assertEqual(fibo.source, "official")
+        self.assertEqual(fibo_edit.key, "fibo-edit")
+
+        selected = find_model_preset("briaai/FIBO", target="mlx", engine="mlx-gen", require_8bit=False)
+        self.assertEqual(selected.repo_id, "briaai/FIBO")
 
     def test_sdcpp_gguf_presets_can_be_disabled_on_apple_silicon(self):
         from abstractvision.model_downloads import (
@@ -189,9 +249,9 @@ class TestModelDownloads(unittest.TestCase):
     def test_generic_mlx_engine_is_rejected_and_flux1_mlx_gen_presets_are_not_curated(self):
         from abstractvision.model_downloads import find_model_preset, model_presets, normalize_model_engine
 
-        with self.assertRaisesRegex(ValueError, "generic MLX image backend"):
+        with self.assertRaisesRegex(ValueError, "generic MLX image/video backend"):
             normalize_model_engine("mlx")
-        with self.assertRaisesRegex(ValueError, "generic MLX image backend"):
+        with self.assertRaisesRegex(ValueError, "generic MLX image/video backend"):
             find_model_preset("mlx/flux2-klein-4b", target="auto", engine=None, require_8bit=True)
 
         mlx_gen_keys = {

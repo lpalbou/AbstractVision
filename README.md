@@ -37,10 +37,10 @@ flowchart LR
 ## Status (current backend support)
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
-- Built-in backends implement images: `text_to_image` and `image_to_image`.
-- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, and ERNIE Image Turbo presets, and supports `image_to_image` for FLUX.2 klein/base and Qwen Image Edit presets (mask edits are not supported yet).
+- Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
+- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, and FIBO models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V for local `text_to_video` and first-frame `image_to_video`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
-- `image_to_video` is currently supported only via the OpenAI-compatible backend **when** endpoints are configured.
+- Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
 - `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
 
 Details: [`docs/reference/backends.md`](docs/reference/backends.md).
@@ -66,8 +66,8 @@ Optional extras:
 | `abstractvision[diffusers]` | Install Torch/Diffusers and related packages for local Diffusers generation. |
 | `abstractvision[huggingface]` | Compatibility alias for callers that still request the historical Diffusers extra. |
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
-| `abstractvision[mlx-gen]` | Install the optional MLX-Gen Apple Silicon image runtime. |
-| `abstractvision[mflux]` | Compatibility alias for the MLX-Gen Apple Silicon image runtime. |
+| `abstractvision[mlx-gen]` | Install the optional MLX-Gen Apple Silicon image/video runtime. |
+| `abstractvision[mflux]` | Compatibility alias for the MLX-Gen Apple Silicon image/video runtime. |
 | `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
 | `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
@@ -118,13 +118,13 @@ Start here:
 - Capability registry + catalog policy: [`docs/reference/capabilities-registry.md`](docs/reference/capabilities-registry.md), [`docs/adr/README.md`](docs/adr/README.md)
 - Docs index: [`docs/README.md`](docs/README.md)
 
-### First Apple-local MLX model (q4 first)
+### First Apple-local MLX model
 
 For Apple Silicon local image generation, prefer the AbstractFramework
 MLX-Gen q4 presets first. They are published in the
 [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/)
 and are the default recommendation for local memory efficiency. q8 variants are
-also listed and should be selected explicitly when quality is more important
+also listed as separate model repos and should be selected explicitly when quality is more important
 than memory footprint. Qwen and ERNIE q4 prepared folders can mix q4 and q8
 components, but they remain the default prepared choice.
 
@@ -137,23 +137,49 @@ pip install "abstractvision[models,mlx-gen]"
 abstractvision model-presets
 abstractvision catalog --provider mlx-gen
 # Tip: `--provider mlx-gen` implies `--target mlx` (you usually set one or the other).
-abstractvision download flux2-klein-4b --provider mlx-gen
-abstractvision download qwen-image --provider mlx-gen
-abstractvision download qwen-image-edit-2511 --provider mlx-gen
-abstractvision download z-image-turbo --provider mlx-gen
-abstractvision download ernie-image-turbo --provider mlx-gen --bits 4
-abstractvision download ernie-image-turbo --provider mlx-gen --bits 8
-abstractvision t2i --provider mlx-gen --model flux2-klein-4b "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
+abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen
+abstractvision download AbstractFramework/qwen-image-2512-4bit --provider mlx-gen
+abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen
+abstractvision download AbstractFramework/z-image-turbo-4bit --provider mlx-gen
+abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-gen
+abstractvision download briaai/FIBO --provider mlx-gen
+abstractvision download briaai/Fibo-lite --provider mlx-gen
+abstractvision download briaai/Fibo-Edit --provider mlx-gen
+abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen
+abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-4bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
+abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-8bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
+abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-4bit --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75
+abstractvision t2i --provider mlx-gen --model briaai/FIBO "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 50 --guidance-scale 4.0
+abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.png "remove the background and keep the object edges clean" --steps 20 --guidance-scale 4.0
+abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0
+abstractvision i2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0
 ```
+
+Select q4 or q8 by using the exact published model id, for example
+`AbstractFramework/flux.2-klein-4b-4bit` or
+`AbstractFramework/flux.2-klein-4b-8bit`. Quantization is metadata of the
+published model folder, not a generation-time override.
 
 The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-`image_to_image` is implemented for FLUX.2
-klein/base and Qwen Image Edit presets (mask edits are not supported yet). Edit
-strength is passed as `strength` and normalized to MLX-Gen's `image_strength`
-parameter where the runtime supports it.
+MLX-Gen 0.18.6+ also runs official runtime snapshots such as `briaai/FIBO`,
+`briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`, and
+`Wan-AI/Wan2.2-TI2V-5B-Diffusers`. `image_to_image` is implemented for FLUX.2
+klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; FIBO
+Edit snapshots support mask inputs where the runtime supports them. Edit strength
+is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter
+where the runtime supports it. Wan 2.2 TI2V uses the official snapshot through
+MLX-Gen 0.18.6+ for `text_to_video` and first-frame `image_to_video`; it is not
+an AbstractFramework q4/q8 prepared folder, so select it by its exact repo id.
+
+One-shot `t2i`, `i2i`, `t2v`, and `i2v` commands store results in the local
+asset store and print an artifact ref followed by the local content path. Use
+`--open` when you want the generated output opened after storage, or
+`--store-dir <dir>` to choose the asset store directory.
+MLX-Gen video commands report frame/step progress on stderr by default; pass
+`--no-progress` when you need quiet output.
 
 Stable Diffusion does not currently have a curated MLX-Gen q4/q8 preset in
 AbstractVision, so full Diffusers downloads remain explicit.
@@ -261,8 +287,9 @@ After inspection, set the model env var explicitly for newer provider models
 when available to your account. Set `ABSTRACTVISION_BACKEND=mlx-gen`,
 `ABSTRACTVISION_BACKEND=diffusers`, or `ABSTRACTVISION_BACKEND=sdcpp` when you
 want AbstractCore to launch local AbstractVision generation directly. For
-MLX-Gen, set `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` or use routed model ids
-such as `mlx-gen/flux2-klein-4b`. Legacy `mflux` provider values and routed ids
+MLX-Gen, set `ABSTRACTVISION_MFLUX_MODEL=AbstractFramework/flux.2-klein-4b-4bit`
+or use routed model ids such as
+`mlx-gen/AbstractFramework/flux.2-klein-4b-4bit`. Legacy `mflux` provider values
 remain accepted as compatibility aliases.
 
 ### Interactive testing (CLI)
@@ -281,6 +308,7 @@ Inside the interactive CLI:
 
 ```text
 /t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
+/i2i --image ./input.png "make it watercolor" --steps 20 --guidance-scale 6.5 --open
 ```
 
 For a newer but still relatively small local model, try `black-forest-labs/FLUX.2-klein-4B` after installing Diffusers
@@ -292,16 +320,24 @@ from source (see [`docs/getting-started.md`](docs/getting-started.md)):
 ```
 
 Local Diffusers `text_to_video` remains experimental and is temporarily
-disabled from the normal bundled local surfaces. Use the OpenAI-compatible
-backend for video today, or track the local follow-up in
-[`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
+disabled from the normal bundled local surfaces. Use MLX-Gen Wan 2.2 TI2V for
+local Apple Silicon `text_to_video` / `image_to_video`, or use the
+OpenAI-compatible backend for remote video endpoints.
 
 For Apple Silicon local generation through MLX-Gen:
 
 ```text
-/backend mlx-gen flux2-klein-4b
+/backend mlx-gen AbstractFramework/flux.2-klein-4b-4bit
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
+/backend mlx-gen AbstractFramework/qwen-image-edit-2511-4bit
+/i2i --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75 --open
+/backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
+/t2v "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+/i2v --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
 ```
+
+`/t2v` and `/i2v` show MLX-Gen video progress by default; add
+`--no-progress` to suppress progress output in scripts.
 
 OpenAI-compatible server example:
 
@@ -328,8 +364,8 @@ Current behavior:
 - The UI is split into task tabs (`Text→Image`, `Image→Image`, `Text→Video`, and a placeholder `Image→Video` tab for later work).
 - Each active task tab has its own model selector and unload button. Switching models in a tab unloads the current active backend first to free memory before loading the replacement.
 - The Image→Image tab is enabled only for models that both advertise `image_to_image` in the packaged capability registry and remain enabled by the selected backend.
-- MLX-Gen FLUX.2 klein/base and Qwen Image Edit presets are surfaced for `Image→Image` edits (mask edits are not supported yet).
-- The Text→Video tab is experimental; the bundled local server currently does not advertise a shipped local model there.
+- MLX-Gen FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models are surfaced for `Image→Image` edits when cached.
+- The Text→Video tab is experimental in the playground UI. Use shell/REPL or AbstractCore for the most complete MLX-Gen Wan video controls.
 - Model-specific request normalization happens at the API/backend layer, not just in the page.
 - Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.

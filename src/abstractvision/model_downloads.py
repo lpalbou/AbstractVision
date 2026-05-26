@@ -21,9 +21,9 @@ from .model_cache import (
 
 
 _GENERIC_MLX_BACKEND_ERROR = (
-    "AbstractVision does not have a generic MLX image backend yet. "
+    "AbstractVision does not have a generic MLX image/video backend yet. "
     "Use `--target mlx` to browse MLX artifacts and `--provider mlx-gen` "
-    "(legacy alias: `mflux`) for cache-backed MLX-Gen image models."
+    "(legacy alias: `mflux`) for cache-backed MLX-Gen image/video models."
 )
 
 _MACOS_GGUF_DISABLED_ERROR = (
@@ -77,7 +77,17 @@ class VisionModelDownloadPreset:
 
     def to_dict(self) -> Dict[str, Any]:
         out = asdict(self)
-        out["aliases"] = list(self.aliases)
+        is_exact_mlx_gen = (
+            str(self.target).strip().lower() == "mlx"
+            and str(self.engine).strip().lower().replace("_", "-") in {"mlx-gen", "mflux", "m-flux", "mlxgen"}
+            and str(self.source).strip().lower() == "abstractframework-mlx-gen"
+            and str(self.repo_id).strip().lower().startswith("abstractframework/")
+        )
+        if is_exact_mlx_gen:
+            repo = str(self.repo_id).strip()
+            out["aliases"] = [repo, repo.rsplit("/", 1)[-1]]
+        else:
+            out["aliases"] = list(self.aliases)
         out["allow_patterns"] = list(self.allow_patterns)
         # #FALLBACK: keep the historical key for callers that consumed the
         # first downloader implementation before the engine/target split.
@@ -93,9 +103,11 @@ HF_TOKEN_SETTINGS_URL = "https://huggingface.co/settings/tokens"
 
 
 _COMMON_MLX_PATTERNS = (
+    "model_index.json",
     "*.json",
     "*.md",
     "LICENSE*",
+    "scheduler/*",
     "text_encoder/*",
     "text_encoder_2/*",
     "tokenizer/*",
@@ -190,11 +202,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "klein-4b",
             "klein4b",
             "flux4b",
-            "mlx-gen/flux2-klein-4b",
             "AbstractFramework/flux.2-klein-4b-4bit",
-            "AITRADER/FLUX2-klein-4B-mlx-8bit",
-            "moxin-org/FLUX.2-klein-4B-8bit-mlx",
-            "Runpod/FLUX.2-klein-4B-mflux-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
@@ -213,11 +221,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-4B",
         source="abstractframework-mlx-gen",
-        aliases=(
-            "flux2-klein-4b-q8",
-            "flux2-klein-4b-8bit",
-            "AbstractFramework/flux.2-klein-4b-8bit",
-        ),
+        aliases=("AbstractFramework/flux.2-klein-4b-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
         source_priority=25,
@@ -298,7 +302,6 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "klein-base-4b",
             "kleinbase4b",
             "fluxbase4b",
-            "mlx-gen/flux2-klein-base-4b",
             "AbstractFramework/flux.2-klein-base-4b-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
@@ -315,11 +318,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-base-4B",
         source="abstractframework-mlx-gen",
-        aliases=(
-            "flux2-klein-base-4b-q8",
-            "flux2-klein-base-4b-8bit",
-            "AbstractFramework/flux.2-klein-base-4b-8bit",
-        ),
+        aliases=("AbstractFramework/flux.2-klein-base-4b-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
         source_priority=25,
@@ -355,11 +354,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "klein-9b",
             "klein9b",
             "flux9b",
-            "mlx-gen/flux2-klein-9b",
             "AbstractFramework/flux.2-klein-9b-4bit",
-            "deepsweet/FLUX.2-klein-9B-MLX-Q8",
-            "deepsweet/FLUX.2-klein-9B-MLX-Q4",
-            "themindstudio/flux2-klein-9b-mlx-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
@@ -378,11 +373,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-9B",
         source="abstractframework-mlx-gen",
-        aliases=(
-            "flux2-klein-9b-q8",
-            "flux2-klein-9b-8bit",
-            "AbstractFramework/flux.2-klein-9b-8bit",
-        ),
+        aliases=("AbstractFramework/flux.2-klein-9b-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
         source_priority=25,
@@ -463,7 +454,6 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "klein-base-9b",
             "kleinbase9b",
             "fluxbase9b",
-            "mlx-gen/flux2-klein-base-9b",
             "AbstractFramework/flux.2-klein-base-9b-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
@@ -480,11 +470,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-base-9B",
         source="abstractframework-mlx-gen",
-        aliases=(
-            "flux2-klein-base-9b-q8",
-            "flux2-klein-base-9b-8bit",
-            "AbstractFramework/flux.2-klein-base-9b-8bit",
-        ),
+        aliases=("AbstractFramework/flux.2-klein-base-9b-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
         source_priority=25,
@@ -533,7 +519,6 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "z-image",
             "zimage",
             "tongyi-z-image",
-            "mlx-gen/z-image",
             "AbstractFramework/z-image-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
@@ -550,7 +535,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Tongyi-MAI/Z-Image",
         source="abstractframework-mlx-gen",
-        aliases=("z-image-q8", "z-image-8bit", "AbstractFramework/z-image-8bit"),
+        aliases=("AbstractFramework/z-image-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
         source_priority=25,
@@ -569,12 +554,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "z-image-turbo",
             "zimage-turbo",
             "tongyi-z-image-turbo",
-            "mlx-gen/z-image-turbo",
             "AbstractFramework/z-image-turbo-4bit",
-            "carsenk/z-image-turbo-mflux-8bit",
-            "andrevp/Z-Image-Turbo-MLX",
-            "andrevp/Z-Image-Turbo-MLX-8bit",
-            "illusion615/Z-Image-Turbo-MLX",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
@@ -593,7 +573,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Tongyi-MAI/Z-Image-Turbo",
         source="abstractframework-mlx-gen",
-        aliases=("z-image-turbo-q8", "z-image-turbo-8bit", "AbstractFramework/z-image-turbo-8bit"),
+        aliases=("AbstractFramework/z-image-turbo-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
         source_priority=25,
@@ -651,7 +631,6 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "qwen-image-2512",
             "qwen-image-4bit",
             "qwen-image-2512-4bit",
-            "mlx-gen/qwen-image",
             "AbstractFramework/qwen-image-2512-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
@@ -671,13 +650,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image-2512",
         source="abstractframework-mlx-gen",
-        aliases=(
-            "qwen-image-q8",
-            "qwen-image-8bit",
-            "qwen-image-2512-q8",
-            "qwen-image-2512-8bit",
-            "AbstractFramework/qwen-image-2512-8bit",
-        ),
+        aliases=("AbstractFramework/qwen-image-2512-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 Qwen Image folder. Prefer when output quality is paramount.",
         source_priority=25,
@@ -707,7 +680,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image",
         source="abstractframework-mlx-gen",
-        aliases=("qwen-image-legacy-q8", "qwen-image-base-q8", "AbstractFramework/qwen-image-8bit"),
+        aliases=("AbstractFramework/qwen-image-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared legacy q8 Qwen Image folder; prefer Qwen-Image-2512 for new runs.",
         source_priority=40,
@@ -741,11 +714,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image-Edit",
         source="abstractframework-mlx-gen",
-        aliases=(
-            "qwen-image-edit-legacy-q8",
-            "qwen-image-edit-base-q8",
-            "AbstractFramework/qwen-image-edit-8bit",
-        ),
+        aliases=("AbstractFramework/qwen-image-edit-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared legacy q8 Qwen Image Edit folder; prefer Qwen-Image-Edit-2511 for new runs.",
         source_priority=40,
@@ -763,7 +732,6 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         aliases=(
             "qwen-image-edit",
             "qwen-image-edit-2511",
-            "mlx-gen/qwen-image-edit-2511",
             "AbstractFramework/qwen-image-edit-2511-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
@@ -780,11 +748,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
         source="abstractframework-mlx-gen",
-        aliases=(
-            "qwen-image-edit-2511-q8",
-            "qwen-image-edit-2511-8bit",
-            "AbstractFramework/qwen-image-edit-2511-8bit",
-        ),
+        aliases=("AbstractFramework/qwen-image-edit-2511-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 Qwen Image Edit 2511 folder. Prefer when output quality is paramount.",
         source_priority=25,
@@ -814,11 +778,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image-Edit-2509",
         source="abstractframework-mlx-gen",
-        aliases=(
-            "qwen-image-edit-2509-q8",
-            "qwen-image-edit-2509-8bit",
-            "AbstractFramework/qwen-image-edit-2509-8bit",
-        ),
+        aliases=("AbstractFramework/qwen-image-edit-2509-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 Qwen Image Edit 2509 folder. Prefer when output quality is paramount.",
         source_priority=30,
@@ -1543,15 +1503,34 @@ def _merge_aliases(*values: str) -> Tuple[str, ...]:
     out: List[str] = []
     seen: set[str] = set()
     for value in values:
-        s = str(value or "").strip()
-        if not s:
-            continue
-        key = s.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(s)
+        candidates = [str(value or "").strip()]
+        if "/" in candidates[0]:
+            candidates.append(candidates[0].rsplit("/", 1)[-1])
+        for s in candidates:
+            if not s:
+                continue
+            key = s.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(s)
     return tuple(out)
+
+
+def _is_abstractframework_mlx_gen_preset(preset: VisionModelDownloadPreset) -> bool:
+    return (
+        str(preset.target).strip().lower() == "mlx"
+        and str(preset.engine).strip().lower().replace("_", "-") in {"mlx-gen", "mflux", "m-flux", "mlxgen"}
+        and str(preset.source).strip().lower() == "abstractframework-mlx-gen"
+        and str(preset.repo_id).strip().lower().startswith("abstractframework/")
+    )
+
+
+def _exact_repo_selectors(preset: VisionModelDownloadPreset) -> set[str]:
+    repo = str(preset.repo_id or "").strip().lower()
+    if not repo:
+        return set()
+    return {repo, repo.rsplit("/", 1)[-1]}
 
 
 @lru_cache(maxsize=1)
@@ -1788,7 +1767,6 @@ def find_model_preset(
     target: Optional[str] = "auto",
     engine: Optional[str] = None,
     require_8bit: bool = True,
-    bits: Optional[int] = None,
 ) -> VisionModelDownloadPreset:
     raw_target = str(target or "auto").strip().lower()
     requested = str(name or "").strip().lower()
@@ -1814,21 +1792,39 @@ def find_model_preset(
     selected_engine = resolve_model_target_and_engine(target=target, engine=engine)[1]
     target_rank = {name: idx for idx, name in enumerate(selected_targets)}
     selected_target_label = ",".join(selected_targets)
-    requested_bits = int(bits) if bits is not None else None
 
     def matches(preset: VisionModelDownloadPreset) -> bool:
         aliases = {a.lower() for a in preset.aliases}
         repo_ids = {preset.repo_id.lower()}
+        repo_ids.add(preset.repo_id.rsplit("/", 1)[-1].lower())
         if preset.upstream_repo_id:
             repo_ids.add(preset.upstream_repo_id.lower())
+            repo_ids.add(preset.upstream_repo_id.rsplit("/", 1)[-1].lower())
         return requested == preset.key or requested in aliases or requested in repo_ids
 
-    def matches_bits(preset: VisionModelDownloadPreset) -> bool:
-        return requested_bits is None or preset.quantization_bits == requested_bits
-
-    bits_label = f"{requested_bits}-bit " if requested_bits is not None else ""
-
     presets = _all_presets()
+
+    if "mlx" in selected_targets and (selected_engine is None or selected_engine in {"mlx-gen", "mflux"}):
+        mlx_gen_matches = [
+            p
+            for p in presets
+            if _is_abstractframework_mlx_gen_preset(p)
+            and p.target in selected_targets
+            and (selected_engine is None or p.engine == selected_engine)
+            and matches(p)
+        ]
+        exact_matches = [p for p in mlx_gen_matches if requested in _exact_repo_selectors(p)]
+        if exact_matches:
+            return sorted(
+                exact_matches,
+                key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
+            )[0]
+        if mlx_gen_matches:
+            available = ", ".join(sorted({p.repo_id for p in mlx_gen_matches}))
+            raise ValueError(
+                f"MLX-Gen model selector {name!r} is not an exact published model id. "
+                f"Use one of: {available}"
+            )
 
     def _sort_key(preset: VisionModelDownloadPreset) -> tuple[int, int, str]:
         return (target_rank.get(preset.target, len(target_rank)), preset.source_priority, preset.repo_id)
@@ -1839,14 +1835,25 @@ def find_model_preset(
         if p.target in selected_targets
         and (selected_engine is None or p.engine == selected_engine)
         and matches(p)
-        and matches_bits(p)
     ]
     if require_8bit:
         candidates = [p for p in candidates if _is_default_quantized_preset(p)]
     if candidates:
         return sorted(candidates, key=_sort_key)[0]
 
-    known = sorted({p.key for p in presets}.union(*(set(p.aliases) for p in presets)))
+    known_values: set[str] = set()
+    for p in presets:
+        if p.target not in selected_targets or (selected_engine is not None and p.engine != selected_engine):
+            continue
+        if _is_abstractframework_mlx_gen_preset(p):
+            repo = str(p.repo_id or "").strip()
+            if repo:
+                known_values.add(repo)
+                known_values.add(repo.rsplit("/", 1)[-1])
+        else:
+            known_values.add(p.key)
+            known_values.update(p.aliases)
+    known = sorted(known_values)
     any_engine_matches = [p for p in presets if matches(p)]
     target_matches = [
         p
@@ -1857,20 +1864,12 @@ def find_model_preset(
     if raw_target in {"", "auto", "default"} and selected_engine is None and any_engine_matches:
         # If the caller left target/engine on defaults, pick a sensible fallback
         # when the resolved preset key only maps to one concrete artifact target.
-        # This keeps platform-aware catalog defaults, but still lets explicit repo
-        # ids like `mlx-community/...` resolve to their unique curated preset even
-        # on non-Apple hosts.
+        # This keeps platform-aware catalog defaults while still allowing exact
+        # repo ids to resolve to their unique curated preset on non-default hosts.
         possible_targets = sorted({p.target for p in any_engine_matches})
         if len(possible_targets) == 1:
             fallback_target = possible_targets[0]
             fallback = [p for p in any_engine_matches if p.target == fallback_target]
-            if requested_bits is not None:
-                fallback = [p for p in fallback if matches_bits(p)]
-                if not fallback:
-                    raise ValueError(
-                        f"No {bits_label}preset for {name!r}. Available target/engine choices: "
-                        + ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
-                    )
             if require_8bit:
                 quantized = [p for p in fallback if _is_default_quantized_preset(p)]
                 if quantized:
@@ -1887,18 +1886,18 @@ def find_model_preset(
         available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in target_matches}))
         engine_msg = f" and engine {selected_engine!r}" if selected_engine else ""
         raise ValueError(
-            f"No {bits_label or ('8-bit ' if require_8bit else '')}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
+            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
             f"Available target/repo choices: {available}"
         )
     if any_engine_matches:
         available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
         if selected_engine:
             raise ValueError(
-                f"No {bits_label or ('8-bit ' if require_8bit else '')}preset for {name!r} with engine {selected_engine!r}. "
+                f"No {'8-bit ' if require_8bit else ''}preset for {name!r} with engine {selected_engine!r}. "
                 f"Available target/engine choices: {available}"
             )
         raise ValueError(
-            f"No {bits_label or ('8-bit ' if require_8bit else '')}preset for {name!r} on target {selected_target_label!r}. "
+            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}. "
             f"Available target/engine choices: {available}"
         )
     raise ValueError(f"Unknown vision model preset {name!r}. Known presets: {', '.join(known)}")
@@ -2221,16 +2220,15 @@ def resolve_sdcpp_model_selection(
 def format_model_preset_rows(presets: Sequence[VisionModelDownloadPreset]) -> Iterable[str]:
     rows = [
         (
-            p.key,
+            p.repo_id,
             p.target,
             p.engine,
             str(p.quantization_bits) if p.quantization_bits is not None else "n/a",
-            p.repo_id,
             p.source,
         )
         for p in presets
     ]
-    headers = ("key", "target", "engine", "bits", "repo", "source")
+    headers = ("model_id", "target", "engine", "bits", "source")
     widths = [
         max(len(str(row[i])) for row in [headers, *rows])
         for i in range(len(headers))

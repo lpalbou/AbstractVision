@@ -216,7 +216,7 @@ def _mflux_weights_present() -> bool:
         return False
     cache_root = str(default_hf_cache_root())
     legacy_root = default_legacy_model_root()
-    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False):
+    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True):
         local_dir = legacy_root / preset.local_dir_name
         try:
             candidate_repo_ids = [preset.repo_id]
@@ -428,7 +428,7 @@ def _has_local_mflux_preset(model_id: str) -> bool:
         )
         from ..model_downloads import find_model_preset, looks_like_hf_repo_id
 
-        preset = find_model_preset(str(model_id), target="mlx", engine="mlx-gen", require_8bit=True)
+        preset = find_model_preset(str(model_id), target="mlx", engine="mlx-gen", require_8bit=False)
         candidate_repo_ids = [preset.repo_id]
         for alias in preset.aliases or ():
             if looks_like_hf_repo_id(alias) and alias not in candidate_repo_ids:
@@ -453,7 +453,7 @@ def _is_known_mflux_model_alias(model_id: str) -> bool:
     try:
         from ..model_downloads import find_model_preset
 
-        find_model_preset(str(model_id), target="mlx", engine="mlx-gen", require_8bit=True)
+        find_model_preset(str(model_id), target="mlx", engine="mlx-gen", require_8bit=False)
         return True
     except Exception:
         return False
@@ -466,9 +466,14 @@ def _canonical_mflux_model_id(model_id: Optional[str]) -> Optional[str]:
     try:
         from ..model_downloads import find_model_preset
 
-        preset = find_model_preset(s, target="mlx", engine="mlx-gen", require_8bit=True)
+        preset = find_model_preset(s, target="mlx", engine="mlx-gen", require_8bit=False)
         requested = s.lower().replace("_", "-")
+        repo_id = str(preset.repo_id or "").strip()
+        repo = repo_id.lower().replace("_", "-")
+        repo_tail = repo.rsplit("/", 1)[-1] if repo else ""
         upstream = str(preset.upstream_repo_id or "").strip().lower().replace("_", "-")
+        if repo and requested in {repo, repo_tail}:
+            return repo_id
         # Keep explicit q4/q8, legacy, dated, and exact download-repo selectors
         # intact so routed backends do not collapse distinct cached variants.
         if requested == str(preset.key).strip().lower().replace("_", "-"):
@@ -616,8 +621,8 @@ class _AbstractVisionCapability:
                 model_id = tail.strip()
             elif head_id == "mlx":
                 raise AbstractVisionError(
-                    "AbstractVision does not have a generic MLX image backend yet. "
-                    "Use provider/model `mlx-gen/<preset>` for MLX-Gen q4/q8 image models."
+                    "AbstractVision does not have a generic MLX image/video backend yet. "
+                    "Use provider/model `mlx-gen/<exact-huggingface-repo>` for MLX-Gen image/video models."
                 )
             elif head_id in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
                 provider_id = "diffusers"
@@ -637,8 +642,8 @@ class _AbstractVisionCapability:
             provider_id = "mlx-gen" if _has_local_mflux_preset(model_id) else "diffusers"
         if provider_id == "mlx":
             raise AbstractVisionError(
-                "AbstractVision does not have a generic MLX image backend yet. "
-                "Use provider 'mlx-gen' for MLX-Gen q4/q8 image models."
+                "AbstractVision does not have a generic MLX image/video backend yet. "
+                "Use provider 'mlx-gen' for MLX-Gen image/video models."
             )
         if provider_id in _MLX_GEN_BACKEND_ALIASES:
             model_id = _canonical_mflux_model_id(model_id)
@@ -1026,13 +1031,6 @@ class _AbstractVisionCapability:
             or _env("ABSTRACTVISION_MFLUX_BASE_MODEL")
         )
         model_dir = _owner_cfg(self._owner, "vision_model_dir") or _env("ABSTRACTVISION_MODEL_DIR")
-        quantize_raw = (
-            _owner_cfg(self._owner, "vision_mlx_gen_quantize")
-            or _env("ABSTRACTVISION_MLX_GEN_QUANTIZE")
-            or _owner_cfg(self._owner, "vision_mflux_quantize")
-            or _env("ABSTRACTVISION_MFLUX_QUANTIZE")
-        )
-        quantize = int(quantize_raw) if quantize_raw else None
         allow_download = _owner_cfg_bool(
             self._owner,
             "vision_mlx_gen_allow_download",
@@ -1052,7 +1050,6 @@ class _AbstractVisionCapability:
             model=str(resolved_model) if resolved_model else None,
             base_model=str(base_model) if base_model else None,
             model_dir=str(model_dir) if model_dir else None,
-            quantize=quantize,
             allow_download=allow_download,
         )
         return MFluxVisionBackend(config=cfg)
@@ -1585,7 +1582,15 @@ class _AbstractVisionCapability:
         model = kwargs.pop("model", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {"negative_prompt", "width", "height", "seed", "steps", "guidance_scale", "extra"}
+        allowed_request_keys = {
+            "negative_prompt",
+            "width",
+            "height",
+            "seed",
+            "steps",
+            "guidance_scale",
+            "extra",
+        }
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in list(kwargs.keys()):
@@ -1625,9 +1630,21 @@ class _AbstractVisionCapability:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {"negative_prompt", "seed", "steps", "guidance_scale", "extra"}
+        allowed_request_keys = {
+            "negative_prompt",
+            "seed",
+            "steps",
+            "guidance_scale",
+            "extra",
+        }
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in ("strength", "width", "height"):
+            if key not in kwargs:
+                continue
+            value = kwargs.pop(key)
+            if value is not None:
+                merged_extra[str(key)] = value
         for key in list(kwargs.keys()):
             if key not in allowed_request_keys:
                 value = kwargs.pop(key)
@@ -1717,6 +1734,27 @@ class _AbstractVisionCapability:
         image_b = _resolve_bytes_input(image, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
+        allowed_request_keys = {
+            "prompt",
+            "negative_prompt",
+            "width",
+            "height",
+            "fps",
+            "num_frames",
+            "seed",
+            "steps",
+            "guidance_scale",
+            "extra",
+        }
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if merged_extra:
+            kwargs["extra"] = merged_extra
         vm = VisionManager(
             backend=backend,
             store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,

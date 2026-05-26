@@ -40,7 +40,8 @@ def _require_optional_dep(name: str, install_hint: str) -> None:
     import sys
 
     raise OptionalDependencyMissingError(
-        f"Optional dependency missing: {name}. Install via: {install_hint} " f"(python={sys.executable})"
+        f"Optional dependency missing: {name}. Install via: {install_hint} "
+        f"(python={sys.executable})"
     )
 
 
@@ -107,7 +108,9 @@ def _lazy_import_diffusers():
 
         # Some Diffusers modules decorate functions with `torch.autocast(device_type="cuda", ...)`,
         # which emits noisy warnings on non-CUDA machines (including Apple Silicon / MPS).
-        warnings.filterwarnings("ignore", message=r".*CUDA is not available.*Disabling autocast.*", category=UserWarning)
+        warnings.filterwarnings(
+            "ignore", message=r".*CUDA is not available.*Disabling autocast.*", category=UserWarning
+        )
         warnings.filterwarnings(
             "ignore",
             message=r".*device_type of 'cuda'.*CUDA is not available.*",
@@ -233,15 +236,19 @@ def _ensure_pipeline_chat_templates(
     snapshot_dir: Optional[Path],
     model_id: Optional[str],
 ) -> None:
-    model_hint = " ".join(
-        str(value or "")
-        for value in (
-            model_id,
-            type(pipe).__name__,
-            getattr(getattr(pipe, "tokenizer", None), "__class__", type(None)).__name__,
-            getattr(getattr(pipe, "processor", None), "__class__", type(None)).__name__,
+    model_hint = (
+        " ".join(
+            str(value or "")
+            for value in (
+                model_id,
+                type(pipe).__name__,
+                getattr(getattr(pipe, "tokenizer", None), "__class__", type(None)).__name__,
+                getattr(getattr(pipe, "processor", None), "__class__", type(None)).__name__,
+            )
         )
-    ).strip().lower()
+        .strip()
+        .lower()
+    )
 
     tokenizer = getattr(pipe, "tokenizer", None)
     processor = getattr(pipe, "processor", None)
@@ -440,7 +447,9 @@ def _maybe_patch_transformers_glm_image_mps_grid_sample() -> None:
     if not callable(orig_forward):
         return
 
-    def _patched_forward(self: Any, embeddings: Any, lengths: Any, image_shapes: Any, h_coords: Any, w_coords: Any) -> Any:
+    def _patched_forward(
+        self: Any, embeddings: Any, lengths: Any, image_shapes: Any, h_coords: Any, w_coords: Any
+    ) -> Any:
         try:
             return orig_forward(self, embeddings, lengths, image_shapes, h_coords, w_coords)
         except RuntimeError as e:
@@ -448,7 +457,9 @@ def _maybe_patch_transformers_glm_image_mps_grid_sample() -> None:
             position_embedding = getattr(self, "position_embedding", None)
             weight = getattr(position_embedding, "weight", None)
             device = str(getattr(weight, "device", "") or "").lower()
-            if "Unsupported Border padding mode" not in msg or not (device == "mps" or device.startswith("mps:")):
+            if "Unsupported Border padding mode" not in msg or not (
+                device == "mps" or device.startswith("mps:")
+            ):
                 raise
             return _glm_image_position_embedding_with_cpu_grid_sample(
                 self,
@@ -727,7 +738,9 @@ def _maybe_enable_video_pipeline_memory_savers(pipe: Any) -> None:
                 pass
 
 
-def _maybe_upcast_vae_for_mps(torch: Any, pipe: Any, device: str, *, allow_fp32_vae: bool = True) -> None:
+def _maybe_upcast_vae_for_mps(
+    torch: Any, pipe: Any, device: str, *, allow_fp32_vae: bool = True
+) -> None:
     d = str(device or "").strip().lower()
     if d != "mps" and not d.startswith("mps:"):
         return
@@ -864,7 +877,12 @@ def _maybe_cast_vae_inputs_to_dtype(vae: Any) -> None:
                     dtype = getattr(self, "dtype", None)
                     x_dtype = getattr(x, "dtype", None)
                     to_fn = getattr(x, "to", None)
-                    if dtype is not None and x_dtype is not None and x_dtype != dtype and callable(to_fn):
+                    if (
+                        dtype is not None
+                        and x_dtype is not None
+                        and x_dtype != dtype
+                        and callable(to_fn)
+                    ):
                         x = x.to(dtype=dtype)
                 except Exception:
                     pass
@@ -932,13 +950,21 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         d = raw.lower()
         if not d or d in {"auto", "default"}:
             cuda = getattr(torch, "cuda", None)
-            if cuda is not None and callable(getattr(cuda, "is_available", None)) and cuda.is_available():
+            if (
+                cuda is not None
+                and callable(getattr(cuda, "is_available", None))
+                and cuda.is_available()
+            ):
                 self._resolved_device = "cuda"
                 return self._resolved_device
 
             backends = getattr(torch, "backends", None)
             mps = getattr(backends, "mps", None) if backends is not None else None
-            if mps is not None and callable(getattr(mps, "is_available", None)) and mps.is_available():
+            if (
+                mps is not None
+                and callable(getattr(mps, "is_available", None))
+                and mps.is_available()
+            ):
                 self._resolved_device = "mps"
                 return self._resolved_device
 
@@ -1012,7 +1038,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         try:
             torch = _lazy_import_torch()
             cuda = getattr(torch, "cuda", None)
-            if cuda is not None and callable(getattr(cuda, "is_available", None)) and cuda.is_available():
+            if (
+                cuda is not None
+                and callable(getattr(cuda, "is_available", None))
+                and cuda.is_available()
+            ):
                 empty = getattr(cuda, "empty_cache", None)
                 if callable(empty):
                     empty()
@@ -1103,7 +1133,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 if ".gguf" in str(pattern).strip().lower()
             )
             return _DiffusersGGUFTransformerSpec(
-                base_model_id=str(preset.upstream_repo_id or self._canonical_model_id(preset.repo_id)).strip(),
+                base_model_id=str(
+                    preset.upstream_repo_id or self._canonical_model_id(preset.repo_id)
+                ).strip(),
                 gguf_repo_id=str(preset.repo_id).strip(),
                 gguf_patterns=patterns or ("*.gguf",),
             )
@@ -1162,7 +1194,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 concrete_patterns = [
                     p
                     for p in spec.gguf_patterns
-                    if p.lower().endswith(".gguf") and "*" not in p and "?" not in p and "[" not in p
+                    if p.lower().endswith(".gguf")
+                    and "*" not in p
+                    and "?" not in p
+                    and "[" not in p
                 ]
                 if concrete_patterns:
                     try:
@@ -1199,7 +1234,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     ) -> Any:
         GGUFQuantizationConfig = _lazy_import_gguf_quantization_config()
         QwenImageTransformer2DModel = _lazy_import_qwen_image_transformer_2d_model()
-        q_config = GGUFQuantizationConfig(compute_dtype=torch_dtype or getattr(torch, "bfloat16", None))
+        q_config = GGUFQuantizationConfig(
+            compute_dtype=torch_dtype or getattr(torch, "bfloat16", None)
+        )
 
         kwargs: Dict[str, Any] = {
             "config": spec.base_model_id,
@@ -1243,7 +1280,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if not (device_name == "mps" or device_name.startswith("mps:")):
             return torch_dtype
         gguf_spec = self._diffusers_gguf_transformer_spec()
-        model_hint = (gguf_spec.base_model_id if gguf_spec is not None else model_id).replace("_", "-").lower()
+        model_hint = (
+            (gguf_spec.base_model_id if gguf_spec is not None else model_id)
+            .replace("_", "-")
+            .lower()
+        )
         wants_bf16 = model_hint == "zai-org/glm-image" or "qwen-image-edit" in model_hint
         if not wants_bf16:
             return torch_dtype
@@ -1267,7 +1308,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return str(task) in disabled
 
     def _supports_local_text_to_video(self, model_id: Optional[str] = None) -> bool:
-        resolved_model_id = str(model_id if model_id is not None else self._cfg.model_id or "").strip()
+        resolved_model_id = str(
+            model_id if model_id is not None else self._cfg.model_id or ""
+        ).strip()
         if not resolved_model_id:
             return False
         if self._is_temporarily_disabled_task("text_to_video", model_id=resolved_model_id):
@@ -1279,7 +1322,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     return False
             except Exception:
                 return False
-        return self._canonical_model_id(resolved_model_id).lower() in _SUPPORTED_LOCAL_DIFFUSERS_TEXT_TO_VIDEO_MODELS
+        return (
+            self._canonical_model_id(resolved_model_id).lower()
+            in _SUPPORTED_LOCAL_DIFFUSERS_TEXT_TO_VIDEO_MODELS
+        )
 
     def _supports_local_image_to_video(self, model_id: Optional[str] = None) -> bool:
         _ = model_id
@@ -1312,8 +1358,18 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return sorted(
             str(task_name)
             for task_name in model_spec.tasks.keys()
-            if self._supports_backend_task(str(task_name), model_id=resolved_model_id)
+            if self._registry_task_supports_diffusers(model_spec.tasks.get(str(task_name)))
+            and self._supports_backend_task(str(task_name), model_id=resolved_model_id)
         )
+
+    def _registry_task_supports_diffusers(self, task_spec: Any) -> bool:
+        requires = getattr(task_spec, "requires", None)
+        if not isinstance(requires, dict):
+            return True
+        required_backend = str(requires.get("backend") or "").strip().lower().replace("_", "-")
+        if not required_backend:
+            return True
+        return required_backend in {"diffusers", "hf-diffusers", "huggingface-diffusers"}
 
     def _preload_pipeline_kind(self) -> str:
         tasks = set(self._supported_task_names())
@@ -1428,8 +1484,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         width_required = isinstance(width_spec, dict) and bool(width_spec.get("required"))
         height_required = isinstance(height_spec, dict) and bool(height_spec.get("required"))
-        width_auto = isinstance(width_spec, dict) and bool(width_spec.get("auto_derived_from_input"))
-        height_auto = isinstance(height_spec, dict) and bool(height_spec.get("auto_derived_from_input"))
+        width_auto = isinstance(width_spec, dict) and bool(
+            width_spec.get("auto_derived_from_input")
+        )
+        height_auto = isinstance(height_spec, dict) and bool(
+            height_spec.get("auto_derived_from_input")
+        )
 
         if input_image_size is not None:
             image_width, image_height = input_image_size
@@ -1467,7 +1527,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             width=width,
             height=height,
             steps=self._normalize_int_param(request.steps, params.get("steps")),
-            guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
+            guidance_scale=self._normalize_float_param(
+                request.guidance_scale, params.get("guidance_scale")
+            ),
         )
 
     def normalize_image_edit_request(
@@ -1507,7 +1569,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             request,
             negative_prompt=negative_prompt,
             steps=self._normalize_int_param(request.steps, params.get("steps")),
-            guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
+            guidance_scale=self._normalize_float_param(
+                request.guidance_scale, params.get("guidance_scale")
+            ),
             extra=extra,
         )
 
@@ -1531,7 +1595,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             fps=self._normalize_int_param(request.fps, params.get("fps")),
             num_frames=self._normalize_int_param(request.num_frames, params.get("num_frames")),
             steps=self._normalize_int_param(request.steps, params.get("steps")),
-            guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
+            guidance_scale=self._normalize_float_param(
+                request.guidance_scale, params.get("guidance_scale")
+            ),
         )
 
     def normalize_image_to_video_request(
@@ -1554,7 +1620,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             fps=self._normalize_int_param(request.fps, params.get("fps")),
             num_frames=self._normalize_int_param(request.num_frames, params.get("num_frames")),
             steps=self._normalize_int_param(request.steps, params.get("steps")),
-            guidance_scale=self._normalize_float_param(request.guidance_scale, params.get("guidance_scale")),
+            guidance_scale=self._normalize_float_param(
+                request.guidance_scale, params.get("guidance_scale")
+            ),
         )
 
     def _lora_signature(self, loras: List[Dict[str, Any]]) -> Optional[str]:
@@ -1641,7 +1709,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         name = str(spec.get("adapter_name") or "").strip()
         if name:
             return name
-        key = "|".join([str(spec.get("source") or ""), str(spec.get("subfolder") or ""), str(spec.get("weight_name") or "")])
+        key = "|".join(
+            [
+                str(spec.get("source") or ""),
+                str(spec.get("subfolder") or ""),
+                str(spec.get("weight_name") or ""),
+            ]
+        )
         return "lora_" + hashlib.md5(key.encode("utf-8")).hexdigest()[:12]
 
     def _apply_loras(self, *, kind: str, pipe: Any, extra: Any) -> Optional[str]:
@@ -1687,7 +1761,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
                 load_fn = getattr(pipe, "load_lora_weights", None)
                 if not callable(load_fn):
-                    raise ValueError("This diffusers pipeline does not support LoRA adapters (missing load_lora_weights).")
+                    raise ValueError(
+                        "This diffusers pipeline does not support LoRA adapters (missing load_lora_weights)."
+                    )
                 load_fn(spec["source"], adapter_name=adapter_name, **kwargs)
 
             if hasattr(pipe, "set_adapters"):
@@ -1711,7 +1787,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self._fused_lora_signature[kind] = new_sig
         return new_sig
 
-    def _maybe_apply_rapid_aio_transformer(self, *, pipe: Any, extra: Any, torch_dtype: Any) -> Optional[str]:
+    def _maybe_apply_rapid_aio_transformer(
+        self, *, pipe: Any, extra: Any, torch_dtype: Any
+    ) -> Optional[str]:
         """Optionally swap the pipeline's transformer with a Rapid-AIO distilled transformer.
 
         This is primarily useful for Qwen Image Edit pipelines (very fast 4-step inference), but we keep it
@@ -1740,11 +1818,16 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             tr = self._rapid_transformer
         else:
             QwenImageTransformer2DModel = _lazy_import_qwen_image_transformer_2d_model()
-            kwargs: Dict[str, Any] = {"subfolder": subfolder, "local_files_only": not bool(self._cfg.allow_download)}
+            kwargs: Dict[str, Any] = {
+                "subfolder": subfolder,
+                "local_files_only": not bool(self._cfg.allow_download),
+            }
             if self._cfg.cache_dir:
                 kwargs["cache_dir"] = str(self._cfg.cache_dir)
             with _hf_offline_env(not bool(self._cfg.allow_download)):
-                tr = QwenImageTransformer2DModel.from_pretrained(repo, torch_dtype=torch_dtype, **kwargs)
+                tr = QwenImageTransformer2DModel.from_pretrained(
+                    repo, torch_dtype=torch_dtype, **kwargs
+                )
             torch = _lazy_import_torch()
             device = self._effective_device(torch)
             try:
@@ -1772,7 +1855,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
     def get_capabilities(self) -> VisionBackendCapabilities:
         supported_tasks = self._supported_task_names()
-        task_spec = self._task_spec("image_to_image") if "image_to_image" in set(supported_tasks) else None
+        task_spec = (
+            self._task_spec("image_to_image") if "image_to_image" in set(supported_tasks) else None
+        )
         supports_mask: Optional[bool] = None
         if task_spec is not None:
             params = task_spec.params if isinstance(task_spec.params, dict) else {}
@@ -1859,7 +1944,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         out: List[ProviderModelInfo] = []
         seen: set[str] = set()
 
-        def add_model(model_id: str, *, tasks: List[str], cached: bool, raw_extra: Optional[Dict[str, Any]] = None) -> None:
+        def add_model(
+            model_id: str,
+            *,
+            tasks: List[str],
+            cached: bool,
+            raw_extra: Optional[Dict[str, Any]] = None,
+        ) -> None:
             mid = str(model_id or "").strip()
             if not mid or mid in seen:
                 return
@@ -1897,7 +1988,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     "inputs": list(task_spec.inputs),
                     "outputs": list(task_spec.outputs),
                     "params": dict(task_spec.params),
-                    "requires": dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None,
+                    "requires": (
+                        dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None
+                    ),
                 }
                 for task_name, task_spec in spec.tasks.items()
                 if str(task_name) in allowed
@@ -1928,7 +2021,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                                 "inputs": list(task_spec.inputs),
                                 "outputs": list(task_spec.outputs),
                                 "params": dict(task_spec.params),
-                                "requires": dict(task_spec.requires) if isinstance(task_spec.requires, dict) else None,
+                                "requires": (
+                                    dict(task_spec.requires)
+                                    if isinstance(task_spec.requires, dict)
+                                    else None
+                                ),
                             }
                             for task_name, task_spec in spec.tasks.items()
                             if str(task_name) in set(tasks)
@@ -1986,7 +2083,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         except Exception:
             pass
 
-        for model_id in [*self._discover_cached_hf_diffusers_models(), *self._discover_local_diffusers_models()]:
+        for model_id in [
+            *self._discover_cached_hf_diffusers_models(),
+            *self._discover_local_diffusers_models(),
+        ]:
             if model_id in seen:
                 continue
             tasks = ["image_to_image", "text_to_image"]
@@ -2054,7 +2154,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
     def _hf_cache_roots(self) -> List[Path]:
         roots: List[Path] = [self._hf_cache_root()]
-        for key in ("ABSTRACTVISION_HF_HUB_CACHE", "ABSTRACTCORE_VISION_HF_HUB_CACHE", "HF_HUB_CACHE_DIR"):
+        for key in (
+            "ABSTRACTVISION_HF_HUB_CACHE",
+            "ABSTRACTCORE_VISION_HF_HUB_CACHE",
+            "HF_HUB_CACHE_DIR",
+        ):
             value = os.environ.get(key)
             if value:
                 roots.append(Path(value).expanduser())
@@ -2257,7 +2361,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         gguf_transformer = None
         if gguf_spec is not None:
             if kind not in {"t2i", "i2i", "inpaint"}:
-                raise ValueError("Diffusers GGUF transformer loading is only supported for image pipelines.")
+                raise ValueError(
+                    "Diffusers GGUF transformer loading is only supported for image pipelines."
+                )
             gguf_path = self._resolve_gguf_transformer_path(gguf_spec)
             gguf_transformer = self._load_gguf_transformer(
                 spec=gguf_spec,
@@ -2280,7 +2386,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             if torch_dtype == getattr(torch, "float16", object()):
                 auto_variant = "fp16"
 
-        load_model_id = str(gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id)
+        load_model_id = str(
+            gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id
+        )
         snap: Optional[Path] = None
         if not bool(self._cfg.allow_download):
             snap = self._resolve_snapshot_dir(model_id=load_model_id)
@@ -2298,11 +2406,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **common2)
                 except Exception:
                     # If the repo doesn't provide the fp16 variant (common), fall back to regular weights.
-                    return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **load_common)
+                    return cls.from_pretrained(
+                        load_model_id, torch_dtype=torch_dtype, **load_common
+                    )
             return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **load_common)
 
         def _maybe_raise_offline_missing_model(e: Exception) -> None:
-            model_id = str(gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id or "").strip()
+            model_id = str(
+                gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id or ""
+            ).strip()
             if not model_id or "/" not in model_id:
                 return
             # If it's not in cache, provide a clearer message than the upstream
@@ -2320,7 +2432,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             ) from e
 
         def _maybe_raise_incomplete_snapshot_error(e: Exception) -> None:
-            model_id = str(gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id or "").strip()
+            model_id = str(
+                gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id or ""
+            ).strip()
             snap = self._resolve_any_snapshot_dir(model_id=model_id)
             if not model_id or not snap:
                 return
@@ -2438,7 +2552,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             else:
                 raise ValueError(f"Unknown pipeline kind: {kind!r}")
 
-        pipe = _move_pipe_to_device(pipe, device=str(device), dtype=None if gguf_transformer is not None else torch_dtype)
+        pipe = _move_pipe_to_device(
+            pipe, device=str(device), dtype=None if gguf_transformer is not None else torch_dtype
+        )
         template_snapshot = snap
         if template_snapshot is None:
             candidate = Path(str(load_model_id)).expanduser()
@@ -2448,7 +2564,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 template_snapshot = self._resolve_any_snapshot_dir(
                     model_id=gguf_spec.base_model_id if gguf_spec is not None else None
                 )
-        _ensure_pipeline_chat_templates(pipe, snapshot_dir=template_snapshot, model_id=str(self._cfg.model_id or ""))
+        _ensure_pipeline_chat_templates(
+            pipe, snapshot_dir=template_snapshot, model_id=str(self._cfg.model_id or "")
+        )
         _maybe_cast_pipe_modules_to_dtype(pipe, dtype=torch_dtype)
         _maybe_upcast_vae_for_mps(torch, pipe, device, allow_fp32_vae=kind not in {"t2v", "i2v"})
         if kind in {"t2v", "i2v"}:
@@ -2498,7 +2616,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             return None
         torch = _lazy_import_torch()
         d = str(self._effective_device(torch) or "").strip().lower()
-        gen_device = "cpu" if d == "mps" or d.startswith("mps:") else str(self._effective_device(torch))
+        gen_device = (
+            "cpu" if d == "mps" or d.startswith("mps:") else str(self._effective_device(torch))
+        )
         try:
             gen = torch.Generator(device=gen_device)
         except Exception:
@@ -2510,7 +2630,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         try:
             rgb = img.convert("RGB")
             extrema = rgb.getextrema()
-            if isinstance(extrema, tuple) and len(extrema) == 2 and all(isinstance(x, int) for x in extrema):
+            if (
+                isinstance(extrema, tuple)
+                and len(extrema) == 2
+                and all(isinstance(x, int) for x in extrema)
+            ):
                 _, mx = extrema
                 return mx <= 1
             if isinstance(extrema, tuple):
@@ -2645,9 +2769,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         current_dtype = getattr(pipe, "dtype", None)
         if current_dtype is None:
-            current_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(
-                torch, device
-            )
+            current_dtype = _torch_dtype_from_str(
+                torch, self._cfg.torch_dtype
+            ) or _default_torch_dtype_for_device(torch, device)
 
         candidates: list[Any] = []
         if current_dtype == getattr(torch, "bfloat16", object()):
@@ -2747,8 +2871,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             if torch_dtype is None:
                 torch = _lazy_import_torch()
                 device = self._effective_device(torch)
-                torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, device)
-            rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
+                torch_dtype = _torch_dtype_from_str(
+                    torch, self._cfg.torch_dtype
+                ) or _default_torch_dtype_for_device(torch, device)
+            rapid_repo = self._maybe_apply_rapid_aio_transformer(
+                pipe=pipe, extra=request.extra, torch_dtype=torch_dtype
+            )
             lora_sig = self._apply_loras(kind="t2i", pipe=pipe, extra=request.extra)
 
             kwargs: Dict[str, Any] = {
@@ -2767,7 +2895,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     kwargs["true_cfg_scale"] = float(request.guidance_scale)
                     # Some pipelines (e.g. Qwen Image) only enable CFG when a `negative_prompt`
                     # is provided (even an empty one). Make `guidance_scale` behave consistently.
-                    if request.negative_prompt is None and (call_params is None or "negative_prompt" in call_params):
+                    if request.negative_prompt is None and (
+                        call_params is None or "negative_prompt" in call_params
+                    ):
                         kwargs["negative_prompt"] = " "
                 else:
                     kwargs["guidance_scale"] = float(request.guidance_scale)
@@ -2881,12 +3011,18 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             if torch_dtype is None:
                 torch = _lazy_import_torch()
                 device = self._effective_device(torch)
-                torch_dtype = _torch_dtype_from_str(torch, self._cfg.torch_dtype) or _default_torch_dtype_for_device(torch, device)
-            rapid_repo = self._maybe_apply_rapid_aio_transformer(pipe=pipe, extra=request.extra, torch_dtype=torch_dtype)
+                torch_dtype = _torch_dtype_from_str(
+                    torch, self._cfg.torch_dtype
+                ) or _default_torch_dtype_for_device(torch, device)
+            rapid_repo = self._maybe_apply_rapid_aio_transformer(
+                pipe=pipe, extra=request.extra, torch_dtype=torch_dtype
+            )
             lora_sig = self._apply_loras(kind=kind, pipe=pipe, extra=request.extra)
 
             img = self._pil_from_bytes(request.image)
-            image_input: Any = [img] if request.mask is None and self._needs_list_wrapped_i2i_image(pipe) else img
+            image_input: Any = (
+                [img] if request.mask is None and self._needs_list_wrapped_i2i_image(pipe) else img
+            )
             kwargs: Dict[str, Any] = {"prompt": request.prompt, "image": image_input}
             # Some modern edit pipelines (notably Qwen Image Edit) default to ~1MP output when
             # `width`/`height` are omitted, which can blow up memory unexpectedly. When the pipeline
@@ -2914,7 +3050,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             if request.guidance_scale is not None:
                 if call_params is not None and "true_cfg_scale" in call_params:
                     kwargs["true_cfg_scale"] = float(request.guidance_scale)
-                    if request.negative_prompt is None and (call_params is None or "negative_prompt" in call_params):
+                    if request.negative_prompt is None and (
+                        call_params is None or "negative_prompt" in call_params
+                    ):
                         kwargs["negative_prompt"] = " "
                 else:
                     kwargs["guidance_scale"] = float(request.guidance_scale)
@@ -3001,7 +3139,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             )
 
     def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
-        raise CapabilityNotSupportedError("HuggingFaceDiffusersVisionBackend does not implement multi-view generation.")
+        raise CapabilityNotSupportedError(
+            "HuggingFaceDiffusersVisionBackend does not implement multi-view generation."
+        )
 
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
         return self.generate_video_with_progress(request, progress_callback=None)

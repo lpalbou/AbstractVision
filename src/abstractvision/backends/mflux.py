@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..model_capabilities import VisionModelCapabilitiesRegistry
@@ -37,6 +37,7 @@ from ..types import (
     ImageToVideoRequest,
     MultiAngleRequest,
     ProviderModelInfo,
+    VideoProgressEvent,
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
@@ -44,6 +45,72 @@ from .base_backend import VisionBackend
 
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
+WAN_TI2V_MODEL_KEY = "wan2.2-ti2v-5b"
+WAN_DEFAULT_WIDTH = 1280
+WAN_DEFAULT_HEIGHT = 704
+WAN_DEFAULT_FRAMES = 121
+WAN_DEFAULT_STEPS = 50
+WAN_DEFAULT_FPS = 24
+WAN_DEFAULT_GUIDANCE = 5.0
+
+
+def _progress_attr(event: Any, name: str, default: Any = None) -> Any:
+    if isinstance(event, dict):
+        return event.get(name, default)
+    return getattr(event, name, default)
+
+
+def _progress_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+def _progress_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _progress_optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _normalize_video_progress_event(event: Any) -> VideoProgressEvent:
+    phase = str(_progress_attr(event, "phase", "running") or "running")
+    frame = _progress_int(_progress_attr(event, "frame", 0), 0)
+    total_frames = _progress_optional_int(_progress_attr(event, "total_frames", None))
+    step = _progress_optional_int(_progress_attr(event, "step", None))
+    total_steps = _progress_optional_int(_progress_attr(event, "total_steps", None))
+    progress = _progress_optional_float(_progress_attr(event, "progress", None))
+    if progress is None and total_frames and total_frames > 0:
+        progress = max(0.0, min(1.0, float(frame) / float(total_frames)))
+    raw = {
+        "phase": phase,
+        "frame": frame,
+        "total_frames": total_frames,
+        "step": step,
+        "total_steps": total_steps,
+        "progress": progress,
+    }
+    return VideoProgressEvent(
+        phase=phase,
+        frame=frame,
+        total_frames=total_frames,
+        step=step,
+        total_steps=total_steps,
+        progress=progress,
+        raw=raw,
+    )
 
 
 @dataclass(frozen=True)
@@ -157,6 +224,51 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         supports_negative_prompt=True,
         supports_guidance_override=True,
     ),
+    "fibo": _MFluxModelDef(
+        key="fibo",
+        config_method="fibo",
+        family="fibo",
+        default_steps=50,
+        default_guidance=4.0,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
+    "fibo-lite": _MFluxModelDef(
+        key="fibo-lite",
+        config_method="fibo_lite",
+        family="fibo",
+        default_steps=8,
+        default_guidance=1.0,
+        supports_negative_prompt=True,
+        supports_guidance_override=False,
+    ),
+    "fibo-edit": _MFluxModelDef(
+        key="fibo-edit",
+        config_method="fibo_edit",
+        family="fibo-edit",
+        default_steps=50,
+        default_guidance=4.0,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
+    "fibo-edit-rmbg": _MFluxModelDef(
+        key="fibo-edit-rmbg",
+        config_method="fibo_edit_rmbg",
+        family="fibo-edit",
+        default_steps=10,
+        default_guidance=4.0,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
+    WAN_TI2V_MODEL_KEY: _MFluxModelDef(
+        key=WAN_TI2V_MODEL_KEY,
+        config_method="wan2_2_ti2v_5b",
+        family="wan-video",
+        default_steps=WAN_DEFAULT_STEPS,
+        default_guidance=WAN_DEFAULT_GUIDANCE,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
 }
 
 
@@ -164,18 +276,12 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "black-forest-labs/flux.2-klein-4b": "flux2-klein-4b",
     "abstractframework/flux.2-klein-4b-4bit": "flux2-klein-4b",
     "abstractframework/flux.2-klein-4b-8bit": "flux2-klein-4b",
-    "aitrader/flux2-klein-4b-mlx-8bit": "flux2-klein-4b",
-    "moxin-org/flux.2-klein-4b-8bit-mlx": "flux2-klein-4b",
-    "runpod/flux.2-klein-4b-mflux-4bit": "flux2-klein-4b",
     "flux2-klein-4b": "flux2-klein-4b",
     "flux-klein-4b": "flux2-klein-4b",
     "klein-4b": "flux2-klein-4b",
     "black-forest-labs/flux.2-klein-9b": "flux2-klein-9b",
     "abstractframework/flux.2-klein-9b-4bit": "flux2-klein-9b",
     "abstractframework/flux.2-klein-9b-8bit": "flux2-klein-9b",
-    "deepsweet/flux.2-klein-9b-mlx-q8": "flux2-klein-9b",
-    "deepsweet/flux.2-klein-9b-mlx-q4": "flux2-klein-9b",
-    "themindstudio/flux2-klein-9b-mlx-4bit": "flux2-klein-9b",
     "flux2-klein-9b": "flux2-klein-9b",
     "flux-klein-9b": "flux2-klein-9b",
     "klein-9b": "flux2-klein-9b",
@@ -199,10 +305,6 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "tongyi-mai/z-image-turbo": "z-image-turbo",
     "abstractframework/z-image-turbo-4bit": "z-image-turbo",
     "abstractframework/z-image-turbo-8bit": "z-image-turbo",
-    "carsenk/z-image-turbo-mflux-8bit": "z-image-turbo",
-    "andrevp/z-image-turbo-mlx": "z-image-turbo",
-    "andrevp/z-image-turbo-mlx-8bit": "z-image-turbo",
-    "illusion615/z-image-turbo-mlx": "z-image-turbo",
     "z-image-turbo": "z-image-turbo",
     "zimage-turbo": "z-image-turbo",
     "abstractframework/qwen-image-edit-4bit": "qwen-image-edit",
@@ -225,8 +327,6 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "abstractframework/qwen-image-2512-8bit": "qwen-image",
     "abstractframework/qwen-image-4bit": "qwen-image",
     "abstractframework/qwen-image-8bit": "qwen-image",
-    "mlx-community/qwen-image-2512-8bit": "qwen-image",
-    "mlx-community/qwen-image-2512-8bit-mlx": "qwen-image",
     "qwen-image": "qwen-image",
     "qwen-image-2512": "qwen-image",
     "baidu/ernie-image-turbo": "ernie-image-turbo",
@@ -235,6 +335,24 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "ernie-image-turbo": "ernie-image-turbo",
     "ernie-image": "ernie-image-turbo",
     "ernie": "ernie-image-turbo",
+    "briaai/fibo": "fibo",
+    "fibo": "fibo",
+    "briaai/fibo-lite": "fibo-lite",
+    "fibo-lite": "fibo-lite",
+    "fibo_lite": "fibo-lite",
+    "briaai/fibo-edit": "fibo-edit",
+    "fibo-edit": "fibo-edit",
+    "fiboedit": "fibo-edit",
+    "briaai/fibo-edit-rmbg": "fibo-edit-rmbg",
+    "fibo-edit-rmbg": "fibo-edit-rmbg",
+    "fiboedit-rmbg": "fibo-edit-rmbg",
+    "wan-ai/wan2.2-ti2v-5b-diffusers": WAN_TI2V_MODEL_KEY,
+    "wan2.2-ti2v-5b-diffusers": WAN_TI2V_MODEL_KEY,
+    "wan2.2-ti2v-5b": WAN_TI2V_MODEL_KEY,
+    "wan2-2-ti2v-5b": WAN_TI2V_MODEL_KEY,
+    "wan-ti2v": WAN_TI2V_MODEL_KEY,
+    "wan-video": WAN_TI2V_MODEL_KEY,
+    "wan": WAN_TI2V_MODEL_KEY,
 }
 
 
@@ -250,6 +368,11 @@ _MFLUX_BASE_MODEL_REGISTRY_IDS: Dict[str, str] = {
     "z-image": "Tongyi-MAI/Z-Image",
     "z-image-turbo": "Tongyi-MAI/Z-Image-Turbo",
     "ernie-image-turbo": "baidu/ERNIE-Image-Turbo",
+    "fibo": "briaai/FIBO",
+    "fibo-lite": "briaai/Fibo-lite",
+    "fibo-edit": "briaai/Fibo-Edit",
+    "fibo-edit-rmbg": "briaai/Fibo-Edit-RMBG",
+    WAN_TI2V_MODEL_KEY: "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
 }
 
 
@@ -264,7 +387,12 @@ _MFLUX_BASE_MODEL_FALLBACK_TASKS: Dict[str, Tuple[str, ...]] = {
     "qwen-image-edit-2509": ("image_to_image",),
     "z-image": ("text_to_image",),
     "z-image-turbo": ("text_to_image",),
-    "ernie-image-turbo": ("text_to_image",),
+    "ernie-image-turbo": ("image_to_image", "text_to_image"),
+    "fibo": ("image_to_image", "text_to_image"),
+    "fibo-lite": ("image_to_image", "text_to_image"),
+    "fibo-edit": ("image_to_image",),
+    "fibo-edit-rmbg": ("image_to_image",),
+    WAN_TI2V_MODEL_KEY: ("image_to_video", "text_to_video"),
 }
 
 
@@ -279,7 +407,12 @@ _MFLUX_RUNTIME_ALLOWED_TASKS: Dict[str, Tuple[str, ...]] = {
     "qwen-image-edit-2509": ("image_to_image",),
     "z-image": ("text_to_image",),
     "z-image-turbo": ("text_to_image",),
-    "ernie-image-turbo": ("text_to_image",),
+    "ernie-image-turbo": ("image_to_image", "text_to_image"),
+    "fibo": ("image_to_image", "text_to_image"),
+    "fibo-lite": ("image_to_image", "text_to_image"),
+    "fibo-edit": ("image_to_image",),
+    "fibo-edit-rmbg": ("image_to_image",),
+    WAN_TI2V_MODEL_KEY: ("image_to_video", "text_to_video"),
 }
 
 
@@ -294,6 +427,16 @@ def _mflux_parameter_metadata(model_def: _MFluxModelDef) -> Dict[str, Any]:
         constraints["guidance_scale"] = {"const": float(model_def.default_guidance)}
     if not model_def.supports_negative_prompt:
         constraints["negative_prompt"] = {"supported": False}
+    if model_def.family == "wan-video":
+        defaults.update(
+            {
+                "width": WAN_DEFAULT_WIDTH,
+                "height": WAN_DEFAULT_HEIGHT,
+                "fps": WAN_DEFAULT_FPS,
+                "num_frames": WAN_DEFAULT_FRAMES,
+            }
+        )
+        constraints["num_frames"] = {"format": "4n+1"}
     return {
         "parameter_defaults": defaults,
         "parameter_constraints": constraints,
@@ -317,7 +460,6 @@ class MFluxBackendConfig:
     base_model: Optional[str] = None
     model_dir: Optional[str] = None
     cache_dir: Optional[str] = None
-    quantize: Optional[int] = None
     lora_paths: Sequence[str] = field(default_factory=tuple)
     lora_scales: Sequence[float] = field(default_factory=tuple)
     allow_download: bool = False
@@ -337,7 +479,7 @@ def _lazy_import_mflux() -> Tuple[Any, Any, Any, Any, Any, Any]:
         raise OptionalDependencyMissingError(
             "MLX-Gen backend requires the optional MLX-Gen runtime. "
             'Install it with `pip install "abstractvision[mlx-gen]"` (or the compatibility '
-            '`abstractvision[mflux]` extra) or '
+            "`abstractvision[mflux]` extra) or "
             '`pip install "abstractvision[all-apple]"` on Apple Silicon.'
         ) from e
     return ModelConfig, DownloadRequiredError, Flux2Klein, Flux2KleinEdit, ZImage, ZImageTurbo
@@ -360,14 +502,48 @@ def _lazy_import_mflux_ernie() -> Any:
         from mflux.models.ernie_image import ErnieImageTurbo  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen ERNIE backend requires mlx-gen>=0.18.5. "
+            "MLX-Gen ERNIE backend requires mlx-gen>=0.18.6. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return ErnieImageTurbo
 
 
+def _lazy_import_mflux_fibo() -> Tuple[Any, Any]:
+    try:
+        from mflux.models.fibo.variants.edit import FIBOEdit  # type: ignore
+        from mflux.models.fibo.variants.txt2img.fibo import FIBO  # type: ignore
+    except Exception as e:
+        raise OptionalDependencyMissingError(
+            "MLX-Gen FIBO backend requires mlx-gen>=0.18.6. "
+            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
+        ) from e
+    return FIBO, FIBOEdit
+
+
+def _lazy_import_mflux_wan() -> Any:
+    try:
+        from mflux.models.wan.variants import Wan2_2_TI2V  # type: ignore
+    except Exception as e:
+        raise OptionalDependencyMissingError(
+            "MLX-Gen Wan video generation requires mlx-gen>=0.18.6. "
+            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
+        ) from e
+    return Wan2_2_TI2V
+
+
 def _norm(value: Any) -> str:
     return str(value or "").strip().lower().replace("_", "-")
+
+
+def _infer_bits_from_text(value: Any) -> Optional[int]:
+    s = _norm(value)
+    if not s:
+        return None
+    if "4bit" in s or "-q4" in s or s.endswith("q4"):
+        return 4
+    if "8bit" in s or "-q8" in s or "q8-0" in s or s.endswith("q8"):
+        return 8
+    return None
 
 
 def _looks_like_path(value: str) -> bool:
@@ -463,7 +639,10 @@ class _DiscoveredMFluxModel:
 
 def _mflux_model_roots(model_dir: Optional[str]) -> List[Tuple[str, Path]]:
     roots: List[Tuple[str, Path]] = [
-        ("configured model dir" if model_dir else "legacy model dir", Path(model_dir).expanduser() if model_dir else default_legacy_model_root())
+        (
+            "configured model dir" if model_dir else "legacy model dir",
+            Path(model_dir).expanduser() if model_dir else default_legacy_model_root(),
+        )
     ]
     for label, root in framework_local_model_roots():
         duplicate = False
@@ -500,12 +679,8 @@ def _candidate_priority(repo_id: Optional[str]) -> int:
         return 0
     if s.startswith("abstractframework/") and ("8bit" in s or "q8" in s):
         return 1
-    if s == "mlx-community/qwen-image-2512-8bit":
-        return 2
     if s.endswith("-mlx-8bit") or "mflux-8bit" in s or "-mlx-q8" in s or "-8bit-mlx" in s:
         return 3
-    if "mlx-community/" in s:
-        return 4
     if "mflux" in s or "mlx" in s:
         return 5
     if "q4" in s or "4bit" in s:
@@ -514,6 +689,14 @@ def _candidate_priority(repo_id: Optional[str]) -> int:
 
 
 def _candidate_repo_ids_for_preset(preset: Any) -> Tuple[str, ...]:
+    if (
+        str(getattr(preset, "target", "") or "").strip().lower() == "mlx"
+        and str(getattr(preset, "engine", "") or "").strip().lower().replace("_", "-")
+        in {"mlx-gen", "mflux"}
+        and str(getattr(preset, "source", "") or "").strip().lower() == "abstractframework-mlx-gen"
+    ):
+        repo_id = str(getattr(preset, "repo_id", "") or "").strip()
+        return (repo_id,) if looks_like_hf_repo_id(repo_id) else ()
     out: List[str] = []
     for value in (preset.repo_id, *(preset.aliases or ())):
         text = str(value or "").strip()
@@ -545,7 +728,9 @@ def _resolve_snapshot_in_cache_root(repo_id: str, root: Path) -> Optional[Path]:
     except Exception:
         pass
     try:
-        candidates.extend(entry for entry in snapshots_dir.iterdir() if entry.is_dir() and entry not in candidates)
+        candidates.extend(
+            entry for entry in snapshots_dir.iterdir() if entry.is_dir() and entry not in candidates
+        )
     except Exception:
         pass
     for snap in candidates:
@@ -555,22 +740,9 @@ def _resolve_snapshot_in_cache_root(repo_id: str, root: Path) -> Optional[Path]:
 
 
 def _preset_variant_model_id(preset: Any) -> str:
-    """Return a runnable model selector that preserves explicit q4/q8 variants."""
+    """Return the exact prepared model repo id for runnable MLX-Gen variants."""
 
-    bits = getattr(preset, "quantization_bits", None)
-    aliases = tuple(str(alias or "").strip() for alias in (getattr(preset, "aliases", ()) or ()))
-    if bits == 8:
-        for alias in aliases:
-            alias_l = _norm(alias)
-            if "/" not in alias and ("q8" in alias_l or "8bit" in alias_l):
-                return alias
-        return str(getattr(preset, "repo_id", None) or getattr(preset, "key", ""))
-    if bits == 4 and int(getattr(preset, "source_priority", 100) or 100) > 30:
-        for alias in aliases:
-            alias_l = _norm(alias)
-            if "/" not in alias and ("legacy" in alias_l or "base" in alias_l or "4bit" in alias_l or "q4" in alias_l):
-                return alias
-    return str(getattr(preset, "key", ""))
+    return str(getattr(preset, "repo_id", None) or getattr(preset, "key", ""))
 
 
 def _selection_requires_exact_preset(configured_model: Any, preset: Any) -> bool:
@@ -583,9 +755,53 @@ def _selection_requires_exact_preset(configured_model: Any, preset: Any) -> bool
         return True
     if any(token in requested for token in ("q8", "8bit", "q4", "4bit", "legacy")):
         return True
-    if int(getattr(preset, "source_priority", 100) or 100) > 30 and requested != _norm(getattr(preset, "key", None)):
+    if int(getattr(preset, "source_priority", 100) or 100) > 30 and requested != _norm(
+        getattr(preset, "key", None)
+    ):
         return True
     return False
+
+
+def _mlx_gen_selector_matches_preset(selector: str, preset: Any) -> bool:
+    requested = _norm(selector)
+    if not requested:
+        return False
+    aliases = {_norm(alias) for alias in (getattr(preset, "aliases", ()) or ())}
+    repo_id = str(getattr(preset, "repo_id", "") or "")
+    repo_ids = {_norm(repo_id), _norm(repo_id.rsplit("/", 1)[-1])}
+    upstream = str(getattr(preset, "upstream_repo_id", "") or "")
+    if upstream:
+        repo_ids.add(_norm(upstream))
+        repo_ids.add(_norm(upstream.rsplit("/", 1)[-1]))
+    return (
+        requested == _norm(getattr(preset, "key", ""))
+        or requested in aliases
+        or requested in repo_ids
+    )
+
+
+def _ambiguous_mlx_gen_selector_choices(selector: Any) -> Tuple[str, ...]:
+    requested = str(selector or "").strip()
+    if not requested or _looks_like_path(requested) or looks_like_hf_repo_id(requested):
+        if any(token in _norm(requested) for token in ("q8", "8bit", "q4", "4bit")):
+            return ()
+    if any(token in _norm(requested) for token in ("q8", "8bit", "q4", "4bit")):
+        return ()
+    choices: List[str] = []
+    for preset in model_presets(
+        target="mlx", engine="mlx-gen", include_non_8bit=True, include_all_targets=True
+    ):
+        if getattr(preset, "source", "") != "abstractframework-mlx-gen":
+            continue
+        if getattr(preset, "quantization_bits", None) not in {4, 8}:
+            continue
+        if _mlx_gen_selector_matches_preset(requested, preset):
+            repo_id = str(getattr(preset, "repo_id", "") or "")
+            if repo_id and repo_id not in choices:
+                choices.append(repo_id)
+    if len(choices) <= 1:
+        return ()
+    return tuple(sorted(choices))
 
 
 def _cached_model_for_exact_preset(
@@ -611,7 +827,9 @@ def _cached_model_for_exact_preset(
     )
 
 
-def _discover_cached_legacy_mflux_models(model_dir: Optional[str]) -> Dict[str, _DiscoveredMFluxModel]:
+def _discover_cached_legacy_mflux_models(
+    model_dir: Optional[str],
+) -> Dict[str, _DiscoveredMFluxModel]:
     out: Dict[str, _DiscoveredMFluxModel] = {}
     for root_label, root in _mflux_model_roots(model_dir):
         try:
@@ -619,14 +837,20 @@ def _discover_cached_legacy_mflux_models(model_dir: Optional[str]) -> Dict[str, 
         except Exception:
             continue
         for entry in entries:
-            if not entry.is_dir() or _is_incompatible_model_tree(entry) or _is_partial_model_tree(entry):
+            if (
+                not entry.is_dir()
+                or _is_incompatible_model_tree(entry)
+                or _is_partial_model_tree(entry)
+            ):
                 continue
             if not _has_model_files(entry):
                 continue
             base = _infer_base_model(entry.name)
             if base not in _MFLUX_MODELS:
                 continue
-            if entry.name != str(_preset_for(base).local_dir_name if _preset_for(base) else "") and not _looks_like_mflux_packaged_repo(entry.name):
+            if entry.name != str(
+                _preset_for(base).local_dir_name if _preset_for(base) else ""
+            ) and not _looks_like_mflux_packaged_repo(entry.name):
                 continue
             source_label = _local_source_label(root_label)
             out.setdefault(
@@ -659,7 +883,12 @@ def _discover_cached_hf_mflux_models(cache_dir: Optional[str]) -> Dict[str, _Dis
             if base not in _MFLUX_MODELS:
                 continue
             snap = _resolve_snapshot_in_cache_root(repo_id, root)
-            if snap is None or not _has_model_files(snap) or _is_partial_model_tree(snap) or _is_incompatible_model_tree(snap):
+            if (
+                snap is None
+                or not _has_model_files(snap)
+                or _is_partial_model_tree(snap)
+                or _is_incompatible_model_tree(snap)
+            ):
                 continue
             candidate = _DiscoveredMFluxModel(
                 key=base,
@@ -683,7 +912,7 @@ def discover_cached_mflux_models(
 
     cache_root = _cache_root(cache_dir)
     extra_cache_roots = [] if cache_dir else framework_hf_cache_roots()
-    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False):
+    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True):
         for repo_id in _candidate_repo_ids_for_preset(preset):
             snap = (
                 _resolve_snapshot_in_cache_root(repo_id, Path(cache_root))
@@ -695,7 +924,12 @@ def discover_cached_mflux_models(
                     extra_roots=extra_cache_roots,
                 )
             )
-            if snap is None or not _has_model_files(snap) or _is_partial_model_tree(snap) or _is_incompatible_model_tree(snap):
+            if (
+                snap is None
+                or not _has_model_files(snap)
+                or _is_partial_model_tree(snap)
+                or _is_incompatible_model_tree(snap)
+            ):
                 continue
             candidate = _DiscoveredMFluxModel(
                 key=preset.key,
@@ -721,6 +955,7 @@ def discover_incomplete_mflux_sources(
 ) -> Dict[str, Tuple[str, ...]]:
     out: Dict[str, List[str]] = {}
     valid = discover_cached_mflux_models(model_dir=model_dir, cache_dir=cache_dir)
+
     def add(key: str, detail: str) -> None:
         text = str(detail or "").strip()
         if not text:
@@ -729,7 +964,7 @@ def discover_incomplete_mflux_sources(
         if text not in bucket:
             bucket.append(text)
 
-    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False):
+    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True):
         if preset.key in valid:
             continue
         for _root_label, root in _mflux_model_roots(model_dir):
@@ -804,6 +1039,22 @@ def _infer_base_model(*values: Any) -> Optional[str]:
             return "z-image"
         if "ernie" in s and "image" in s:
             return "ernie-image-turbo"
+        if "fibo" in s and "edit" in s and "rmbg" in s:
+            return "fibo-edit-rmbg"
+        if "fibo" in s and "edit" in s:
+            return "fibo-edit"
+        if "fibo" in s and "lite" in s:
+            return "fibo-lite"
+        if "fibo" in s:
+            return "fibo"
+        if (
+            s == "wan"
+            or "wan2.2-ti2v" in s
+            or "wan2-2-ti2v" in s
+            or "wan-ti2v" in s
+            or "wan-video" in s
+        ):
+            return WAN_TI2V_MODEL_KEY
         if "klein-base-4b" in s or "kleinbase4b" in s:
             return "flux2-klein-base-4b"
         if "klein-base-9b" in s or "kleinbase9b" in s:
@@ -820,7 +1071,7 @@ def _preset_for(value: Any) -> Any:
     if not s:
         return None
     try:
-        return find_model_preset(s, target="mlx", engine="mlx-gen", require_8bit=True)
+        return find_model_preset(s, target="mlx", engine="mlx-gen", require_8bit=False)
     except Exception:
         return None
 
@@ -847,7 +1098,9 @@ def _first_other_engine_preset(value: Any) -> Any:
     return None
 
 
-def _preset_snapshot_dir(preset: Any, model_dir: Optional[str], cache_dir: Optional[str]) -> Optional[Path]:
+def _preset_snapshot_dir(
+    preset: Any, model_dir: Optional[str], cache_dir: Optional[str]
+) -> Optional[Path]:
     legacy_root = Path(model_dir).expanduser() if model_dir else default_legacy_model_root()
     source_dir = legacy_root / preset.local_dir_name
     cache_root = _cache_root(cache_dir)
@@ -880,6 +1133,7 @@ class MFluxVisionBackend(VisionBackend):
         self._warmed_model_key: Optional[Tuple[Any, ...]] = None
         self._resolved_model_path: Optional[str] = None
         self._resolved_base_model: Optional[str] = None
+        self._resolved_quantization_bits: Optional[int] = None
         self._runtime_lock = threading.Lock()
         self._runtime_queue: Optional[queue.Queue[Any]] = None
         self._runtime_thread: Optional[threading.Thread] = None
@@ -937,6 +1191,7 @@ class MFluxVisionBackend(VisionBackend):
         self._warmed_model_key = None
         self._resolved_model_path = None
         self._resolved_base_model = None
+        self._resolved_quantization_bits = None
         try:
             import gc
 
@@ -953,7 +1208,9 @@ class MFluxVisionBackend(VisionBackend):
     def preload(self) -> None:
         self._run_on_runtime_thread(self._preload_impl)
 
-    def _capability_model_id(self, *, model_id: Optional[str] = None, base_model: Optional[str] = None) -> Optional[str]:
+    def _capability_model_id(
+        self, *, model_id: Optional[str] = None, base_model: Optional[str] = None
+    ) -> Optional[str]:
         explicit = str(model_id or "").strip()
         if explicit:
             return explicit
@@ -997,9 +1254,14 @@ class MFluxVisionBackend(VisionBackend):
         return sorted(str(task_name) for task_name in fallback if str(task_name) in allowed)
 
     def get_capabilities(self) -> VisionBackendCapabilities:
+        resolved_base = str(
+            self._resolved_base_model
+            or _infer_base_model(self._cfg.base_model, self._cfg.model)
+            or ""
+        ).strip()
         return VisionBackendCapabilities(
             supported_tasks=self._supported_task_names(),
-            supports_mask=False,
+            supports_mask=resolved_base in {"fibo-edit", "fibo-edit-rmbg"},
         )
 
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
@@ -1014,7 +1276,7 @@ class MFluxVisionBackend(VisionBackend):
             model_dir=self._cfg.model_dir,
             cache_dir=self._cfg.cache_dir,
         )
-        for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False):
+        for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True):
             model_selector = _preset_variant_model_id(preset)
             if model_selector in emitted:
                 continue
@@ -1035,7 +1297,9 @@ class MFluxVisionBackend(VisionBackend):
             if task_s and task_s not in tasks:
                 continue
             model_def = _MFLUX_MODELS.get(str(base_model or ""))
-            parameter_metadata = _mflux_parameter_metadata(model_def) if model_def is not None else {}
+            parameter_metadata = (
+                _mflux_parameter_metadata(model_def) if model_def is not None else {}
+            )
             out.append(
                 ProviderModelInfo(
                     id=model_selector,
@@ -1078,6 +1342,13 @@ class MFluxVisionBackend(VisionBackend):
         )
 
         if configured_model:
+            ambiguous_choices = _ambiguous_mlx_gen_selector_choices(configured_model)
+            if ambiguous_choices:
+                choices = ", ".join(ambiguous_choices)
+                raise OptionalDependencyMissingError(
+                    f"MLX-Gen model selector {configured_model!r} is ambiguous because it maps to multiple "
+                    f"prepared AbstractFramework q4/q8 repos. Use an exact model id: {choices}."
+                )
             expanded = Path(configured_model).expanduser()
             if expanded.exists():
                 base = configured_base or _infer_base_model(configured_model, expanded.name)
@@ -1085,9 +1356,9 @@ class MFluxVisionBackend(VisionBackend):
                     raise OptionalDependencyMissingError(
                         "Could not infer MLX-Gen base model from local path. "
                         "Set vision_mflux_base_model / ABSTRACTVISION_MFLUX_BASE_MODEL "
-                        "to a supported preset such as flux2-klein-4b, flux2-klein-9b, z-image, z-image-turbo, "
-                        "qwen-image, qwen-image-edit-2511, or ernie-image-turbo."
+                        "to the matching base family for that local path."
                     )
+                self._resolved_quantization_bits = _infer_bits_from_text(configured_model)
                 return str(expanded), base
 
             preset = _preset_for(configured_model)
@@ -1097,15 +1368,24 @@ class MFluxVisionBackend(VisionBackend):
                     model_dir=self._cfg.model_dir,
                     cache_dir=cache_root,
                 )
-                if discovered_model is None and not _selection_requires_exact_preset(configured_model, preset):
+                if discovered_model is None and not _selection_requires_exact_preset(
+                    configured_model, preset
+                ):
                     discovered_model = discovered.get(preset.key)
-                snapshot_dir = discovered_model.snapshot_dir if discovered_model is not None else None
+                snapshot_dir = (
+                    discovered_model.snapshot_dir if discovered_model is not None else None
+                )
                 if snapshot_dir is not None and _has_model_files(snapshot_dir):
+                    self._resolved_quantization_bits = (
+                        int(preset.quantization_bits)
+                        if preset.quantization_bits is not None
+                        else None
+                    )
                     return str(snapshot_dir), configured_base or preset.key
                 if not self._cfg.allow_download:
                     raise OptionalDependencyMissingError(
                         f"MLX-Gen model preset {configured_model!r} is not available in the Hugging Face cache. "
-                        f"Run: abstractvision download {configured_model} --provider mlx-gen"
+                        f"Run: abstractvision download {preset.repo_id} --provider mlx-gen"
                     )
                 try:
                     downloaded = download_hf_repo_snapshot(
@@ -1116,10 +1396,15 @@ class MFluxVisionBackend(VisionBackend):
                     )
                 except RuntimeError as e:
                     raise OptionalDependencyMissingError(str(e)) from e
+                self._resolved_quantization_bits = (
+                    int(preset.quantization_bits) if preset.quantization_bits is not None else None
+                )
                 return str(downloaded), configured_base or preset.key
 
             if _looks_like_path(configured_model):
-                raise OptionalDependencyMissingError(f"MLX-Gen model path does not exist: {configured_model}")
+                raise OptionalDependencyMissingError(
+                    f"MLX-Gen model path does not exist: {configured_model}"
+                )
             if looks_like_hf_repo_id(configured_model):
                 cached = resolve_hf_repo_snapshot(
                     configured_model,
@@ -1133,6 +1418,7 @@ class MFluxVisionBackend(VisionBackend):
                             "Could not infer MLX-Gen base model. Set vision_mflux_base_model / "
                             "ABSTRACTVISION_MFLUX_BASE_MODEL."
                         )
+                    self._resolved_quantization_bits = _infer_bits_from_text(configured_model)
                     return str(cached), base
                 if not self._cfg.allow_download:
                     raise OptionalDependencyMissingError(
@@ -1153,6 +1439,7 @@ class MFluxVisionBackend(VisionBackend):
                     )
                 except RuntimeError as e:
                     raise OptionalDependencyMissingError(str(e)) from e
+                self._resolved_quantization_bits = _infer_bits_from_text(configured_model)
                 return str(downloaded), base
 
             if not self._cfg.allow_download:
@@ -1161,12 +1448,12 @@ class MFluxVisionBackend(VisionBackend):
                     raise OptionalDependencyMissingError(
                         f"Model {configured_model!r} maps to a curated preset for engine {other.engine!r} "
                         f"(target={other.target!r}, repo={other.repo_id!r}), not MLX-Gen. "
-                        "Use `--provider diffusers` or `--provider sdcpp` as appropriate, or pass an MLX-Gen preset key "
-                        "(flux2-klein-4b, flux2-klein-9b, z-image, z-image-turbo, qwen-image, ernie-image-turbo) / local path / org/name repo id."
+                        "Use `--provider diffusers` or `--provider sdcpp` as appropriate, or pass an exact "
+                        "AbstractFramework MLX-Gen repo id / local path / org/name repo id."
                     )
                 raise OptionalDependencyMissingError(
                     f"MLX-Gen model {configured_model!r} is not a known downloaded preset. "
-                    "Use a local model path, a known preset key, a Hugging Face repo id (org/name) already cached "
+                    "Use a local model path, an exact AbstractFramework MLX-Gen repo id, a Hugging Face repo id already cached "
                     "locally, or set ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1 to permit downloads."
                 )
             base = configured_base or _infer_base_model(configured_model)
@@ -1179,15 +1466,25 @@ class MFluxVisionBackend(VisionBackend):
                 f"MLX-Gen model {configured_model!r} is not a known cached preset, path, or Hugging Face repo id."
             )
 
-        for key in ("flux2-klein-4b", "flux2-klein-9b", "z-image-turbo", "qwen-image", "ernie-image-turbo"):
+        for key in (
+            "flux2-klein-4b",
+            "flux2-klein-9b",
+            "z-image-turbo",
+            "qwen-image",
+            "ernie-image-turbo",
+            "fibo-lite",
+            "fibo",
+            WAN_TI2V_MODEL_KEY,
+        ):
             discovered_model = discovered.get(key)
             if discovered_model is not None:
+                self._resolved_quantization_bits = _infer_bits_from_text(discovered_model.repo_id)
                 return str(discovered_model.snapshot_dir), configured_base or key
 
         raise OptionalDependencyMissingError(
             "MLX-Gen backend is not configured and no downloaded MLX-Gen preset was found. "
             "Set vision_mflux_model / ABSTRACTVISION_MFLUX_MODEL or run "
-            "`abstractvision download flux2-klein-4b --provider mlx-gen`."
+            "`abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen`."
         )
 
     def _ensure_model_impl(self) -> Tuple[Any, _MFluxModelDef]:
@@ -1201,14 +1498,15 @@ class MFluxVisionBackend(VisionBackend):
         key = (
             model_path,
             base_model,
-            self._cfg.quantize,
             tuple(self._cfg.lora_paths or ()),
             tuple(self._cfg.lora_scales or ()),
         )
         if self._model is not None and self._model_key == key:
             return self._model, model_def
 
-        ModelConfig, _DownloadRequiredError, Flux2Klein, _Flux2KleinEdit, ZImage, ZImageTurbo = _lazy_import_mflux()
+        ModelConfig, _DownloadRequiredError, Flux2Klein, _Flux2KleinEdit, ZImage, ZImageTurbo = (
+            _lazy_import_mflux()
+        )
         from_name = getattr(ModelConfig, "from_name", None)
         if callable(from_name):
             model_config = from_name(model_def.key)
@@ -1226,16 +1524,25 @@ class MFluxVisionBackend(VisionBackend):
             cls = QwenImageEdit
         elif model_def.family == "ernie-image":
             cls = _lazy_import_mflux_ernie()
+        elif model_def.family == "fibo":
+            FIBO, _FIBOEdit = _lazy_import_mflux_fibo()
+            cls = FIBO
+        elif model_def.family == "fibo-edit":
+            _FIBO, FIBOEdit = _lazy_import_mflux_fibo()
+            cls = FIBOEdit
+        elif model_def.family == "wan-video":
+            cls = _lazy_import_mflux_wan()
         else:
-            raise OptionalDependencyMissingError(f"Unsupported MLX-Gen model family {model_def.family!r}.")
+            raise OptionalDependencyMissingError(
+                f"Unsupported MLX-Gen model family {model_def.family!r}."
+            )
         kwargs: Dict[str, Any] = {
             "model_config": model_config,
             "model_path": model_path,
-            "quantize": self._cfg.quantize,
         }
-        if self._cfg.lora_paths:
+        if self._cfg.lora_paths and model_def.family != "wan-video":
             kwargs["lora_paths"] = list(self._cfg.lora_paths)
-        if self._cfg.lora_scales:
+        if self._cfg.lora_scales and model_def.family != "wan-video":
             kwargs["lora_scales"] = [float(x) for x in self._cfg.lora_scales]
         try:
             self._model = cls(**kwargs)
@@ -1260,6 +1567,9 @@ class MFluxVisionBackend(VisionBackend):
     def _preload_impl(self) -> None:
         _model, model_def = self._ensure_model_impl()
         if self._model_key is not None and self._warmed_model_key == self._model_key:
+            return
+        if model_def.family == "wan-video":
+            self._warmed_model_key = self._model_key
             return
         self._generate_impl(self._warmup_request(model_def))
 
@@ -1343,6 +1653,83 @@ class MFluxVisionBackend(VisionBackend):
             extra=extra,
         )
 
+    def _normalize_video_request_values(
+        self,
+        *,
+        request: Union[VideoGenerationRequest, ImageToVideoRequest],
+    ) -> Dict[str, Any]:
+        model_def = self._resolved_model_def()
+        if model_def.family != "wan-video":
+            raise CapabilityNotSupportedError(
+                f"MLX-Gen video generation is only implemented for Wan TI2V models today (got {model_def.family!r})."
+            )
+        extra = dict(request.extra or {})
+        steps = int(request.steps) if request.steps is not None else int(model_def.default_steps)
+        if steps < 1:
+            steps = 1
+        guidance = (
+            float(request.guidance_scale)
+            if request.guidance_scale is not None
+            else model_def.default_guidance
+        )
+        width = int(request.width) if request.width is not None else WAN_DEFAULT_WIDTH
+        height = int(request.height) if request.height is not None else WAN_DEFAULT_HEIGHT
+        fps = int(request.fps) if request.fps is not None else WAN_DEFAULT_FPS
+        num_frames = (
+            int(request.num_frames) if request.num_frames is not None else WAN_DEFAULT_FRAMES
+        )
+        if fps < 1:
+            fps = WAN_DEFAULT_FPS
+        if num_frames < 1:
+            num_frames = 1
+        max_sequence_length = extra.get("max_sequence_length")
+        if max_sequence_length is not None:
+            try:
+                extra["max_sequence_length"] = max(1, int(max_sequence_length))
+            except Exception:
+                extra.pop("max_sequence_length", None)
+        return {
+            "steps": steps,
+            "guidance_scale": guidance,
+            "width": width,
+            "height": height,
+            "fps": fps,
+            "num_frames": num_frames,
+            "extra": extra,
+        }
+
+    def normalize_video_generation_request(
+        self,
+        request: VideoGenerationRequest,
+    ) -> VideoGenerationRequest:
+        values = self._normalize_video_request_values(request=request)
+        return replace(
+            request,
+            steps=values["steps"],
+            guidance_scale=values["guidance_scale"],
+            width=values["width"],
+            height=values["height"],
+            fps=values["fps"],
+            num_frames=values["num_frames"],
+            extra=values["extra"],
+        )
+
+    def normalize_image_to_video_request(
+        self,
+        request: ImageToVideoRequest,
+    ) -> ImageToVideoRequest:
+        values = self._normalize_video_request_values(request=request)
+        return replace(
+            request,
+            steps=values["steps"],
+            guidance_scale=values["guidance_scale"],
+            width=values["width"],
+            height=values["height"],
+            fps=values["fps"],
+            num_frames=values["num_frames"],
+            extra=values["extra"],
+        )
+
     def _sniff_image_suffix(self, image: bytes) -> str:
         if len(image) >= 8 and image[:8] == b"\x89PNG\r\n\x1a\n":
             return ".png"
@@ -1419,7 +1806,9 @@ class MFluxVisionBackend(VisionBackend):
         seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
         steps = int(request.steps) if request.steps is not None else model_def.default_steps
         width = int(request.width) if request.width is not None else int(self._cfg.default_width)
-        height = int(request.height) if request.height is not None else int(self._cfg.default_height)
+        height = (
+            int(request.height) if request.height is not None else int(self._cfg.default_height)
+        )
         guidance = (
             float(request.guidance_scale)
             if request.guidance_scale is not None
@@ -1470,11 +1859,16 @@ class MFluxVisionBackend(VisionBackend):
                 "runtime_package": MLX_GEN_RUNTIME,
                 "model": self._resolved_model_path,
                 "base_model": self._resolved_base_model,
+                "quantization_bits": self._resolved_quantization_bits,
                 "seed": seed,
                 "steps": steps,
                 "width": width,
                 "height": height,
-                **({"image_strength": image_strength_used} if image_strength_used is not None else {}),
+                **(
+                    {"image_strength": image_strength_used}
+                    if image_strength_used is not None
+                    else {}
+                ),
             },
         )
 
@@ -1483,13 +1877,16 @@ class MFluxVisionBackend(VisionBackend):
 
     def _edit_image_impl(self, request: ImageEditRequest) -> GeneratedAsset:
         request = self.normalize_image_edit_request(request)
-        if request.mask is not None:
-            raise CapabilityNotSupportedError("MLX-Gen backend does not implement mask-based image edits yet.")
 
         _model, model_def = self._ensure_model_impl()
-        if model_def.family not in {"flux2", "qwen-edit"}:
+        if request.mask is not None and model_def.family != "fibo-edit":
             raise CapabilityNotSupportedError(
-                f"MLX-Gen image_to_image is only implemented for flux2 and qwen-edit models today (got {model_def.family!r})."
+                "MLX-Gen mask edits are currently implemented only for FIBO Edit models."
+            )
+        if model_def.family not in {"flux2", "qwen-edit", "ernie-image", "fibo", "fibo-edit"}:
+            raise CapabilityNotSupportedError(
+                "MLX-Gen image_to_image is implemented for FLUX.2, Qwen Image Edit, "
+                f"ERNIE Image Turbo, and FIBO models today (got {model_def.family!r})."
             )
 
         extra = dict(request.extra or {})
@@ -1516,7 +1913,9 @@ class MFluxVisionBackend(VisionBackend):
             height=int(height) if height is not None else None,
             seed=int(request.seed) if request.seed is not None else None,
             steps=int(request.steps) if request.steps is not None else None,
-            guidance_scale=float(request.guidance_scale) if request.guidance_scale is not None else None,
+            guidance_scale=(
+                float(request.guidance_scale) if request.guidance_scale is not None else None
+            ),
             extra=extra,
         )
 
@@ -1524,9 +1923,19 @@ class MFluxVisionBackend(VisionBackend):
         with tempfile.NamedTemporaryFile(mode="wb", suffix=suffix, delete=False) as fp:
             tmp_path = Path(fp.name)
             fp.write(request.image)
+        tmp_mask_path: Optional[Path] = None
+        if request.mask is not None:
+            mask_suffix = self._sniff_image_suffix(request.mask)
+            with tempfile.NamedTemporaryFile(mode="wb", suffix=mask_suffix, delete=False) as fp:
+                tmp_mask_path = Path(fp.name)
+                fp.write(request.mask)
         try:
-            if model_def.family == "qwen-edit":
-                seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
+            if model_def.family in {"qwen-edit", "fibo-edit"}:
+                seed = (
+                    int(request.seed)
+                    if request.seed is not None
+                    else random.randint(0, 1_000_000_000)
+                )
                 steps = int(request.steps) if request.steps is not None else model_def.default_steps
                 guidance = (
                     float(request.guidance_scale)
@@ -1536,9 +1945,14 @@ class MFluxVisionBackend(VisionBackend):
                 kwargs: Dict[str, Any] = {
                     "seed": seed,
                     "prompt": str(request.prompt),
-                    "image_paths": [str(tmp_path)],
                     "num_inference_steps": steps,
                 }
+                if model_def.family == "qwen-edit":
+                    kwargs["image_paths"] = [str(tmp_path)]
+                else:
+                    kwargs["image_path"] = str(tmp_path)
+                    if tmp_mask_path is not None:
+                        kwargs["mask_path"] = str(tmp_mask_path)
                 if width is not None:
                     kwargs["width"] = int(width)
                 if height is not None:
@@ -1570,10 +1984,12 @@ class MFluxVisionBackend(VisionBackend):
                         "runtime_package": MLX_GEN_RUNTIME,
                         "model": self._resolved_model_path,
                         "base_model": self._resolved_base_model,
+                        "quantization_bits": self._resolved_quantization_bits,
                         "seed": seed,
                         "steps": steps,
                         **({"width": int(width)} if width is not None else {}),
                         **({"height": int(height)} if height is not None else {}),
+                        **({"mask": True} if tmp_mask_path is not None else {}),
                     },
                 )
             return self._generate_impl(
@@ -1586,18 +2002,195 @@ class MFluxVisionBackend(VisionBackend):
                 tmp_path.unlink(missing_ok=True)
             except Exception:
                 pass
+            if tmp_mask_path is not None:
+                try:
+                    tmp_mask_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         return self._run_on_runtime_thread(self._edit_image_impl, request)
 
     def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
-        raise CapabilityNotSupportedError("MLX-Gen backend does not implement multi-view generation.")
+        raise CapabilityNotSupportedError(
+            "MLX-Gen backend does not implement multi-view generation."
+        )
+
+    def _read_generated_video_bytes(self, generated: Any) -> bytes:
+        save = getattr(generated, "save", None)
+        if not callable(save):
+            raise RuntimeError("MLX-Gen video result does not expose a callable save(...) method.")
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as fp:
+            tmp_path = Path(fp.name)
+        try:
+            try:
+                save(path=tmp_path, overwrite=True)
+            except TypeError:
+                save(tmp_path)
+            return tmp_path.read_bytes()
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    def _generated_video_metadata(self, generated: Any) -> Dict[str, Any]:
+        get_metadata = getattr(generated, "_get_metadata", None)
+        if not callable(get_metadata):
+            return {}
+        try:
+            metadata = get_metadata()
+        except Exception:
+            return {}
+        return metadata if isinstance(metadata, dict) else {}
+
+    def _generate_video_impl(
+        self,
+        request: Union[VideoGenerationRequest, ImageToVideoRequest],
+        *,
+        image_path: Optional[Path] = None,
+    ) -> GeneratedAsset:
+        if isinstance(request, VideoGenerationRequest):
+            request = self.normalize_video_generation_request(request)
+            task = "text_to_video"
+        else:
+            request = self.normalize_image_to_video_request(request)
+            task = "image_to_video"
+        model, model_def = self._ensure_model_impl()
+        if model_def.family != "wan-video":
+            raise CapabilityNotSupportedError(
+                f"MLX-Gen {task} is only implemented for Wan TI2V models today (got {model_def.family!r})."
+            )
+
+        extra = dict(request.extra or {})
+        seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
+        steps = int(request.steps) if request.steps is not None else int(model_def.default_steps)
+        width = int(request.width) if request.width is not None else WAN_DEFAULT_WIDTH
+        height = int(request.height) if request.height is not None else WAN_DEFAULT_HEIGHT
+        fps = int(request.fps) if request.fps is not None else WAN_DEFAULT_FPS
+        num_frames = (
+            int(request.num_frames) if request.num_frames is not None else WAN_DEFAULT_FRAMES
+        )
+        guidance = (
+            float(request.guidance_scale)
+            if request.guidance_scale is not None
+            else model_def.default_guidance
+        )
+        max_sequence_length = extra.pop("max_sequence_length", None)
+        progress_callbacks = [
+            callback
+            for callback in (
+                extra.pop("on_progress", None),
+                extra.pop("progress_event_callback", None),
+                extra.pop("progress_callback", None),
+            )
+            if callable(callback)
+        ]
+        step_progress_callback = extra.pop("_step_progress_callback", None)
+        if not callable(step_progress_callback):
+            step_progress_callback = None
+
+        def _progress_bridge(raw_event: Any) -> None:
+            event = _normalize_video_progress_event(raw_event)
+            for callback in progress_callbacks:
+                callback(event)
+            if step_progress_callback is not None:
+                current = event.frame if event.total_frames is not None else (event.step or 0)
+                total = event.total_frames if event.total_frames is not None else event.total_steps
+                step_progress_callback(current, total)
+
+        kwargs: Dict[str, Any] = {
+            "seed": seed,
+            "prompt": str(request.prompt or ""),
+            "num_inference_steps": steps,
+            "height": height,
+            "width": width,
+            "num_frames": num_frames,
+            "fps": fps,
+            "guidance": guidance,
+            "negative_prompt": str(request.negative_prompt or ""),
+        }
+        if image_path is not None:
+            kwargs["image_path"] = image_path
+        if max_sequence_length is not None:
+            kwargs["max_sequence_length"] = int(max_sequence_length)
+        if progress_callbacks or step_progress_callback is not None:
+            kwargs["progress_callback"] = _progress_bridge
+
+        try:
+            generated = model.generate_video(**kwargs)
+        except Exception as e:
+            if _is_mlx_gen_download_required(e):
+                raise _wrap_mlx_gen_download_required(e) from e
+            raise
+        if self._model_key is not None:
+            self._warmed_model_key = self._model_key
+        data = self._read_generated_video_bytes(generated)
+        mlx_metadata = self._generated_video_metadata(generated)
+        return GeneratedAsset(
+            media_type="video",
+            data=data,
+            mime_type="video/mp4",
+            metadata={
+                "source": MLX_GEN_RUNTIME,
+                "engine": MLX_GEN_RUNTIME,
+                "legacy_engine": MFLUX_PROVIDER,
+                "runtime_package": MLX_GEN_RUNTIME,
+                "task": task,
+                "model": self._resolved_model_path,
+                "base_model": self._resolved_base_model,
+                "quantization_bits": self._resolved_quantization_bits,
+                "seed": seed,
+                "steps": steps,
+                "width": width,
+                "height": height,
+                "fps": fps,
+                "num_frames": num_frames,
+                "guidance_scale": guidance,
+                **({"mlx_gen": mlx_metadata} if mlx_metadata else {}),
+            },
+        )
 
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
-        raise CapabilityNotSupportedError("MLX-Gen backend does not implement text_to_video.")
+        return self._run_on_runtime_thread(self._generate_video_impl, request)
+
+    def generate_video_with_progress(
+        self,
+        request: VideoGenerationRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        if progress_callback is None:
+            return self.generate_video(request)
+        extra = dict(request.extra or {})
+        extra["_step_progress_callback"] = progress_callback
+        return self.generate_video(replace(request, extra=extra))
+
+    def _image_to_video_impl(self, request: ImageToVideoRequest) -> GeneratedAsset:
+        suffix = self._sniff_image_suffix(request.image)
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=suffix, delete=False) as fp:
+            tmp_path = Path(fp.name)
+            fp.write(request.image)
+        try:
+            return self._generate_video_impl(request, image_path=tmp_path)
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
-        raise CapabilityNotSupportedError("MLX-Gen backend does not implement image_to_video.")
+        return self._run_on_runtime_thread(self._image_to_video_impl, request)
+
+    def image_to_video_with_progress(
+        self,
+        request: ImageToVideoRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        if progress_callback is None:
+            return self.image_to_video(request)
+        extra = dict(request.extra or {})
+        extra["_step_progress_callback"] = progress_callback
+        return self.image_to_video(replace(request, extra=extra))
 
 
 MLXGenBackendConfig = MFluxBackendConfig

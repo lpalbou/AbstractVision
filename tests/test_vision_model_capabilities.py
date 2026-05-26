@@ -12,11 +12,16 @@ ALL_MODELS = [
     "Qwen/Qwen-Image-2512",
     "Qwen/Qwen-Image-Edit-2511",
     "Wan-AI/Wan2.2-T2V-A14B",
+    "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
     "tencent/HunyuanVideo-1.5",
     "genmo/mochi-1-preview",
     "zai-org/CogVideoX-2b",
     "zai-org/GLM-Image",
     "Tongyi-MAI/Z-Image-Turbo",
+    "briaai/FIBO",
+    "briaai/Fibo-lite",
+    "briaai/Fibo-Edit",
+    "briaai/Fibo-Edit-RMBG",
     "Lightricks/LTX-2",
 ]
 
@@ -39,10 +44,18 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         self.assertTrue(reg.supports("Tongyi-MAI/Z-Image-Turbo", "text_to_image"))
 
         self.assertTrue(reg.supports("Qwen/Qwen-Image-Edit-2511", "image_to_image"))
+        self.assertTrue(reg.supports("baidu/ERNIE-Image-Turbo", "image_to_image"))
+        self.assertTrue(reg.supports("briaai/FIBO", "text_to_image"))
+        self.assertTrue(reg.supports("briaai/FIBO", "image_to_image"))
+        self.assertTrue(reg.supports("briaai/Fibo-lite", "text_to_image"))
+        self.assertTrue(reg.supports("briaai/Fibo-Edit", "image_to_image"))
+        self.assertTrue(reg.supports("briaai/Fibo-Edit-RMBG", "image_to_image"))
         self.assertIn("multi_view_image", reg.list_tasks())
         self.assertEqual(reg.models_for_task("multi_view_image"), [])
 
         self.assertTrue(reg.supports("Wan-AI/Wan2.2-T2V-A14B", "text_to_video"))
+        self.assertTrue(reg.supports("Wan-AI/Wan2.2-TI2V-5B-Diffusers", "text_to_video"))
+        self.assertTrue(reg.supports("Wan-AI/Wan2.2-TI2V-5B-Diffusers", "image_to_video"))
         self.assertTrue(reg.supports("tencent/HunyuanVideo-1.5", "text_to_video"))
         self.assertTrue(reg.supports("genmo/mochi-1-preview", "text_to_video"))
         self.assertTrue(reg.supports("zai-org/CogVideoX-2b", "text_to_video"))
