@@ -72,8 +72,26 @@
     "baidu/ERNIE-Image-Turbo": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "ERNIE Image Turbo (Diffusers). Faster/smaller variant; full snapshot download is a non-8-bit fallback.",
+      "notes": "ERNIE Image Turbo. Faster distilled text-to-image model; on Apple Silicon prefer the AbstractFramework MLX-Gen mixed q4/q8 prepared folder, with full Diffusers snapshot available as a fallback.",
       "downloads": [
+        {
+          "key": "ernie-image-turbo",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/ernie-image-turbo-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared mixed q4/q8 folder. Default Apple Silicon recommendation for local memory efficiency."
+        },
+        {
+          "key": "ernie-image-turbo",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/ernie-image-turbo-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when image quality is more important than memory footprint."
+        },
         {
           "key": "ernie-image-turbo",
           "engine": "diffusers",
@@ -628,16 +646,25 @@
     "black-forest-labs/FLUX.2-klein-4B": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Official open 4B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download flux2-klein-4b --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
+      "notes": "FLUX 2 klein (4B, open) (Diffusers: Flux2KleinPipeline). Official open 4B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download flux2-klein-4b --provider mlx-gen so macOS uses the AbstractFramework MLX-Gen q4 prepared folder instead of the full repo.",
       "downloads": [
         {
           "key": "flux2-klein-4b",
-          "engine": "mflux",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/flux.2-klein-4b-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation."
+        },
+        {
+          "key": "flux2-klein-4b",
+          "engine": "mlx-gen",
           "target": "mlx",
           "bits": 8,
-          "repo_id": "AITRADER/FLUX2-klein-4B-mlx-8bit",
-          "source": "curated-community-mlx",
-          "notes": "Apple Silicon (MLX) 8-bit conversion for the optional MFLUX runtime."
+          "repo_id": "AbstractFramework/flux.2-klein-4b-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount."
         },
         {
           "key": "flux2-klein-4b",
@@ -750,12 +777,21 @@
       "downloads": [
         {
           "key": "flux2-klein-base-4b",
-          "engine": "mflux",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/flux.2-klein-base-4b-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation."
+        },
+        {
+          "key": "flux2-klein-base-4b",
+          "engine": "mlx-gen",
           "target": "mlx",
           "bits": 8,
-          "repo_id": "AITRADER/FLUX2-klein-base-4B-mlx-8bit",
-          "source": "curated-community-mlx",
-          "notes": "Community MLX 8-bit conversion for Apple Silicon."
+          "repo_id": "AbstractFramework/flux.2-klein-base-4b-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount."
         },
         {
           "key": "flux2-klein-base-4b",
@@ -860,16 +896,25 @@
     "black-forest-labs/FLUX.2-klein-9B": {
       "provider": "huggingface",
       "license": "flux-non-commercial-license",
-      "notes": "FLUX 2 klein (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official gated 9B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download flux2-klein-9b --provider mflux so macOS uses the curated MLX 8-bit preset instead of the full repo.",
+      "notes": "FLUX 2 klein (9B, gated; non-commercial) (Diffusers: Flux2KleinPipeline). Official gated 9B model; use a modern released Diffusers build. For Apple Silicon local generation, prefer abstractvision download flux2-klein-9b --provider mlx-gen so macOS uses the AbstractFramework MLX-Gen q4 prepared folder instead of the full repo.",
       "downloads": [
         {
           "key": "flux2-klein-9b",
-          "engine": "mflux",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/flux.2-klein-9b-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation."
+        },
+        {
+          "key": "flux2-klein-9b",
+          "engine": "mlx-gen",
           "target": "mlx",
           "bits": 8,
-          "repo_id": "deepsweet/FLUX.2-klein-9B-MLX-Q8",
-          "source": "curated-community-mlx",
-          "notes": "Apple Silicon (MLX) 8-bit conversion for the optional MFLUX runtime."
+          "repo_id": "AbstractFramework/flux.2-klein-9b-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount."
         },
         {
           "key": "flux2-klein-9b",
@@ -982,12 +1027,21 @@
       "downloads": [
         {
           "key": "flux2-klein-base-9b",
-          "engine": "mflux",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/flux.2-klein-base-9b-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation."
+        },
+        {
+          "key": "flux2-klein-base-9b",
+          "engine": "mlx-gen",
           "target": "mlx",
           "bits": 8,
-          "repo_id": "AITRADER/FLUX2-klein-base-9B-mlx-8bit",
-          "source": "curated-community-mlx",
-          "notes": "Community MLX 8-bit conversion for Apple Silicon."
+          "repo_id": "AbstractFramework/flux.2-klein-base-9b-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount."
         },
         {
           "key": "flux2-klein-base-9b",
@@ -1371,6 +1425,24 @@
       "downloads": [
         {
           "key": "qwen-image",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/qwen-image-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared legacy Qwen Image folder; prefer Qwen/Qwen-Image-2512 for new runs."
+        },
+        {
+          "key": "qwen-image",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/qwen-image-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared legacy q8 Qwen Image folder; prefer Qwen/Qwen-Image-2512 for new runs."
+        },
+        {
+          "key": "qwen-image",
           "engine": "diffusers",
           "target": "diffusers",
           "bits": 16,
@@ -1429,48 +1501,21 @@
       "downloads": [
         {
           "key": "qwen-image",
-          "engine": "mflux",
-          "target": "mlx",
-          "bits": 8,
-          "repo_id": "mlx-community/Qwen-Image-2512-8bit",
-          "source": "mlx-community",
-          "notes": "Apple Silicon (MLX) 8-bit conversion for the optional MFLUX runtime."
-        },
-        {
-          "key": "qwen-image",
-          "engine": "mflux",
-          "target": "mlx",
-          "bits": 6,
-          "repo_id": "mlx-community/Qwen-Image-2512-6bit",
-          "source": "mlx-community",
-          "notes": "Apple Silicon (MLX) 6-bit conversion for the optional MFLUX runtime."
-        },
-        {
-          "key": "qwen-image",
-          "engine": "mflux",
-          "target": "mlx",
-          "bits": 5,
-          "repo_id": "mlx-community/Qwen-Image-2512-5bit",
-          "source": "mlx-community",
-          "notes": "Apple Silicon (MLX) 5-bit conversion for the optional MFLUX runtime."
-        },
-        {
-          "key": "qwen-image",
-          "engine": "mflux",
+          "engine": "mlx-gen",
           "target": "mlx",
           "bits": 4,
-          "repo_id": "mlx-community/Qwen-Image-2512-4bit",
-          "source": "mlx-community",
-          "notes": "Apple Silicon (MLX) 4-bit conversion for the optional MFLUX runtime."
+          "repo_id": "AbstractFramework/qwen-image-2512-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared Qwen folder. Qwen prepared folders may mix q4/q8 components; default Apple Silicon recommendation."
         },
         {
           "key": "qwen-image",
-          "engine": "mflux",
+          "engine": "mlx-gen",
           "target": "mlx",
-          "bits": 3,
-          "repo_id": "mlx-community/Qwen-Image-2512-3bit",
-          "source": "mlx-community",
-          "notes": "Apple Silicon (MLX) 3-bit conversion for the optional MFLUX runtime."
+          "bits": 8,
+          "repo_id": "AbstractFramework/qwen-image-2512-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 Qwen Image folder. Prefer when quality is paramount."
         },
         {
           "key": "qwen-image",
@@ -1532,6 +1577,24 @@
       "downloads": [
         {
           "key": "qwen-image-edit",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/qwen-image-edit-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared legacy Qwen Image Edit folder; prefer Qwen/Qwen-Image-Edit-2511 for new runs."
+        },
+        {
+          "key": "qwen-image-edit",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/qwen-image-edit-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared legacy q8 Qwen Image Edit folder; prefer Qwen/Qwen-Image-Edit-2511 for new runs."
+        },
+        {
+          "key": "qwen-image-edit",
           "engine": "diffusers",
           "target": "diffusers",
           "bits": 16,
@@ -1589,6 +1652,24 @@
       "license": "apache-2.0",
       "notes": "Qwen Image Edit 2509 (Diffusers: QwenImageEditPlusPipeline). Adds official multi-image editing support; upstream notes best quality with 1-3 input images.",
       "downloads": [
+        {
+          "key": "qwen-image-edit-2509",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/qwen-image-edit-2509-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared Qwen Image Edit 2509 folder for image-to-image/edit."
+        },
+        {
+          "key": "qwen-image-edit-2509",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/qwen-image-edit-2509-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 Qwen Image Edit 2509 folder. Prefer when quality is paramount."
+        },
         {
           "key": "qwen-image-edit-2509",
           "engine": "diffusers",
@@ -1650,6 +1731,24 @@
       "license": "apache-2.0",
       "notes": "Dated 2511 Qwen Image Edit release (image-to-image). Upstream examples still default to 40 steps and guidance_scale=1.0; AbstractVision defaults local image-edit requests to 15 steps unless a lower model-specific default is defined.",
       "downloads": [
+        {
+          "key": "qwen-image-edit-2511",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/qwen-image-edit-2511-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared Qwen Image Edit 2511 folder for image-to-image/edit."
+        },
+        {
+          "key": "qwen-image-edit-2511",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/qwen-image-edit-2511-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 Qwen Image Edit 2511 folder. Prefer when quality is paramount."
+        },
         {
           "key": "qwen-image-edit-2511",
           "engine": "diffusers",
@@ -3023,6 +3122,24 @@
       "downloads": [
         {
           "key": "z-image",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/z-image-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Prefer this unless quality is paramount."
+        },
+        {
+          "key": "z-image",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/z-image-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount."
+        },
+        {
+          "key": "z-image",
           "engine": "diffusers",
           "target": "diffusers",
           "bits": 16,
@@ -3077,34 +3194,25 @@
     "Tongyi-MAI/Z-Image-Turbo": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Turbo text-to-image option. Official examples use num_inference_steps=9 (8 effective DiT forwards) with guidance_scale=0.0; plain-text negative prompting is not exposed. For Apple Silicon local generation, prefer abstractvision download z-image-turbo --provider mflux so macOS uses a curated MLX preset instead of the full repo.",
+      "notes": "Turbo text-to-image option. Official examples use num_inference_steps=9 (8 effective DiT forwards) with guidance_scale=0.0; plain-text negative prompting is not exposed. For Apple Silicon local generation, prefer abstractvision download z-image-turbo --provider mlx-gen so macOS uses the AbstractFramework MLX-Gen q4 prepared folder instead of the full repo.",
       "downloads": [
         {
           "key": "z-image-turbo",
-          "engine": "mflux",
-          "target": "mlx",
-          "bits": 8,
-          "repo_id": "carsenk/z-image-turbo-mflux-8bit",
-          "source": "curated-community-mflux",
-          "notes": "Apple Silicon (MLX) 8-bit conversion for the optional MFLUX runtime."
-        },
-        {
-          "key": "z-image-turbo",
-          "engine": "mflux",
-          "target": "mlx",
-          "bits": 6,
-          "repo_id": "carsenk/z-image-turbo-mflux-6bit",
-          "source": "curated-community-mflux",
-          "notes": "Apple Silicon (MLX) 6-bit conversion for the optional MFLUX runtime."
-        },
-        {
-          "key": "z-image-turbo",
-          "engine": "mflux",
+          "engine": "mlx-gen",
           "target": "mlx",
           "bits": 4,
-          "repo_id": "filipstrand/Z-Image-Turbo-mflux-4bit",
-          "source": "curated-community-mflux",
-          "notes": "Apple Silicon (MLX) 4-bit conversion for the optional MFLUX runtime."
+          "repo_id": "AbstractFramework/z-image-turbo-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation."
+        },
+        {
+          "key": "z-image-turbo",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/z-image-turbo-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount."
         },
         {
           "key": "z-image-turbo",

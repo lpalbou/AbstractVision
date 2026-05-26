@@ -18,7 +18,7 @@ Model-agnostic generative vision API (images, optional video) for Python and the
   - OpenAI-compatible HTTP: [`openai_compatible.py`](src/abstractvision/backends/openai_compatible.py)
   - Local Diffusers: [`huggingface_diffusers.py`](src/abstractvision/backends/huggingface_diffusers.py)
   - Local stable-diffusion.cpp / GGUF: [`stable_diffusion_cpp.py`](src/abstractvision/backends/stable_diffusion_cpp.py)
-  - Local MFLUX / MLX bridge for curated Apple Silicon presets: [`mflux.py`](src/abstractvision/backends/mflux.py)
+  - Local MLX-Gen Apple Silicon backend for curated AbstractFramework MLX presets: [`mflux.py`](src/abstractvision/backends/mflux.py)
 - CLI for manual testing (`abstractvision cli`, legacy alias: `abstractvision repl`): [`abstractvision`](src/abstractvision/cli.py)
 - Self-contained local Playground UI/API: [`playground/vision_playground.html`](playground/vision_playground.html) (docs: [`playground/README.md`](playground/README.md))
 
@@ -38,7 +38,7 @@ flowchart LR
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
 - Built-in backends implement images: `text_to_image` and `image_to_image`.
-- Local MFLUX supports `text_to_image`, and supports `image_to_image` for the curated FLUX.2 klein presets (`flux2-klein-4b`, `flux2-klein-9b`) (mask edits are not supported yet).
+- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, and ERNIE Image Turbo presets, and supports `image_to_image` for FLUX.2 klein/base and Qwen Image Edit presets (mask edits are not supported yet).
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - `image_to_video` is currently supported only via the OpenAI-compatible backend **when** endpoints are configured.
 - `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
@@ -62,14 +62,15 @@ Optional extras:
 |---|---|
 | `abstractvision[openai]` | Official OpenAI provider intent marker; no SDK dependency today. |
 | `abstractvision[openai-compatible]` | Generic local/remote OpenAI-shaped endpoint intent marker; stdlib-only today. |
-| `abstractvision[models]` | Curated Hugging Face download helpers for cache-backed local 8-bit vision model presets. |
+| `abstractvision[models]` | Curated Hugging Face download helpers for cache-backed local quantized vision model presets. |
 | `abstractvision[diffusers]` | Install Torch/Diffusers and related packages for local Diffusers generation. |
 | `abstractvision[huggingface]` | Compatibility alias for callers that still request the historical Diffusers extra. |
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
-| `abstractvision[mflux]` | Install the optional MFLUX/MLX Apple Silicon image runtime. |
+| `abstractvision[mlx-gen]` | Install the optional MLX-Gen Apple Silicon image runtime. |
+| `abstractvision[mflux]` | Compatibility alias for the MLX-Gen Apple Silicon image runtime. |
 | `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
-| `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MFLUX. |
+| `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
 | `abstractvision[gpu]` | GPU Diffusers/Torch profile. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
 | `abstractvision[all-gpu]` | Full GPU-relevant local vision profile: Diffusers plus stable-diffusion.cpp bindings. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
@@ -117,34 +118,44 @@ Start here:
 - Capability registry + catalog policy: [`docs/reference/capabilities-registry.md`](docs/reference/capabilities-registry.md), [`docs/adr/README.md`](docs/adr/README.md)
 - Docs index: [`docs/README.md`](docs/README.md)
 
-### First local model (8-bit first)
+### First Apple-local MLX model (q4 first)
 
-For local model downloads, prefer the curated 8-bit presets first. On macOS
-they resolve to MLX artifacts that declare the `mflux` engine; on non-macOS
-systems the default target is GGUF or an equivalent local-runtime artifact. The
-downloader stores curated presets in the Hugging Face cache by default and
-imports older `~/models/<preset>` trees on first use. It does not fall back to
-full models unless you pass `--allow-non-8bit`.
+For Apple Silicon local image generation, prefer the AbstractFramework
+MLX-Gen q4 presets first. They are published in the
+[AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/)
+and are the default recommendation for local memory efficiency. q8 variants are
+also listed and should be selected explicitly when quality is more important
+than memory footprint. Qwen and ERNIE q4 prepared folders can mix q4 and q8
+components, but they remain the default prepared choice.
+
+The downloader stores curated presets in the Hugging Face cache by default and
+imports older `~/models/<preset>` trees on first use. Generation stays
+cache-only unless you explicitly enable runtime downloads.
 
 ```bash
-pip install "abstractvision[models,mflux]"
+pip install "abstractvision[models,mlx-gen]"
 abstractvision model-presets
-abstractvision catalog --provider mflux
-# Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
-abstractvision download flux2-klein-4b --provider mflux
-abstractvision download flux2-klein-9b --provider mflux
-abstractvision download qwen-image --provider mflux
-abstractvision download z-image-turbo --provider mflux
-abstractvision t2i --provider mflux --model flux2-klein-4b "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
+abstractvision catalog --provider mlx-gen
+# Tip: `--provider mlx-gen` implies `--target mlx` (you usually set one or the other).
+abstractvision download flux2-klein-4b --provider mlx-gen
+abstractvision download qwen-image --provider mlx-gen
+abstractvision download qwen-image-edit-2511 --provider mlx-gen
+abstractvision download z-image-turbo --provider mlx-gen
+abstractvision download ernie-image-turbo --provider mlx-gen --bits 4
+abstractvision download ernie-image-turbo --provider mlx-gen --bits 8
+abstractvision t2i --provider mlx-gen --model flux2-klein-4b "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 ```
 
-The shipped MFLUX backend currently supports the curated `flux2-klein-4b`,
-`flux2-klein-9b`, `qwen-image`, and `z-image-turbo` preset families for local
-`text_to_image`. For the FLUX.2 klein presets, it also supports `image_to_image`
-edits (mask edits are not supported yet). Edit strength is passed as `strength`
-and normalized to the underlying MFLUX `image_strength` parameter.
+The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
+for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
+`flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
+`z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
+`image_to_image` is implemented for FLUX.2
+klein/base and Qwen Image Edit presets (mask edits are not supported yet). Edit
+strength is passed as `strength` and normalized to MLX-Gen's `image_strength`
+parameter where the runtime supports it.
 
-Stable Diffusion does not currently have a curated MLX 8-bit preset in
+Stable Diffusion does not currently have a curated MLX-Gen q4/q8 preset in
 AbstractVision, so full Diffusers downloads remain explicit.
 
 Install the Diffusers runtime extra, download a Diffusers snapshot, then select
@@ -247,11 +258,12 @@ automatically, but you can inspect them explicitly with
 `abstractvision provider-models`, `VisionManager.list_provider_models(...)`,
 or the AbstractCore plugin method `llm.vision.list_provider_models(...)`.
 After inspection, set the model env var explicitly for newer provider models
-when available to your account. Set `ABSTRACTVISION_BACKEND=mflux`,
+when available to your account. Set `ABSTRACTVISION_BACKEND=mlx-gen`,
 `ABSTRACTVISION_BACKEND=diffusers`, or `ABSTRACTVISION_BACKEND=sdcpp` when you
 want AbstractCore to launch local AbstractVision generation directly. For
-MFLUX, set `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` or use routed model ids
-such as `mflux/flux2-klein-4b`.
+MLX-Gen, set `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` or use routed model ids
+such as `mlx-gen/flux2-klein-4b`. Legacy `mflux` provider values and routed ids
+remain accepted as compatibility aliases.
 
 ### Interactive testing (CLI)
 
@@ -284,10 +296,10 @@ disabled from the normal bundled local surfaces. Use the OpenAI-compatible
 backend for video today, or track the local follow-up in
 [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 
-For Apple Silicon 8-bit local generation through MFLUX:
+For Apple Silicon local generation through MLX-Gen:
 
 ```text
-/backend mflux flux2-klein-4b
+/backend mlx-gen flux2-klein-4b
 /t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
 ```
 
@@ -316,7 +328,7 @@ Current behavior:
 - The UI is split into task tabs (`Text→Image`, `Image→Image`, `Text→Video`, and a placeholder `Image→Video` tab for later work).
 - Each active task tab has its own model selector and unload button. Switching models in a tab unloads the current active backend first to free memory before loading the replacement.
 - The Image→Image tab is enabled only for models that both advertise `image_to_image` in the packaged capability registry and remain enabled by the selected backend.
-- MFLUX FLUX.2 klein presets are surfaced for `Image→Image` edits (mask edits are not supported yet).
+- MLX-Gen FLUX.2 klein/base and Qwen Image Edit presets are surfaced for `Image→Image` edits (mask edits are not supported yet).
 - The Text→Video tab is experimental; the bundled local server currently does not advertise a shipped local model there.
 - Model-specific request normalization happens at the API/backend layer, not just in the page.
 - Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.

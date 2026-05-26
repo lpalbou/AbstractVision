@@ -663,7 +663,7 @@ class PlaygroundState:
                 load_id = f"sdcpp/{preset.key}"
                 runtime_available = sdcpp_runtime_available
                 download_enabled = False
-            elif preset.engine == "mflux" and preset.target == "mlx":
+            elif preset.engine in {"mflux", "mlx-gen"} and preset.target == "mlx":
                 backend = "mflux"
                 load_id = f"mflux/{preset.key}"
                 runtime_available = mflux_runtime_available
@@ -686,7 +686,7 @@ class PlaygroundState:
             fully_cached = False
             variant_label = preset.display_name
             bits = preset.quantization_bits
-            if preset.engine == "mflux" and preset.target == "mlx":
+            if preset.engine in {"mflux", "mlx-gen"} and preset.target == "mlx":
                 discovered_model = mflux_cached.get(preset.key)
                 cached_in = [str(discovered_model.source_detail)] if discovered_model is not None else []
                 invalid_cached_in = mflux_invalid.get(preset.key, ())
@@ -739,7 +739,7 @@ class PlaygroundState:
                 if cached_in
                 else (
                     list(invalid_cached_in)
-                    if (preset.engine == "mflux" and invalid_cached_in)
+                    if (preset.engine in {"mflux", "mlx-gen"} and invalid_cached_in)
                     else (
                         _format_incomplete_sources(invalid_cached_in)
                         if invalid_cached_in

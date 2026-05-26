@@ -629,9 +629,9 @@ print("ok")
         self.assertIs(explicit_diffusers["backend"], diffusers_backend)
         self.assertEqual(explicit_diffusers["backend_kind"], "diffusers")
         self.assertIs(explicit_mflux["backend"], mflux_backend)
-        self.assertEqual(explicit_mflux["backend_kind"], "mflux")
+        self.assertEqual(explicit_mflux["backend_kind"], "mlx-gen")
         self.assertIs(inferred["backend"], mflux_backend)
-        self.assertEqual(inferred["backend_kind"], "mflux")
+        self.assertEqual(inferred["backend_kind"], "mlx-gen")
 
     def test_abstractcore_plugin_i2i_uses_explicit_diffusers_provider_for_mflux_aliases(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -698,13 +698,37 @@ print("ok")
 
         self.assertIs(first["backend"], backend)
         self.assertIs(second["backend"], backend)
-        self.assertEqual(first["backend_key"], ("mflux", "flux2-klein-9b"))
-        self.assertEqual(second["backend_key"], ("mflux", "flux2-klein-9b"))
+        self.assertEqual(first["backend_key"], ("mlx-gen", "flux2-klein-9b"))
+        self.assertEqual(second["backend_key"], ("mlx-gen", "flux2-klein-9b"))
         self.assertEqual(first["model"], "flux2-klein-9b")
         self.assertEqual(second["model"], "flux2-klein-9b")
-        self.assertEqual(first["load_id"], "mflux/flux2-klein-9b")
-        self.assertEqual(second["load_id"], "mflux/flux2-klein-9b")
+        self.assertEqual(first["load_id"], "mlx-gen/flux2-klein-9b")
+        self.assertEqual(second["load_id"], "mlx-gen/flux2-klein-9b")
         self.assertEqual(make_backend.call_count, 1)
+
+    def test_abstractcore_plugin_keeps_explicit_mlx_gen_quantized_variants_distinct(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        class _DummyOwner:
+            config = {}
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        made = []
+
+        def make_backend(*, model_id=None):
+            backend = object()
+            made.append((model_id, backend))
+            return backend
+
+        with patch.object(cap, "_make_mflux_backend", side_effect=make_backend):
+            q4 = cap._resolve_backend_binding(provider="mlx-gen", model="flux2-klein-9b")
+            q8 = cap._resolve_backend_binding(provider="mlx-gen", model="flux2-klein-9b-q8")
+
+        self.assertEqual(q4["backend_key"], ("mlx-gen", "flux2-klein-9b"))
+        self.assertEqual(q8["backend_key"], ("mlx-gen", "flux2-klein-9b-q8"))
+        self.assertEqual(q4["load_id"], "mlx-gen/flux2-klein-9b")
+        self.assertEqual(q8["load_id"], "mlx-gen/flux2-klein-9b-q8")
+        self.assertEqual([item[0] for item in made], ["flux2-klein-9b", "flux2-klein-9b-q8"])
 
     def test_abstractcore_plugin_request_scoped_sdcpp_overrides_configured_backend(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -749,8 +773,8 @@ print("ok")
                     cap = _AbstractVisionCapability(_DummyOwner())
                     out = cap.available_providers()
 
-        self.assertIn("mflux", out["available_providers"])
-        self.assertTrue(out["details"]["mflux"]["weights_present"])
+        self.assertIn("mlx-gen", out["available_providers"])
+        self.assertTrue(out["details"]["mlx-gen"]["weights_present"])
 
     def test_abstractcore_plugin_routes_mflux_provider_and_stores_artifact(self):
         import abstractvision.backends.mflux as mflux_backend
@@ -955,6 +979,37 @@ print("ok")
         self.assertEqual(backend.unloaded, 1)
         self.assertEqual(cap.list_loaded_models(), [])
 
+    def test_abstractcore_plugin_i2i_moves_unknown_kwargs_to_extra(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeOpenAIBackend:
+            def edit_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(media_type="image", data=png, mime_type="image/png", metadata={})
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        binding = {"local_control": False}
+        with patch.object(cap, "_resolve_backend_binding", return_value=binding):
+            with patch.object(cap, "_activate_request_backend", return_value=FakeOpenAIBackend()):
+                out = cap.i2i(
+                    "edit it",
+                    image=png,
+                    provider="openai",
+                    model="image-2",
+                    size="1024x1024",
+                )
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        self.assertEqual(seen["request"].extra.get("size"), "1024x1024")
+        self.assertEqual(seen["request"].extra.get("model"), "image-2")
+
     def test_abstractcore_plugin_tracks_text_to_video_request_models(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset
@@ -1070,7 +1125,7 @@ print("ok")
         resident = cap.list_resident_models()
         self.assertEqual(len(loaded), 2)
         self.assertEqual(len(resident), 1)
-        self.assertEqual(resident[0]["load_id"], "mflux/flux2-klein-9b")
+        self.assertEqual(resident[0]["load_id"], "mlx-gen/flux2-klein-9b")
         self.assertTrue(resident[0]["resident"])
         self.assertIn("diffusers/runwayml/stable-diffusion-v1-5", {item["load_id"] for item in loaded})
 

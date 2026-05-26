@@ -16,7 +16,7 @@ package also has multiple paths that could silently change operator intent if le
 
 The current code already has good instincts here:
 
-- local Diffusers and MFLUX default to cache-only behavior;
+- local Diffusers and MLX-Gen default to cache-only behavior;
 - provider catalogs are inspection-only;
 - AbstractCore owner config is read before env vars;
 - curated `sdcpp` keys resolve cached companion files and fail clearly when they are missing.

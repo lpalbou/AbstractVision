@@ -22,6 +22,23 @@ class _Generated:
 
 class _FakeModelConfig:
     @staticmethod
+    def from_name(model_name, base_model=None):
+        configs = {
+            "flux2-klein-4b": "flux2-4b-config",
+            "flux2-klein-9b": "flux2-9b-config",
+            "flux2-klein-base-4b": "flux2-base-4b-config",
+            "flux2-klein-base-9b": "flux2-base-9b-config",
+            "z-image": "z-image-config",
+            "z-image-turbo": "z-image-turbo-config",
+            "qwen-image": "qwen-image-config",
+            "qwen-image-edit": "qwen-image-edit-config",
+            "qwen-image-edit-2511": "qwen-image-edit-config",
+            "qwen-image-edit-2509": "qwen-image-edit-config",
+            "ernie-image-turbo": "ernie-image-turbo-config",
+        }
+        return configs.get(model_name, str(model_name))
+
+    @staticmethod
     def flux2_klein_4b():
         return "flux2-4b-config"
 
@@ -34,8 +51,16 @@ class _FakeModelConfig:
         return "z-image-turbo-config"
 
     @staticmethod
+    def z_image():
+        return "z-image-config"
+
+    @staticmethod
     def qwen_image():
         return "qwen-image-config"
+
+    @staticmethod
+    def ernie_image_turbo():
+        return "ernie-image-turbo-config"
 
 
 class _FakeFlux2:
@@ -74,6 +99,35 @@ class _FakeQwenImage:
         return _Generated()
 
 
+class _FakeQwenImageEdit:
+    last_init = None
+    last_generate = None
+
+    def __init__(self, **kwargs):
+        _FakeQwenImageEdit.last_init = dict(kwargs)
+
+    def generate_image(self, **kwargs):
+        _FakeQwenImageEdit.last_generate = dict(kwargs)
+        return _Generated()
+
+
+class _FakeErnieImageTurbo:
+    last_init = None
+    last_generate = None
+
+    def __init__(self, **kwargs):
+        _FakeErnieImageTurbo.last_init = dict(kwargs)
+
+    def generate_image(self, **kwargs):
+        _FakeErnieImageTurbo.last_generate = dict(kwargs)
+        return _Generated()
+
+
+class _FakeDownloadRequiredError(FileNotFoundError):
+    download_command = "mlxgen download --model AbstractFramework/flux.2-klein-4b-4bit"
+    prepare_command = "mlxgen prepare --model AbstractFramework/flux.2-klein-4b-4bit --path ./models/flux2-klein-4b -q 4"
+
+
 class _ThreadAwareFlux2:
     init_thread = None
     generate_thread = None
@@ -99,6 +153,9 @@ class _CountingFlux2:
 
 
 class TestMFluxVisionBackend(unittest.TestCase):
+    def _lazy_import_return(self, flux_cls=_FakeFlux2, z_cls=_FakeZImage):
+        return (_FakeModelConfig, _FakeDownloadRequiredError, flux_cls, _FakeFlux2, z_cls, z_cls)
+
     def _make_model_dir(self, root: Path, name: str) -> Path:
         model_dir = root / name
         (model_dir / "transformer").mkdir(parents=True)
@@ -126,7 +183,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(),
                 ):
                     asset = backend.generate_image(
                         ImageGenerationRequest(
@@ -150,7 +207,42 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(_FakeFlux2.last_generate["num_inference_steps"], 4)
         self.assertEqual(_FakeFlux2.last_generate["guidance"], 1.0)
 
-    def test_z_image_turbo_passes_negative_prompt(self):
+    def test_generate_image_preserves_explicit_mlx_gen_q8_variant(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            q4_snapshot = self._make_cache_snapshot(cache_root, "AbstractFramework/flux.2-klein-9b-4bit")
+            q8_snapshot = self._make_cache_snapshot(cache_root, "AbstractFramework/flux.2-klein-9b-8bit")
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    q4_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-9b"))
+                    q4_backend.generate_image(ImageGenerationRequest(prompt="q4", steps=2, seed=1))
+                    self.assertEqual(_FakeFlux2.last_init["model_path"], str(q4_snapshot))
+
+                    q8_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-9b-q8"))
+                    q8_backend.generate_image(ImageGenerationRequest(prompt="q8", steps=2, seed=2))
+                    self.assertEqual(_FakeFlux2.last_init["model_path"], str(q8_snapshot))
+
+    def test_explicit_mlx_gen_q8_missing_does_not_fall_back_to_q4(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-9b-4bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-9b-q8"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with self.assertRaisesRegex(OptionalDependencyMissingError, "flux2-klein-9b-q8"):
+                    backend.generate_image(ImageGenerationRequest(prompt="q8", steps=2, seed=2))
+
+    def test_z_image_turbo_drops_noop_negative_prompt_and_forces_guidance_off(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest
 
@@ -161,7 +253,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(),
                 ):
                     asset = backend.generate_image(
                         ImageGenerationRequest(prompt="hello", negative_prompt="blur", seed=7)
@@ -170,8 +262,62 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertTrue(asset.data.startswith(b"\x89PNG"))
         self.assertEqual(_FakeZImage.last_init["model_config"], "z-image-turbo-config")
         self.assertEqual(_FakeZImage.last_init["model_path"], str(snapshot))
-        self.assertEqual(_FakeZImage.last_generate["negative_prompt"], "blur")
+        self.assertNotIn("negative_prompt", _FakeZImage.last_generate)
         self.assertEqual(_FakeZImage.last_generate["num_inference_steps"], 9)
+        self.assertEqual(_FakeZImage.last_generate["guidance"], 0.0)
+
+    def test_z_image_routes_full_quality_model_and_negative_prompt(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "AbstractFramework/z-image-4bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="z-image"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    asset = backend.generate_image(
+                        ImageGenerationRequest(prompt="hello", negative_prompt="blur", seed=7)
+                    )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(_FakeZImage.last_init["model_config"], "z-image-config")
+        self.assertEqual(_FakeZImage.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeZImage.last_generate["negative_prompt"], "blur")
+        self.assertEqual(_FakeZImage.last_generate["num_inference_steps"], 50)
+        self.assertEqual(_FakeZImage.last_generate["guidance"], 3.5)
+
+    def test_ernie_image_turbo_routes_text_to_image(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "AbstractFramework/ernie-image-turbo-4bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="ernie-image-turbo"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_ernie",
+                        return_value=_FakeErnieImageTurbo,
+                    ):
+                        asset = backend.generate_image(
+                            ImageGenerationRequest(prompt="poster", negative_prompt="blur", seed=7)
+                        )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(_FakeErnieImageTurbo.last_init["model_config"], "ernie-image-turbo-config")
+        self.assertEqual(_FakeErnieImageTurbo.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeErnieImageTurbo.last_generate["prompt"], "poster")
+        self.assertEqual(_FakeErnieImageTurbo.last_generate["negative_prompt"], "blur")
+        self.assertEqual(_FakeErnieImageTurbo.last_generate["num_inference_steps"], 8)
+        self.assertEqual(_FakeErnieImageTurbo.last_generate["guidance"], 1.0)
 
     def test_z_image_turbo_uses_alternate_cached_repo_for_preset_key(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -184,7 +330,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(),
                 ):
                     asset = backend.generate_image(
                         ImageGenerationRequest(prompt="hello", negative_prompt="blur", seed=7)
@@ -259,7 +405,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(),
                 ):
                     asset = backend.generate_image(
                         ImageGenerationRequest(prompt="hello", negative_prompt="blur")
@@ -278,7 +424,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(),
                 ):
                     asset = backend.generate_image(
                         ImageGenerationRequest(prompt="hello", steps=1, guidance_scale=7.0)
@@ -320,7 +466,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(),
                 ):
                     asset = backend.generate_image(ImageGenerationRequest(prompt="hello", seed=2))
 
@@ -340,11 +486,11 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
             with patch(
                 "abstractvision.backends.mflux._lazy_import_mflux",
-                return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                return_value=self._lazy_import_return(),
             ):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux_qwen",
-                    return_value=_FakeQwenImage,
+                    return_value=(_FakeQwenImage, _FakeQwenImageEdit),
                 ):
                     asset = backend.generate_image(ImageGenerationRequest(prompt="hello", seed=1))
 
@@ -366,7 +512,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         with tempfile.TemporaryDirectory() as cache_td:
-            self._make_cache_snapshot(Path(cache_td), "mlx-community/Qwen-Image-2512-8bit")
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-2512-4bit")
             backend = MFluxVisionBackend(config=MFluxBackendConfig(model="qwen-image"))
 
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
@@ -377,6 +523,80 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(models[0].id, "qwen-image")
         self.assertEqual(tuple(models[0].capabilities), ("text_to_image",))
         self.assertEqual(image_edit_models, [])
+
+    def test_provider_catalog_exposes_cached_mlx_gen_q4_and_q8_variants(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-4bit")
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="flux2-klein-4b"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                models = {model.id: model for model in backend.list_provider_models(task="text_to_image")}
+
+        self.assertIn("flux2-klein-4b", models)
+        self.assertIn("flux2-klein-4b-q8", models)
+        self.assertEqual(models["flux2-klein-4b"].raw["quantization_bits"], 4)
+        self.assertEqual(models["flux2-klein-4b"].raw["repo_id"], "AbstractFramework/flux.2-klein-4b-4bit")
+        self.assertEqual(models["flux2-klein-4b-q8"].raw["quantization_bits"], 8)
+        self.assertEqual(models["flux2-klein-4b-q8"].raw["repo_id"], "AbstractFramework/flux.2-klein-4b-8bit")
+
+    def test_ernie_image_provider_catalog_advertises_text_to_image_only(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/ernie-image-turbo-4bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="ernie-image-turbo"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                models = list(backend.list_provider_models())
+                image_edit_models = list(backend.list_provider_models(task="image_to_image"))
+
+        self.assertEqual(len(models), 1)
+        self.assertEqual(models[0].id, "ernie-image-turbo")
+        self.assertEqual(tuple(models[0].capabilities), ("text_to_image",))
+        self.assertEqual(models[0].raw["quantization_bits"], 4)
+        self.assertEqual(image_edit_models, [])
+
+    def test_qwen_edit_model_family_routes_image_to_image(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-edit-2511-4bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="qwen-image-edit-2511"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_qwen",
+                        return_value=(_FakeQwenImage, _FakeQwenImageEdit),
+                    ):
+                        asset = backend.edit_image(
+                            ImageEditRequest(prompt="watercolor", image=PNG_1X1, seed=123)
+                        )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(_FakeQwenImageEdit.last_init["model_config"], "qwen-image-edit-config")
+        self.assertEqual(_FakeQwenImageEdit.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeQwenImageEdit.last_generate["prompt"], "watercolor")
+        self.assertEqual(len(_FakeQwenImageEdit.last_generate["image_paths"]), 1)
+        self.assertTrue(_FakeQwenImageEdit.last_generate["image_paths"][0])
+
+    def test_canonical_mlx_gen_exports_alias_compatibility_backend(self):
+        from abstractvision.backends import (
+            MLXGenBackendConfig,
+            MLXGenVisionBackend,
+            MFluxBackendConfig,
+            MFluxVisionBackend,
+        )
+
+        self.assertIs(MLXGenBackendConfig, MFluxBackendConfig)
+        self.assertIs(MLXGenVisionBackend, MFluxVisionBackend)
 
     def test_flux2_klein_capabilities_are_text_to_image_only(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -397,7 +617,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _FakeFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(),
                 ):
                     asset = backend.edit_image(
                         ImageEditRequest(
@@ -424,7 +644,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _ThreadAwareFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(flux_cls=_ThreadAwareFlux2),
                 ):
                     backend.preload()
                     caller_thread = threading.get_ident()
@@ -458,7 +678,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with patch(
                     "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=(_FakeModelConfig, _CountingFlux2, _FakeZImage),
+                    return_value=self._lazy_import_return(flux_cls=_CountingFlux2),
                 ):
                     backend.preload()
                     backend.preload()

@@ -17,7 +17,7 @@ LOCAL_RUNTIME_PACKAGES = {
     "peft",
     "Pillow",
     "stable-diffusion-cpp-python",
-    "mflux",
+    "mlx-gen",
     "mlx",
 }
 
@@ -97,23 +97,23 @@ class TestPackagingMetadata(unittest.TestCase):
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(huggingface_names))
         self.assertIn("stable-diffusion-cpp-python", sdcpp_names)
         self.assertIn("Pillow", sdcpp_names)
-        self.assertIn("mflux", mflux_names)
+        self.assertIn("mlx-gen", mflux_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(local_names))
         self.assertIn("stable-diffusion-cpp-python", local_names)
-        self.assertNotIn("mflux", local_names)
+        self.assertNotIn("mlx-gen", local_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(apple_names))
         self.assertIn("stable-diffusion-cpp-python", apple_names)
-        self.assertIn("mflux", apple_names)
+        self.assertIn("mlx-gen", apple_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(gpu_names))
         self.assertNotIn("stable-diffusion-cpp-python", gpu_names)
-        self.assertNotIn("mflux", gpu_names)
+        self.assertNotIn("mlx-gen", gpu_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(all_names))
         self.assertIn("stable-diffusion-cpp-python", all_names)
-        self.assertIn("mflux", all_names)
+        self.assertIn("mlx-gen", all_names)
         self.assertEqual(apple_names, all_apple_names)
-        self.assertIn("mflux", all_apple_names)
+        self.assertIn("mlx-gen", all_apple_names)
         self.assertEqual(local_names, all_gpu_names)
-        self.assertNotIn("mflux", all_gpu_names)
+        self.assertNotIn("mlx-gen", all_gpu_names)
 
     def test_runtime_aliases_and_bundles_do_not_drift(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -151,6 +151,13 @@ class TestPackagingMetadata(unittest.TestCase):
             "pre-commit",
         }
         self.assertFalse(contributor_only.intersection(_dependency_names(all_runtime)))
+
+    def test_mlx_gen_extra_uses_current_runtime_floor(self):
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        expected = "mlx-gen>=0.18.5,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'"
+
+        for extra in ("mlx-gen", "mflux", "apple", "all", "all-apple"):
+            self.assertIn(expected, _optional_dependency_requirements(pyproject, extra))
 
     def test_sdcpp_binding_extras_avoid_known_broken_sdist(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

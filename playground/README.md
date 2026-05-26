@@ -55,7 +55,7 @@ Usage notes:
 - Raw Hugging Face model ids such as `runwayml/stable-diffusion-v1-5` load directly; no `diffusers/` provider prefix is required.
 - For first tests, prefer a small cached model such as Stable Diffusion 1.5 before loading larger Qwen/FLUX models.
 - The Image→Image panel is enabled only for models that both advertise `image_to_image` and remain enabled by backend runtime truth.
-- MFLUX models are intentionally surfaced only in `Text→Image` for now.
+- MLX-Gen models are surfaced only for tasks the backend currently enables: curated q4/q8 text-to-image presets plus image-to-image for FLUX.2 klein/base and Qwen Image Edit (no masks yet).
 - The bundled local `Text→Video` tab is experimental and currently expected to have no shipped local model options until [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md) is resolved.
 - Response logs intentionally show a shortened `b64_json` preview instead of the full base64 payload.
 - “Extra JSON” is forwarded to the server:

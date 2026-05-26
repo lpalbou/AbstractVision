@@ -29,7 +29,8 @@ _OPENAI_COMPATIBLE_BACKEND_KINDS = {
     "openai-compatible",
     "proxy",
 }
-_LOCAL_RESIDENCY_BACKEND_KINDS = {"diffusers", "mflux", "sdcpp"}
+_MLX_GEN_BACKEND_ALIASES = {"mflux", "m-flux", "mlx-gen", "mlxgen"}
+_LOCAL_RESIDENCY_BACKEND_KINDS = {"diffusers", "mlx-gen", "mflux", "sdcpp"}
 _RESIDENCY_TASK_ALIASES = {
     "text_to_image": "text_to_image",
     "text-to-image": "text_to_image",
@@ -200,7 +201,7 @@ def _backend_catalog_enabled(owner: Any, provider_id: Optional[str], backend: An
     return _remote_provider_catalog_enabled(provider, base_url=base_url, api_key=api_key)
 
 def _mflux_weights_present() -> bool:
-    """Return True when MFLUX preset weights appear to be downloaded locally."""
+    """Return True when MLX-Gen preset weights appear to be downloaded locally."""
     if sys.platform != "darwin":
         return False
     try:
@@ -210,21 +211,26 @@ def _mflux_weights_present() -> bool:
             framework_hf_cache_roots,
             resolve_hf_repo_snapshot,
         )
-        from ..model_downloads import model_presets
+        from ..model_downloads import looks_like_hf_repo_id, model_presets
     except Exception:
         return False
     cache_root = str(default_hf_cache_root())
     legacy_root = default_legacy_model_root()
-    for preset in model_presets(target="mlx", engine="mflux", include_non_8bit=False):
+    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False):
         local_dir = legacy_root / preset.local_dir_name
         try:
-            if resolve_hf_repo_snapshot(
-                preset.repo_id,
-                cache_dir=cache_root,
-                require_weight_files=True,
-                extra_roots=framework_hf_cache_roots(),
-            ) is not None:
-                return True
+            candidate_repo_ids = [preset.repo_id]
+            for alias in preset.aliases or ():
+                if looks_like_hf_repo_id(alias) and alias not in candidate_repo_ids:
+                    candidate_repo_ids.append(alias)
+            for repo_id in candidate_repo_ids:
+                if resolve_hf_repo_snapshot(
+                    repo_id,
+                    cache_dir=cache_root,
+                    require_weight_files=True,
+                    extra_roots=framework_hf_cache_roots(),
+                ) is not None:
+                    return True
             if local_dir.is_dir() and any(local_dir.rglob("*.safetensors")):
                 return True
         except Exception:
@@ -241,10 +247,10 @@ def _runtime_installed(provider: str) -> bool | None:
     if p in {"huggingface", "diffusers", "hf"}:
         # Diffusers backends require both diffusers and torch.
         return importlib.util.find_spec("diffusers") is not None and importlib.util.find_spec("torch") is not None
-    if p in {"mflux", "m-flux"}:
+    if p in _MLX_GEN_BACKEND_ALIASES:
         if sys.platform != "darwin":
             return False
-        return importlib.util.find_spec("mflux") is not None and importlib.util.find_spec("mlx") is not None
+        return importlib.util.find_spec("mlxgen") is not None and importlib.util.find_spec("mlx") is not None
     if p in {"sdcpp", "stable-diffusion.cpp", "stable-diffusion-cpp", "stable_diffusion_cpp"}:
         return importlib.util.find_spec("stable_diffusion_cpp") is not None
     return None
@@ -350,7 +356,7 @@ def _backend_supports_provider_catalog(backend: Any) -> bool:
 def _provider_id_for_backend(backend: Any) -> Optional[str]:
     name = type(backend).__name__.lower()
     if "mflux" in name:
-        return "mflux"
+        return "mlx-gen"
     if "huggingface" in name or "diffusers" in name:
         return "huggingface"
     if "stable" in name and "diffusion" in name:
@@ -367,8 +373,8 @@ def _canonical_backend_kind(value: Any) -> Optional[str]:
         return None
     if provider in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
         return "diffusers"
-    if provider in {"mflux", "m-flux"}:
-        return "mflux"
+    if provider in _MLX_GEN_BACKEND_ALIASES:
+        return "mlx-gen"
     if provider in {
         "sdcpp",
         "sd-cpp",
@@ -420,16 +426,21 @@ def _has_local_mflux_preset(model_id: str) -> bool:
             framework_hf_cache_roots,
             resolve_hf_repo_snapshot,
         )
-        from ..model_downloads import find_model_preset
+        from ..model_downloads import find_model_preset, looks_like_hf_repo_id
 
-        preset = find_model_preset(str(model_id), target="mlx", engine="mflux", require_8bit=True)
-        if resolve_hf_repo_snapshot(
-            preset.repo_id,
-            cache_dir=str(default_hf_cache_root()),
-            require_weight_files=True,
-            extra_roots=framework_hf_cache_roots(),
-        ) is not None:
-            return True
+        preset = find_model_preset(str(model_id), target="mlx", engine="mlx-gen", require_8bit=True)
+        candidate_repo_ids = [preset.repo_id]
+        for alias in preset.aliases or ():
+            if looks_like_hf_repo_id(alias) and alias not in candidate_repo_ids:
+                candidate_repo_ids.append(alias)
+        for repo_id in candidate_repo_ids:
+            if resolve_hf_repo_snapshot(
+                repo_id,
+                cache_dir=str(default_hf_cache_root()),
+                require_weight_files=True,
+                extra_roots=framework_hf_cache_roots(),
+            ) is not None:
+                return True
         local_dir = default_legacy_model_root() / preset.local_dir_name
         return local_dir.exists() and any(local_dir.rglob("*.safetensors"))
     except Exception:
@@ -442,7 +453,7 @@ def _is_known_mflux_model_alias(model_id: str) -> bool:
     try:
         from ..model_downloads import find_model_preset
 
-        find_model_preset(str(model_id), target="mlx", engine="mflux", require_8bit=True)
+        find_model_preset(str(model_id), target="mlx", engine="mlx-gen", require_8bit=True)
         return True
     except Exception:
         return False
@@ -455,7 +466,20 @@ def _canonical_mflux_model_id(model_id: Optional[str]) -> Optional[str]:
     try:
         from ..model_downloads import find_model_preset
 
-        return str(find_model_preset(s, target="mlx", engine="mflux", require_8bit=True).key)
+        preset = find_model_preset(s, target="mlx", engine="mlx-gen", require_8bit=True)
+        requested = s.lower().replace("_", "-")
+        upstream = str(preset.upstream_repo_id or "").strip().lower().replace("_", "-")
+        # Keep explicit q4/q8, legacy, dated, and exact download-repo selectors
+        # intact so routed backends do not collapse distinct cached variants.
+        if requested == str(preset.key).strip().lower().replace("_", "-"):
+            return str(preset.key)
+        if upstream and requested == upstream:
+            return str(preset.key)
+        if any(token in requested for token in ("q8", "8bit", "q4", "4bit", "legacy", "2509", "2511")):
+            return s
+        if "/" in requested:
+            return s
+        return str(preset.key)
     except Exception:
         return s
 
@@ -552,10 +576,12 @@ class _AbstractVisionCapability:
         if kind == "diffusers":
             value = getattr(cfg, "model_id", None) or requested or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID
             return str(value).strip() or _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID
-        if kind == "mflux":
+        if kind == "mlx-gen":
             value = (
                 getattr(cfg, "model", None)
                 or requested
+                or _owner_cfg(self._owner, "vision_mlx_gen_model")
+                or _env("ABSTRACTVISION_MLX_GEN_MODEL")
                 or _owner_cfg(self._owner, "vision_mflux_model")
                 or _env("ABSTRACTVISION_MFLUX_MODEL")
                 or _owner_cfg(self._owner, "vision_model_id")
@@ -585,13 +611,13 @@ class _AbstractVisionCapability:
         if model_id and "/" in model_id:
             head, tail = model_id.split("/", 1)
             head_id = head.strip().lower().replace("_", "-")
-            if head_id == "mflux":
-                provider_id = "mflux"
+            if head_id in _MLX_GEN_BACKEND_ALIASES:
+                provider_id = "mlx-gen"
                 model_id = tail.strip()
             elif head_id == "mlx":
                 raise AbstractVisionError(
                     "AbstractVision does not have a generic MLX image backend yet. "
-                    "Use provider/model `mflux/<preset>` for MFLUX-compatible 8-bit MLX models."
+                    "Use provider/model `mlx-gen/<preset>` for MLX-Gen q4/q8 image models."
                 )
             elif head_id in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
                 provider_id = "diffusers"
@@ -601,28 +627,28 @@ class _AbstractVisionCapability:
                     provider_id = "openai" if head_id == "openai" else "openai-compatible"
                 model_id = _strip_openai_model_prefixes(model_id)
         if model_id and not provider_id and _has_local_mflux_preset(model_id):
-            provider_id = "mflux"
+            provider_id = "mlx-gen"
         if (
             not provider_id
             and model_id.count("/") == 1
             and not model_id.startswith(("./", "../", "/", "~"))
             and "://" not in model_id
         ):
-            provider_id = "mflux" if _has_local_mflux_preset(model_id) else "diffusers"
+            provider_id = "mlx-gen" if _has_local_mflux_preset(model_id) else "diffusers"
         if provider_id == "mlx":
             raise AbstractVisionError(
                 "AbstractVision does not have a generic MLX image backend yet. "
-                "Use provider 'mflux' for MFLUX-compatible 8-bit MLX models."
+                "Use provider 'mlx-gen' for MLX-Gen q4/q8 image models."
             )
-        if provider_id in {"mflux", "m-flux"}:
+        if provider_id in _MLX_GEN_BACKEND_ALIASES:
             model_id = _canonical_mflux_model_id(model_id)
 
         backend: Any
         backend_key: tuple[Any, ...]
         backend_kind: Optional[str]
-        if provider_id in {"mflux", "m-flux"}:
-            backend_kind = "mflux"
-            backend_key = ("mflux", model_id)
+        if provider_id in _MLX_GEN_BACKEND_ALIASES:
+            backend_kind = "mlx-gen"
+            backend_key = ("mlx-gen", model_id)
             backend = self._routed_backends.get(backend_key)
             if backend is None:
                 backend = self._make_mflux_backend(model_id=model_id or None)
@@ -703,7 +729,7 @@ class _AbstractVisionCapability:
             return
         raise AbstractVisionError(
             "Model residency control is only available for in-process local AbstractVision backends "
-            "('diffusers', 'mflux', and 'sdcpp'). OpenAI-compatible HTTP backends are not controllable "
+            "('diffusers', 'mlx-gen', and 'sdcpp'). OpenAI-compatible HTTP backends are not controllable "
             "through this plugin, even when they point to localhost."
         )
 
@@ -983,6 +1009,8 @@ class _AbstractVisionCapability:
             if isinstance(model_id, str) and str(model_id).strip()
             else (
                 _owner_cfg(self._owner, "vision_mflux_model")
+                or _owner_cfg(self._owner, "vision_mlx_gen_model")
+                or _env("ABSTRACTVISION_MLX_GEN_MODEL")
                 or _env("ABSTRACTVISION_MFLUX_MODEL")
                 or _owner_cfg(self._owner, "vision_model_id")
                 or _env("ABSTRACTVISION_MODEL")
@@ -991,18 +1019,31 @@ class _AbstractVisionCapability:
             )
         )
         resolved_model = _canonical_mflux_model_id(str(resolved_model) if resolved_model else None)
-        base_model = _owner_cfg(self._owner, "vision_mflux_base_model") or _env(
-            "ABSTRACTVISION_MFLUX_BASE_MODEL"
+        base_model = (
+            _owner_cfg(self._owner, "vision_mlx_gen_base_model")
+            or _env("ABSTRACTVISION_MLX_GEN_BASE_MODEL")
+            or _owner_cfg(self._owner, "vision_mflux_base_model")
+            or _env("ABSTRACTVISION_MFLUX_BASE_MODEL")
         )
         model_dir = _owner_cfg(self._owner, "vision_model_dir") or _env("ABSTRACTVISION_MODEL_DIR")
-        quantize_raw = _owner_cfg(self._owner, "vision_mflux_quantize") or _env(
-            "ABSTRACTVISION_MFLUX_QUANTIZE"
+        quantize_raw = (
+            _owner_cfg(self._owner, "vision_mlx_gen_quantize")
+            or _env("ABSTRACTVISION_MLX_GEN_QUANTIZE")
+            or _owner_cfg(self._owner, "vision_mflux_quantize")
+            or _env("ABSTRACTVISION_MFLUX_QUANTIZE")
         )
         quantize = int(quantize_raw) if quantize_raw else None
         allow_download = _owner_cfg_bool(
             self._owner,
-            "vision_mflux_allow_download",
-            _env_bool("ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD", False),
+            "vision_mlx_gen_allow_download",
+            _env_bool(
+                "ABSTRACTVISION_MLX_GEN_ALLOW_DOWNLOAD",
+                _owner_cfg_bool(
+                    self._owner,
+                    "vision_mflux_allow_download",
+                    _env_bool("ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD", False),
+                ),
+            ),
         )
 
         from ..backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1144,8 +1185,8 @@ class _AbstractVisionCapability:
             "stable_diffusion_cpp",
         }:
             backend_kind = "sdcpp"
-        elif backend_kind in {"m-flux"}:
-            backend_kind = "mflux"
+        elif backend_kind in _MLX_GEN_BACKEND_ALIASES:
+            backend_kind = "mlx-gen"
 
         configured_model_for_auto = (
             _owner_cfg(self._owner, "vision_mflux_model")
@@ -1162,11 +1203,11 @@ class _AbstractVisionCapability:
             and configured_model_for_auto
             and (
                 _has_local_mflux_preset(str(configured_model_for_auto))
-                or raw_backend_kind in {"mflux", "m-flux"} and _is_known_mflux_model_alias(str(configured_model_for_auto))
+                or raw_backend_kind in _MLX_GEN_BACKEND_ALIASES and _is_known_mflux_model_alias(str(configured_model_for_auto))
             )
-            and raw_backend_kind in {"", "huggingface", "hf", "hf-diffusers", "diffusers", "mflux", "m-flux"}
+            and raw_backend_kind in {"", "huggingface", "hf", "hf-diffusers", "diffusers", *_MLX_GEN_BACKEND_ALIASES}
         ):
-            backend_kind = "mflux"
+            backend_kind = "mlx-gen"
 
         if backend_kind == "diffusers":
             self._backend = self._make_diffusers_backend()
@@ -1176,14 +1217,14 @@ class _AbstractVisionCapability:
             self._backend = self._make_sdcpp_backend()
             return self._backend
 
-        if backend_kind == "mflux":
+        if backend_kind == "mlx-gen":
             self._backend = self._make_mflux_backend()
             return self._backend
 
         if backend_kind != "openai":
             raise AbstractVisionError(
                 f"Unsupported AbstractVision backend for AbstractCore plugin: {backend_kind!r}. "
-                "Use 'mflux', 'diffusers', 'sdcpp', 'openai-compatible', or 'openai'."
+                "Use 'mlx-gen', 'diffusers', 'sdcpp', 'openai-compatible', or 'openai'."
             )
 
         base_url = configured_base_url
@@ -1291,9 +1332,9 @@ class _AbstractVisionCapability:
 
         active_provider = backends[0][1] if backends else None
 
-        if not injected_backend and active_provider != "mflux":
+        if not injected_backend and active_provider != "mlx-gen":
             try:
-                backends.append((self._make_mflux_backend(), "mflux"))
+                backends.append((self._make_mflux_backend(), "mlx-gen"))
             except Exception:
                 pass
 
@@ -1384,13 +1425,13 @@ class _AbstractVisionCapability:
             api_key=api_key,
         )
 
-        known = ["openai", "openai-compatible", "huggingface", "mflux", "sdcpp"]
+        known = ["openai", "openai-compatible", "huggingface", "mlx-gen", "mflux", "sdcpp"]
         available: list[str] = []
 
         if _runtime_installed("huggingface"):
             available.append("huggingface")
-        if _runtime_installed("mflux") or _mflux_weights_present():
-            available.append("mflux")
+        if _runtime_installed("mlx-gen") or _mflux_weights_present():
+            available.append("mlx-gen")
         if _runtime_installed("sdcpp"):
             available.append("sdcpp")
 
@@ -1401,7 +1442,7 @@ class _AbstractVisionCapability:
             available.append("openai")
 
         # Keep ordering stable for UIs.
-        order = ["openai", "openai-compatible", "huggingface", "mflux", "sdcpp"]
+        order = ["openai", "openai-compatible", "huggingface", "mlx-gen", "mflux", "sdcpp"]
         available_sorted = [provider for provider in order if provider in available]  # provider ids are canonical
 
         return {
@@ -1413,7 +1454,7 @@ class _AbstractVisionCapability:
                     "id": provider,
                     "provider": provider,
                     "installed": _runtime_installed(provider),
-                    "weights_present": _mflux_weights_present() if provider == "mflux" else None,
+                    "weights_present": _mflux_weights_present() if provider in {"mlx-gen", "mflux"} else None,
                     "remote": provider in {"openai", "openai-compatible"},
                     "local": provider not in {"openai", "openai-compatible"},
                     "reachable": (
@@ -1584,6 +1625,18 @@ class _AbstractVisionCapability:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
+        allowed_request_keys = {"negative_prompt", "seed", "steps", "guidance_scale", "extra"}
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
+            merged_extra["model"] = model.strip()
+        if merged_extra:
+            kwargs["extra"] = merged_extra
         vm = VisionManager(
             backend=backend,
             store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,

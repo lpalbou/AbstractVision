@@ -77,14 +77,20 @@ sdcpp = [
   "Pillow>=9.0",
 ]
 
-# Native Apple image generation via MFLUX/MLX. Kept optional because it pulls
+# Native Apple image generation via MLX-Gen. Kept optional because it pulls
 # Apple-specific local runtime dependencies.
+mlx-gen = [
+  "mlx-gen>=0.18.5,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'",
+]
+
+# Compatibility extra for callers that still install the historical MFLUX extra.
+# It intentionally installs MLX-Gen, not the retired standalone mflux package.
 mflux = [
-  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+  "mlx-gen>=0.18.5,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
 # Native Apple Python install profile. Docker cannot expose Apple's Metal stack,
-# but direct macOS installs can use PyTorch/MPS, stable-diffusion.cpp/Metal, and MFLUX/MLX.
+# but direct macOS installs can use PyTorch/MPS, stable-diffusion.cpp/Metal, and MLX-Gen/MLX.
 apple = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
@@ -99,7 +105,7 @@ apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+  "mlx-gen>=0.18.5,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -169,7 +175,7 @@ all = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+  "mlx-gen>=0.18.5,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -189,7 +195,7 @@ all-apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mflux>=0.17.5,<0.18.0; platform_system == 'Darwin'",
+  "mlx-gen>=0.18.5,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -360,6 +366,7 @@ ignore = [
 "tests/**/*" = ["B011"]
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 minversion = "7.0"
 addopts = "-ra --tb=short --strict-markers --strict-config --disable-warnings -p no:cacheprovider"
 testpaths = ["tests"]

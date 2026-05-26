@@ -42,7 +42,7 @@ Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvis
 - `OpenAICompatibleVisionBackend` (HTTP)
 - `HuggingFaceDiffusersVisionBackend` (local Diffusers images; local `text_to_video` groundwork is currently quarantined)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
-- `MFluxVisionBackend` (local Apple Silicon MFLUX bridge for curated MLX presets; supports `text_to_image` and FLUX.2 klein `image_to_image` edits without masks)
+- `MLXGenVisionBackend` / compatibility alias `MFluxVisionBackend` (local Apple Silicon MLX-Gen bridge for curated AbstractFramework q4/q8 MLX presets; supports `text_to_image` and FLUX.2 klein/base plus Qwen Image Edit `image_to_image` edits without masks)
 
 Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 

@@ -22,8 +22,8 @@ from .model_cache import (
 
 _GENERIC_MLX_BACKEND_ERROR = (
     "AbstractVision does not have a generic MLX image backend yet. "
-    "Use `--target mlx` to browse MLX artifacts and `--provider mflux` "
-    "(or `mflux/<preset>`) for MFLUX-compatible 8-bit MLX models."
+    "Use `--target mlx` to browse MLX artifacts and `--provider mlx-gen` "
+    "(legacy alias: `mflux`) for cache-backed MLX-Gen image models."
 )
 
 _MACOS_GGUF_DISABLED_ERROR = (
@@ -176,29 +176,51 @@ class HuggingFaceAccessError(RuntimeError):
 _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     VisionModelDownloadPreset(
         key="flux2-klein-4b",
-        display_name="FLUX.2 klein 4B MLX 8-bit",
-        repo_id="AITRADER/FLUX2-klein-4B-mlx-8bit",
+        display_name="FLUX.2 klein 4B MLX-Gen q4",
+        repo_id="AbstractFramework/flux.2-klein-4b-4bit",
         target="mlx",
-        engine="mflux",
-        local_dir_name="flux2-klein-4b-mlx-8bit",
-        quantization_bits=8,
+        engine="mlx-gen",
+        local_dir_name="flux2-klein-4b-mlx-gen-4bit",
+        quantization_bits=4,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-4B",
-        source="curated-community-mlx",
+        source="abstractframework-mlx-gen",
         aliases=(
             "flux2-klein-4b",
             "flux-klein-4b",
             "klein-4b",
             "klein4b",
             "flux4b",
+            "mlx-gen/flux2-klein-4b",
+            "AbstractFramework/flux.2-klein-4b-4bit",
+            "AITRADER/FLUX2-klein-4B-mlx-8bit",
             "moxin-org/FLUX.2-klein-4B-8bit-mlx",
             "Runpod/FLUX.2-klein-4B-mflux-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
-            "BFL publishes the upstream 4B model and an official FP8 artifact, but not an MLX "
-            "8-bit layout. Use this preset on Apple Silicon."
+            "AbstractFramework MLX-Gen prepared q4 folder. This is the default Apple Silicon "
+            "recommendation for local memory efficiency."
         ),
-        source_priority=30,
+        source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="flux2-klein-4b",
+        display_name="FLUX.2 klein 4B MLX-Gen q8",
+        repo_id="AbstractFramework/flux.2-klein-4b-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="flux2-klein-4b-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="black-forest-labs/FLUX.2-klein-4B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "flux2-klein-4b-q8",
+            "flux2-klein-4b-8bit",
+            "AbstractFramework/flux.2-klein-4b-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
+        source_priority=25,
     ),
     VisionModelDownloadPreset(
         key="flux2-klein-4b",
@@ -262,6 +284,48 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     ),
     VisionModelDownloadPreset(
         key="flux2-klein-base-4b",
+        display_name="FLUX.2 klein base 4B MLX-Gen q4",
+        repo_id="AbstractFramework/flux.2-klein-base-4b-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="flux2-klein-base-4b-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="black-forest-labs/FLUX.2-klein-base-4B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "flux2-klein-base-4b",
+            "flux-klein-base-4b",
+            "klein-base-4b",
+            "kleinbase4b",
+            "fluxbase4b",
+            "mlx-gen/flux2-klein-base-4b",
+            "AbstractFramework/flux.2-klein-base-4b-4bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q4 folder. Prefer this unless quality is paramount.",
+        source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="flux2-klein-base-4b",
+        display_name="FLUX.2 klein base 4B MLX-Gen q8",
+        repo_id="AbstractFramework/flux.2-klein-base-4b-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="flux2-klein-base-4b-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="black-forest-labs/FLUX.2-klein-base-4B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "flux2-klein-base-4b-q8",
+            "flux2-klein-base-4b-8bit",
+            "AbstractFramework/flux.2-klein-base-4b-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
+        source_priority=25,
+    ),
+    VisionModelDownloadPreset(
+        key="flux2-klein-base-4b",
         display_name="FLUX.2 klein base 4B GGUF Q8_0",
         repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
         target="gguf",
@@ -277,29 +341,51 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     ),
     VisionModelDownloadPreset(
         key="flux2-klein-9b",
-        display_name="FLUX.2 klein 9B MLX 8-bit",
-        repo_id="deepsweet/FLUX.2-klein-9B-MLX-Q8",
+        display_name="FLUX.2 klein 9B MLX-Gen q4",
+        repo_id="AbstractFramework/flux.2-klein-9b-4bit",
         target="mlx",
-        engine="mflux",
-        local_dir_name="flux2-klein-9b-mlx-8bit",
-        quantization_bits=8,
+        engine="mlx-gen",
+        local_dir_name="flux2-klein-9b-mlx-gen-4bit",
+        quantization_bits=4,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-9B",
-        source="curated-community-mlx",
+        source="abstractframework-mlx-gen",
         aliases=(
             "flux2-klein-9b",
             "flux-klein-9b",
             "klein-9b",
             "klein9b",
             "flux9b",
+            "mlx-gen/flux2-klein-9b",
+            "AbstractFramework/flux.2-klein-9b-4bit",
+            "deepsweet/FLUX.2-klein-9B-MLX-Q8",
             "deepsweet/FLUX.2-klein-9B-MLX-Q4",
             "themindstudio/flux2-klein-9b-mlx-4bit",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
-            "BFL publishes the upstream 9B model and official FP8 artifacts, but not an MLX "
-            "8-bit layout. Use this preset on Apple Silicon."
+            "AbstractFramework MLX-Gen prepared q4 folder. This is the default Apple Silicon "
+            "recommendation for local memory efficiency."
         ),
-        source_priority=30,
+        source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="flux2-klein-9b",
+        display_name="FLUX.2 klein 9B MLX-Gen q8",
+        repo_id="AbstractFramework/flux.2-klein-9b-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="flux2-klein-9b-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="black-forest-labs/FLUX.2-klein-9B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "flux2-klein-9b-q8",
+            "flux2-klein-9b-8bit",
+            "AbstractFramework/flux.2-klein-9b-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
+        source_priority=25,
     ),
     VisionModelDownloadPreset(
         key="flux2-klein-9b",
@@ -363,6 +449,48 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
     ),
     VisionModelDownloadPreset(
         key="flux2-klein-base-9b",
+        display_name="FLUX.2 klein base 9B MLX-Gen q4",
+        repo_id="AbstractFramework/flux.2-klein-base-9b-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="flux2-klein-base-9b-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="black-forest-labs/FLUX.2-klein-base-9B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "flux2-klein-base-9b",
+            "flux-klein-base-9b",
+            "klein-base-9b",
+            "kleinbase9b",
+            "fluxbase9b",
+            "mlx-gen/flux2-klein-base-9b",
+            "AbstractFramework/flux.2-klein-base-9b-4bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q4 folder. Prefer this unless quality is paramount.",
+        source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="flux2-klein-base-9b",
+        display_name="FLUX.2 klein base 9B MLX-Gen q8",
+        repo_id="AbstractFramework/flux.2-klein-base-9b-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="flux2-klein-base-9b-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="black-forest-labs/FLUX.2-klein-base-9B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "flux2-klein-base-9b-q8",
+            "flux2-klein-base-9b-8bit",
+            "AbstractFramework/flux.2-klein-base-9b-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
+        source_priority=25,
+    ),
+    VisionModelDownloadPreset(
+        key="flux2-klein-base-9b",
         display_name="FLUX.2 klein base 9B GGUF Q8_0",
         repo_id="leejet/FLUX.2-klein-base-9B-GGUF",
         target="gguf",
@@ -392,30 +520,83 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source_priority=90,
     ),
     VisionModelDownloadPreset(
-        key="z-image-turbo",
-        display_name="Z-Image-Turbo mflux MLX 8-bit",
-        repo_id="carsenk/z-image-turbo-mflux-8bit",
+        key="z-image",
+        display_name="Z-Image MLX-Gen q4",
+        repo_id="AbstractFramework/z-image-4bit",
         target="mlx",
-        engine="mflux",
-        local_dir_name="z-image-turbo-mlx-8bit",
+        engine="mlx-gen",
+        local_dir_name="z-image-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="Tongyi-MAI/Z-Image",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "z-image",
+            "zimage",
+            "tongyi-z-image",
+            "mlx-gen/z-image",
+            "AbstractFramework/z-image-4bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q4 folder. Prefer this unless quality is paramount.",
+        source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="z-image",
+        display_name="Z-Image MLX-Gen q8",
+        repo_id="AbstractFramework/z-image-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="z-image-mlx-gen-8bit",
         quantization_bits=8,
+        upstream_repo_id="Tongyi-MAI/Z-Image",
+        source="abstractframework-mlx-gen",
+        aliases=("z-image-q8", "z-image-8bit", "AbstractFramework/z-image-8bit"),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
+        source_priority=25,
+    ),
+    VisionModelDownloadPreset(
+        key="z-image-turbo",
+        display_name="Z-Image-Turbo MLX-Gen q4",
+        repo_id="AbstractFramework/z-image-turbo-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="z-image-turbo-mlx-gen-4bit",
+        quantization_bits=4,
         upstream_repo_id="Tongyi-MAI/Z-Image-Turbo",
-        source="curated-community-mflux",
+        source="abstractframework-mlx-gen",
         aliases=(
             "z-image-turbo",
             "zimage-turbo",
-            "z-image",
             "tongyi-z-image-turbo",
+            "mlx-gen/z-image-turbo",
+            "AbstractFramework/z-image-turbo-4bit",
+            "carsenk/z-image-turbo-mflux-8bit",
             "andrevp/Z-Image-Turbo-MLX",
             "andrevp/Z-Image-Turbo-MLX-8bit",
             "illusion615/Z-Image-Turbo-MLX",
         ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
-            "Tongyi-MAI publishes the upstream full model; this preset keeps Apple Silicon "
-            "downloads on an mflux-compatible MLX 8-bit conversion."
+            "AbstractFramework MLX-Gen prepared q4 folder. This is the default Apple Silicon "
+            "recommendation for local memory efficiency."
         ),
-        source_priority=30,
+        source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="z-image-turbo",
+        display_name="Z-Image-Turbo MLX-Gen q8",
+        repo_id="AbstractFramework/z-image-turbo-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="z-image-turbo-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="Tongyi-MAI/Z-Image-Turbo",
+        source="abstractframework-mlx-gen",
+        aliases=("z-image-turbo-q8", "z-image-turbo-8bit", "AbstractFramework/z-image-turbo-8bit"),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
+        source_priority=25,
     ),
     VisionModelDownloadPreset(
         key="z-image-turbo",
@@ -427,7 +608,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=16,
         upstream_repo_id=None,
         source="official",
-        aliases=("z-image-turbo", "zimage-turbo", "z-image", "tongyi-z-image-turbo"),
+        aliases=("z-image-turbo", "zimage-turbo", "tongyi-z-image-turbo"),
         allow_patterns=(
             "model_index.json",
             "*.json",
@@ -450,28 +631,197 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         quantization_bits=8,
         upstream_repo_id="Tongyi-MAI/Z-Image-Turbo",
         source="curated-community-gguf",
-        aliases=("z-image-turbo", "zimage-turbo", "z-image", "tongyi-z-image-turbo"),
+        aliases=("z-image-turbo", "zimage-turbo", "tongyi-z-image-turbo"),
         allow_patterns=("README.md", "LICENSE*", "z-image-turbo-Q8_0.gguf"),
         notes="Q8_0 GGUF for stable-diffusion.cpp style runtimes.",
         source_priority=40,
     ),
     VisionModelDownloadPreset(
         key="qwen-image",
-        display_name="Qwen-Image-2512 MLX 8-bit (MFLUX)",
-        repo_id="mlx-community/Qwen-Image-2512-8bit",
+        display_name="Qwen-Image-2512 MLX-Gen q4",
+        repo_id="AbstractFramework/qwen-image-2512-4bit",
         target="mlx",
-        engine="mflux",
-        local_dir_name="qwen-image-2512-mlx-8bit",
-        quantization_bits=8,
+        engine="mlx-gen",
+        local_dir_name="qwen-image-2512-mlx-gen-4bit",
+        quantization_bits=4,
         upstream_repo_id="Qwen/Qwen-Image-2512",
-        source="mlx-community",
-        aliases=("qwen-image", "qwen-image-2512", "qwen-image-8bit", "qwen-image-2512-8bit"),
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "qwen-image",
+            "qwen-image-2512",
+            "qwen-image-4bit",
+            "qwen-image-2512-4bit",
+            "mlx-gen/qwen-image",
+            "AbstractFramework/qwen-image-2512-4bit",
+        ),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes=(
-            "The upstream Qwen Image 2512 repo ships full weights; this preset is a community MLX 8-bit conversion "
-            "compatible with the optional MFLUX runtime."
+            "AbstractFramework MLX-Gen prepared Qwen folder. Qwen prepared folders may mix q4/q8 "
+            "components; this is still the default local-memory recommendation."
         ),
         source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image",
+        display_name="Qwen-Image-2512 MLX-Gen q8",
+        repo_id="AbstractFramework/qwen-image-2512-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-2512-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="Qwen/Qwen-Image-2512",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "qwen-image-q8",
+            "qwen-image-8bit",
+            "qwen-image-2512-q8",
+            "qwen-image-2512-8bit",
+            "AbstractFramework/qwen-image-2512-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 Qwen Image folder. Prefer when output quality is paramount.",
+        source_priority=25,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image",
+        display_name="Qwen-Image legacy MLX-Gen q4",
+        repo_id="AbstractFramework/qwen-image-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="Qwen/Qwen-Image",
+        source="abstractframework-mlx-gen",
+        aliases=("qwen-image-legacy", "qwen-image-base", "AbstractFramework/qwen-image-4bit"),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared legacy Qwen Image folder; prefer Qwen-Image-2512 for new runs.",
+        source_priority=35,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image",
+        display_name="Qwen-Image legacy MLX-Gen q8",
+        repo_id="AbstractFramework/qwen-image-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="Qwen/Qwen-Image",
+        source="abstractframework-mlx-gen",
+        aliases=("qwen-image-legacy-q8", "qwen-image-base-q8", "AbstractFramework/qwen-image-8bit"),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared legacy q8 Qwen Image folder; prefer Qwen-Image-2512 for new runs.",
+        source_priority=40,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit",
+        display_name="Qwen-Image-Edit legacy MLX-Gen q4",
+        repo_id="AbstractFramework/qwen-image-edit-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-edit-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="Qwen/Qwen-Image-Edit",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "qwen-image-edit-legacy",
+            "qwen-image-edit-base",
+            "AbstractFramework/qwen-image-edit-4bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared legacy Qwen Image Edit folder; prefer Qwen-Image-Edit-2511 for new runs.",
+        source_priority=35,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit",
+        display_name="Qwen-Image-Edit legacy MLX-Gen q8",
+        repo_id="AbstractFramework/qwen-image-edit-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-edit-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="Qwen/Qwen-Image-Edit",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "qwen-image-edit-legacy-q8",
+            "qwen-image-edit-base-q8",
+            "AbstractFramework/qwen-image-edit-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared legacy q8 Qwen Image Edit folder; prefer Qwen-Image-Edit-2511 for new runs.",
+        source_priority=40,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit-2511",
+        display_name="Qwen-Image-Edit-2511 MLX-Gen q4",
+        repo_id="AbstractFramework/qwen-image-edit-2511-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-edit-2511-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "qwen-image-edit",
+            "qwen-image-edit-2511",
+            "mlx-gen/qwen-image-edit-2511",
+            "AbstractFramework/qwen-image-edit-2511-4bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared Qwen Image Edit 2511 folder for image-to-image/edit.",
+        source_priority=20,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit-2511",
+        display_name="Qwen-Image-Edit-2511 MLX-Gen q8",
+        repo_id="AbstractFramework/qwen-image-edit-2511-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-edit-2511-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "qwen-image-edit-2511-q8",
+            "qwen-image-edit-2511-8bit",
+            "AbstractFramework/qwen-image-edit-2511-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 Qwen Image Edit 2511 folder. Prefer when output quality is paramount.",
+        source_priority=25,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit-2509",
+        display_name="Qwen-Image-Edit-2509 MLX-Gen q4",
+        repo_id="AbstractFramework/qwen-image-edit-2509-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-edit-2509-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="Qwen/Qwen-Image-Edit-2509",
+        source="abstractframework-mlx-gen",
+        aliases=("qwen-image-edit-2509", "AbstractFramework/qwen-image-edit-2509-4bit"),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared Qwen Image Edit 2509 folder for image-to-image/edit.",
+        source_priority=25,
+    ),
+    VisionModelDownloadPreset(
+        key="qwen-image-edit-2509",
+        display_name="Qwen-Image-Edit-2509 MLX-Gen q8",
+        repo_id="AbstractFramework/qwen-image-edit-2509-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="qwen-image-edit-2509-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="Qwen/Qwen-Image-Edit-2509",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "qwen-image-edit-2509-q8",
+            "qwen-image-edit-2509-8bit",
+            "AbstractFramework/qwen-image-edit-2509-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="AbstractFramework MLX-Gen prepared q8 Qwen Image Edit 2509 folder. Prefer when output quality is paramount.",
+        source_priority=30,
     ),
     VisionModelDownloadPreset(
         key="qwen-image",
@@ -1105,7 +1455,7 @@ _SDCPP_BUNDLES_BY_REPO_ID: Dict[str, _SdcppBundleSpec] = {
 
 
 def _default_allow_patterns(*, target: str, engine: str) -> Tuple[str, ...]:
-    if target == "mlx" or engine == "mflux":
+    if target == "mlx" or engine in {"mflux", "mlx-gen"}:
         return _COMMON_MLX_PATTERNS
     if target == "fp8" or engine == "diffusers-component":
         return ("*.json", "*.md", "LICENSE*", "*.safetensors")
@@ -1121,8 +1471,14 @@ def _default_source_priority(*, source: str, target: str, engine: str, bits: Opt
     source_s = str(source or "").strip().lower()
     if target == "fp8" and bits == 8:
         return 0
-    if target == "mlx" and bits == 8:
+    if source_s == "abstractframework-mlx-gen" and target == "mlx" and bits == 4:
+        return 20
+    if source_s == "abstractframework-mlx-gen" and target == "mlx" and bits == 8:
+        return 25
+    if target == "mlx" and bits == 4:
         return 30
+    if target == "mlx" and bits == 8:
+        return 35
     if target == "gguf" and bits == 8:
         return 40
     if source_s == "official":
@@ -1148,9 +1504,19 @@ def _slugify_token(value: str) -> str:
     return slug or "model"
 
 
-def _default_local_dir_name(*, key: str, target: str, engine: str, repo_id: str) -> str:
+def _default_local_dir_name(
+    *,
+    key: str,
+    target: str,
+    engine: str,
+    repo_id: str,
+    bits: Optional[int] = None,
+) -> str:
     base = _slugify_token(key or repo_id.rsplit("/", 1)[-1])
     suffix = _slugify_token(target or engine)
+    if bits is not None and str(target or "").strip().lower() in {"mlx", "gguf", "fp8"}:
+        engine_part = _slugify_token(engine or target)
+        suffix = f"{engine_part}-{int(bits)}bit"
     if base.endswith(f"-{suffix}") or base == suffix:
         return base
     return f"{base}-{suffix}"
@@ -1163,7 +1529,8 @@ def _default_display_name(*, model_id: str, target: str, engine: str, bits: Opti
     engine_label = {
         "diffusers": "Diffusers",
         "diffusers-component": "Diffusers component",
-        "mflux": "MFLUX",
+        "mflux": "MLX-Gen",
+        "mlx-gen": "MLX-Gen",
         "stable-diffusion.cpp": "stable-diffusion.cpp",
         "transformers": "Transformers",
     }.get(str(engine), str(engine or target or "download"))
@@ -1221,6 +1588,7 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
                         target=str(dl.target),
                         engine=str(dl.engine),
                         repo_id=str(dl.repo_id),
+                        bits=dl.bits,
                     ),
                     quantization_bits=dl.bits,
                     upstream_repo_id=None if str(dl.repo_id) == str(model_id) else str(model_id),
@@ -1335,11 +1703,16 @@ def normalize_model_engine(engine: Optional[str]) -> Optional[str]:
         "sd-cpp": "stable-diffusion.cpp",
         "sdcpp": "stable-diffusion.cpp",
         "gguf": "stable-diffusion.cpp",
-        "metal": "mflux",
-        "apple": "mflux",
-        "mac": "mflux",
-        "macos": "mflux",
-        "osx": "mflux",
+        "mflux": "mlx-gen",
+        "m-flux": "mlx-gen",
+        "metal": "mlx-gen",
+        "apple": "mlx-gen",
+        "mac": "mlx-gen",
+        "macos": "mlx-gen",
+        "osx": "mlx-gen",
+        "mlx-gen": "mlx-gen",
+        "mlxgen": "mlx-gen",
+        "mlx_gen": "mlx-gen",
     }
     return aliases.get(value, value)
 
@@ -1362,6 +1735,7 @@ def resolve_model_target_and_engine(
     if raw_target in {"", "auto", "default"} and selected_engine is not None:
         engine_to_target = {
             "mflux": "mlx",
+            "mlx-gen": "mlx",
             "diffusers": "diffusers",
             "stable-diffusion.cpp": "gguf",
             "diffusers-component": "fp8",
@@ -1395,10 +1769,17 @@ def model_presets(
             continue
         if selected_engine is not None and preset.engine != selected_engine:
             continue
-        if not include_non_8bit and preset.quantization_bits != 8:
+        if not include_non_8bit and not _is_default_quantized_preset(preset):
             continue
         out.append(preset)
     return sorted(out, key=lambda p: (p.key, p.source_priority, p.repo_id))
+
+
+def _is_default_quantized_preset(preset: VisionModelDownloadPreset) -> bool:
+    bits = preset.quantization_bits
+    if preset.target == "mlx" and preset.engine in {"mflux", "mlx-gen"}:
+        return bits in {4, 8}
+    return bits == 8
 
 
 def find_model_preset(
@@ -1407,6 +1788,7 @@ def find_model_preset(
     target: Optional[str] = "auto",
     engine: Optional[str] = None,
     require_8bit: bool = True,
+    bits: Optional[int] = None,
 ) -> VisionModelDownloadPreset:
     raw_target = str(target or "auto").strip().lower()
     requested = str(name or "").strip().lower()
@@ -1415,6 +1797,8 @@ def find_model_preset(
     for prefix in (
         "mflux/",
         "m-flux/",
+        "mlx-gen/",
+        "mlxgen/",
         "diffusers/",
         "huggingface/",
         "hf/",
@@ -1430,6 +1814,7 @@ def find_model_preset(
     selected_engine = resolve_model_target_and_engine(target=target, engine=engine)[1]
     target_rank = {name: idx for idx, name in enumerate(selected_targets)}
     selected_target_label = ",".join(selected_targets)
+    requested_bits = int(bits) if bits is not None else None
 
     def matches(preset: VisionModelDownloadPreset) -> bool:
         aliases = {a.lower() for a in preset.aliases}
@@ -1437,6 +1822,11 @@ def find_model_preset(
         if preset.upstream_repo_id:
             repo_ids.add(preset.upstream_repo_id.lower())
         return requested == preset.key or requested in aliases or requested in repo_ids
+
+    def matches_bits(preset: VisionModelDownloadPreset) -> bool:
+        return requested_bits is None or preset.quantization_bits == requested_bits
+
+    bits_label = f"{requested_bits}-bit " if requested_bits is not None else ""
 
     presets = _all_presets()
 
@@ -1449,9 +1839,10 @@ def find_model_preset(
         if p.target in selected_targets
         and (selected_engine is None or p.engine == selected_engine)
         and matches(p)
+        and matches_bits(p)
     ]
     if require_8bit:
-        candidates = [p for p in candidates if p.quantization_bits == 8]
+        candidates = [p for p in candidates if _is_default_quantized_preset(p)]
     if candidates:
         return sorted(candidates, key=_sort_key)[0]
 
@@ -1473,10 +1864,17 @@ def find_model_preset(
         if len(possible_targets) == 1:
             fallback_target = possible_targets[0]
             fallback = [p for p in any_engine_matches if p.target == fallback_target]
+            if requested_bits is not None:
+                fallback = [p for p in fallback if matches_bits(p)]
+                if not fallback:
+                    raise ValueError(
+                        f"No {bits_label}preset for {name!r}. Available target/engine choices: "
+                        + ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
+                    )
             if require_8bit:
-                eight_bit = [p for p in fallback if p.quantization_bits == 8]
-                if eight_bit:
-                    fallback = eight_bit
+                quantized = [p for p in fallback if _is_default_quantized_preset(p)]
+                if quantized:
+                    fallback = quantized
                 elif fallback_target != "hf-snapshot":
                     raise ValueError(
                         f"No 8-bit preset for {name!r}. Available target/engine choices: "
@@ -1489,18 +1887,18 @@ def find_model_preset(
         available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in target_matches}))
         engine_msg = f" and engine {selected_engine!r}" if selected_engine else ""
         raise ValueError(
-            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
+            f"No {bits_label or ('8-bit ' if require_8bit else '')}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
             f"Available target/repo choices: {available}"
         )
     if any_engine_matches:
         available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
         if selected_engine:
             raise ValueError(
-                f"No {'8-bit ' if require_8bit else ''}preset for {name!r} with engine {selected_engine!r}. "
+                f"No {bits_label or ('8-bit ' if require_8bit else '')}preset for {name!r} with engine {selected_engine!r}. "
                 f"Available target/engine choices: {available}"
             )
         raise ValueError(
-            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}. "
+            f"No {bits_label or ('8-bit ' if require_8bit else '')}preset for {name!r} on target {selected_target_label!r}. "
             f"Available target/engine choices: {available}"
         )
     raise ValueError(f"Unknown vision model preset {name!r}. Known presets: {', '.join(known)}")
@@ -1663,8 +2061,9 @@ def download_model_preset(
     ):
         raise RuntimeError(
             f"Downloaded snapshot for {preset.repo_id!r} is incomplete or missing model weights: {resolved}\n"
-            "This usually means the download was interrupted. Retry the download; if the repo is gated, "
-            "accept its terms first and authenticate with a Hugging Face token."
+            "This usually means the repository has no matching weight files, the download was interrupted, "
+            "or access is gated. Check that the Hub repository is populated; if it is gated, accept its terms "
+            "first and authenticate with a Hugging Face token."
         )
     return resolved
 

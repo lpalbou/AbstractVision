@@ -31,7 +31,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MFLUX supports `text_to_image` and FLUX.2 klein `image_to_image` edits (no masks yet).
+- Local MLX-Gen supports curated q4/q8 Apple Silicon `text_to_image` presets, including ERNIE Image Turbo q4/q8, and `image_to_image` for FLUX.2 klein/base plus Qwen Image Edit (no masks yet).
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - `image_to_video` still works only via the OpenAI-compatible backend **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
@@ -67,9 +67,9 @@ After that works, `black-forest-labs/FLUX.2-klein-4B` is the recommended next lo
 
 ## Do the one-shot CLI commands run locally?
 
-Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default to the OpenAI-compatible HTTP backend, but they also support local providers through `--provider diffusers`, `--provider mflux`, or `--provider sdcpp` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)).
+Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default to the OpenAI-compatible HTTP backend, but they also support local providers through `--provider diffusers`, `--provider mlx-gen`, or `--provider sdcpp` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)). The legacy `mflux` provider value is still accepted as an alias.
 
-For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mflux ...`, or `/backend sdcpp ...`.
+For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mlx-gen ...`, or `/backend sdcpp ...`.
 
 Current local video note:
 - local `t2v` is currently experimental and disabled from the normal bundled local surfaces;

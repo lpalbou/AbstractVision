@@ -149,7 +149,7 @@ The following rules now apply:
   - [`docs/backlog/completed/003_hf_model_landscape_and_capability_registry.md`](../backlog/completed/003_hf_model_landscape_and_capability_registry.md)
   - [`docs/backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md`](../backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md)
 - Open adoption and adjacent work:
-  - [`docs/backlog/planned/017_mlx_mflux_backend_strategy.md`](../backlog/planned/017_mlx_mflux_backend_strategy.md)
+  - [`docs/backlog/deprecated/017_mlx_mflux_backend_strategy.md`](../backlog/deprecated/017_mlx_mflux_backend_strategy.md)
   - [`docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md`](../backlog/planned/020_adapter_aware_model_graph_and_catalog.md)
 
 ## Related

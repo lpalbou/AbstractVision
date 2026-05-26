@@ -237,7 +237,7 @@ Included:
 - Completed: [011_abstractcore_tool_integration_and_artifact_refs.md](../completed/011_abstractcore_tool_integration_and_artifact_refs.md)
 - Completed: [016_abstractcore_plugin_catalog_discovery_surface.md](../completed/016_abstractcore_plugin_catalog_discovery_surface.md)
 - Completed: [019_best_effort_preload_warmup_for_local_backends.md](../completed/019_best_effort_preload_warmup_for_local_backends.md)
-- Planned: [017_mlx_mflux_backend_strategy.md](017_mlx_mflux_backend_strategy.md)
+- Deprecated: [017_mlx_mflux_backend_strategy.md](../deprecated/017_mlx_mflux_backend_strategy.md)
 - Docs reference: [docs/getting-started.md](../../getting-started.md)
 
 ## Expected outcomes

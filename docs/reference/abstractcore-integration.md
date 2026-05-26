@@ -26,19 +26,19 @@ Current behavior:
 - Compatible HTTP: set `OPENAI_BASE_URL` to a local/remote compatible `/v1` server. Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install `abstractvision[diffusers]`, then set `ABSTRACTVISION_BACKEND=diffusers` with `runwayml/stable-diffusion-v1-5` or another supported Diffusers model. It is cache-only/offline unless `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1` is set. Local `text_to_video` groundwork exists but is currently experimental and disabled from the normal local plugin surfaces.
-- Local MFLUX (Apple Silicon): install `abstractvision[mflux]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mflux`. Download an 8-bit MLX/MFLUX preset with `abstractvision download flux2-klein-4b --provider mflux` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed model ids such as `mflux/flux2-klein-4b`. Current bundled MFLUX support is `text_to_image` only.
+- Local MLX-Gen (Apple Silicon): install `abstractvision[mlx-gen]` (or `abstractvision[all-apple]`), then set `ABSTRACTVISION_BACKEND=mlx-gen`. Download an AbstractFramework q4 prepared preset with `abstractvision download flux2-klein-4b --provider mlx-gen` or `abstractvision download ernie-image-turbo --provider mlx-gen --bits 4`; select q8 explicitly with commands such as `abstractvision download ernie-image-turbo --provider mlx-gen --bits 8` (stored in the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is only a legacy import root). Use routed model ids such as `mlx-gen/flux2-klein-4b` or `mlx-gen/ernie-image-turbo`. q4 is the default recommendation for memory efficiency; q8 variants remain available for quality-focused runs. Legacy `mflux` provider values remain accepted as aliases.
 - stable-diffusion.cpp: set `ABSTRACTVISION_BACKEND=sdcpp` and configure either a model path or a curated model key such as `flux2-klein-base-4b`. Use an external `sd-cli`, or install `abstractvision[sdcpp]` for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to `ABSTRACTVISION_*` env vars.
 - Gateway/Core should pass process-level config or `owner.config` and report readiness; they should not mutate AbstractVision environment variables per request.
 
 Key config keys (owner.config):
 - `vision_backend_instance` / `vision_backend_factory` (advanced injection hooks; bypass env-driven backend creation)
-- `vision_backend` (`openai`, `openai-compatible`, `diffusers`, `mflux`, or `sdcpp`; default `openai`)
+- `vision_backend` (`openai`, `openai-compatible`, `diffusers`, `mlx-gen`, or `sdcpp`; default `openai`; `mflux` is accepted as a compatibility alias)
 - `vision_model_id` (Diffusers/OpenAI-compatible model id; default `gpt-image-1` only for the official OpenAI profile and `runwayml/stable-diffusion-v1-5` for Diffusers)
 - `vision_device` / `vision_torch_dtype` / `vision_allow_download` / `vision_auto_retry_fp32` (Diffusers)
 - `vision_base_url` / `vision_api_key` (OpenAI or compatible HTTP)
-- `vision_mflux_model` / `vision_mflux_base_model` / `vision_mflux_quantize` / `vision_mflux_allow_download` (MFLUX)
-- `vision_model_dir` (legacy preset import root used by MFLUX compatibility/migration helpers; new downloads land in the Hugging Face cache)
+- `vision_mflux_model` / `vision_mflux_base_model` / `vision_mflux_quantize` / `vision_mflux_allow_download` (MLX-Gen; env/config names keep MFLUX compatibility)
+- `vision_model_dir` (legacy preset import root used by MLX-Gen compatibility/migration helpers; new downloads land in the Hugging Face cache)
 - `vision_sdcpp_model` / `vision_sdcpp_diffusion_model` / `vision_sdcpp_bin` (stable-diffusion.cpp; `vision_sdcpp_model` may be a curated model key such as `flux2-klein-base-4b`)
 - `vision_sdcpp_vae` / `vision_sdcpp_llm` / `vision_sdcpp_llm_vision` / `vision_sdcpp_clip_l` / `vision_sdcpp_clip_g` / `vision_sdcpp_t5xxl` / `vision_sdcpp_extra_args` (stable-diffusion.cpp component mode)
 - `vision_timeout_s` (optional)
@@ -101,7 +101,7 @@ inspection only: it does not mutate the configured backend or select a generatio
 
 Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
 of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
-remain separate local-backend concerns, while MFLUX and Diffusers provider listings reflect
+remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate `~/models` download tree.
 
 ### Local Model Residency Control
@@ -111,21 +111,21 @@ object:
 
 ```python
 llm.vision.load_resident_model(
-    {"task": "text_to_image", "provider": "mflux", "model": "flux2-klein-4b"}
+    {"task": "text_to_image", "provider": "mlx-gen", "model": "flux2-klein-4b"}
 )
 
 loaded = llm.vision.list_loaded_models()
 resident = llm.vision.list_resident_models()
 
 llm.vision.unload_resident_model(
-    {"provider": "mflux", "model": "flux2-klein-4b"}
+    {"provider": "mlx-gen", "model": "flux2-klein-4b"}
 )
 ```
 
 Notes:
 
 - this surface is local-only and process-local;
-- it controls only AbstractVision-managed in-process backends (`diffusers`, `mflux`, `sdcpp`);
+- it controls only AbstractVision-managed in-process backends (`diffusers`, `mlx-gen`, `sdcpp`);
 - OpenAI/OpenAI-compatible HTTP backends are intentionally rejected here, even on `localhost`,
   because the plugin cannot honestly control another process's loaded-state.
 
@@ -150,7 +150,7 @@ execution. That means model-specific constraints are shared with the CLI/REPL an
 instead of being reimplemented in the plugin layer.
 
 Current examples:
-- Distilled MFLUX/FLUX-family models can clamp guidance or minimum steps in the backend.
+- Distilled MLX-Gen/FLUX-family models can clamp guidance or minimum steps in the backend.
 - Diffusers-backed image requests pick up registry-driven defaults such as recommended step counts,
   guidance defaults, and dimension constraints.
 - Unsupported parameters, such as negative prompts on constrained model families, are dropped in

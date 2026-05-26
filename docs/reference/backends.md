@@ -13,7 +13,7 @@ See also:
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. Local `text_to_video` groundwork exists but is currently experimental and disabled from the normal local surfaces. |
-| MFLUX (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image` (+ FLUX.2 klein `image_to_image`) | Requires `abstractvision[mflux]` (or `abstractvision[all-apple]`). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
+| MLX-Gen (local, Apple Silicon) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image` (+ FLUX.2 klein/base and Qwen Image Edit `image_to_image`) | Requires `abstractvision[mlx-gen]` (or compatibility extra `abstractvision[mflux]`, or `abstractvision[all-apple]`). Uses downloaded AbstractFramework q4/q8 MLX-Gen preset snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
@@ -114,42 +114,51 @@ Runtime behavior notes:
 - Local video export still requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for MP4 packaging.
 - This backend is where model-specific defaults and constraints such as packaged step counts, guidance defaults, dimension constraints, and unsupported-parameter dropping are enforced for all callers.
 
-## MFLUX backend (local Apple Silicon)
+## MLX-Gen backend (local Apple Silicon)
 
 **When to use**
-- You are on Apple Silicon and want local 8-bit MLX generation through the optional MFLUX runtime.
+- You are on Apple Silicon and want local quantized MLX generation through the optional MLX-Gen runtime.
+- You want the AbstractFramework-published q4/q8 prepared folders from the [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
 
 Install:
-- `pip install "abstractvision[mflux]"` (or `pip install "abstractvision[all-apple]"`)
+- `pip install "abstractvision[mlx-gen]"` (or `pip install "abstractvision[all-apple]"`)
+- `pip install "abstractvision[mflux]"` remains a compatibility alias for older install instructions.
 
 Model presets:
 - See what's downloadable for your machine/engine:
-  - `abstractvision catalog --provider mflux` (add `--all` for full fallback list)
-  - Tip: `--provider mflux` implies `--target mlx` (you usually set one or the other).
-- Download a curated 8-bit preset into the Hugging Face cache (legacy `~/models` trees auto-migrate when encountered):
-  - `abstractvision download flux2-klein-4b --provider mflux`
-  - `abstractvision download flux2-klein-9b --provider mflux`
-  - `abstractvision download qwen-image --provider mflux`
-  - `abstractvision download z-image-turbo --provider mflux`
-- Current shipped backend coverage is limited to those curated MFLUX families for `text_to_image`: `flux2-klein-4b`, `flux2-klein-9b`, `qwen-image`, and `z-image-turbo`. `image_to_image` edits are implemented for the FLUX.2 klein presets only (no masks yet).
+  - `abstractvision catalog --provider mlx-gen` (add `--all` for full fallback list)
+  - Tip: `--provider mlx-gen` implies `--target mlx` (you usually set one or the other).
+- Download a curated preset into the Hugging Face cache (legacy `~/models` trees auto-migrate when encountered):
+  - `abstractvision download flux2-klein-4b --provider mlx-gen`
+  - `abstractvision download flux2-klein-9b --provider mlx-gen`
+  - `abstractvision download qwen-image --provider mlx-gen`
+  - `abstractvision download qwen-image-edit-2511 --provider mlx-gen`
+  - `abstractvision download z-image --provider mlx-gen`
+  - `abstractvision download z-image-turbo --provider mlx-gen`
+  - `abstractvision download ernie-image-turbo --provider mlx-gen --bits 4`
+  - `abstractvision download ernie-image-turbo --provider mlx-gen --bits 8`
+- q4 presets are the default recommendation for memory efficiency. Use the `-8bit` / q8 preset variants explicitly when quality is paramount. Qwen and ERNIE q4 prepared folders can mix q4 and q8 components, but remain the default prepared choice.
+- Current shipped backend coverage includes `text_to_image` for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, and ERNIE Image Turbo. `image_to_image` edits are implemented for FLUX.2 klein/base and Qwen Image Edit presets (no masks yet).
 
 Config/env:
-- `ABSTRACTVISION_PROVIDER=mflux` (alias: `ABSTRACTVISION_BACKEND=mflux`)
-- `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` (or routed ids like `mflux/flux2-klein-4b`)
+- `ABSTRACTVISION_PROVIDER=mlx-gen` (alias: `ABSTRACTVISION_BACKEND=mlx-gen`)
+- `ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b` (or routed ids like `mlx-gen/flux2-klein-4b`)
 - Optional: `ABSTRACTVISION_MFLUX_BASE_MODEL`, `ABSTRACTVISION_MFLUX_QUANTIZE`, `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD`, `ABSTRACTVISION_MODEL_DIR` (legacy migration root only)
+- Legacy `mflux` provider values and routed ids remain accepted as compatibility aliases.
 
-Non-curated MFLUX models:
-- If you have an MFLUX-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
+Non-curated MLX-Gen models:
+- If you have an MLX-Gen-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
   - Pre-download it with `abstractvision download org/name` (HF cache) or `hf download org/name`
   - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (base model usually auto-infers; override with `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image` if needed).
 
 Runtime behavior notes:
-- MFLUX request normalization is also backend-level, so distilled FLUX-family constraints such as `guidance_scale=1.0`, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
-- Local MFLUX `image_to_image` is supported for the FLUX.2 klein presets (no masks). Edit strength is passed as `strength` and normalized to the underlying MFLUX `image_strength` parameter.
+- MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
+- Local MLX-Gen `image_to_image` is supported for FLUX.2 klein/base and Qwen Image Edit presets (no masks). Edit strength is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter where the runtime supports it.
+- Generation does not silently download model files. Missing-cache errors tell you which `abstractvision download ... --provider mlx-gen` or `mlxgen` preparation step is needed.
 
 Code pointers:
-- Config: `MFluxBackendConfig` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
-- Backend: `MFluxVisionBackend` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
+- Config: `MLXGenBackendConfig` / compatibility alias `MFluxBackendConfig` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
+- Backend: `MLXGenVisionBackend` / compatibility alias `MFluxVisionBackend` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
 
 ## stable-diffusion.cpp backend (local GGUF/checkpoints)
 

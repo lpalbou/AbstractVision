@@ -12,7 +12,7 @@ model download helpers.
 The current code already reflects this pressure:
 
 - base package dependencies are empty in [`pyproject.toml`](../../pyproject.toml);
-- local runtimes live behind optional extras such as `diffusers`, `sdcpp`, `mflux`, and `models`;
+- local runtimes live behind optional extras such as `diffusers`, `sdcpp`, `mlx-gen`, and `models`;
 - heavy backend modules are imported lazily;
 - tests already guard import-light behavior for plugin registration and package import.
 
@@ -31,7 +31,7 @@ The rules are:
 2. Heavy local runtimes and helpers stay behind explicit extras:
    - `diffusers` for Torch/Diffusers
    - `sdcpp` for `stable-diffusion-cpp-python`
-   - `mflux` for Apple Silicon MLX/MFLUX
+   - `mlx-gen` for Apple Silicon MLX-Gen (`mflux` remains a compatibility extra)
    - `models` for Hugging Face download helpers
 3. Backend modules that depend on heavy optional packages must stay lazily imported.
 4. AbstractCore integration must remain lazy. AbstractVision must not require AbstractCore to be
@@ -61,7 +61,7 @@ The rules are:
 ## Enforcement
 
 - Reviewers should reject new unconditional heavy dependencies in `[project].dependencies`.
-- Reviewers should reject eager imports of Diffusers, Torch, `stable_diffusion_cpp`, `mflux`, or
+- Reviewers should reject eager imports of Diffusers, Torch, `stable_diffusion_cpp`, `mlxgen`, `mflux`, or
   similar local runtime modules from the base package import path.
 - Contributor docs must continue to describe runtime extras explicitly.
 - New local backends must document their extra and missing-dependency hint paths in the same change.

@@ -27,6 +27,7 @@ from ..model_cache import (
     framework_hf_cache_roots,
     framework_local_model_roots,
     hf_cache_roots,
+    hf_snapshot_is_usable,
     resolve_hf_repo_snapshot,
 )
 from ..types import (
@@ -40,6 +41,9 @@ from ..types import (
     VisionBackendCapabilities,
 )
 from .base_backend import VisionBackend
+
+MLX_GEN_RUNTIME = "mlx-gen"
+MFLUX_PROVIDER = "mflux"
 
 
 @dataclass(frozen=True)
@@ -72,21 +76,84 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         supports_negative_prompt=False,
         supports_guidance_override=False,
     ),
+    "flux2-klein-base-4b": _MFluxModelDef(
+        key="flux2-klein-base-4b",
+        config_method="flux2_klein_base_4b",
+        family="flux2",
+        default_steps=50,
+        default_guidance=1.5,
+        supports_negative_prompt=False,
+        supports_guidance_override=True,
+    ),
+    "flux2-klein-base-9b": _MFluxModelDef(
+        key="flux2-klein-base-9b",
+        config_method="flux2_klein_base_9b",
+        family="flux2",
+        default_steps=50,
+        default_guidance=1.5,
+        supports_negative_prompt=False,
+        supports_guidance_override=True,
+    ),
+    "z-image": _MFluxModelDef(
+        key="z-image",
+        config_method="z_image",
+        family="z-image",
+        default_steps=50,
+        default_guidance=3.5,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
     "z-image-turbo": _MFluxModelDef(
         key="z-image-turbo",
         config_method="z_image_turbo",
         family="z-image",
         default_steps=9,
-        default_guidance=None,
-        supports_negative_prompt=True,
-        supports_guidance_override=True,
+        default_guidance=0.0,
+        supports_negative_prompt=False,
+        supports_guidance_override=False,
     ),
     "qwen-image": _MFluxModelDef(
         key="qwen-image",
         config_method="qwen_image",
         family="qwen",
-        default_steps=4,
-        default_guidance=4.0,
+        default_steps=20,
+        default_guidance=3.5,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
+    "qwen-image-edit": _MFluxModelDef(
+        key="qwen-image-edit",
+        config_method="qwen_image_edit",
+        family="qwen-edit",
+        default_steps=20,
+        default_guidance=2.5,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
+    "qwen-image-edit-2511": _MFluxModelDef(
+        key="qwen-image-edit-2511",
+        config_method="qwen_image_edit",
+        family="qwen-edit",
+        default_steps=20,
+        default_guidance=2.5,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
+    "qwen-image-edit-2509": _MFluxModelDef(
+        key="qwen-image-edit-2509",
+        config_method="qwen_image_edit",
+        family="qwen-edit",
+        default_steps=20,
+        default_guidance=2.5,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+    ),
+    "ernie-image-turbo": _MFluxModelDef(
+        key="ernie-image-turbo",
+        config_method="ernie_image_turbo",
+        family="ernie-image",
+        default_steps=8,
+        default_guidance=1.0,
         supports_negative_prompt=True,
         supports_guidance_override=True,
     ),
@@ -95,6 +162,8 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
 
 _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "black-forest-labs/flux.2-klein-4b": "flux2-klein-4b",
+    "abstractframework/flux.2-klein-4b-4bit": "flux2-klein-4b",
+    "abstractframework/flux.2-klein-4b-8bit": "flux2-klein-4b",
     "aitrader/flux2-klein-4b-mlx-8bit": "flux2-klein-4b",
     "moxin-org/flux.2-klein-4b-8bit-mlx": "flux2-klein-4b",
     "runpod/flux.2-klein-4b-mflux-4bit": "flux2-klein-4b",
@@ -102,49 +171,115 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "flux-klein-4b": "flux2-klein-4b",
     "klein-4b": "flux2-klein-4b",
     "black-forest-labs/flux.2-klein-9b": "flux2-klein-9b",
+    "abstractframework/flux.2-klein-9b-4bit": "flux2-klein-9b",
+    "abstractframework/flux.2-klein-9b-8bit": "flux2-klein-9b",
     "deepsweet/flux.2-klein-9b-mlx-q8": "flux2-klein-9b",
     "deepsweet/flux.2-klein-9b-mlx-q4": "flux2-klein-9b",
     "themindstudio/flux2-klein-9b-mlx-4bit": "flux2-klein-9b",
     "flux2-klein-9b": "flux2-klein-9b",
     "flux-klein-9b": "flux2-klein-9b",
     "klein-9b": "flux2-klein-9b",
+    "black-forest-labs/flux.2-klein-base-4b": "flux2-klein-base-4b",
+    "abstractframework/flux.2-klein-base-4b-4bit": "flux2-klein-base-4b",
+    "abstractframework/flux.2-klein-base-4b-8bit": "flux2-klein-base-4b",
+    "flux2-klein-base-4b": "flux2-klein-base-4b",
+    "flux-klein-base-4b": "flux2-klein-base-4b",
+    "klein-base-4b": "flux2-klein-base-4b",
+    "black-forest-labs/flux.2-klein-base-9b": "flux2-klein-base-9b",
+    "abstractframework/flux.2-klein-base-9b-4bit": "flux2-klein-base-9b",
+    "abstractframework/flux.2-klein-base-9b-8bit": "flux2-klein-base-9b",
+    "flux2-klein-base-9b": "flux2-klein-base-9b",
+    "flux-klein-base-9b": "flux2-klein-base-9b",
+    "klein-base-9b": "flux2-klein-base-9b",
+    "tongyi-mai/z-image": "z-image",
+    "abstractframework/z-image-4bit": "z-image",
+    "abstractframework/z-image-8bit": "z-image",
+    "z-image": "z-image",
+    "zimage": "z-image",
     "tongyi-mai/z-image-turbo": "z-image-turbo",
+    "abstractframework/z-image-turbo-4bit": "z-image-turbo",
+    "abstractframework/z-image-turbo-8bit": "z-image-turbo",
     "carsenk/z-image-turbo-mflux-8bit": "z-image-turbo",
     "andrevp/z-image-turbo-mlx": "z-image-turbo",
     "andrevp/z-image-turbo-mlx-8bit": "z-image-turbo",
     "illusion615/z-image-turbo-mlx": "z-image-turbo",
     "z-image-turbo": "z-image-turbo",
     "zimage-turbo": "z-image-turbo",
+    "abstractframework/qwen-image-edit-4bit": "qwen-image-edit",
+    "abstractframework/qwen-image-edit-8bit": "qwen-image-edit",
+    "qwen/qwen-image-edit": "qwen-image-edit",
+    "qwen-image-edit-legacy": "qwen-image-edit",
+    "qwen-image-edit-base": "qwen-image-edit",
+    "abstractframework/qwen-image-edit-2511-4bit": "qwen-image-edit-2511",
+    "abstractframework/qwen-image-edit-2511-8bit": "qwen-image-edit-2511",
+    "qwen/qwen-image-edit-2511": "qwen-image-edit-2511",
+    "qwen-image-edit": "qwen-image-edit-2511",
+    "qwen-image-edit-2511": "qwen-image-edit-2511",
+    "abstractframework/qwen-image-edit-2509-4bit": "qwen-image-edit-2509",
+    "abstractframework/qwen-image-edit-2509-8bit": "qwen-image-edit-2509",
+    "qwen/qwen-image-edit-2509": "qwen-image-edit-2509",
+    "qwen-image-edit-2509": "qwen-image-edit-2509",
     "qwen/qwen-image": "qwen-image",
     "qwen/qwen-image-2512": "qwen-image",
+    "abstractframework/qwen-image-2512-4bit": "qwen-image",
+    "abstractframework/qwen-image-2512-8bit": "qwen-image",
+    "abstractframework/qwen-image-4bit": "qwen-image",
+    "abstractframework/qwen-image-8bit": "qwen-image",
     "mlx-community/qwen-image-2512-8bit": "qwen-image",
     "mlx-community/qwen-image-2512-8bit-mlx": "qwen-image",
     "qwen-image": "qwen-image",
     "qwen-image-2512": "qwen-image",
+    "baidu/ernie-image-turbo": "ernie-image-turbo",
+    "abstractframework/ernie-image-turbo-4bit": "ernie-image-turbo",
+    "abstractframework/ernie-image-turbo-8bit": "ernie-image-turbo",
+    "ernie-image-turbo": "ernie-image-turbo",
+    "ernie-image": "ernie-image-turbo",
+    "ernie": "ernie-image-turbo",
 }
 
 
 _MFLUX_BASE_MODEL_REGISTRY_IDS: Dict[str, str] = {
     "flux2-klein-4b": "black-forest-labs/FLUX.2-klein-4B",
     "flux2-klein-9b": "black-forest-labs/FLUX.2-klein-9B",
+    "flux2-klein-base-4b": "black-forest-labs/FLUX.2-klein-base-4B",
+    "flux2-klein-base-9b": "black-forest-labs/FLUX.2-klein-base-9B",
     "qwen-image": "Qwen/Qwen-Image-2512",
+    "qwen-image-edit": "Qwen/Qwen-Image-Edit",
+    "qwen-image-edit-2511": "Qwen/Qwen-Image-Edit-2511",
+    "qwen-image-edit-2509": "Qwen/Qwen-Image-Edit-2509",
+    "z-image": "Tongyi-MAI/Z-Image",
     "z-image-turbo": "Tongyi-MAI/Z-Image-Turbo",
+    "ernie-image-turbo": "baidu/ERNIE-Image-Turbo",
 }
 
 
 _MFLUX_BASE_MODEL_FALLBACK_TASKS: Dict[str, Tuple[str, ...]] = {
     "flux2-klein-4b": ("image_to_image", "text_to_image"),
     "flux2-klein-9b": ("image_to_image", "text_to_image"),
+    "flux2-klein-base-4b": ("image_to_image", "text_to_image"),
+    "flux2-klein-base-9b": ("image_to_image", "text_to_image"),
     "qwen-image": ("text_to_image",),
+    "qwen-image-edit": ("image_to_image",),
+    "qwen-image-edit-2511": ("image_to_image",),
+    "qwen-image-edit-2509": ("image_to_image",),
+    "z-image": ("text_to_image",),
     "z-image-turbo": ("text_to_image",),
+    "ernie-image-turbo": ("text_to_image",),
 }
 
 
 _MFLUX_RUNTIME_ALLOWED_TASKS: Dict[str, Tuple[str, ...]] = {
     "flux2-klein-4b": ("image_to_image", "text_to_image"),
     "flux2-klein-9b": ("image_to_image", "text_to_image"),
+    "flux2-klein-base-4b": ("image_to_image", "text_to_image"),
+    "flux2-klein-base-9b": ("image_to_image", "text_to_image"),
     "qwen-image": ("text_to_image",),
+    "qwen-image-edit": ("image_to_image",),
+    "qwen-image-edit-2511": ("image_to_image",),
+    "qwen-image-edit-2509": ("image_to_image",),
+    "z-image": ("text_to_image",),
     "z-image-turbo": ("text_to_image",),
+    "ernie-image-turbo": ("text_to_image",),
 }
 
 
@@ -171,11 +306,11 @@ def _mflux_parameter_metadata(model_def: _MFluxModelDef) -> Dict[str, Any]:
 
 @dataclass(frozen=True)
 class MFluxBackendConfig:
-    """Config for the optional MFLUX backend.
+    """Config for the optional MLX-Gen backend.
 
-    MFLUX is Apple/MLX-specific and intentionally optional. The backend uses
-    MFLUX's Python API in-process and expects local 8-bit MFLUX-compatible
-    model directories by default.
+    MLX-Gen is Apple/MLX-specific and intentionally optional. The backend uses
+    MLX-Gen's Python API in-process and expects local q4/q8 prepared model
+    directories by default.
     """
 
     model: Optional[str] = None
@@ -190,29 +325,45 @@ class MFluxBackendConfig:
     default_height: int = 1024
 
 
-def _lazy_import_mflux() -> Tuple[Any, Any, Any]:
+def _lazy_import_mflux() -> Tuple[Any, Any, Any, Any, Any, Any]:
     try:
+        import mlxgen as _mlxgen  # noqa: F401
+
         from mflux.models.common.config import ModelConfig  # type: ignore
-        from mflux.models.flux2.variants import Flux2Klein  # type: ignore
-        from mflux.models.z_image import ZImage  # type: ignore
+        from mflux.models.common.download_policy import DownloadRequiredError  # type: ignore
+        from mflux.models.flux2.variants import Flux2Klein, Flux2KleinEdit  # type: ignore
+        from mflux.models.z_image import ZImage, ZImageTurbo  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MFLUX backend requires the optional MFLUX runtime. "
-            'Install it with `pip install "abstractvision[mflux]"` or '
+            "MLX-Gen backend requires the optional MLX-Gen runtime. "
+            'Install it with `pip install "abstractvision[mlx-gen]"` (or the compatibility '
+            '`abstractvision[mflux]` extra) or '
             '`pip install "abstractvision[all-apple]"` on Apple Silicon.'
         ) from e
-    return ModelConfig, Flux2Klein, ZImage
+    return ModelConfig, DownloadRequiredError, Flux2Klein, Flux2KleinEdit, ZImage, ZImageTurbo
 
 
-def _lazy_import_mflux_qwen() -> Any:
+def _lazy_import_mflux_qwen() -> Tuple[Any, Any]:
     try:
         from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage  # type: ignore
+        from mflux.models.qwen.variants.edit.qwen_image_edit import QwenImageEdit  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MFLUX Qwen backend requires a recent MFLUX runtime. "
-            'Install/upgrade it with `pip install "abstractvision[mflux]"` (Apple Silicon only).'
+            "MLX-Gen Qwen backend requires a recent MLX-Gen runtime. "
+            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
-    return QwenImage
+    return QwenImage, QwenImageEdit
+
+
+def _lazy_import_mflux_ernie() -> Any:
+    try:
+        from mflux.models.ernie_image import ErnieImageTurbo  # type: ignore
+    except Exception as e:
+        raise OptionalDependencyMissingError(
+            "MLX-Gen ERNIE backend requires mlx-gen>=0.18.5. "
+            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
+        ) from e
+    return ErnieImageTurbo
 
 
 def _norm(value: Any) -> str:
@@ -251,7 +402,29 @@ def _is_incompatible_model_tree(path: Path) -> bool:
 
 def _looks_like_mflux_packaged_repo(value: Any) -> bool:
     s = _norm(value)
-    return any(token in s for token in ("mflux", "8bit", "q8", "4bit", "q4", "quant"))
+    return any(token in s for token in ("mlx-gen", "mflux", "8bit", "q8", "4bit", "q4", "quant"))
+
+
+def _is_mlx_gen_download_required(exc: BaseException) -> bool:
+    return (
+        exc.__class__.__name__ == "DownloadRequiredError"
+        or hasattr(exc, "download_command")
+        or hasattr(exc, "prepare_command")
+    )
+
+
+def _wrap_mlx_gen_download_required(exc: BaseException) -> OptionalDependencyMissingError:
+    parts = ["MLX-Gen model files are missing; generation does not download files implicitly."]
+    message = str(exc).strip()
+    if message:
+        parts.append(message)
+    download_command = str(getattr(exc, "download_command", "") or "").strip()
+    prepare_command = str(getattr(exc, "prepare_command", "") or "").strip()
+    if download_command:
+        parts.append(f"Download first: {download_command}")
+    if prepare_command:
+        parts.append(f"Prepare a reusable local folder: {prepare_command}")
+    return OptionalDependencyMissingError("\n".join(parts))
 
 
 def _repo_id_from_cache_dir_name(name: str) -> Optional[str]:
@@ -323,17 +496,21 @@ def _candidate_priority(repo_id: Optional[str]) -> int:
     s = _norm(repo_id)
     if not s:
         return 99
-    if s == "mlx-community/qwen-image-2512-8bit":
+    if s.startswith("abstractframework/") and ("4bit" in s or "q4" in s):
         return 0
-    if s.endswith("-mlx-8bit") or "mflux-8bit" in s or "-mlx-q8" in s or "-8bit-mlx" in s:
+    if s.startswith("abstractframework/") and ("8bit" in s or "q8" in s):
         return 1
-    if "mlx-community/" in s:
+    if s == "mlx-community/qwen-image-2512-8bit":
         return 2
-    if "mflux" in s or "mlx" in s:
+    if s.endswith("-mlx-8bit") or "mflux-8bit" in s or "-mlx-q8" in s or "-8bit-mlx" in s:
         return 3
-    if "q4" in s or "4bit" in s:
+    if "mlx-community/" in s:
         return 4
-    return 5
+    if "mflux" in s or "mlx" in s:
+        return 5
+    if "q4" in s or "4bit" in s:
+        return 6
+    return 7
 
 
 def _candidate_repo_ids_for_preset(preset: Any) -> Tuple[str, ...]:
@@ -345,6 +522,93 @@ def _candidate_repo_ids_for_preset(preset: Any) -> Tuple[str, ...]:
         if text not in out:
             out.append(text)
     return tuple(out)
+
+
+def _configured_hf_cache_roots(cache_dir: Optional[str]) -> List[Tuple[str, Path]]:
+    if cache_dir:
+        return [("configured cache", Path(cache_dir).expanduser())]
+    return hf_cache_roots(extra_roots=framework_hf_cache_roots())
+
+
+def _resolve_snapshot_in_cache_root(repo_id: str, root: Path) -> Optional[Path]:
+    repo_dir = root / f"models--{repo_id.replace('/', '--')}"
+    snapshots_dir = repo_dir / "snapshots"
+    if not snapshots_dir.is_dir():
+        return None
+    candidates: List[Path] = []
+    ref = repo_dir / "refs" / "main"
+    try:
+        if ref.is_file():
+            snap = snapshots_dir / ref.read_text(encoding="utf-8").strip()
+            if snap.is_dir():
+                candidates.append(snap)
+    except Exception:
+        pass
+    try:
+        candidates.extend(entry for entry in snapshots_dir.iterdir() if entry.is_dir() and entry not in candidates)
+    except Exception:
+        pass
+    for snap in candidates:
+        if hf_snapshot_is_usable(snap, require_weight_files=True):
+            return snap
+    return None
+
+
+def _preset_variant_model_id(preset: Any) -> str:
+    """Return a runnable model selector that preserves explicit q4/q8 variants."""
+
+    bits = getattr(preset, "quantization_bits", None)
+    aliases = tuple(str(alias or "").strip() for alias in (getattr(preset, "aliases", ()) or ()))
+    if bits == 8:
+        for alias in aliases:
+            alias_l = _norm(alias)
+            if "/" not in alias and ("q8" in alias_l or "8bit" in alias_l):
+                return alias
+        return str(getattr(preset, "repo_id", None) or getattr(preset, "key", ""))
+    if bits == 4 and int(getattr(preset, "source_priority", 100) or 100) > 30:
+        for alias in aliases:
+            alias_l = _norm(alias)
+            if "/" not in alias and ("legacy" in alias_l or "base" in alias_l or "4bit" in alias_l or "q4" in alias_l):
+                return alias
+    return str(getattr(preset, "key", ""))
+
+
+def _selection_requires_exact_preset(configured_model: Any, preset: Any) -> bool:
+    """Return True when falling back to another quantized variant would be wrong."""
+
+    requested = _norm(configured_model)
+    if not requested:
+        return False
+    if requested == _norm(getattr(preset, "repo_id", None)):
+        return True
+    if any(token in requested for token in ("q8", "8bit", "q4", "4bit", "legacy")):
+        return True
+    if int(getattr(preset, "source_priority", 100) or 100) > 30 and requested != _norm(getattr(preset, "key", None)):
+        return True
+    return False
+
+
+def _cached_model_for_exact_preset(
+    preset: Any,
+    *,
+    model_dir: Optional[str],
+    cache_dir: Optional[str],
+) -> Optional[_DiscoveredMFluxModel]:
+    snapshot_dir = _preset_snapshot_dir(preset, model_dir, cache_dir)
+    if snapshot_dir is None or not _has_model_files(snapshot_dir):
+        return None
+    if _is_partial_model_tree(snapshot_dir) or _is_incompatible_model_tree(snapshot_dir):
+        return None
+    return _DiscoveredMFluxModel(
+        key=str(getattr(preset, "key", "")),
+        snapshot_dir=snapshot_dir,
+        repo_id=str(getattr(preset, "repo_id", "") or "") or None,
+        source_label="configured cache" if cache_dir else "default HF cache",
+        source_detail=(
+            f"{'configured cache' if cache_dir else 'default HF cache'} "
+            f"({getattr(preset, 'repo_id', '')})"
+        ),
+    )
 
 
 def _discover_cached_legacy_mflux_models(model_dir: Optional[str]) -> Dict[str, _DiscoveredMFluxModel]:
@@ -380,7 +644,7 @@ def _discover_cached_legacy_mflux_models(model_dir: Optional[str]) -> Dict[str, 
 
 def _discover_cached_hf_mflux_models(cache_dir: Optional[str]) -> Dict[str, _DiscoveredMFluxModel]:
     out: Dict[str, _DiscoveredMFluxModel] = {}
-    for label, root in hf_cache_roots(cache_dir=cache_dir, extra_roots=framework_hf_cache_roots()):
+    for label, root in _configured_hf_cache_roots(cache_dir):
         try:
             repo_dirs = list(root.glob("models--*"))
         except Exception:
@@ -394,12 +658,7 @@ def _discover_cached_hf_mflux_models(cache_dir: Optional[str]) -> Dict[str, _Dis
             base = _infer_base_model(repo_id)
             if base not in _MFLUX_MODELS:
                 continue
-            snap = resolve_hf_repo_snapshot(
-                repo_id,
-                cache_dir=str(root),
-                require_weight_files=True,
-                extra_roots=[(label, root)],
-            )
+            snap = _resolve_snapshot_in_cache_root(repo_id, root)
             if snap is None or not _has_model_files(snap) or _is_partial_model_tree(snap) or _is_incompatible_model_tree(snap):
                 continue
             candidate = _DiscoveredMFluxModel(
@@ -423,14 +682,18 @@ def discover_cached_mflux_models(
     discovered = _discover_cached_legacy_mflux_models(model_dir)
 
     cache_root = _cache_root(cache_dir)
-    extra_cache_roots = framework_hf_cache_roots()
-    for preset in model_presets(target="mlx", engine="mflux", include_non_8bit=False):
+    extra_cache_roots = [] if cache_dir else framework_hf_cache_roots()
+    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False):
         for repo_id in _candidate_repo_ids_for_preset(preset):
-            snap = resolve_hf_repo_snapshot(
-                repo_id,
-                cache_dir=cache_root,
-                require_weight_files=True,
-                extra_roots=extra_cache_roots,
+            snap = (
+                _resolve_snapshot_in_cache_root(repo_id, Path(cache_root))
+                if cache_dir
+                else resolve_hf_repo_snapshot(
+                    repo_id,
+                    cache_dir=cache_root,
+                    require_weight_files=True,
+                    extra_roots=extra_cache_roots,
+                )
             )
             if snap is None or not _has_model_files(snap) or _is_partial_model_tree(snap) or _is_incompatible_model_tree(snap):
                 continue
@@ -458,8 +721,6 @@ def discover_incomplete_mflux_sources(
 ) -> Dict[str, Tuple[str, ...]]:
     out: Dict[str, List[str]] = {}
     valid = discover_cached_mflux_models(model_dir=model_dir, cache_dir=cache_dir)
-    extra_cache_roots = framework_hf_cache_roots()
-
     def add(key: str, detail: str) -> None:
         text = str(detail or "").strip()
         if not text:
@@ -468,7 +729,7 @@ def discover_incomplete_mflux_sources(
         if text not in bucket:
             bucket.append(text)
 
-    for preset in model_presets(target="mlx", engine="mflux", include_non_8bit=False):
+    for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False):
         if preset.key in valid:
             continue
         for _root_label, root in _mflux_model_roots(model_dir):
@@ -485,7 +746,7 @@ def discover_incomplete_mflux_sources(
                 if _is_partial_model_tree(entry) or not _has_model_files(entry):
                     add(preset.key, f"incomplete local model dir: {entry}")
         for repo_id in _candidate_repo_ids_for_preset(preset):
-            for label, root in hf_cache_roots(cache_dir=cache_dir, extra_roots=extra_cache_roots):
+            for label, root in _configured_hf_cache_roots(cache_dir):
                 repo_dir = root / f"models--{repo_id.replace('/', '--')}"
                 lock_dir = root / ".locks" / f"models--{repo_id.replace('/', '--')}"
                 if repo_dir.exists() or lock_dir.exists():
@@ -493,7 +754,7 @@ def discover_incomplete_mflux_sources(
                         add(preset.key, f"incompatible HF cache: {label} ({repo_id})")
                     else:
                         add(preset.key, f"incomplete HF cache: {label} ({repo_id})")
-        for label, root in hf_cache_roots(cache_dir=cache_dir, extra_roots=extra_cache_roots):
+        for label, root in _configured_hf_cache_roots(cache_dir):
             try:
                 repo_dirs = list(root.glob("models--*"))
             except Exception:
@@ -531,10 +792,22 @@ def _infer_base_model(*values: Any) -> Optional[str]:
             continue
         if s in _KNOWN_MODEL_ALIASES:
             return _KNOWN_MODEL_ALIASES[s]
+        if "qwen" in s and "image-edit" in s:
+            if "2509" in s:
+                return "qwen-image-edit-2509"
+            return "qwen-image-edit-2511"
         if "qwen" in s and "image" in s:
             return "qwen-image"
-        if "z-image" in s or "zimage" in s:
+        if "z-image-turbo" in s or "zimage-turbo" in s:
             return "z-image-turbo"
+        if "z-image" in s or "zimage" in s:
+            return "z-image"
+        if "ernie" in s and "image" in s:
+            return "ernie-image-turbo"
+        if "klein-base-4b" in s or "kleinbase4b" in s:
+            return "flux2-klein-base-4b"
+        if "klein-base-9b" in s or "kleinbase9b" in s:
+            return "flux2-klein-base-9b"
         if "klein-4b" in s or "klein4b" in s:
             return "flux2-klein-4b"
         if "klein-9b" in s or "klein9b" in s:
@@ -547,7 +820,7 @@ def _preset_for(value: Any) -> Any:
     if not s:
         return None
     try:
-        return find_model_preset(s, target="mlx", engine="mflux", require_8bit=True)
+        return find_model_preset(s, target="mlx", engine="mlx-gen", require_8bit=True)
     except Exception:
         return None
 
@@ -569,7 +842,7 @@ def _first_other_engine_preset(value: Any) -> Any:
             preset = find_model_preset(s, target=target, engine=None, require_8bit=False)
         except Exception:
             continue
-        if preset.engine != "mflux":
+        if preset.engine not in {"mflux", "mlx-gen"}:
             return preset
     return None
 
@@ -598,7 +871,7 @@ def _preset_snapshot_dir(preset: Any, model_dir: Optional[str], cache_dir: Optio
 
 
 class MFluxVisionBackend(VisionBackend):
-    """Local Apple Silicon backend for MFLUX-compatible MLX image models."""
+    """Compatibility class for the local MLX-Gen Apple Silicon image backend."""
 
     def __init__(self, *, config: MFluxBackendConfig):
         self._cfg = config
@@ -736,12 +1009,22 @@ class MFluxVisionBackend(VisionBackend):
         # downloaded.
         task_s = str(task or "").strip()
         out = []
+        emitted: set[str] = set()
         discovered = discover_cached_mflux_models(
             model_dir=self._cfg.model_dir,
             cache_dir=self._cfg.cache_dir,
         )
-        for preset in model_presets(target="mlx", engine="mflux", include_non_8bit=False):
-            discovered_model = discovered.get(preset.key)
+        for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False):
+            model_selector = _preset_variant_model_id(preset)
+            if model_selector in emitted:
+                continue
+            discovered_model = _cached_model_for_exact_preset(
+                preset,
+                model_dir=self._cfg.model_dir,
+                cache_dir=self._cfg.cache_dir,
+            )
+            if discovered_model is None and model_selector == preset.key:
+                discovered_model = discovered.get(preset.key)
             if discovered_model is None:
                 continue
             base_model = _infer_base_model(preset.key, preset.repo_id, preset.upstream_repo_id)
@@ -755,19 +1038,25 @@ class MFluxVisionBackend(VisionBackend):
             parameter_metadata = _mflux_parameter_metadata(model_def) if model_def is not None else {}
             out.append(
                 ProviderModelInfo(
-                    id=preset.key,
+                    id=model_selector,
                     object="model",
-                    owned_by="mflux",
+                    owned_by=MLX_GEN_RUNTIME,
                     capabilities=tuple(tasks),
                     raw={
-                        "provider": "mflux",
-                        "model": preset.key,
-                        "routed_model": f"mflux/{preset.key}",
-                        "engine": "mflux",
+                        "provider": MLX_GEN_RUNTIME,
+                        "model": model_selector,
+                        "base_model": base_model,
+                        "routed_model": f"{MLX_GEN_RUNTIME}/{model_selector}",
+                        "legacy_routed_model": f"{MFLUX_PROVIDER}/{model_selector}",
+                        "engine": MLX_GEN_RUNTIME,
+                        "legacy_engine": MFLUX_PROVIDER,
+                        "runtime_package": MLX_GEN_RUNTIME,
+                        "runtime_provider": MLX_GEN_RUNTIME,
                         "target": preset.target,
                         "snapshot_dir": str(discovered_model.snapshot_dir),
                         "repo_id": discovered_model.repo_id or preset.repo_id,
                         "upstream_repo_id": preset.upstream_repo_id,
+                        "source": preset.source,
                         "quantization_bits": preset.quantization_bits,
                         "cache_source": discovered_model.source_label,
                         "cache_source_detail": discovered_model.source_detail,
@@ -775,6 +1064,7 @@ class MFluxVisionBackend(VisionBackend):
                     },
                 )
             )
+            emitted.add(model_selector)
         return out
 
     def _resolve_model(self) -> Tuple[str, str]:
@@ -793,26 +1083,29 @@ class MFluxVisionBackend(VisionBackend):
                 base = configured_base or _infer_base_model(configured_model, expanded.name)
                 if not base:
                     raise OptionalDependencyMissingError(
-                        "Could not infer MFLUX base model from local path. "
+                        "Could not infer MLX-Gen base model from local path. "
                         "Set vision_mflux_base_model / ABSTRACTVISION_MFLUX_BASE_MODEL "
-                        "to flux2-klein-4b, flux2-klein-9b, or z-image-turbo."
+                        "to a supported preset such as flux2-klein-4b, flux2-klein-9b, z-image, z-image-turbo, "
+                        "qwen-image, qwen-image-edit-2511, or ernie-image-turbo."
                     )
                 return str(expanded), base
 
             preset = _preset_for(configured_model)
             if preset is not None:
-                discovered_model = discovered.get(preset.key)
-                snapshot_dir = discovered_model.snapshot_dir if discovered_model is not None else _preset_snapshot_dir(
+                discovered_model = _cached_model_for_exact_preset(
                     preset,
-                    self._cfg.model_dir,
-                    cache_root,
+                    model_dir=self._cfg.model_dir,
+                    cache_dir=cache_root,
                 )
+                if discovered_model is None and not _selection_requires_exact_preset(configured_model, preset):
+                    discovered_model = discovered.get(preset.key)
+                snapshot_dir = discovered_model.snapshot_dir if discovered_model is not None else None
                 if snapshot_dir is not None and _has_model_files(snapshot_dir):
                     return str(snapshot_dir), configured_base or preset.key
                 if not self._cfg.allow_download:
                     raise OptionalDependencyMissingError(
-                        f"MFLUX model preset {preset.key!r} is not available in the Hugging Face cache. "
-                        f"Run: abstractvision download {preset.key} --provider mflux"
+                        f"MLX-Gen model preset {configured_model!r} is not available in the Hugging Face cache. "
+                        f"Run: abstractvision download {configured_model} --provider mlx-gen"
                     )
                 try:
                     downloaded = download_hf_repo_snapshot(
@@ -826,7 +1119,7 @@ class MFluxVisionBackend(VisionBackend):
                 return str(downloaded), configured_base or preset.key
 
             if _looks_like_path(configured_model):
-                raise OptionalDependencyMissingError(f"MFLUX model path does not exist: {configured_model}")
+                raise OptionalDependencyMissingError(f"MLX-Gen model path does not exist: {configured_model}")
             if looks_like_hf_repo_id(configured_model):
                 cached = resolve_hf_repo_snapshot(
                     configured_model,
@@ -837,20 +1130,20 @@ class MFluxVisionBackend(VisionBackend):
                     base = configured_base or _infer_base_model(configured_model)
                     if not base:
                         raise OptionalDependencyMissingError(
-                            "Could not infer MFLUX base model. Set vision_mflux_base_model / "
+                            "Could not infer MLX-Gen base model. Set vision_mflux_base_model / "
                             "ABSTRACTVISION_MFLUX_BASE_MODEL."
                         )
                     return str(cached), base
                 if not self._cfg.allow_download:
                     raise OptionalDependencyMissingError(
-                        f"MFLUX model repo {configured_model!r} is not cached locally. "
+                        f"MLX-Gen model repo {configured_model!r} is not cached locally. "
                         "Pre-download it with `abstractvision download <org/name>` "
                         "or set ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1 to permit downloads."
                     )
                 base = configured_base or _infer_base_model(configured_model)
                 if not base:
                     raise OptionalDependencyMissingError(
-                        "Could not infer MFLUX base model. Set vision_mflux_base_model / "
+                        "Could not infer MLX-Gen base model. Set vision_mflux_base_model / "
                         "ABSTRACTVISION_MFLUX_BASE_MODEL."
                     )
                 try:
@@ -867,41 +1160,41 @@ class MFluxVisionBackend(VisionBackend):
                 if other is not None:
                     raise OptionalDependencyMissingError(
                         f"Model {configured_model!r} maps to a curated preset for engine {other.engine!r} "
-                        f"(target={other.target!r}, repo={other.repo_id!r}), not MFLUX. "
-                        "Use `--provider diffusers` or `--provider sdcpp` as appropriate, or pass an MFLUX preset key "
-                        "(flux2-klein-4b, flux2-klein-9b, z-image-turbo, qwen-image) / local path / org/name repo id."
+                        f"(target={other.target!r}, repo={other.repo_id!r}), not MLX-Gen. "
+                        "Use `--provider diffusers` or `--provider sdcpp` as appropriate, or pass an MLX-Gen preset key "
+                        "(flux2-klein-4b, flux2-klein-9b, z-image, z-image-turbo, qwen-image, ernie-image-turbo) / local path / org/name repo id."
                     )
                 raise OptionalDependencyMissingError(
-                    f"MFLUX model {configured_model!r} is not a known downloaded preset. "
+                    f"MLX-Gen model {configured_model!r} is not a known downloaded preset. "
                     "Use a local model path, a known preset key, a Hugging Face repo id (org/name) already cached "
                     "locally, or set ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1 to permit downloads."
                 )
             base = configured_base or _infer_base_model(configured_model)
             if not base:
                 raise OptionalDependencyMissingError(
-                    "Could not infer MFLUX base model. Set vision_mflux_base_model / "
+                    "Could not infer MLX-Gen base model. Set vision_mflux_base_model / "
                     "ABSTRACTVISION_MFLUX_BASE_MODEL."
                 )
             raise OptionalDependencyMissingError(
-                f"MFLUX model {configured_model!r} is not a known cached preset, path, or Hugging Face repo id."
+                f"MLX-Gen model {configured_model!r} is not a known cached preset, path, or Hugging Face repo id."
             )
 
-        for key in ("flux2-klein-4b", "flux2-klein-9b", "z-image-turbo", "qwen-image"):
+        for key in ("flux2-klein-4b", "flux2-klein-9b", "z-image-turbo", "qwen-image", "ernie-image-turbo"):
             discovered_model = discovered.get(key)
             if discovered_model is not None:
                 return str(discovered_model.snapshot_dir), configured_base or key
 
         raise OptionalDependencyMissingError(
-            "MFLUX backend is not configured and no downloaded MFLUX preset was found. "
+            "MLX-Gen backend is not configured and no downloaded MLX-Gen preset was found. "
             "Set vision_mflux_model / ABSTRACTVISION_MFLUX_MODEL or run "
-            "`abstractvision download flux2-klein-4b --provider mflux`."
+            "`abstractvision download flux2-klein-4b --provider mlx-gen`."
         )
 
     def _ensure_model_impl(self) -> Tuple[Any, _MFluxModelDef]:
         model_path, base_model = self._resolve_model()
         if base_model not in _MFLUX_MODELS:
             raise OptionalDependencyMissingError(
-                f"Unsupported MFLUX base model {base_model!r}. "
+                f"Unsupported MLX-Gen base model {base_model!r}. "
                 f"Supported: {', '.join(sorted(_MFLUX_MODELS))}"
             )
         model_def = _MFLUX_MODELS[base_model]
@@ -915,16 +1208,26 @@ class MFluxVisionBackend(VisionBackend):
         if self._model is not None and self._model_key == key:
             return self._model, model_def
 
-        ModelConfig, Flux2Klein, ZImage = _lazy_import_mflux()
-        model_config = getattr(ModelConfig, model_def.config_method)()
+        ModelConfig, _DownloadRequiredError, Flux2Klein, _Flux2KleinEdit, ZImage, ZImageTurbo = _lazy_import_mflux()
+        from_name = getattr(ModelConfig, "from_name", None)
+        if callable(from_name):
+            model_config = from_name(model_def.key)
+        else:
+            model_config = getattr(ModelConfig, model_def.config_method)()
         if model_def.family == "flux2":
             cls = Flux2Klein
         elif model_def.family == "z-image":
-            cls = ZImage
+            cls = ZImage if model_def.key == "z-image" else (ZImageTurbo or ZImage)
         elif model_def.family == "qwen":
-            cls = _lazy_import_mflux_qwen()
+            QwenImage, _QwenImageEdit = _lazy_import_mflux_qwen()
+            cls = QwenImage
+        elif model_def.family == "qwen-edit":
+            _QwenImage, QwenImageEdit = _lazy_import_mflux_qwen()
+            cls = QwenImageEdit
+        elif model_def.family == "ernie-image":
+            cls = _lazy_import_mflux_ernie()
         else:
-            raise OptionalDependencyMissingError(f"Unsupported MFLUX model family {model_def.family!r}.")
+            raise OptionalDependencyMissingError(f"Unsupported MLX-Gen model family {model_def.family!r}.")
         kwargs: Dict[str, Any] = {
             "model_config": model_config,
             "model_path": model_path,
@@ -934,7 +1237,12 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["lora_paths"] = list(self._cfg.lora_paths)
         if self._cfg.lora_scales:
             kwargs["lora_scales"] = [float(x) for x in self._cfg.lora_scales]
-        self._model = cls(**kwargs)
+        try:
+            self._model = cls(**kwargs)
+        except Exception as e:
+            if _is_mlx_gen_download_required(e):
+                raise _wrap_mlx_gen_download_required(e) from e
+            raise
         self._model_key = key
         self._warmed_model_key = None
         self._resolved_model_path = model_path
@@ -959,7 +1267,7 @@ class MFluxVisionBackend(VisionBackend):
         _model_path, base_model = self._resolve_model()
         if base_model not in _MFLUX_MODELS:
             raise OptionalDependencyMissingError(
-                f"Unsupported MFLUX base model {base_model!r}. "
+                f"Unsupported MLX-Gen base model {base_model!r}. "
                 f"Supported: {', '.join(sorted(_MFLUX_MODELS))}"
             )
         return _MFLUX_MODELS[base_model]
@@ -1138,7 +1446,12 @@ class MFluxVisionBackend(VisionBackend):
                 image_strength if image_strength is not None else extra.pop("image_strength", 0.4)
             )
 
-        generated = model.generate_image(**kwargs)
+        try:
+            generated = model.generate_image(**kwargs)
+        except Exception as e:
+            if _is_mlx_gen_download_required(e):
+                raise _wrap_mlx_gen_download_required(e) from e
+            raise
         if self._model_key is not None:
             self._warmed_model_key = self._model_key
         pil_image = getattr(generated, "image", generated)
@@ -1151,8 +1464,10 @@ class MFluxVisionBackend(VisionBackend):
             data=data,
             mime_type="image/png",
             metadata={
-                "source": "mflux",
-                "engine": "mflux",
+                "source": MLX_GEN_RUNTIME,
+                "engine": MLX_GEN_RUNTIME,
+                "legacy_engine": MFLUX_PROVIDER,
+                "runtime_package": MLX_GEN_RUNTIME,
                 "model": self._resolved_model_path,
                 "base_model": self._resolved_base_model,
                 "seed": seed,
@@ -1169,12 +1484,12 @@ class MFluxVisionBackend(VisionBackend):
     def _edit_image_impl(self, request: ImageEditRequest) -> GeneratedAsset:
         request = self.normalize_image_edit_request(request)
         if request.mask is not None:
-            raise CapabilityNotSupportedError("MFLUX backend does not implement mask-based image edits yet.")
+            raise CapabilityNotSupportedError("MLX-Gen backend does not implement mask-based image edits yet.")
 
         _model, model_def = self._ensure_model_impl()
-        if model_def.family != "flux2":
+        if model_def.family not in {"flux2", "qwen-edit"}:
             raise CapabilityNotSupportedError(
-                f"MFLUX image_to_image is only implemented for flux2 models today (got {model_def.family!r})."
+                f"MLX-Gen image_to_image is only implemented for flux2 and qwen-edit models today (got {model_def.family!r})."
             )
 
         extra = dict(request.extra or {})
@@ -1210,6 +1525,57 @@ class MFluxVisionBackend(VisionBackend):
             tmp_path = Path(fp.name)
             fp.write(request.image)
         try:
+            if model_def.family == "qwen-edit":
+                seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
+                steps = int(request.steps) if request.steps is not None else model_def.default_steps
+                guidance = (
+                    float(request.guidance_scale)
+                    if request.guidance_scale is not None
+                    else model_def.default_guidance
+                )
+                kwargs: Dict[str, Any] = {
+                    "seed": seed,
+                    "prompt": str(request.prompt),
+                    "image_paths": [str(tmp_path)],
+                    "num_inference_steps": steps,
+                }
+                if width is not None:
+                    kwargs["width"] = int(width)
+                if height is not None:
+                    kwargs["height"] = int(height)
+                if guidance is not None:
+                    kwargs["guidance"] = guidance
+                scheduler = extra.pop("scheduler", None)
+                if scheduler is not None:
+                    kwargs["scheduler"] = str(scheduler)
+                if request.negative_prompt and model_def.supports_negative_prompt:
+                    kwargs["negative_prompt"] = str(request.negative_prompt)
+                try:
+                    generated = _model.generate_image(**kwargs)
+                except Exception as e:
+                    if _is_mlx_gen_download_required(e):
+                        raise _wrap_mlx_gen_download_required(e) from e
+                    raise
+                pil_image = getattr(generated, "image", generated)
+                buf = BytesIO()
+                pil_image.save(buf, format="PNG")
+                return GeneratedAsset(
+                    media_type="image",
+                    data=buf.getvalue(),
+                    mime_type="image/png",
+                    metadata={
+                        "source": MLX_GEN_RUNTIME,
+                        "engine": MLX_GEN_RUNTIME,
+                        "legacy_engine": MFLUX_PROVIDER,
+                        "runtime_package": MLX_GEN_RUNTIME,
+                        "model": self._resolved_model_path,
+                        "base_model": self._resolved_base_model,
+                        "seed": seed,
+                        "steps": steps,
+                        **({"width": int(width)} if width is not None else {}),
+                        **({"height": int(height)} if height is not None else {}),
+                    },
+                )
             return self._generate_impl(
                 gen_request,
                 image_path=tmp_path,
@@ -1225,10 +1591,14 @@ class MFluxVisionBackend(VisionBackend):
         return self._run_on_runtime_thread(self._edit_image_impl, request)
 
     def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
-        raise CapabilityNotSupportedError("MFLUX backend does not implement multi-view generation.")
+        raise CapabilityNotSupportedError("MLX-Gen backend does not implement multi-view generation.")
 
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
-        raise CapabilityNotSupportedError("MFLUX backend does not implement text_to_video.")
+        raise CapabilityNotSupportedError("MLX-Gen backend does not implement text_to_video.")
 
     def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
-        raise CapabilityNotSupportedError("MFLUX backend does not implement image_to_video.")
+        raise CapabilityNotSupportedError("MLX-Gen backend does not implement image_to_video.")
+
+
+MLXGenBackendConfig = MFluxBackendConfig
+MLXGenVisionBackend = MFluxVisionBackend

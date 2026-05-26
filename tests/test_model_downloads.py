@@ -11,7 +11,7 @@ sys.path.insert(0, str(SRC_DIR))
 
 
 class TestModelDownloads(unittest.TestCase):
-    def test_auto_scope_prefers_apple_targets_and_mflux_qwen(self):
+    def test_auto_scope_prefers_apple_targets_and_mlx_gen_qwen(self):
         from abstractvision.model_downloads import catalog_target_scope, find_model_preset
 
         with patch("abstractvision.model_downloads.local_model_profile", return_value="apple-silicon"):
@@ -21,7 +21,84 @@ class TestModelDownloads(unittest.TestCase):
                     ("mlx", "gguf", "diffusers", "hf-snapshot"),
                 )
                 preset = find_model_preset("qwen-image", target="auto", engine=None, require_8bit=True)
-        self.assertEqual((preset.target, preset.engine), ("mlx", "mflux"))
+        self.assertEqual((preset.target, preset.engine), ("mlx", "mlx-gen"))
+        self.assertEqual(preset.repo_id, "AbstractFramework/qwen-image-2512-4bit")
+
+    def test_mlx_gen_catalog_covers_abstractframework_q4_q8_collection(self):
+        from abstractvision.model_downloads import model_presets
+
+        expected = {
+            "AbstractFramework/flux.2-klein-4b-4bit",
+            "AbstractFramework/flux.2-klein-4b-8bit",
+            "AbstractFramework/flux.2-klein-9b-4bit",
+            "AbstractFramework/flux.2-klein-9b-8bit",
+            "AbstractFramework/flux.2-klein-base-4b-4bit",
+            "AbstractFramework/flux.2-klein-base-4b-8bit",
+            "AbstractFramework/flux.2-klein-base-9b-4bit",
+            "AbstractFramework/flux.2-klein-base-9b-8bit",
+            "AbstractFramework/qwen-image-4bit",
+            "AbstractFramework/qwen-image-8bit",
+            "AbstractFramework/qwen-image-2512-4bit",
+            "AbstractFramework/qwen-image-2512-8bit",
+            "AbstractFramework/qwen-image-edit-4bit",
+            "AbstractFramework/qwen-image-edit-8bit",
+            "AbstractFramework/qwen-image-edit-2509-4bit",
+            "AbstractFramework/qwen-image-edit-2509-8bit",
+            "AbstractFramework/qwen-image-edit-2511-4bit",
+            "AbstractFramework/qwen-image-edit-2511-8bit",
+            "AbstractFramework/z-image-4bit",
+            "AbstractFramework/z-image-8bit",
+            "AbstractFramework/z-image-turbo-4bit",
+            "AbstractFramework/z-image-turbo-8bit",
+            "AbstractFramework/ernie-image-turbo-4bit",
+            "AbstractFramework/ernie-image-turbo-8bit",
+        }
+        repos = {
+            preset.repo_id
+            for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True)
+            if preset.source == "abstractframework-mlx-gen"
+        }
+
+        self.assertTrue(expected.issubset(repos))
+
+    def test_mlx_gen_defaults_prefer_q4_and_keep_q8_explicit(self):
+        from abstractvision.model_downloads import find_model_preset
+
+        default_flux = find_model_preset("flux2-klein-4b", target="mlx", engine="mlx-gen", require_8bit=True)
+        quality_flux = find_model_preset("flux2-klein-4b-q8", target="mlx", engine="mlx-gen", require_8bit=True)
+        quality_flux_by_bits = find_model_preset(
+            "flux2-klein-4b",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=True,
+            bits=8,
+        )
+        default_qwen_edit = find_model_preset("qwen-image-edit", target="mlx", engine="mlx-gen", require_8bit=True)
+        legacy_qwen_edit = find_model_preset("qwen-image-edit-legacy", target="mlx", engine="mlx-gen", require_8bit=True)
+        default_ernie = find_model_preset(
+            "ernie-image-turbo",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=True,
+            bits=4,
+        )
+        quality_ernie = find_model_preset(
+            "ernie-image-turbo",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=True,
+            bits=8,
+        )
+
+        self.assertEqual(default_flux.repo_id, "AbstractFramework/flux.2-klein-4b-4bit")
+        self.assertEqual(quality_flux.repo_id, "AbstractFramework/flux.2-klein-4b-8bit")
+        self.assertEqual(quality_flux_by_bits.repo_id, "AbstractFramework/flux.2-klein-4b-8bit")
+        self.assertEqual(default_qwen_edit.repo_id, "AbstractFramework/qwen-image-edit-2511-4bit")
+        self.assertEqual(legacy_qwen_edit.repo_id, "AbstractFramework/qwen-image-edit-4bit")
+        self.assertEqual(default_ernie.repo_id, "AbstractFramework/ernie-image-turbo-4bit")
+        self.assertEqual(quality_ernie.repo_id, "AbstractFramework/ernie-image-turbo-8bit")
+        self.assertEqual(default_ernie.local_dir_name, "ernie-image-turbo-mlx-gen-4bit")
+        self.assertEqual(quality_ernie.local_dir_name, "ernie-image-turbo-mlx-gen-8bit")
 
     def test_sdcpp_gguf_presets_can_be_disabled_on_apple_silicon(self):
         from abstractvision.model_downloads import (
@@ -109,7 +186,7 @@ class TestModelDownloads(unittest.TestCase):
         self.assertEqual(preset.engine, "stable-diffusion.cpp")
         self.assertEqual(preset.upstream_repo_id, "Qwen/Qwen-Image-Edit-2511")
 
-    def test_generic_mlx_engine_is_rejected_and_flux1_mflux_presets_are_not_curated(self):
+    def test_generic_mlx_engine_is_rejected_and_flux1_mlx_gen_presets_are_not_curated(self):
         from abstractvision.model_downloads import find_model_preset, model_presets, normalize_model_engine
 
         with self.assertRaisesRegex(ValueError, "generic MLX image backend"):
@@ -117,12 +194,13 @@ class TestModelDownloads(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "generic MLX image backend"):
             find_model_preset("mlx/flux2-klein-4b", target="auto", engine=None, require_8bit=True)
 
-        mflux_keys = {
+        mlx_gen_keys = {
             preset.key
             for preset in model_presets(target="mlx", engine="mflux", include_non_8bit=False)
         }
-        self.assertNotIn("flux1-dev", mflux_keys)
-        self.assertNotIn("flux1-schnell", mflux_keys)
+        self.assertIn("qwen-image-edit-2511", mlx_gen_keys)
+        self.assertNotIn("flux1-dev", mlx_gen_keys)
+        self.assertNotIn("flux1-schnell", mlx_gen_keys)
 
         with self.assertRaises(ValueError):
             find_model_preset("flux1-dev", target="mlx", engine="mflux", require_8bit=True)

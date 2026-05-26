@@ -1,8 +1,9 @@
 ## Task 017: Native MLX engine beyond MFLUX
 
 **Date**: 2026-05-20
-**Status**: Planned  
+**Status**: Deprecated  
 **Priority**: P1  
+**Deprecated**: 2026-05-25
 
 ---
 
@@ -252,12 +253,22 @@ MFLUX as the short-term bridge and compatibility runtime during the transition.
 
 ---
 
-## Report (fill only when completed)
+## Deprecation report
 
-### Summary
+Deprecated: 2026-05-25
 
-N/A
+This plan is superseded by the completed MLX-Gen runtime migration in
+[`../completed/0024_mlx_gen_runtime_migration.md`](../completed/0024_mlx_gen_runtime_migration.md).
 
-### Validation
+Reason:
+- The selected Apple-local runtime identity is `mlx-gen`, not a generic `mlx` provider.
+- Generic `mlx` remains a download/artifact target and is intentionally rejected as a runnable
+  image provider to avoid confusion with AbstractCore's text-generation MLX provider.
+- The old MFLUX implementation boundary is now a compatibility layer around the `mlx-gen`
+  package, with legacy `mflux` aliases preserved for existing users.
 
-- Tests: N/A
+Outcome:
+- Do not implement this task as written.
+- Any future Apple-local vision work should start from the canonical `mlx-gen` provider/engine and
+  open a fresh backlog item only if a runtime beyond MLX-Gen becomes real and needs a new package
+  boundary.

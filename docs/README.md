@@ -37,8 +37,8 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 - `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
 
 Built-in backends implement:
-- **Images**: Diffusers, stable-diffusion.cpp, MFLUX, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MFLUX supports `text_to_image` and FLUX.2 klein `image_to_image` edits (no masks yet); local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
+- **Current local policy**: MLX-Gen supports curated q4/q8 Apple Silicon `text_to_image` presets and `image_to_image` for FLUX.2 klein/base plus Qwen Image Edit (no masks yet); local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 

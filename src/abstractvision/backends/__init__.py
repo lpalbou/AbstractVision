@@ -15,6 +15,8 @@ __all__ = [
     "OpenAICompatibleVisionBackend",
     "HuggingFaceDiffusersBackendConfig",
     "HuggingFaceDiffusersVisionBackend",
+    "MLXGenBackendConfig",
+    "MLXGenVisionBackend",
     "MFluxBackendConfig",
     "MFluxVisionBackend",
     "StableDiffusionCppBackendConfig",
@@ -42,9 +44,13 @@ def __getattr__(name: str):
             else HuggingFaceDiffusersVisionBackend
         )
 
-    if name in {"MFluxBackendConfig", "MFluxVisionBackend"}:
-        from .mflux import MFluxBackendConfig, MFluxVisionBackend
+    if name in {"MLXGenBackendConfig", "MLXGenVisionBackend", "MFluxBackendConfig", "MFluxVisionBackend"}:
+        from .mflux import MLXGenBackendConfig, MLXGenVisionBackend, MFluxBackendConfig, MFluxVisionBackend
 
+        if name == "MLXGenBackendConfig":
+            return MLXGenBackendConfig
+        if name == "MLXGenVisionBackend":
+            return MLXGenVisionBackend
         return MFluxBackendConfig if name == "MFluxBackendConfig" else MFluxVisionBackend
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

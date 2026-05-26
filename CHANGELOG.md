@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+## 0.3.14 - 2026-05-26
+
+- MLX-Gen migration: switch the Apple Silicon image runtime dependency to `mlx-gen`, expose `mlx-gen` as the canonical provider/engine, and keep `mflux` names as compatibility aliases.
+- Catalog/model coverage: prioritize the AbstractFramework Hugging Face MLX-Gen q4/q8 prepared model collection, default q4 for local memory efficiency, and keep q8 variants discoverable for quality-focused runs.
+- Local image support: expand the MLX-Gen backend/catalog surface for FLUX.2 klein/base, Qwen Image, Qwen Image Edit, Z-Image, Z-Image Turbo, and ERNIE Image Turbo q4/q8, including Qwen Image Edit `image_to_image` routing.
+- Runtime dependency: require `mlx-gen>=0.18.5` for ERNIE Image Turbo q4/q8 prepared-folder support.
+- Core/Gateway propagation: surface canonical `mlx-gen` provider/model metadata through AbstractCore and Gateway catalog paths while preserving legacy routed ids.
+- Docs/tests: refresh CLI, backend, AbstractCore integration, and agent docs for MLX-Gen naming and q4/q8 guidance.
+
 ## 0.3.13 - 2026-05-23
 
 - MFLUX edits: enable `image_to_image` for the curated FLUX.2 klein presets (`flux2-klein-4b`, `flux2-klein-9b`) so they surface in the playground edit UI and can be called through `VisionManager.edit_image(...)` (mask edits are not supported yet).

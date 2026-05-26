@@ -145,7 +145,7 @@ Included:
 - Completed: [007_local_hf_backend_strategy_diffusers.md](../completed/007_local_hf_backend_strategy_diffusers.md)
 - Completed: [011_abstractcore_tool_integration_and_artifact_refs.md](../completed/011_abstractcore_tool_integration_and_artifact_refs.md)
 - Completed: [016_abstractcore_plugin_catalog_discovery_surface.md](../completed/016_abstractcore_plugin_catalog_discovery_surface.md)
-- Planned: [017_mlx_mflux_backend_strategy.md](../planned/017_mlx_mflux_backend_strategy.md)
+- Deprecated: [017_mlx_mflux_backend_strategy.md](../deprecated/017_mlx_mflux_backend_strategy.md)
 - Planned: [020_adapter_aware_model_graph_and_catalog.md](../planned/020_adapter_aware_model_graph_and_catalog.md)
 
 ## Expected outcomes

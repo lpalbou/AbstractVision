@@ -120,7 +120,7 @@ Not included:
 - no claim of “working local video” before that quality bar is met.
 
 ## Dependencies and related tasks
-- Planned: [017_mlx_mflux_backend_strategy.md](017_mlx_mflux_backend_strategy.md)
+- Deprecated: [017_mlx_mflux_backend_strategy.md](../deprecated/017_mlx_mflux_backend_strategy.md)
 - Planned: [020_adapter_aware_model_graph_and_catalog.md](020_adapter_aware_model_graph_and_catalog.md)
 - Planned: [0022_local_diffusers_image_to_video_backend.md](0022_local_diffusers_image_to_video_backend.md)
 

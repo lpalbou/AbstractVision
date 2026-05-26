@@ -4,7 +4,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines
-- **MFLUX (local Apple Silicon)**: 8-bit MLX/MFLUX generation via the optional MFLUX runtime (`text_to_image` + FLUX.2 klein `image_to_image` edits without masks)
+- **MLX-Gen (local Apple Silicon)**: q4/q8 AbstractFramework MLX-optimized generation via the optional MLX-Gen runtime (`text_to_image` plus FLUX.2 klein/base and Qwen Image Edit `image_to_image` edits without masks)
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -30,7 +30,7 @@ From PyPI:
 pip install abstractvision
 ```
 
-AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, `abstractvision[mflux]` for Apple Silicon MLX/MFLUX, or `abstractvision[all-apple]` for the full native macOS stack.
+AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, `abstractvision[mlx-gen]` for Apple Silicon MLX-Gen, or `abstractvision[all-apple]` for the full native macOS stack. `abstractvision[mflux]` remains available as a compatibility alias for older install instructions.
 
 If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
@@ -87,13 +87,14 @@ Optional extras:
 | `openai-compatible` | Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today. |
 | `diffusers` | Installs Torch/Diffusers and related packages for local Diffusers generation. |
 | `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
-| `mflux` | Installs the optional MFLUX runtime for Apple Silicon MLX image generation. |
-| `apple` | Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MFLUX. |
-| `gpu` | GPU-friendly profile for Diffusers/Torch (does not include MFLUX). |
+| `mlx-gen` | Installs the optional MLX-Gen runtime for Apple Silicon MLX image generation. |
+| `mflux` | Compatibility alias for the MLX-Gen runtime. |
+| `apple` | Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
+| `gpu` | GPU-friendly profile for Diffusers/Torch (does not include MLX-Gen). |
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
-| `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MFLUX. |
+| `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MLX-Gen. |
 | `all-gpu` | Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings). |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 
@@ -120,7 +121,7 @@ python scripts/download_model_sets.py --set sd15_diffusers
 AbstractVision can run “locally” via three main routes:
 
 - **Diffusers backend**: uses Torch device selection (`cuda` / `mps` / `cpu`).
-- **MFLUX backend (`mflux`)**: Apple Silicon MLX generation through the optional MFLUX runtime (8-bit presets).
+- **MLX-Gen backend (`mlx-gen`)**: Apple Silicon MLX generation through the optional MLX-Gen runtime. q4 AbstractFramework presets are the default recommendation; q8 variants are available when quality is paramount.
 - **stable-diffusion.cpp backend (`sdcpp`)**: runs GGUF diffusion models using:
   - `sd-cli` (**recommended** when you want GPU backends like **Metal** or **CUDA**)
   - or `stable-diffusion-cpp-python` (convenient, but often **CPU-only**, especially on macOS)
@@ -171,9 +172,9 @@ Notes:
 
 macOS Metal (Apple Silicon) quick picks:
 
-- If you want **local quantized FLUX.2** on Metal: prefer **stable-diffusion.cpp** (GGUF) via the `sdcpp` backend (see section **6)**).
-- If you want a fast local FLUX.2 for iteration: `black-forest-labs/FLUX.2-klein-4B` (or GGUF equivalents) is usually the most practical starting point.
-- If you want strong prompt following + text rendering: `Qwen/Qwen-Image-2512` (Diffusers on `mps`, start with `float16`).
+- If you want **local quantized FLUX.2** on Metal: prefer the MLX-Gen q4 presets first (`abstractvision download flux2-klein-4b --provider mlx-gen`), then use q8 when quality is more important than memory.
+- If you want a fast local FLUX.2 for iteration: `flux2-klein-4b` through MLX-Gen is usually the most practical Apple Silicon starting point.
+- If you want strong prompt following + text rendering: use `qwen-image` or `ernie-image-turbo` through MLX-Gen q4 for Apple-local generation, select q8 explicitly when quality is more important than memory, or use `Qwen/Qwen-Image-2512` / `baidu/ERNIE-Image-Turbo` through Diffusers on `mps` when you want the full Diffusers path.
 
 Recommended default (local, cross-platform) — Stable Diffusion 1.5:
 
@@ -192,6 +193,7 @@ Jump to detailed recipes:
 - Stable Diffusion 1.5: section **1) First local image (Diffusers)**
 - FLUX.2-klein-4B: section **2) Next small model (FLUX.2-klein-4B)**
 - OpenAI-compatible HTTP: section **2.1) OpenAI-compatible HTTP**
+- Apple Silicon MLX-Gen: section **2.2) Apple Silicon MLX-Gen (q4 first)**
 - Qwen Image: section **3) Qwen Image (Diffusers)**
 - FLUX 2 details: section **4) FLUX 2 (Diffusers)**
 - SD3.5: section **5) Stable Diffusion 3.5 (Diffusers, gated)**
@@ -304,6 +306,48 @@ abstractvision repl
 ```
 
 If your server also supports video endpoints, configure them via `ABSTRACTVISION_TEXT_TO_VIDEO_PATH` / `ABSTRACTVISION_IMAGE_TO_VIDEO_PATH` (see [docs/reference/configuration.md](reference/configuration.md)).
+
+---
+
+## 2.2) Apple Silicon MLX-Gen (q4 first)
+
+Use this path on Apple Silicon when you want local MLX-optimized image models
+without running a separate server. AbstractVision uses the `mlx-gen` Python API
+in-process and expects prepared model folders to exist in the Hugging Face
+cache. It does not silently download weights during generation.
+
+```bash
+pip install "abstractvision[models,mlx-gen]"
+abstractvision catalog --provider mlx-gen
+abstractvision download flux2-klein-4b --provider mlx-gen
+abstractvision download qwen-image --provider mlx-gen
+abstractvision download qwen-image-edit-2511 --provider mlx-gen
+abstractvision download ernie-image-turbo --provider mlx-gen --bits 4
+abstractvision download ernie-image-turbo --provider mlx-gen --bits 8
+```
+
+The default prepared choices are q4 from the
+[AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
+Select q8 variants explicitly when quality is paramount and memory permits it.
+Qwen and ERNIE q4 folders can mix q4 and q8 components, but remain the default
+prepared choice.
+
+Text-to-image:
+
+```text
+/backend mlx-gen flux2-klein-4b
+/t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
+```
+
+Image-to-image/edit:
+
+```text
+/backend mlx-gen qwen-image-edit-2511
+/i2i --image ./input.png "make it watercolor" --steps 20 --guidance-scale 2.5 --open
+```
+
+Legacy `mflux` provider names and routed ids still work as aliases, but new
+configuration should use `mlx-gen`.
 
 ---
 

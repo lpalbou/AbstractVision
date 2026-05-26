@@ -145,6 +145,7 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("runwayml/stable-diffusion-v1-5", out)
         self.assertIn("abstractvision model-presets", out)
         self.assertIn("cache-only by default", out)
+        self.assertIn("/backend mlx-gen <preset_or_local_path> [base_model]", out)
         self.assertIn("black-forest-labs/FLUX.2-klein-4B", out)
         self.assertIn("/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]", out)
         self.assertIn("abstractvision download flux2-klein-base-4b --provider sdcpp", out)
@@ -163,11 +164,13 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("target: mlx", out)
         self.assertIn("provider/engine: any", out)
-        self.assertIn("mflux", out)
-        self.assertIn("AITRADER/FLUX2-klein-4B-mlx-8bit", out)
-        self.assertIn("deepsweet/FLUX.2-klein-9B-MLX-Q8", out)
-        self.assertIn("mlx-community/Qwen-Image-2512-8bit", out)
-        self.assertIn("carsenk/z-image-turbo-mflux-8bit", out)
+        self.assertIn("mlx-gen", out)
+        self.assertIn("AbstractFramework/flux.2-klein-4b-4bit", out)
+        self.assertIn("AbstractFramework/flux.2-klein-4b-8bit", out)
+        self.assertIn("AbstractFramework/qwen-image-2512-4bit", out)
+        self.assertIn("AbstractFramework/z-image-turbo-4bit", out)
+        self.assertIn("AbstractFramework/ernie-image-turbo-4bit", out)
+        self.assertNotIn("mlx-community/Qwen-Image-2512-8bit", out)
         self.assertNotIn("argmaxinc/mlx-stable-diffusion-3-medium", out)
 
     def test_model_presets_can_filter_by_engine(self):
@@ -175,12 +178,22 @@ class TestCliSmoke(unittest.TestCase):
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
+            rc = main(["model-presets", "--target", "mlx", "--provider", "mlx-gen"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("provider/engine: mlx-gen", out)
+        self.assertIn("flux2-klein-4b", out)
+        self.assertNotIn("stable-diffusion-3-medium", out)
+
+    def test_model_presets_accepts_legacy_mflux_engine_alias(self):
+        from abstractvision.cli import main
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
             rc = main(["model-presets", "--target", "mlx", "--provider", "mflux"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
-        self.assertIn("provider/engine: mflux", out)
-        self.assertIn("flux2-klein-4b", out)
-        self.assertNotIn("stable-diffusion-3-medium", out)
+        self.assertIn("provider/engine: mlx-gen", out)
 
     def test_model_presets_lists_sdcpp_gguf_qwen_edit(self):
         from abstractvision.cli import main
@@ -202,7 +215,7 @@ class TestCliSmoke(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "generic MLX image backend"):
             main(["model-presets", "--provider", "mlx"])
 
-    def test_model_catalog_lists_8bit_and_fallback_entries(self):
+    def test_model_catalog_lists_quantized_and_fallback_entries(self):
         from abstractvision.cli import main
 
         buf = io.StringIO()
@@ -210,7 +223,9 @@ class TestCliSmoke(unittest.TestCase):
             rc = main(["catalog", "--all-targets"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
-        self.assertIn("policy: recommend 8-bit", out)
+        self.assertIn("policy: recommend quantized presets", out)
+        self.assertIn("AbstractFramework/flux.2-klein-4b-4bit", out)
+        self.assertIn("AbstractFramework/flux.2-klein-4b-8bit", out)
         self.assertIn("Qwen/Qwen-Image-2512", out)
         self.assertIn("Qwen/Qwen-Image-Edit-2511", out)
         self.assertIn("stable-diffusion-v1-5/stable-diffusion-v1-5", out)
@@ -250,12 +265,12 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(len(matching), 1)
         self.assertIn("image_to_image", matching[0].get("tasks", []))
 
-    def test_model_catalog_task_filter_lists_mflux_i2i_rows(self):
+    def test_model_catalog_task_filter_lists_mlx_gen_i2i_rows(self):
         from abstractvision.cli import main
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = main(["catalog", "--task", "image_to_image", "--provider", "mflux"])
+            rc = main(["catalog", "--task", "image_to_image", "--provider", "mlx-gen"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertIn("flux2-klein-4b", out)
@@ -468,7 +483,7 @@ class TestCliSmoke(unittest.TestCase):
                 self.assertTrue(str(getattr(cfg, "vae", "")).endswith("vae/diffusion_pytorch_model.safetensors"))
                 self.assertTrue(str(getattr(cfg, "llm", "")).endswith("Qwen3-4B-Q4_K_M.gguf"))
 
-    def test_download_model_selects_8bit_without_network_when_mocked(self):
+    def test_download_model_selects_default_mlx_gen_q4_without_network_when_mocked(self):
         from abstractvision.cli import main
 
         calls = {}
@@ -487,7 +502,7 @@ class TestCliSmoke(unittest.TestCase):
                         "download-model",
                         "flux2-klein-9b",
                         "--provider",
-                        "mflux",
+                        "mlx-gen",
                         "--model-dir",
                         "/tmp/legacy-models",
                         "--max-workers",
@@ -496,10 +511,73 @@ class TestCliSmoke(unittest.TestCase):
                 )
         out = buf.getvalue()
         self.assertEqual(rc, 0)
-        self.assertEqual(calls["repo_id"], "deepsweet/FLUX.2-klein-9B-MLX-Q8")
+        self.assertEqual(calls["repo_id"], "AbstractFramework/flux.2-klein-9b-4bit")
         self.assertEqual(str(calls["model_dir"]), "/tmp/legacy-models")
         self.assertEqual(calls["max_workers"], 2)
-        self.assertIn("/tmp/hf-cache/models--deepsweet--FLUX.2-klein-9B-MLX-Q8/snapshots/abc123", out)
+        self.assertIn("/tmp/hf-cache/models--AbstractFramework--flux.2-klein-9b-4bit/snapshots/abc123", out)
+
+    def test_download_model_selects_explicit_mlx_gen_q8_by_bits_without_network_when_mocked(self):
+        from abstractvision.cli import main
+
+        calls = {}
+
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+            calls["repo_id"] = preset.repo_id
+            calls["bits"] = preset.quantization_bits
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
+
+        buf = io.StringIO()
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["download-model", "flux2-klein-9b", "--provider", "mlx-gen", "--bits", "8"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls["repo_id"], "AbstractFramework/flux.2-klein-9b-8bit")
+        self.assertEqual(calls["bits"], 8)
+        self.assertIn("bits: 8", out)
+
+    def test_download_model_selects_ernie_mlx_gen_q4_by_bits_without_network_when_mocked(self):
+        from abstractvision.cli import main
+
+        calls = {}
+
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+            calls["repo_id"] = preset.repo_id
+            calls["bits"] = preset.quantization_bits
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
+
+        buf = io.StringIO()
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["download", "ernie-image-turbo", "--provider", "mlx-gen", "--bits", "4"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls["repo_id"], "AbstractFramework/ernie-image-turbo-4bit")
+        self.assertEqual(calls["bits"], 4)
+        self.assertIn("bits: 4", out)
+
+    def test_download_model_selects_ernie_mlx_gen_q8_by_bits_without_network_when_mocked(self):
+        from abstractvision.cli import main
+
+        calls = {}
+
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+            calls["repo_id"] = preset.repo_id
+            calls["bits"] = preset.quantization_bits
+            return Path("/tmp/hf-cache") / f"models--{preset.repo_id.replace('/', '--')}" / "snapshots" / "abc123"
+
+        buf = io.StringIO()
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["download", "ernie-image-turbo", "--provider", "mlx-gen", "--bits", "8"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls["repo_id"], "AbstractFramework/ernie-image-turbo-8bit")
+        self.assertEqual(calls["bits"], 8)
+        self.assertIn("bits: 8", out)
 
     def test_download_model_accepts_repo_id_fallback(self):
         from abstractvision.cli import main
@@ -541,14 +619,14 @@ class TestCliSmoke(unittest.TestCase):
         buf = io.StringIO()
         with patch("abstractvision.cli.download_model_preset", new=fake_download):
             with contextlib.redirect_stdout(buf):
-                rc = main(["download-model", "mlx-community/Qwen-Image-2512-8bit", "--max-workers", "2"])
+                rc = main(["download-model", "AbstractFramework/qwen-image-2512-8bit", "--max-workers", "2"])
 
         out = buf.getvalue()
         self.assertEqual(rc, 0)
-        self.assertEqual(calls["repo_id"], "mlx-community/Qwen-Image-2512-8bit")
-        self.assertEqual(calls["local_dir_name"], "qwen-image-2512-mlx-8bit")
+        self.assertEqual(calls["repo_id"], "AbstractFramework/qwen-image-2512-8bit")
+        self.assertEqual(calls["local_dir_name"], "qwen-image-2512-mlx-gen-8bit")
         self.assertEqual(calls["max_workers"], 2)
-        self.assertIn("/tmp/hf-cache/models--mlx-community--Qwen-Image-2512-8bit/snapshots/abc123", out)
+        self.assertIn("/tmp/hf-cache/models--AbstractFramework--qwen-image-2512-8bit/snapshots/abc123", out)
 
     def test_download_model_sdcpp_prints_resolved_bundle_paths(self):
         from abstractvision.cli import main
@@ -726,6 +804,25 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn('"sdcpp_model": "/models/sd-v1-5.gguf"', out)
         self.assertIn('"sdcpp_diffusion_model": null', out)
         self.assertIn('"model_id": null', out)
+
+    def test_repl_accepts_mlx_gen_backend(self):
+        from abstractvision.cli import main
+
+        commands = iter(
+            [
+                "/backend mlx-gen flux2-klein-4b",
+                "/config",
+                "/exit",
+            ]
+        )
+        buf = io.StringIO()
+        with patch("builtins.input", side_effect=lambda _prompt: next(commands)):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["cli"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn('"backend_kind": "mlx-gen"', out)
+        self.assertIn('"mflux_model": "flux2-klein-4b"', out)
 
     def test_cli_has_t2v_command(self):
         from abstractvision.cli import build_parser

@@ -19,13 +19,13 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision show-model <id>` — print a model’s tasks + params
 - `abstractvision provider-models --openai --task text_to_image` — explicitly query the official OpenAI `/models` catalog
 - `abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image` — explicitly query an OpenAI-compatible provider catalog
-- `abstractvision cli` — interactive testing (supports `openai`, `diffusers`, `mflux`, `sdcpp`; legacy alias: `abstractvision repl`)
+- `abstractvision cli` — interactive testing (supports `openai`, `diffusers`, `mlx-gen`, `sdcpp`; legacy alias: `abstractvision repl`; `mflux` is accepted as a compatibility alias)
 - `abstractvision playground [--host 127.0.0.1] [--port 8091]` — self-contained local web UI and `/v1/vision/*` API
 - `abstractvision serve [--host 127.0.0.1] [--port 8091]` — alias for `abstractvision playground`
-- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mflux`, and `sdcpp`, with `t2v` currently implemented locally through Diffusers)
+- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mlx-gen`, and `sdcpp`, with `t2v` currently implemented locally through Diffusers)
 
 Note:
-- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mflux|sdcpp` (legacy alias: `--backend`).
+- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mlx-gen|sdcpp` (legacy alias: `--backend`; `mflux` remains accepted).
 - Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 
 ## Interactive CLI backend selection
@@ -34,7 +34,7 @@ Inside `abstractvision cli`:
 
 - `/backend openai <base_url> [api_key] [model_id]`
 - `/provider-models [--task text_to_image] [--json]` — query the configured OpenAI-compatible provider catalog
-- `/backend mflux <preset_or_local_path> [base_model]`
+- `/backend mlx-gen <preset_or_local_path> [base_model]`
 - `/backend diffusers <model_id_or_path> [device] [torch_dtype]`
 - `/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]`
 - `/backend sdcpp <diffusion_model.gguf> <vae.safetensors> <llm.gguf> [sd_cli_path]`
@@ -52,7 +52,7 @@ The interactive CLI state object (`_ReplState` in [`../../src/abstractvision/cli
 
 ### Common
 
-- `ABSTRACTVISION_PROVIDER` — preferred backend selector: `openai`, `openai-compatible`, `diffusers`, `mflux`, or `sdcpp` (alias: `ABSTRACTVISION_BACKEND`)
+- `ABSTRACTVISION_PROVIDER` — preferred backend selector: `openai`, `openai-compatible`, `diffusers`, `mlx-gen`, or `sdcpp` (alias: `ABSTRACTVISION_BACKEND`; `mflux` remains accepted as a compatibility alias)
   - AbstractCore plugin default: `openai` using `https://api.openai.com/v1` plus `OPENAI_API_KEY`
   - AbstractCore compatibility: selecting `abstractvision:openai-compatible` directly, or setting `OPENAI_BASE_URL` to a non-OpenAI endpoint, keeps compatible-endpoint semantics
   - if unset and `OPENAI_BASE_URL` is set, the interactive CLI/playground default to `openai`
@@ -96,13 +96,14 @@ Playground-only Diffusers vars:
 - `ABSTRACTVISION_DIFFUSERS_REVISION` — optional model revision
 - `ABSTRACTVISION_DIFFUSERS_VARIANT` — optional model variant
 
-### MFLUX backend (Apple Silicon)
+### MLX-Gen backend (Apple Silicon)
 
-- `ABSTRACTVISION_MFLUX_MODEL` — preset key, local model path, or repo id (examples: `flux2-klein-4b`, `mflux/flux2-klein-4b`, `/path/to/preset-dir`, `mlx-community/Qwen-Image-2512-8bit`)
-- `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional explicit base model (`flux2-klein-4b`, `flux2-klein-9b`, `z-image-turbo`, `qwen-image`)
-- `ABSTRACTVISION_MFLUX_QUANTIZE` — optional quantization override for the MFLUX runtime
+- `ABSTRACTVISION_MFLUX_MODEL` — preset key, local model path, or repo id (examples: `flux2-klein-4b`, `mlx-gen/flux2-klein-4b`, `ernie-image-turbo`, `/path/to/preset-dir`, `AbstractFramework/qwen-image-2512-4bit`)
+- `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional explicit base model (`flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`, `flux2-klein-base-9b`, `z-image`, `z-image-turbo`, `qwen-image`, `qwen-image-edit-2511`, `ernie-image-turbo`)
+- `ABSTRACTVISION_MFLUX_QUANTIZE` — optional quantization override for the MLX-Gen runtime
 - `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root only; curated downloads now land in the Hugging Face cache
+- Canonical provider/model routing is `mlx-gen` / `mlx-gen/<preset>`. Legacy `mflux` provider values, routed ids, and env var names are accepted for compatibility.
 
 ### stable-diffusion.cpp backend
 

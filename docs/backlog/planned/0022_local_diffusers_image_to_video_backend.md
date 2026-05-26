@@ -136,7 +136,7 @@ Included:
 ## Dependencies and related tasks
 - Completed: [0021_local_diffusers_text_to_video_backend.md](../completed/0021_local_diffusers_text_to_video_backend.md)
 - Planned: [0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md](0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
-- Planned: [017_mlx_mflux_backend_strategy.md](017_mlx_mflux_backend_strategy.md)
+- Deprecated: [017_mlx_mflux_backend_strategy.md](../deprecated/017_mlx_mflux_backend_strategy.md)
 - Planned: [020_adapter_aware_model_graph_and_catalog.md](020_adapter_aware_model_graph_and_catalog.md)
 
 ## Expected outcomes

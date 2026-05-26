@@ -14,7 +14,7 @@ using local backends, the playground, and the AbstractCore integration.
 ### Symptom
 
 - `OptionalDependencyMissingError`
-- import errors mentioning `diffusers`, `torch`, `torchvision`, `stable_diffusion_cpp`, or `mflux`
+- import errors mentioning `diffusers`, `torch`, `torchvision`, `stable_diffusion_cpp`, `mlxgen`, or `mflux`
 - errors like `Qwen2VLVideoProcessor requires the Torchvision library...` when using `Qwen/Qwen-Image-Edit-*`
 
 ### Likely cause
@@ -27,7 +27,7 @@ unless you choose the matching extra.
 - Diffusers: `pip install "abstractvision[diffusers]"`
 - If the error mentions missing `torchvision`: `pip install torchvision` (or upgrade/reinstall `abstractvision[diffusers]`)
 - stable-diffusion.cpp bindings: `pip install "abstractvision[sdcpp]"`
-- MFLUX on Apple Silicon: `pip install "abstractvision[mflux]"`
+- MLX-Gen on Apple Silicon: `pip install "abstractvision[mlx-gen]"` (or compatibility alias `abstractvision[mflux]`)
 
 ### Verify
 
@@ -110,27 +110,29 @@ Use another local Diffusers image model for now, for example:
 The follow-up investigation is tracked in:
 - [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
 
-## MFLUX `image_to_image` is missing or rejected
+## MLX-Gen `image_to_image` is missing or rejected
 
 ### Symptom
 
-- `flux2-klein-4b` / `flux2-klein-9b` (MFLUX) do not appear in the playground `Image→Image` tab; or
-- local MFLUX `image_to_image` calls raise `CapabilityNotSupportedError`
+- `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-*`, or `qwen-image-edit-*` (MLX-Gen) do not appear in the playground `Image→Image` tab; or
+- local MLX-Gen `image_to_image` calls raise `CapabilityNotSupportedError`
 
 ### Likely cause
 
-- You are on an older AbstractVision version where MFLUX `image_to_image` was quarantined.
-- The optional MFLUX extra is not installed (`abstractvision[mflux]`).
-- You are attempting a mask/inpaint edit (not supported by MFLUX yet).
+- You are on an older AbstractVision version where the Apple-local edit surface was narrower.
+- The optional MLX-Gen extra is not installed (`abstractvision[mlx-gen]`).
+- The q4/q8 prepared model is not present in the Hugging Face cache yet.
+- You are attempting a mask/inpaint edit (not supported by MLX-Gen yet).
 
 ### Fix
 
-- Upgrade AbstractVision to a version that supports MFLUX FLUX.2 klein edits (v0.3.13+).
-- Install the backend extra: `pip install "abstractvision[mflux]"`
+- Upgrade AbstractVision to a version that supports MLX-Gen q4/q8 presets.
+- Install the backend extra: `pip install "abstractvision[mlx-gen]"`
+- Download the prepared model first, for example `abstractvision download qwen-image-edit-2511 --provider mlx-gen`.
 - For mask edits/inpainting, use local Diffusers or `stable-diffusion.cpp` instead.
 
 Notes:
-- MFLUX edit strength is passed as `strength` and normalized to the underlying MFLUX `image_strength` parameter.
+- MLX-Gen edit strength is passed as `strength` and normalized to the runtime `image_strength` parameter where the model supports it.
 - If you need stricter scene preservation, Diffusers often remains the more conservative baseline for `image_to_image`.
 
 ## `mps` was requested but is unavailable
