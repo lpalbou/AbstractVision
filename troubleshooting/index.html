@@ -791,15 +791,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mflux-image_to_image-is-missing-or-rejected" class="md-nav__link">
+  <a href="#mlx-gen-image_to_image-is-missing-or-rejected" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MFLUX image_to_image is missing or rejected
+        MLX-Gen image_to_image is missing or rejected
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="MFLUX image_to_image is missing or rejected">
+    <nav class="md-nav" aria-label="MLX-Gen image_to_image is missing or rejected">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1066,7 +1066,7 @@ using local backends, the playground, and the AbstractCore integration.</p>
 <h3 id="symptom">Symptom<a class="headerlink" href="#symptom" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>OptionalDependencyMissingError</code></li>
-<li>import errors mentioning <code>diffusers</code>, <code>torch</code>, <code>torchvision</code>, <code>stable_diffusion_cpp</code>, or <code>mflux</code></li>
+<li>import errors mentioning <code>diffusers</code>, <code>torch</code>, <code>torchvision</code>, <code>stable_diffusion_cpp</code>, <code>mlxgen</code>, or <code>mflux</code></li>
 <li>errors like <code>Qwen2VLVideoProcessor requires the Torchvision library...</code> when using <code>Qwen/Qwen-Image-Edit-*</code></li>
 </ul>
 <h3 id="likely-cause">Likely cause<a class="headerlink" href="#likely-cause" title="Permanent link">&para;</a></h3>
@@ -1077,7 +1077,7 @@ unless you choose the matching extra.</p>
 <li>Diffusers: <code>pip install "abstractvision[diffusers]"</code></li>
 <li>If the error mentions missing <code>torchvision</code>: <code>pip install torchvision</code> (or upgrade/reinstall <code>abstractvision[diffusers]</code>)</li>
 <li>stable-diffusion.cpp bindings: <code>pip install "abstractvision[sdcpp]"</code></li>
-<li>MFLUX on Apple Silicon: <code>pip install "abstractvision[mflux]"</code></li>
+<li>MLX-Gen on Apple Silicon: <code>pip install "abstractvision[mlx-gen]"</code> (or compatibility alias <code>abstractvision[mflux]</code>)</li>
 </ul>
 <h3 id="verify">Verify<a class="headerlink" href="#verify" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1144,26 +1144,28 @@ capability.</p>
 - <code>black-forest-labs/FLUX.2-klein-4B</code></p>
 <p>The follow-up investigation is tracked in:
 - <a href="../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a></p>
-<h2 id="mflux-image_to_image-is-missing-or-rejected">MFLUX <code>image_to_image</code> is missing or rejected<a class="headerlink" href="#mflux-image_to_image-is-missing-or-rejected" title="Permanent link">&para;</a></h2>
+<h2 id="mlx-gen-image_to_image-is-missing-or-rejected">MLX-Gen <code>image_to_image</code> is missing or rejected<a class="headerlink" href="#mlx-gen-image_to_image-is-missing-or-rejected" title="Permanent link">&para;</a></h2>
 <h3 id="symptom_4">Symptom<a class="headerlink" href="#symptom_4" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>flux2-klein-4b</code> / <code>flux2-klein-9b</code> (MFLUX) do not appear in the playground <code>Image→Image</code> tab; or</li>
-<li>local MFLUX <code>image_to_image</code> calls raise <code>CapabilityNotSupportedError</code></li>
+<li><code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>flux2-klein-base-*</code>, or <code>qwen-image-edit-*</code> (MLX-Gen) do not appear in the playground <code>Image→Image</code> tab; or</li>
+<li>local MLX-Gen <code>image_to_image</code> calls raise <code>CapabilityNotSupportedError</code></li>
 </ul>
 <h3 id="likely-cause_4">Likely cause<a class="headerlink" href="#likely-cause_4" title="Permanent link">&para;</a></h3>
 <ul>
-<li>You are on an older AbstractVision version where MFLUX <code>image_to_image</code> was quarantined.</li>
-<li>The optional MFLUX extra is not installed (<code>abstractvision[mflux]</code>).</li>
-<li>You are attempting a mask/inpaint edit (not supported by MFLUX yet).</li>
+<li>You are on an older AbstractVision version where the Apple-local edit surface was narrower.</li>
+<li>The optional MLX-Gen extra is not installed (<code>abstractvision[mlx-gen]</code>).</li>
+<li>The q4/q8 prepared model is not present in the Hugging Face cache yet.</li>
+<li>You are attempting a mask/inpaint edit (not supported by MLX-Gen yet).</li>
 </ul>
 <h3 id="fix_4">Fix<a class="headerlink" href="#fix_4" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Upgrade AbstractVision to a version that supports MFLUX FLUX.2 klein edits (v0.3.13+).</li>
-<li>Install the backend extra: <code>pip install "abstractvision[mflux]"</code></li>
+<li>Upgrade AbstractVision to a version that supports MLX-Gen q4/q8 presets.</li>
+<li>Install the backend extra: <code>pip install "abstractvision[mlx-gen]"</code></li>
+<li>Download the prepared model first, for example <code>abstractvision download qwen-image-edit-2511 --provider mlx-gen</code>.</li>
 <li>For mask edits/inpainting, use local Diffusers or <code>stable-diffusion.cpp</code> instead.</li>
 </ul>
 <p>Notes:
-- MFLUX edit strength is passed as <code>strength</code> and normalized to the underlying MFLUX <code>image_strength</code> parameter.
+- MLX-Gen edit strength is passed as <code>strength</code> and normalized to the runtime <code>image_strength</code> parameter where the model supports it.
 - If you need stricter scene preservation, Diffusers often remains the more conservative baseline for <code>image_to_image</code>.</p>
 <h2 id="mps-was-requested-but-is-unavailable"><code>mps</code> was requested but is unavailable<a class="headerlink" href="#mps-was-requested-but-is-unavailable" title="Permanent link">&para;</a></h2>
 <h3 id="symptom_5">Symptom<a class="headerlink" href="#symptom_5" title="Permanent link">&para;</a></h3>

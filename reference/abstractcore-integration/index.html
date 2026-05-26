@@ -783,18 +783,18 @@
 - Compatible HTTP: set <code>OPENAI_BASE_URL</code> to a local/remote compatible <code>/v1</code> server. Set <code>ABSTRACTVISION_BACKEND=openai-compatible</code> when you want to force compatible-endpoint semantics.
 - Legacy <code>abstractvision:openai-compatible</code>: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another supported Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set. Local <code>text_to_video</code> groundwork exists but is currently experimental and disabled from the normal local plugin surfaces.
-- Local MFLUX (Apple Silicon): install <code>abstractvision[mflux]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mflux</code>. Download an 8-bit MLX/MFLUX preset with <code>abstractvision download flux2-klein-4b --provider mflux</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed model ids such as <code>mflux/flux2-klein-4b</code>. Current bundled MFLUX support is <code>text_to_image</code> only.
+- Local MLX-Gen (Apple Silicon): install <code>abstractvision[mlx-gen]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mlx-gen</code>. Download an AbstractFramework q4 prepared preset with <code>abstractvision download flux2-klein-4b --provider mlx-gen</code> or <code>abstractvision download ernie-image-turbo --provider mlx-gen --bits 4</code>; select q8 explicitly with commands such as <code>abstractvision download ernie-image-turbo --provider mlx-gen --bits 8</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed model ids such as <code>mlx-gen/flux2-klein-4b</code> or <code>mlx-gen/ernie-image-turbo</code>. q4 is the default recommendation for memory efficiency; q8 variants remain available for quality-focused runs. Legacy <code>mflux</code> provider values remain accepted as aliases.
 - stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure either a model path or a curated model key such as <code>flux2-klein-base-4b</code>. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.
 - Gateway/Core should pass process-level config or <code>owner.config</code> and report readiness; they should not mutate AbstractVision environment variables per request.</p>
 <p>Key config keys (owner.config):
 - <code>vision_backend_instance</code> / <code>vision_backend_factory</code> (advanced injection hooks; bypass env-driven backend creation)
-- <code>vision_backend</code> (<code>openai</code>, <code>openai-compatible</code>, <code>diffusers</code>, <code>mflux</code>, or <code>sdcpp</code>; default <code>openai</code>)
+- <code>vision_backend</code> (<code>openai</code>, <code>openai-compatible</code>, <code>diffusers</code>, <code>mlx-gen</code>, or <code>sdcpp</code>; default <code>openai</code>; <code>mflux</code> is accepted as a compatibility alias)
 - <code>vision_model_id</code> (Diffusers/OpenAI-compatible model id; default <code>gpt-image-1</code> only for the official OpenAI profile and <code>runwayml/stable-diffusion-v1-5</code> for Diffusers)
 - <code>vision_device</code> / <code>vision_torch_dtype</code> / <code>vision_allow_download</code> / <code>vision_auto_retry_fp32</code> (Diffusers)
 - <code>vision_base_url</code> / <code>vision_api_key</code> (OpenAI or compatible HTTP)
-- <code>vision_mflux_model</code> / <code>vision_mflux_base_model</code> / <code>vision_mflux_quantize</code> / <code>vision_mflux_allow_download</code> (MFLUX)
-- <code>vision_model_dir</code> (legacy preset import root used by MFLUX compatibility/migration helpers; new downloads land in the Hugging Face cache)
+- <code>vision_mflux_model</code> / <code>vision_mflux_base_model</code> / <code>vision_mflux_quantize</code> / <code>vision_mflux_allow_download</code> (MLX-Gen; env/config names keep MFLUX compatibility)
+- <code>vision_model_dir</code> (legacy preset import root used by MLX-Gen compatibility/migration helpers; new downloads land in the Hugging Face cache)
 - <code>vision_sdcpp_model</code> / <code>vision_sdcpp_diffusion_model</code> / <code>vision_sdcpp_bin</code> (stable-diffusion.cpp; <code>vision_sdcpp_model</code> may be a curated model key such as <code>flux2-klein-base-4b</code>)
 - <code>vision_sdcpp_vae</code> / <code>vision_sdcpp_llm</code> / <code>vision_sdcpp_llm_vision</code> / <code>vision_sdcpp_clip_l</code> / <code>vision_sdcpp_clip_g</code> / <code>vision_sdcpp_t5xxl</code> / <code>vision_sdcpp_extra_args</code> (stable-diffusion.cpp component mode)
 - <code>vision_timeout_s</code> (optional)
@@ -841,26 +841,26 @@ provider metadata is retained in a bounded <code>raw</code> field for diagnostic
 inspection only: it does not mutate the configured backend or select a generation model.</p>
 <p>Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
 of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
-remain separate local-backend concerns, while MFLUX and Diffusers provider listings reflect
+remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate <code>~/models</code> download tree.</p>
 <h3 id="local-model-residency-control">Local Model Residency Control<a class="headerlink" href="#local-model-residency-control" title="Permanent link">&para;</a></h3>
 <p>Core/Gateway hosts can also control in-process local model residency through the same capability
 object:</p>
 <div class="highlight"><pre><span></span><code><span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">load_resident_model</span><span class="p">(</span>
-    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span> <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mflux&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">}</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span> <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">}</span>
 <span class="p">)</span>
 
 <span class="n">loaded</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_loaded_models</span><span class="p">()</span>
 <span class="n">resident</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_resident_models</span><span class="p">()</span>
 
 <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">unload_resident_model</span><span class="p">(</span>
-    <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mflux&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">}</span>
+    <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">}</span>
 <span class="p">)</span>
 </code></pre></div>
 <p>Notes:</p>
 <ul>
 <li>this surface is local-only and process-local;</li>
-<li>it controls only AbstractVision-managed in-process backends (<code>diffusers</code>, <code>mflux</code>, <code>sdcpp</code>);</li>
+<li>it controls only AbstractVision-managed in-process backends (<code>diffusers</code>, <code>mlx-gen</code>, <code>sdcpp</code>);</li>
 <li>OpenAI/OpenAI-compatible HTTP backends are intentionally rejected here, even on <code>localhost</code>,
   because the plugin cannot honestly control another process's loaded-state.</li>
 </ul>
@@ -880,7 +880,7 @@ returns the explicit pinned subset.</p>
 execution. That means model-specific constraints are shared with the CLI/REPL and playground API
 instead of being reimplemented in the plugin layer.</p>
 <p>Current examples:
-- Distilled MFLUX/FLUX-family models can clamp guidance or minimum steps in the backend.
+- Distilled MLX-Gen/FLUX-family models can clamp guidance or minimum steps in the backend.
 - Diffusers-backed image requests pick up registry-driven defaults such as recommended step counts,
   guidance defaults, and dimension constraints.
 - Unsupported parameters, such as negative prompts on constrained model families, are dropped in

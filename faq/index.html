@@ -1040,7 +1040,7 @@
 <h2 id="what-does-abstractvision-support-today">What does AbstractVision support today?<a class="headerlink" href="#what-does-abstractvision-support-today" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Built-in backends implement <strong>images</strong>: <code>text_to_image</code> and <code>image_to_image</code>.</li>
-<li>Local MFLUX supports <code>text_to_image</code> and FLUX.2 klein <code>image_to_image</code> edits (no masks yet).</li>
+<li>Local MLX-Gen supports curated q4/q8 Apple Silicon <code>text_to_image</code> presets, including ERNIE Image Turbo q4/q8, and <code>image_to_image</code> for FLUX.2 klein/base plus Qwen Image Edit (no masks yet).</li>
 <li>Local Diffusers <code>text_to_video</code> remains experimental and is temporarily disabled from the normal local runtime surfaces.</li>
 <li><code>image_to_video</code> still works only via the OpenAI-compatible backend <strong>when</strong> video endpoints are configured.</li>
 <li><code>multi_view_image</code> exists in the public API (<code>VisionManager.generate_angles</code>) but no built-in backend implements it yet (they raise <code>CapabilityNotSupportedError</code>).</li>
@@ -1068,8 +1068,8 @@ abstractvision<span class="w"> </span>repl
 <p>After that works, <code>black-forest-labs/FLUX.2-klein-4B</code> is the recommended next local test for a newer non-gated model
 (it currently requires Diffusers from source).</p>
 <h2 id="do-the-one-shot-cli-commands-run-locally">Do the one-shot CLI commands run locally?<a class="headerlink" href="#do-the-one-shot-cli-commands-run-locally" title="Permanent link">&para;</a></h2>
-<p>Yes. <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers through <code>--provider diffusers</code>, <code>--provider mflux</code>, or <code>--provider sdcpp</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
-<p>For interactive local generation, use <code>abstractvision cli</code> (legacy alias: <code>abstractvision repl</code>) with <code>/backend diffusers ...</code>, <code>/backend mflux ...</code>, or <code>/backend sdcpp ...</code>.</p>
+<p>Yes. <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers through <code>--provider diffusers</code>, <code>--provider mlx-gen</code>, or <code>--provider sdcpp</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>). The legacy <code>mflux</code> provider value is still accepted as an alias.</p>
+<p>For interactive local generation, use <code>abstractvision cli</code> (legacy alias: <code>abstractvision repl</code>) with <code>/backend diffusers ...</code>, <code>/backend mlx-gen ...</code>, or <code>/backend sdcpp ...</code>.</p>
 <p>Current local video note:
 - local <code>t2v</code> is currently experimental and disabled from the normal bundled local surfaces;
 - remote <code>text_to_video</code> / <code>image_to_video</code> still depend on the OpenAI-compatible backend being configured with video endpoints.</p>

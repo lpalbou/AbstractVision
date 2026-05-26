@@ -535,10 +535,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mflux-backend-apple-silicon" class="md-nav__link">
+  <a href="#mlx-gen-backend-apple-silicon" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MFLUX backend (Apple Silicon)
+        MLX-Gen backend (Apple Silicon)
       
     </span>
   </a>
@@ -783,10 +783,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mflux-backend-apple-silicon" class="md-nav__link">
+  <a href="#mlx-gen-backend-apple-silicon" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MFLUX backend (Apple Silicon)
+        MLX-Gen backend (Apple Silicon)
       
     </span>
   </a>
@@ -847,20 +847,20 @@
 <li><code>abstractvision show-model &lt;id&gt;</code> — print a model’s tasks + params</li>
 <li><code>abstractvision provider-models --openai --task text_to_image</code> — explicitly query the official OpenAI <code>/models</code> catalog</li>
 <li><code>abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image</code> — explicitly query an OpenAI-compatible provider catalog</li>
-<li><code>abstractvision cli</code> — interactive testing (supports <code>openai</code>, <code>diffusers</code>, <code>mflux</code>, <code>sdcpp</code>; legacy alias: <code>abstractvision repl</code>)</li>
+<li><code>abstractvision cli</code> — interactive testing (supports <code>openai</code>, <code>diffusers</code>, <code>mlx-gen</code>, <code>sdcpp</code>; legacy alias: <code>abstractvision repl</code>; <code>mflux</code> is accepted as a compatibility alias)</li>
 <li><code>abstractvision playground [--host 127.0.0.1] [--port 8091]</code> — self-contained local web UI and <code>/v1/vision/*</code> API</li>
 <li><code>abstractvision serve [--host 127.0.0.1] [--port 8091]</code> — alias for <code>abstractvision playground</code></li>
-<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> / <code>abstractvision t2v ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mflux</code>, and <code>sdcpp</code>, with <code>t2v</code> currently implemented locally through Diffusers)</li>
+<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> / <code>abstractvision t2v ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mlx-gen</code>, and <code>sdcpp</code>, with <code>t2v</code> currently implemented locally through Diffusers)</li>
 </ul>
 <p>Note:
-- <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers via <code>--provider diffusers|mflux|sdcpp</code> (legacy alias: <code>--backend</code>).
+- <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers via <code>--provider diffusers|mlx-gen|sdcpp</code> (legacy alias: <code>--backend</code>; <code>mflux</code> remains accepted).
 - Local Diffusers requires <code>abstractvision[diffusers]</code>. stable-diffusion.cpp python binding fallback requires <code>abstractvision[sdcpp]</code>; external <code>sd-cli</code> can be used without the binding.</p>
 <h2 id="interactive-cli-backend-selection">Interactive CLI backend selection<a class="headerlink" href="#interactive-cli-backend-selection" title="Permanent link">&para;</a></h2>
 <p>Inside <code>abstractvision cli</code>:</p>
 <ul>
 <li><code>/backend openai &lt;base_url&gt; [api_key] [model_id]</code></li>
 <li><code>/provider-models [--task text_to_image] [--json]</code> — query the configured OpenAI-compatible provider catalog</li>
-<li><code>/backend mflux &lt;preset_or_local_path&gt; [base_model]</code></li>
+<li><code>/backend mlx-gen &lt;preset_or_local_path&gt; [base_model]</code></li>
 <li><code>/backend diffusers &lt;model_id_or_path&gt; [device] [torch_dtype]</code></li>
 <li><code>/backend sdcpp &lt;model_key|model.gguf|model.safetensors&gt; [sd_cli_path]</code></li>
 <li><code>/backend sdcpp &lt;diffusion_model.gguf&gt; &lt;vae.safetensors&gt; &lt;llm.gguf&gt; [sd_cli_path]</code></li>
@@ -873,7 +873,7 @@
 <p>The interactive CLI state object (<code>_ReplState</code> in <a href="../../src/abstractvision/cli.py"><code>../../src/abstractvision/cli.py</code></a>) reads the common and backend env vars below. The playground server reads the same backend family plus a few playground-only Diffusers cache/version vars through <code>PlaygroundServerConfig</code> in <a href="../../src/abstractvision/playground_server.py"><code>../../src/abstractvision/playground_server.py</code></a>.</p>
 <h3 id="common">Common<a class="headerlink" href="#common" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>ABSTRACTVISION_PROVIDER</code> — preferred backend selector: <code>openai</code>, <code>openai-compatible</code>, <code>diffusers</code>, <code>mflux</code>, or <code>sdcpp</code> (alias: <code>ABSTRACTVISION_BACKEND</code>)</li>
+<li><code>ABSTRACTVISION_PROVIDER</code> — preferred backend selector: <code>openai</code>, <code>openai-compatible</code>, <code>diffusers</code>, <code>mlx-gen</code>, or <code>sdcpp</code> (alias: <code>ABSTRACTVISION_BACKEND</code>; <code>mflux</code> remains accepted as a compatibility alias)</li>
 <li>AbstractCore plugin default: <code>openai</code> using <code>https://api.openai.com/v1</code> plus <code>OPENAI_API_KEY</code></li>
 <li>AbstractCore compatibility: selecting <code>abstractvision:openai-compatible</code> directly, or setting <code>OPENAI_BASE_URL</code> to a non-OpenAI endpoint, keeps compatible-endpoint semantics</li>
 <li>if unset and <code>OPENAI_BASE_URL</code> is set, the interactive CLI/playground default to <code>openai</code></li>
@@ -915,13 +915,14 @@
 - <code>ABSTRACTVISION_DIFFUSERS_CACHE_DIR</code> — optional Hugging Face cache directory override
 - <code>ABSTRACTVISION_DIFFUSERS_REVISION</code> — optional model revision
 - <code>ABSTRACTVISION_DIFFUSERS_VARIANT</code> — optional model variant</p>
-<h3 id="mflux-backend-apple-silicon">MFLUX backend (Apple Silicon)<a class="headerlink" href="#mflux-backend-apple-silicon" title="Permanent link">&para;</a></h3>
+<h3 id="mlx-gen-backend-apple-silicon">MLX-Gen backend (Apple Silicon)<a class="headerlink" href="#mlx-gen-backend-apple-silicon" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — preset key, local model path, or repo id (examples: <code>flux2-klein-4b</code>, <code>mflux/flux2-klein-4b</code>, <code>/path/to/preset-dir</code>, <code>mlx-community/Qwen-Image-2512-8bit</code>)</li>
-<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional explicit base model (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>z-image-turbo</code>, <code>qwen-image</code>)</li>
-<li><code>ABSTRACTVISION_MFLUX_QUANTIZE</code> — optional quantization override for the MFLUX runtime</li>
+<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — preset key, local model path, or repo id (examples: <code>flux2-klein-4b</code>, <code>mlx-gen/flux2-klein-4b</code>, <code>ernie-image-turbo</code>, <code>/path/to/preset-dir</code>, <code>AbstractFramework/qwen-image-2512-4bit</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional explicit base model (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>flux2-klein-base-4b</code>, <code>flux2-klein-base-9b</code>, <code>z-image</code>, <code>z-image-turbo</code>, <code>qwen-image</code>, <code>qwen-image-edit-2511</code>, <code>ernie-image-turbo</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_QUANTIZE</code> — optional quantization override for the MLX-Gen runtime</li>
 <li><code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code> — <code>0</code> (default) or <code>1</code> to permit runtime downloads when a preset/repo is missing from the local cache</li>
 <li><code>ABSTRACTVISION_MODEL_DIR</code> — legacy preset root only; curated downloads now land in the Hugging Face cache</li>
+<li>Canonical provider/model routing is <code>mlx-gen</code> / <code>mlx-gen/&lt;preset&gt;</code>. Legacy <code>mflux</code> provider values, routed ids, and env var names are accepted for compatibility.</li>
 </ul>
 <h3 id="stable-diffusioncpp-backend">stable-diffusion.cpp backend<a class="headerlink" href="#stable-diffusioncpp-backend" title="Permanent link">&para;</a></h3>
 <ul>

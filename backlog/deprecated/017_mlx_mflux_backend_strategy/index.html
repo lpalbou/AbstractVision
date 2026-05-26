@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/deprecated/017_mlx_mflux_backend_strategy/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>Planned: Quarantine unreliable local runtime capabilities until they are re-validated - AbstractVision</title>
+        <title>017 mlx mflux backend strategy - AbstractVision</title>
       
     
     
@@ -64,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated" class="md-skip">
+        <a href="#task-017-native-mlx-engine-beyond-mflux" class="md-skip">
           Skip to content
         </a>
       
@@ -100,7 +100,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Planned: Quarantine unreliable local runtime capabilities until they are re-validated
+              017 mlx mflux backend strategy
             
           </span>
         </div>
@@ -559,8 +559,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -569,10 +567,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#metadata" class="md-nav__link">
+  <a href="#task-017-native-mlx-engine-beyond-mflux" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Metadata
+        Task 017: Native MLX engine beyond MFLUX
       
     </span>
   </a>
@@ -580,10 +578,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#adr-status" class="md-nav__link">
+  <a href="#main-goals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ADR status
+        Main goals
       
     </span>
   </a>
@@ -591,10 +589,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
+  <a href="#secondary-goals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Context
+        Secondary goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#context-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context / problem
       
     </span>
   </a>
@@ -613,22 +622,33 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#operator-evidence-to-preserve" class="md-nav__link">
+  <a href="#constraints" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Operator evidence to preserve
+        Constraints
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Operator evidence to preserve">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#research-options-and-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Research, options, and references
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Research, options, and references">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-glm-image-local-diffusers-is-not-shippable-yet" class="md-nav__link">
+  <a href="#option-a-keep-mflux-as-the-permanent-apple-local-answer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1) GLM-Image local Diffusers is not shippable yet
+        Option A: Keep MFLUX as the permanent Apple-local answer
       
     </span>
   </a>
@@ -636,10 +656,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-mflux-image_to_image-fails-structural-fidelity" class="md-nav__link">
+  <a href="#option-b-build-a-nativegeneral-mlx-backend-and-keep-mflux-as-the-bridge" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2) MFLUX image_to_image fails structural fidelity
+        Option B: Build a native/general MLX backend and keep MFLUX as the bridge
       
     </span>
   </a>
@@ -647,10 +667,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-local-text_to_video-is-wired-but-not-honest-enough-yet" class="md-nav__link">
+  <a href="#option-c-treat-mlx-as-download-only-for-now-and-postpone-runtime-work" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3) Local text_to_video is wired but not honest enough yet
+        Option C: Treat MLX as download-only for now and postpone runtime work
       
     </span>
   </a>
@@ -659,17 +679,6 @@
         
       </ul>
     </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#problem" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Problem
-      
-    </span>
-  </a>
   
 </li>
       
@@ -685,10 +694,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why" class="md-nav__link">
+  <a href="#dependencies" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why
+        Dependencies
       
     </span>
   </a>
@@ -696,10 +705,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#scope" class="md-nav__link">
+  <a href="#implementation-plan" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Scope
+        Implementation plan
       
     </span>
   </a>
@@ -707,60 +716,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#re-enable-criteria" class="md-nav__link">
+  <a href="#success-criteria" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Re-enable criteria
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Re-enable criteria">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#glm-local-diffusers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        GLM local Diffusers
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#mflux-image_to_image" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MFLUX image_to_image
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#local-text_to_video" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Local text_to_video
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dependencies-and-related-tasks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dependencies and related tasks
+        Success criteria
       
     </span>
   </a>
@@ -768,10 +727,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#expected-outcomes" class="md-nav__link">
+  <a href="#test-plan" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Expected outcomes
+        Test plan
       
     </span>
   </a>
@@ -779,32 +738,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#validation" class="md-nav__link">
+  <a href="#deprecation-report" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Validation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#progress-checklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Progress checklist
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#guidance-for-the-implementing-agent" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Guidance for the implementing agent
+        Deprecation report
       
     </span>
   </a>
@@ -831,155 +768,264 @@
   
 
 
-<h1 id="planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated">Planned: Quarantine unreliable local runtime capabilities until they are re-validated<a class="headerlink" href="#planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated" title="Permanent link">&para;</a></h1>
-<h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
+  <h1>017 mlx mflux backend strategy</h1>
+
+<h2 id="task-017-native-mlx-engine-beyond-mflux">Task 017: Native MLX engine beyond MFLUX<a class="headerlink" href="#task-017-native-mlx-engine-beyond-mflux" title="Permanent link">&para;</a></h2>
+<p><strong>Date</strong>: 2026-05-20
+<strong>Status</strong>: Deprecated<br />
+<strong>Priority</strong>: P1<br />
+<strong>Deprecated</strong>: 2026-05-25</p>
+<hr />
+<h2 id="main-goals">Main goals<a class="headerlink" href="#main-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Created: 2026-05-22</li>
-<li>Status: In Progress</li>
-<li>Priority: P1</li>
-<li>Completed: N/A</li>
+<li>Create a true first-class MLX image backend for AbstractVision that can run MLX-packaged vision
+  models on Apple Silicon beyond the subset supported by MFLUX today.</li>
+<li>Treat MFLUX as the short-term compatibility bridge, not the long-term Apple runtime abstraction.</li>
+<li>Make MLX a real engine choice in AbstractVision, CLI, playground, and AbstractCore instead of a
+  catalog/download target that is mostly routed through MFLUX-specific rules.</li>
 </ul>
-<h2 id="adr-status">ADR status<a class="headerlink" href="#adr-status" title="Permanent link">&para;</a></h2>
+<h2 id="secondary-goals">Secondary goals<a class="headerlink" href="#secondary-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Governing ADRs:</li>
-<li><a href="../../../adr/0004_thin_orchestrator_and_backend_owned_model_semantics/">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned</a></li>
-<li><a href="../../../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005: Own a curated capability registry and cache-backed model catalog</a></li>
-<li><a href="../../../adr/0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006: Keep runtime selection explicit and operator-controlled</a></li>
-<li><a href="../../../adr/0007_explicit_fallback_and_degraded_mode_disclosure/">ADR 0007: Disclose fallbacks and degraded modes explicitly</a></li>
-<li><a href="../../../adr/0008_validation_and_evidence_based_change_reporting/">ADR 0008: Require validation and evidence-based change reporting</a></li>
-<li><a href="../../../adr/0009_code_first_docs_backlog_and_adr_discipline/">ADR 0009: Keep docs, backlog, and ADRs code-first</a></li>
-<li>ADR impact: None if we keep the quarantine backend-owned and continue to treat the packaged registry as model-family metadata rather than unconditional local-runtime truth.</li>
+<li>Keep base <code>abstractvision</code> import-light and local runtimes behind optional extras.</li>
+<li>Preserve the <code>VisionManager</code>, artifact output, and AbstractCore capability-plugin contracts.</li>
+<li>Keep current MFLUX users working while the native MLX path is introduced incrementally.</li>
 </ul>
-<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>AbstractVision currently has a clean packaged capability registry and backend-owned runtime gating, but recent operator testing showed that some local model/task combinations are not yet honest enough to expose as working local capabilities.</p>
-<p>Three cases were quarantined until they could be re-validated:</p>
+<hr />
+<h2 id="context-problem">Context / problem<a class="headerlink" href="#context-problem" title="Permanent link">&para;</a></h2>
+<p>The product goal is broader than “make current MFLUX presets work.” AbstractVision is supposed to
+help users discover, download, and run compatible vision models across machines and runtimes with
+as little manual assembly as possible.</p>
+<p>For Apple Silicon, the repo currently has many MLX-flavored download variants and an implemented
+MFLUX backend, but it does <strong>not</strong> have a generic/native MLX backend. That means:</p>
 <ul>
-<li>local Diffusers <code>zai-org/GLM-Image</code> / <code>GLM-Image</code> for both <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX <code>image_to_image</code> for the current curated FLUX klein families (re-enabled for FLUX.2 klein on 2026-05-23; quality follow-up remains);</li>
-<li>local Diffusers <code>text_to_video</code> for the current CogVideoX path.</li>
+<li>MLX is not a true engine in the product today.</li>
+<li>Apple-local MLX support is limited to what the MFLUX runtime happens to support.</li>
+<li>Some curated MLX/MFLUX download paths are broader than what the MFLUX backend can actually run.</li>
 </ul>
-<p>Update (2026-05-23):
-- MFLUX <code>image_to_image</code> for the curated FLUX.2 klein presets (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>) has been re-enabled so it can be used from the playground/CLI/plugin surfaces.
-- Mask edits remain unsupported for MFLUX.
-- The operator-quality acceptance criteria below are still relevant: re-enabled means “wired + runnable”, not “quality bar fully met”.</p>
+<p>The correct long-term shape is:</p>
+<ul>
+<li><code>mlx</code> becomes a first-class runtime/backend category in AbstractVision;</li>
+<li><code>mflux</code> remains an adapter/bridge for the subset of models where it is the practical runtime;</li>
+<li>model discovery and download surfaces distinguish:</li>
+<li>MLX download available;</li>
+<li>runnable through MFLUX today;</li>
+<li>runnable through native MLX engine;</li>
+<li>download-only pending runtime support.</li>
+</ul>
+<p>This task exists because Apple-local MLX support should be a real platform capability, not just a
+set of MFLUX-specific exceptions.</p>
 <h2 id="current-code-reality">Current code reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
-<p>Files re-checked on 2026-05-22:</p>
+<p>Files and symbols inspected before rewriting this item:</p>
 <ul>
-<li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
 <li><code>src/abstractvision/backends/mflux.py</code></li>
+<li><code>src/abstractvision/model_downloads.py</code></li>
 <li><code>src/abstractvision/playground_server.py</code></li>
-<li><code>src/abstractvision/cli.py</code></li>
 <li><code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
 <li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+<li><code>docs/reference/backends.md</code></li>
+<li><code>README.md</code></li>
 </ul>
-<p>The current runtime policy after the quarantine change is:</p>
+<p>What exists today:</p>
 <ul>
-<li>local Diffusers <code>GLM-Image</code> is hidden from runtime-backed local surfaces and rejected by the backend for <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX advertises <code>text_to_image</code> and also implements <code>image_to_image</code> for FLUX.2 klein presets (no masks);</li>
-<li>local Diffusers CogVideoX <code>text_to_video</code> is marked experimental and disabled from normal local surfaces.</li>
+<li>A shipped optional <code>MFluxVisionBackend</code> in <code>src/abstractvision/backends/mflux.py</code>.</li>
+<li>Apple-oriented curated download variants that use <code>target="mlx"</code> and <code>engine="mflux"</code>.</li>
+<li>AbstractCore routing that explicitly rejects generic <code>mlx/...</code> and tells callers to use
+  <code>mflux/&lt;preset&gt;</code>.</li>
+<li>Playground and CLI catalog surfaces that already expose MLX-targeted downloads.</li>
 </ul>
-<p>The packaged registry still records the broader model-family tasks. That is intentional: the registry says what the family can do in principle, while the backend says what AbstractVision can currently run honestly.</p>
-<h2 id="operator-evidence-to-preserve">Operator evidence to preserve<a class="headerlink" href="#operator-evidence-to-preserve" title="Permanent link">&para;</a></h2>
-<h3 id="1-glm-image-local-diffusers-is-not-shippable-yet">1) <code>GLM-Image</code> local Diffusers is not shippable yet<a class="headerlink" href="#1-glm-image-local-diffusers-is-not-shippable-yet" title="Permanent link">&para;</a></h3>
+<p>What is still wrong or incomplete:</p>
 <ul>
-<li>Operator ran local <code>GLM-Image</code> from the playground and rejected the output quality even for <code>text_to_image</code>.</li>
-<li>Earlier runtime investigation also found <code>image_to_image</code> path-specific issues on Apple Silicon:</li>
-<li>pipeline input shape differences (<code>image=[pil_image]</code> expectation);</li>
-<li>PyTorch MPS failure in the GLM vision embedding path (<code>grid_sample(..., padding_mode="border")</code>);</li>
-<li>instability on the image-conditioning path with <code>float16</code>.</li>
-<li>A narrow workaround path could make some Apple Silicon <code>i2i</code> runs execute, but that is not sufficient. The operator explicitly does not want a CPU-heavy fallback story except as a last resort, and the current local quality bar is not met.</li>
+<li>Generic MLX is <strong>not</strong> a real backend or provider today; it is still rejected in the plugin.</li>
+<li>The playground does not fail fast consistently on <code>mlx/...</code> model ids and can still default that
+  shape to Diffusers routing.</li>
+<li>The MFLUX backend supports only a small hard-coded family table, while the curated MLX/MFLUX
+  catalog is broader.</li>
+<li>There are multiple competing truths for Apple-local support:</li>
+<li>registry/download metadata;</li>
+<li>hard-coded preset table;</li>
+<li>runtime family table in the MFLUX backend;</li>
+<li>route-selection logic in CLI/playground/AbstractCore.</li>
 </ul>
-<h3 id="2-mflux-image_to_image-fails-structural-fidelity">2) MFLUX <code>image_to_image</code> fails structural fidelity<a class="headerlink" href="#2-mflux-image_to_image-fails-structural-fidelity" title="Permanent link">&para;</a></h3>
+<h2 id="constraints">Constraints<a class="headerlink" href="#constraints" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Source image: snowy grounded spacecraft; prompt: watercolor.</li>
-<li>Diffusers FLUX klein produced a recognizable watercolor transform of the same scene.</li>
-<li>MFLUX FLUX klein produced a semantically wrong result with severe structure drift.</li>
-<li>Second source image: indoor room / living-room scene; prompt: watercolor.</li>
-<li>MFLUX preserved some coarse layout but still failed scene fidelity enough that the operator does not consider current local <code>i2i</code> acceptable.</li>
-<li>Conclusion: MFLUX is acceptable for <code>text_to_image</code> iteration today, but not for <code>image_to_image</code>.</li>
+<li>Do not make MLX, MFLUX, Torch, Diffusers, or stable-diffusion.cpp mandatory base dependencies.</li>
+<li>Preserve offline generation after models are downloaded.</li>
+<li>Keep generated outputs as AbstractVision artifacts.</li>
+<li>Keep local runtime imports lazy and avoid model loads at import time.</li>
+<li>Prefer permissive licensing for new runtime dependencies.</li>
+<li>Preserve current MFLUX behavior as a compatibility bridge while the native MLX path is built.</li>
+<li>Follow <a href="../../../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005</a> and
+  <a href="../../../adr/0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006</a>:
+  curated download variants should be runnable or clearly marked as download-only /
+  backend-not-supported, and runtime selection must stay explicit.</li>
 </ul>
-<h3 id="3-local-text_to_video-is-wired-but-not-honest-enough-yet">3) Local <code>text_to_video</code> is wired but not honest enough yet<a class="headerlink" href="#3-local-text_to_video-is-wired-but-not-honest-enough-yet" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="research-options-and-references">Research, options, and references<a class="headerlink" href="#research-options-and-references" title="Permanent link">&para;</a></h2>
 <ul>
-<li>CogVideoX local path can produce technically valid MP4 outputs.</li>
-<li>The operator observed outputs that “make no sense” semantically and does not want the package to present this as a working local capability today.</li>
-<li>Conclusion: keep the code and tests as internal groundwork if useful, but do not surface local <code>text_to_video</code> as working until there is a real quality acceptance pass.</li>
+<li><strong>Current runtime implementation</strong>:</li>
+<li>MFLUX exists today as the only shipped Apple-local MLX-adjacent runtime path.</li>
+<li>References:<ul>
+<li><code>src/abstractvision/backends/mflux.py</code></li>
+<li><code>src/abstractvision/backends/__init__.py</code></li>
 </ul>
-<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
-<p>If the playground, CLI catalog, or plugin surfaces advertise these tasks as usable local capabilities, they overstate current product truth.</p>
+</li>
+<li><strong>Current routing reality</strong>:</li>
+<li>CLI, playground, and AbstractCore now fail fast on generic <code>mlx/...</code>; only explicit <code>mflux/...</code>
+    routing is runnable today on Apple-local MLX-adjacent paths.</li>
+<li>References:<ul>
+<li><code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
+<li><code>src/abstractvision/playground_server.py</code></li>
+<li><code>src/abstractvision/cli.py</code></li>
+</ul>
+</li>
+<li><strong>Current catalog/download reality</strong>:</li>
+<li>Apple auto-targeting prefers <code>mlx</code>, and current curated Apple-local downloads are represented
+    through <code>engine="mflux"</code> presets rather than a true native <code>mlx</code> engine.</li>
+<li>References:<ul>
+<li><code>src/abstractvision/model_downloads.py</code></li>
+<li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+</ul>
+</li>
+</ul>
+<h3 id="option-a-keep-mflux-as-the-permanent-apple-local-answer">Option A: Keep MFLUX as the permanent Apple-local answer<a class="headerlink" href="#option-a-keep-mflux-as-the-permanent-apple-local-answer" title="Permanent link">&para;</a></h3>
+<p>Pros:</p>
+<ul>
+<li>Lowest short-term implementation cost.</li>
+<li>Already integrated into CLI, playground, and AbstractCore.</li>
+<li>Keeps current Apple 8-bit flows working where supported.</li>
+</ul>
+<p>Cons:</p>
+<ul>
+<li>MLX remains a fake engine category rather than a real runtime.</li>
+<li>AbstractVision stays bound to MFLUX-supported model families.</li>
+<li>Hard-coded family/routing special cases will keep expanding.</li>
+</ul>
+<h3 id="option-b-build-a-nativegeneral-mlx-backend-and-keep-mflux-as-the-bridge">Option B: Build a native/general MLX backend and keep MFLUX as the bridge<a class="headerlink" href="#option-b-build-a-nativegeneral-mlx-backend-and-keep-mflux-as-the-bridge" title="Permanent link">&para;</a></h3>
+<p>Pros:</p>
+<ul>
+<li>Matches the real product goal: MLX as a first-class local engine on Apple Silicon.</li>
+<li>Decouples AbstractVision’s Apple strategy from one specialized runtime.</li>
+<li>Allows the catalog to represent “native MLX runnable” separately from “MFLUX runnable”.</li>
+</ul>
+<p>Cons:</p>
+<ul>
+<li>Higher implementation and integration cost.</li>
+<li>Needs real feasibility proof across at least one non-MFLUX family.</li>
+<li>Requires a careful transition plan so current MFLUX users do not regress.</li>
+</ul>
+<h3 id="option-c-treat-mlx-as-download-only-for-now-and-postpone-runtime-work">Option C: Treat MLX as download-only for now and postpone runtime work<a class="headerlink" href="#option-c-treat-mlx-as-download-only-for-now-and-postpone-runtime-work" title="Permanent link">&para;</a></h3>
+<p>Pros:</p>
+<ul>
+<li>Avoids more short-term runtime complexity.</li>
+<li>Keeps backend surface smaller.</li>
+</ul>
+<p>Cons:</p>
+<ul>
+<li>Fails the product goal for Apple-local MLX execution.</li>
+<li>Leaves users with downloadable artifacts that are not a first-class runtime path.</li>
+<li>Pushes more unsupported/manual assembly burden onto callers.</li>
+</ul>
+<hr />
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p>Quarantine the unreliable local task paths now and only re-enable them after a targeted validation task produces evidence that the outputs are acceptable.</p>
-<p>Current quarantine policy:</p>
+<p><strong>Chosen approach</strong>: build a true native/general MLX backend for AbstractVision, while keeping
+MFLUX as the short-term bridge and compatibility runtime during the transition.</p>
+<p><strong>Why</strong>:</p>
 <ul>
-<li>local Diffusers <code>GLM-Image</code>: disable <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX: enable <code>image_to_image</code> for FLUX.2 klein presets (no masks), keep <code>text_to_image</code>;</li>
-<li>local Diffusers CogVideoX: disable <code>text_to_video</code> from normal local surfaces and describe it as experimental / not working.</li>
+<li>The long-term goal is to handle MLX vision models as a real engine category, not only through
+  MFLUX-specific support tables.</li>
+<li>MFLUX is good enough as a bridge, but too narrow to be the terminal abstraction for Apple-local
+  model execution.</li>
+<li>The repo already shows that MLX download variants matter to users; the missing piece is a real
+  engine boundary and runtime support strategy.</li>
+<li>Truth-alignment work is still required, but only as a prerequisite to shipping a trustworthy MLX
+  engine, not as the end goal of this task.</li>
 </ul>
-<h2 id="why">Why<a class="headerlink" href="#why" title="Permanent link">&para;</a></h2>
+<hr />
+<h2 id="dependencies">Dependencies<a class="headerlink" href="#dependencies" title="Permanent link">&para;</a></h2>
 <ul>
-<li>This keeps the package honest.</li>
-<li>It preserves the clean abstraction boundary: runtime truth stays backend-owned.</li>
-<li>It avoids forcing low-confidence features through the playground, CLI, and AbstractCore plugin just because the model family metadata exists.</li>
+<li><strong>ADRs</strong>:</li>
+<li><code>docs/adr/0005_curated_capability_registry_and_download_catalog.md</code></li>
+<li><code>docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md</code></li>
+<li><strong>Backlog tasks</strong>:</li>
+<li>Planned: <code>docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md</code></li>
+<li>Completed: <code>docs/backlog/completed/007_local_hf_backend_strategy_diffusers.md</code></li>
+<li>Completed: <code>docs/backlog/completed/013_stable_diffusion_cpp_gguf_backend.md</code></li>
+<li>Completed: <code>docs/backlog/completed/015_vision_install_profiles_and_pending_defaults.md</code></li>
+<li>Completed: <code>docs/backlog/completed/019_best_effort_preload_warmup_for_local_backends.md</code></li>
 </ul>
-<h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
-<p>Included:</p>
+<hr />
+<h2 id="implementation-plan">Implementation plan<a class="headerlink" href="#implementation-plan" title="Permanent link">&para;</a></h2>
 <ul>
-<li>keep the runtime blacklist in backend capability surfacing;</li>
-<li>keep playground/CLI/plugin discovery aligned with that backend truth;</li>
-<li>preserve the investigation notes and operator examples;</li>
-<li>define what evidence is required before re-enabling these tasks.</li>
+<li>Define the native MLX backend boundary:</li>
+<li>provider/backend id;</li>
+<li>configuration shape;</li>
+<li>cache discovery expectations;</li>
+<li>supported local model layout requirements.</li>
+<li>Keep MFLUX as a separate backend/provider during the transition; do not silently collapse <code>mlx</code>
+  into <code>mflux</code>.</li>
+<li>Add a first native MLX backend implementation that can load:</li>
+<li>at least one non-MFLUX family;</li>
+<li>at least one currently curated Apple-local family from configuration rather than from a
+    narrow hard-coded family switchboard.</li>
+<li>Tighten current runtime truth while the MLX backend is being built:</li>
+<li>fail fast on <code>mlx/...</code> everywhere until the native backend exists;</li>
+<li>stop advertising unsupported MFLUX families as runnable;</li>
+<li>keep download-only Apple variants visible only with explicit non-runnable state.</li>
+<li>Add runtime-state metadata that distinguishes:</li>
+<li>cached/downloadable;</li>
+<li>runnable through MFLUX;</li>
+<li>runnable through native MLX;</li>
+<li>download-only.</li>
+<li>Update CLI, playground, and AbstractCore routing so <code>mlx</code> becomes a real backend/provider once
+  the native engine exists.</li>
+<li>Revisit preset and registry generation so Apple-local download truth does not drift across
+  <code>_PRESETS</code>, the registry, and backend family tables.</li>
 </ul>
-<p>Not included:</p>
+<hr />
+<h2 id="success-criteria">Success criteria<a class="headerlink" href="#success-criteria" title="Permanent link">&para;</a></h2>
 <ul>
-<li>solving GLM local quality/runtime issues in this task;</li>
-<li>solving MFLUX structural <code>i2i</code> fidelity in this task;</li>
-<li>solving local CogVideoX quality in this task;</li>
-<li>widening local video support.</li>
+<li>AbstractVision has a true native MLX backend/provider beyond MFLUX.</li>
+<li>Generic <code>mlx</code> model/provider selection is a real supported path, not just an error or alias.</li>
+<li>At least one non-MFLUX family is runnable through the native MLX backend.</li>
+<li>Apple-local catalog surfaces distinguish native-MLX runnable, MFLUX-runnable, and download-only
+  entries clearly.</li>
+<li>Unsupported MFLUX-only families are not advertised as runnable.</li>
+<li>Runtime extras remain optional and base <code>abstractvision</code> stays import-light.</li>
+<li>Docs explain when to choose native MLX, MFLUX, Diffusers, and stable-diffusion.cpp/GGUF.</li>
 </ul>
-<h2 id="re-enable-criteria">Re-enable criteria<a class="headerlink" href="#re-enable-criteria" title="Permanent link">&para;</a></h2>
-<h3 id="glm-local-diffusers">GLM local Diffusers<a class="headerlink" href="#glm-local-diffusers" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="test-plan">Test plan<a class="headerlink" href="#test-plan" title="Permanent link">&para;</a></h2>
 <ul>
-<li>reproducible <code>t2i</code> outputs that meet operator quality expectations;</li>
-<li>reproducible <code>i2i</code> outputs on Apple Silicon without unacceptable fallback behavior;</li>
-<li>no special-case runtime path that silently pushes most work to CPU.</li>
+<li><code>PYTHONPATH=src python -m unittest tests.test_model_downloads -q</code></li>
+<li><code>PYTHONPATH=src python -m unittest tests.test_cli_smoke -q</code></li>
+<li><code>PYTHONPATH=src python -m unittest tests.test_playground_server -q</code></li>
+<li><code>PYTHONPATH=src python -m unittest tests.test_abstractcore_plugin -q</code></li>
+<li>Add dedicated backend tests for:</li>
+<li>native MLX backend model loading;</li>
+<li>unsupported <code>mlx/...</code> routing before engine availability;</li>
+<li>supported <code>mlx/...</code> routing after engine availability;</li>
+<li>separation between MFLUX-runnable and native-MLX-runnable catalog entries.</li>
+<li>Manual Apple Silicon smoke tests for:</li>
+<li>one MFLUX-backed model;</li>
+<li>one native-MLX-backed non-MFLUX family;</li>
+<li>one download-only MLX entry with a clear non-runnable explanation.</li>
 </ul>
-<h3 id="mflux-image_to_image">MFLUX <code>image_to_image</code><a class="headerlink" href="#mflux-image_to_image" title="Permanent link">&para;</a></h3>
-<ul>
-<li>side-by-side evidence on at least two representative edit cases showing acceptable scene preservation compared with the current Diffusers baseline;</li>
-<li>clear task-specific constraints documented if MFLUX <code>i2i</code> needs narrower prompts/settings than <code>t2i</code>.</li>
-</ul>
-<h3 id="local-text_to_video">Local <code>text_to_video</code><a class="headerlink" href="#local-text_to_video" title="Permanent link">&para;</a></h3>
-<ul>
-<li>at least one local model/path that produces semantically acceptable short clips under documented settings;</li>
-<li>explicit hardware/settings guidance and representative validation clips;</li>
-<li>no claim of “working local video” before that quality bar is met.</li>
-</ul>
-<h2 id="dependencies-and-related-tasks">Dependencies and related tasks<a class="headerlink" href="#dependencies-and-related-tasks" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Deprecated: <a href="../../deprecated/017_mlx_mflux_backend_strategy/">017_mlx_mflux_backend_strategy.md</a></li>
-<li>Planned: <a href="../020_adapter_aware_model_graph_and_catalog/">020_adapter_aware_model_graph_and_catalog.md</a></li>
-<li>Planned: <a href="../0022_local_diffusers_image_to_video_backend/">0022_local_diffusers_image_to_video_backend.md</a></li>
-</ul>
-<h2 id="expected-outcomes">Expected outcomes<a class="headerlink" href="#expected-outcomes" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Runtime-backed local surfaces only expose local tasks we are willing to stand behind.</li>
-<li>The registry remains curated model metadata, while backend gating remains the source of local execution truth.</li>
-<li>Future re-enablement work has preserved evidence and explicit acceptance criteria instead of oral history.</li>
-</ul>
-<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Verify local provider-model listings exclude quarantined tasks.</li>
-<li>Verify playground task selectors do not surface quarantined local models/tasks.</li>
-<li>Verify backend direct calls raise clear capability errors for quarantined paths.</li>
-<li>Verify docs and release notes state the quarantine explicitly.</li>
-</ul>
-<h2 id="progress-checklist">Progress checklist<a class="headerlink" href="#progress-checklist" title="Permanent link">&para;</a></h2>
-<ul>
-<li>[x] Preserve all current operator/runtime findings in this backlog item.</li>
-<li>[ ] Keep runtime-backed local surfacing aligned with the quarantine policy.</li>
-<li>[ ] Revisit each quarantined path with explicit acceptance criteria before re-enabling it.</li>
-</ul>
-<h2 id="guidance-for-the-implementing-agent">Guidance for the implementing agent<a class="headerlink" href="#guidance-for-the-implementing-agent" title="Permanent link">&para;</a></h2>
-<p>Do not widen claims while this item is open. Treat the quarantine as intentional product truth, not as a temporary testing hack. If you later improve one of these paths, re-open the evidence, compare against the operator examples preserved here, and only then remove the corresponding backend blacklist.</p>
+<hr />
+<h2 id="deprecation-report">Deprecation report<a class="headerlink" href="#deprecation-report" title="Permanent link">&para;</a></h2>
+<p>Deprecated: 2026-05-25</p>
+<p>This plan is superseded by the completed MLX-Gen runtime migration in
+<a href="../../completed/0024_mlx_gen_runtime_migration/"><code>../completed/0024_mlx_gen_runtime_migration.md</code></a>.</p>
+<p>Reason:
+- The selected Apple-local runtime identity is <code>mlx-gen</code>, not a generic <code>mlx</code> provider.
+- Generic <code>mlx</code> remains a download/artifact target and is intentionally rejected as a runnable
+  image provider to avoid confusion with AbstractCore's text-generation MLX provider.
+- The old MFLUX implementation boundary is now a compatibility layer around the <code>mlx-gen</code>
+  package, with legacy <code>mflux</code> aliases preserved for existing users.</p>
+<p>Outcome:
+- Do not implement this task as written.
+- Any future Apple-local vision work should start from the canonical <code>mlx-gen</code> provider/engine and
+  open a fresh backlog item only if a runtime beyond MLX-Gen becomes real and needs a new package
+  boundary.</p>
 
 
 

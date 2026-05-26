@@ -529,10 +529,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mflux-backend-local-apple-silicon" class="md-nav__link">
+  <a href="#mlx-gen-backend-local-apple-silicon" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MFLUX backend (local Apple Silicon)
+        MLX-Gen backend (local Apple Silicon)
       
     </span>
   </a>
@@ -710,10 +710,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mflux-backend-local-apple-silicon" class="md-nav__link">
+  <a href="#mlx-gen-backend-local-apple-silicon" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MFLUX backend (local Apple Silicon)
+        MLX-Gen backend (local Apple Silicon)
       
     </span>
   </a>
@@ -781,10 +781,10 @@
 <td>Requires <code>abstractvision[diffusers]</code>. Supports cache-only/offline mode. Local <code>text_to_video</code> groundwork exists but is currently experimental and disabled from the normal local surfaces.</td>
 </tr>
 <tr>
-<td>MFLUX (local, Apple Silicon)</td>
+<td>MLX-Gen (local, Apple Silicon)</td>
 <td><a href="../../src/abstractvision/backends/mflux.py"><code>mflux.py</code></a></td>
-<td><code>text_to_image</code> (+ FLUX.2 klein <code>image_to_image</code>)</td>
-<td>Requires <code>abstractvision[mflux]</code> (or <code>abstractvision[all-apple]</code>). Uses downloaded 8-bit MLX/MFLUX preset snapshots from the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is legacy migration input only.</td>
+<td><code>text_to_image</code> (+ FLUX.2 klein/base and Qwen Image Edit <code>image_to_image</code>)</td>
+<td>Requires <code>abstractvision[mlx-gen]</code> (or compatibility extra <code>abstractvision[mflux]</code>, or <code>abstractvision[all-apple]</code>). Uses downloaded AbstractFramework q4/q8 MLX-Gen preset snapshots from the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is legacy migration input only.</td>
 </tr>
 <tr>
 <td>stable-diffusion.cpp (local GGUF/checkpoints)</td>
@@ -875,35 +875,44 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 - Local Diffusers <code>text_to_video</code> is currently experimental and disabled from the normal local surfaces.
 - Local video export still requires an <code>ffmpeg</code> executable on <code>PATH</code> whenever a local backend emits frames for MP4 packaging.
 - This backend is where model-specific defaults and constraints such as packaged step counts, guidance defaults, dimension constraints, and unsupported-parameter dropping are enforced for all callers.</p>
-<h2 id="mflux-backend-local-apple-silicon">MFLUX backend (local Apple Silicon)<a class="headerlink" href="#mflux-backend-local-apple-silicon" title="Permanent link">&para;</a></h2>
+<h2 id="mlx-gen-backend-local-apple-silicon">MLX-Gen backend (local Apple Silicon)<a class="headerlink" href="#mlx-gen-backend-local-apple-silicon" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
-- You are on Apple Silicon and want local 8-bit MLX generation through the optional MFLUX runtime.</p>
+- You are on Apple Silicon and want local quantized MLX generation through the optional MLX-Gen runtime.
+- You want the AbstractFramework-published q4/q8 prepared folders from the <a href="https://huggingface.co/collections/AbstractFramework/mlx-gen/">AbstractFramework/mlx-gen Hugging Face collection</a>.</p>
 <p>Install:
-- <code>pip install "abstractvision[mflux]"</code> (or <code>pip install "abstractvision[all-apple]"</code>)</p>
+- <code>pip install "abstractvision[mlx-gen]"</code> (or <code>pip install "abstractvision[all-apple]"</code>)
+- <code>pip install "abstractvision[mflux]"</code> remains a compatibility alias for older install instructions.</p>
 <p>Model presets:
 - See what's downloadable for your machine/engine:
-  - <code>abstractvision catalog --provider mflux</code> (add <code>--all</code> for full fallback list)
-  - Tip: <code>--provider mflux</code> implies <code>--target mlx</code> (you usually set one or the other).
-- Download a curated 8-bit preset into the Hugging Face cache (legacy <code>~/models</code> trees auto-migrate when encountered):
-  - <code>abstractvision download flux2-klein-4b --provider mflux</code>
-  - <code>abstractvision download flux2-klein-9b --provider mflux</code>
-  - <code>abstractvision download qwen-image --provider mflux</code>
-  - <code>abstractvision download z-image-turbo --provider mflux</code>
-- Current shipped backend coverage is limited to those curated MFLUX families for <code>text_to_image</code>: <code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>qwen-image</code>, and <code>z-image-turbo</code>. <code>image_to_image</code> edits are implemented for the FLUX.2 klein presets only (no masks yet).</p>
+  - <code>abstractvision catalog --provider mlx-gen</code> (add <code>--all</code> for full fallback list)
+  - Tip: <code>--provider mlx-gen</code> implies <code>--target mlx</code> (you usually set one or the other).
+- Download a curated preset into the Hugging Face cache (legacy <code>~/models</code> trees auto-migrate when encountered):
+  - <code>abstractvision download flux2-klein-4b --provider mlx-gen</code>
+  - <code>abstractvision download flux2-klein-9b --provider mlx-gen</code>
+  - <code>abstractvision download qwen-image --provider mlx-gen</code>
+  - <code>abstractvision download qwen-image-edit-2511 --provider mlx-gen</code>
+  - <code>abstractvision download z-image --provider mlx-gen</code>
+  - <code>abstractvision download z-image-turbo --provider mlx-gen</code>
+  - <code>abstractvision download ernie-image-turbo --provider mlx-gen --bits 4</code>
+  - <code>abstractvision download ernie-image-turbo --provider mlx-gen --bits 8</code>
+- q4 presets are the default recommendation for memory efficiency. Use the <code>-8bit</code> / q8 preset variants explicitly when quality is paramount. Qwen and ERNIE q4 prepared folders can mix q4 and q8 components, but remain the default prepared choice.
+- Current shipped backend coverage includes <code>text_to_image</code> for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, and ERNIE Image Turbo. <code>image_to_image</code> edits are implemented for FLUX.2 klein/base and Qwen Image Edit presets (no masks yet).</p>
 <p>Config/env:
-- <code>ABSTRACTVISION_PROVIDER=mflux</code> (alias: <code>ABSTRACTVISION_BACKEND=mflux</code>)
-- <code>ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b</code> (or routed ids like <code>mflux/flux2-klein-4b</code>)
-- Optional: <code>ABSTRACTVISION_MFLUX_BASE_MODEL</code>, <code>ABSTRACTVISION_MFLUX_QUANTIZE</code>, <code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code>, <code>ABSTRACTVISION_MODEL_DIR</code> (legacy migration root only)</p>
-<p>Non-curated MFLUX models:
-- If you have an MFLUX-compatible Hugging Face repo id that is not in <code>model-presets</code>, you can still use it:
+- <code>ABSTRACTVISION_PROVIDER=mlx-gen</code> (alias: <code>ABSTRACTVISION_BACKEND=mlx-gen</code>)
+- <code>ABSTRACTVISION_MFLUX_MODEL=flux2-klein-4b</code> (or routed ids like <code>mlx-gen/flux2-klein-4b</code>)
+- Optional: <code>ABSTRACTVISION_MFLUX_BASE_MODEL</code>, <code>ABSTRACTVISION_MFLUX_QUANTIZE</code>, <code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code>, <code>ABSTRACTVISION_MODEL_DIR</code> (legacy migration root only)
+- Legacy <code>mflux</code> provider values and routed ids remain accepted as compatibility aliases.</p>
+<p>Non-curated MLX-Gen models:
+- If you have an MLX-Gen-compatible Hugging Face repo id that is not in <code>model-presets</code>, you can still use it:
   - Pre-download it with <code>abstractvision download org/name</code> (HF cache) or <code>hf download org/name</code>
   - Set <code>ABSTRACTVISION_MFLUX_MODEL</code> to that repo id or local path (base model usually auto-infers; override with <code>ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image</code> if needed).</p>
 <p>Runtime behavior notes:
-- MFLUX request normalization is also backend-level, so distilled FLUX-family constraints such as <code>guidance_scale=1.0</code>, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
-- Local MFLUX <code>image_to_image</code> is supported for the FLUX.2 klein presets (no masks). Edit strength is passed as <code>strength</code> and normalized to the underlying MFLUX <code>image_strength</code> parameter.</p>
+- MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
+- Local MLX-Gen <code>image_to_image</code> is supported for FLUX.2 klein/base and Qwen Image Edit presets (no masks). Edit strength is passed as <code>strength</code> and normalized to MLX-Gen's <code>image_strength</code> parameter where the runtime supports it.
+- Generation does not silently download model files. Missing-cache errors tell you which <code>abstractvision download ... --provider mlx-gen</code> or <code>mlxgen</code> preparation step is needed.</p>
 <p>Code pointers:
-- Config: <code>MFluxBackendConfig</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)
-- Backend: <code>MFluxVisionBackend</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)</p>
+- Config: <code>MLXGenBackendConfig</code> / compatibility alias <code>MFluxBackendConfig</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)
+- Backend: <code>MLXGenVisionBackend</code> / compatibility alias <code>MFluxVisionBackend</code> (<a href="../../src/abstractvision/backends/mflux.py"><code>../../src/abstractvision/backends/mflux.py</code></a>)</p>
 <h2 id="stable-diffusioncpp-backend-local-ggufcheckpoints">stable-diffusion.cpp backend (local GGUF/checkpoints)<a class="headerlink" href="#stable-diffusioncpp-backend-local-ggufcheckpoints" title="Permanent link">&para;</a></h2>
 <p><strong>When to use</strong>
 - You want to run single-file Stable Diffusion checkpoints/GGUF or component-based GGUF diffusion models locally.</p>

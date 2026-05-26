@@ -714,7 +714,7 @@ model download helpers.</p>
 <p>The current code already reflects this pressure:</p>
 <ul>
 <li>base package dependencies are empty in <a href="../../pyproject.toml"><code>pyproject.toml</code></a>;</li>
-<li>local runtimes live behind optional extras such as <code>diffusers</code>, <code>sdcpp</code>, <code>mflux</code>, and <code>models</code>;</li>
+<li>local runtimes live behind optional extras such as <code>diffusers</code>, <code>sdcpp</code>, <code>mlx-gen</code>, and <code>models</code>;</li>
 <li>heavy backend modules are imported lazily;</li>
 <li>tests already guard import-light behavior for plugin registration and package import.</li>
 </ul>
@@ -730,7 +730,7 @@ operator choices.</p>
 <li>Heavy local runtimes and helpers stay behind explicit extras:</li>
 <li><code>diffusers</code> for Torch/Diffusers</li>
 <li><code>sdcpp</code> for <code>stable-diffusion-cpp-python</code></li>
-<li><code>mflux</code> for Apple Silicon MLX/MFLUX</li>
+<li><code>mlx-gen</code> for Apple Silicon MLX-Gen (<code>mflux</code> remains a compatibility extra)</li>
 <li><code>models</code> for Hugging Face download helpers</li>
 <li>Backend modules that depend on heavy optional packages must stay lazily imported.</li>
 <li>AbstractCore integration must remain lazy. AbstractVision must not require AbstractCore to be
@@ -759,7 +759,7 @@ operator choices.</p>
 <h2 id="enforcement">Enforcement<a class="headerlink" href="#enforcement" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Reviewers should reject new unconditional heavy dependencies in <code>[project].dependencies</code>.</li>
-<li>Reviewers should reject eager imports of Diffusers, Torch, <code>stable_diffusion_cpp</code>, <code>mflux</code>, or
+<li>Reviewers should reject eager imports of Diffusers, Torch, <code>stable_diffusion_cpp</code>, <code>mlxgen</code>, <code>mflux</code>, or
   similar local runtime modules from the base package import path.</li>
 <li>Contributor docs must continue to describe runtime extras explicitly.</li>
 <li>New local backends must document their extra and missing-dependency hint paths in the same change.</li>
