@@ -22,7 +22,7 @@
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
@@ -49,6 +49,8 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
+    
+      <link rel="stylesheet" href="../../assets/styles/media_carousel.css">
     
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -850,7 +852,7 @@
 <li><code>abstractvision cli</code> — interactive testing (supports <code>openai</code>, <code>diffusers</code>, <code>mlx-gen</code>, <code>sdcpp</code>; legacy alias: <code>abstractvision repl</code>; <code>mflux</code> is accepted as a compatibility alias)</li>
 <li><code>abstractvision playground [--host 127.0.0.1] [--port 8091]</code> — self-contained local web UI and <code>/v1/vision/*</code> API</li>
 <li><code>abstractvision serve [--host 127.0.0.1] [--port 8091]</code> — alias for <code>abstractvision playground</code></li>
-<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> / <code>abstractvision t2v ...</code> / <code>abstractvision i2v ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mlx-gen</code>, and <code>sdcpp</code>; MLX-Gen 0.18.6+ provides Wan <code>t2v</code>/<code>i2v</code>)</li>
+<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> / <code>abstractvision t2v ...</code> / <code>abstractvision i2v ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mlx-gen</code>, and <code>sdcpp</code>; MLX-Gen 0.18.7+ provides Wan <code>t2v</code>/<code>i2v</code>)</li>
 </ul>
 <p>Note:
 - <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> / <code>abstractvision i2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers via <code>--provider diffusers|mlx-gen|sdcpp</code> (legacy alias: <code>--backend</code>; <code>mflux</code> remains accepted).
@@ -860,6 +862,7 @@
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
 abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
 abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/FIBO<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>prism-ml/bonsai-image-ternary-4B-mlx-2bit<span class="w"> </span><span class="s2">&quot;a bonsai tree in a quiet ceramic studio&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">4</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
 abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
 abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
@@ -885,6 +888,8 @@ by default. Add <code>--no-progress</code> when you need quiet shell output.</p>
 /i2i --image ./input.png &quot;replace the background with a clean white studio setup&quot; --steps 20 --guidance-scale 2.5 --strength 0.75 --open
 /backend mlx-gen briaai/FIBO
 /t2i &quot;a studio product photo of a white ceramic mug&quot; --steps 50 --guidance-scale 4.0 --open
+/backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit
+/t2i &quot;a bonsai tree in a quiet ceramic studio&quot; --steps 4 --guidance-scale 1.0 --open
 /backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
 /t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
 /i2v --image ./first-frame.png &quot;slow camera push-in&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
@@ -941,8 +946,8 @@ by default. Add <code>--no-progress</code> when you need quiet shell output.</p>
 - <code>ABSTRACTVISION_DIFFUSERS_VARIANT</code> — optional model variant</p>
 <h3 id="mlx-gen-backend-apple-silicon">MLX-Gen backend (Apple Silicon)<a class="headerlink" href="#mlx-gen-backend-apple-silicon" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — exact published MLX-Gen repo id, local model path, or custom repo id (examples: <code>AbstractFramework/flux.2-klein-4b-4bit</code>, <code>AbstractFramework/ernie-image-turbo-8bit</code>, <code>briaai/FIBO</code>, <code>briaai/Fibo-Edit</code>, <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>, <code>/path/to/preset-dir</code>)</li>
-<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional base family for local paths or custom repos (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>flux2-klein-base-4b</code>, <code>flux2-klein-base-9b</code>, <code>z-image</code>, <code>z-image-turbo</code>, <code>qwen-image</code>, <code>qwen-image-edit-2511</code>, <code>ernie-image-turbo</code>, <code>fibo</code>, <code>fibo-lite</code>, <code>fibo-edit</code>, <code>fibo-edit-rmbg</code>, <code>wan2.2-ti2v-5b</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — exact published MLX-Gen repo id, local model path, or custom repo id (examples: <code>AbstractFramework/flux.2-klein-4b-4bit</code>, <code>AbstractFramework/ernie-image-turbo-8bit</code>, <code>briaai/FIBO</code>, <code>prism-ml/bonsai-image-ternary-4B-mlx-2bit</code>, <code>briaai/Fibo-Edit</code>, <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>, <code>/path/to/preset-dir</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional base family for local paths or custom repos (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>flux2-klein-base-4b</code>, <code>flux2-klein-base-9b</code>, <code>bonsai-image-ternary</code>, <code>z-image</code>, <code>z-image-turbo</code>, <code>qwen-image</code>, <code>qwen-image-edit-2511</code>, <code>ernie-image-turbo</code>, <code>fibo</code>, <code>fibo-lite</code>, <code>fibo-edit</code>, <code>fibo-edit-rmbg</code>, <code>wan2.2-ti2v-5b</code>)</li>
 <li><code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code> — <code>0</code> (default) or <code>1</code> to permit runtime downloads when a preset/repo is missing from the local cache</li>
 <li><code>ABSTRACTVISION_MODEL_DIR</code> — legacy preset root only; curated downloads now land in the Hugging Face cache</li>
 <li>Canonical provider/model routing is <code>mlx-gen</code> / <code>mlx-gen/&lt;exact-huggingface-repo&gt;</code>, for example <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code>. Legacy <code>mflux</code> provider values, routed ids, and env var names are accepted for compatibility, but the model id itself should be the exact published repo id.</li>
@@ -1025,6 +1030,8 @@ by default. Add <code>--no-progress</code> when you need quiet shell output.</p>
     
     
       <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../assets/js/media_carousel.js"></script>
       
     
   </body>

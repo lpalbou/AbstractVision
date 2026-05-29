@@ -20,7 +20,7 @@
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
@@ -47,6 +47,8 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
+    
+      <link rel="stylesheet" href="../../assets/styles/media_carousel.css">
     
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -783,7 +785,7 @@
 - Compatible HTTP: set <code>OPENAI_BASE_URL</code> to a local/remote compatible <code>/v1</code> server. Set <code>ABSTRACTVISION_BACKEND=openai-compatible</code> when you want to force compatible-endpoint semantics.
 - Legacy <code>abstractvision:openai-compatible</code>: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another supported Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set. Local <code>text_to_video</code> groundwork exists but is currently experimental and disabled from the normal local plugin surfaces.
-- Local MLX-Gen (Apple Silicon): install <code>abstractvision[mlx-gen]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mlx-gen</code>. Download exact model repos such as <code>abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-gen</code>, <code>abstractvision download briaai/FIBO --provider mlx-gen</code>, or <code>abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed exact model ids such as <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code> or <code>mlx-gen/Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>. q4 repos are the memory-efficient default recommendation when a q4/q8 AbstractFramework pair exists; q8 repos remain available for quality-focused runs. Quantization is metadata of the selected model folder, not an AbstractCore request parameter. Legacy <code>mflux</code> provider values remain accepted as aliases.
+- Local MLX-Gen (Apple Silicon): install <code>abstractvision[mlx-gen]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mlx-gen</code>. Download exact model repos such as <code>abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-gen</code>, <code>abstractvision download briaai/FIBO --provider mlx-gen</code>, <code>abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx-gen</code>, or <code>abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed exact model ids such as <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code>, <code>mlx-gen/prism-ml/bonsai-image-ternary-4B-mlx-2bit</code>, or <code>mlx-gen/Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>. q4 repos are the memory-efficient default recommendation when a q4/q8 AbstractFramework pair exists; q8 repos remain available for quality-focused runs. Bonsai ternary is already pre-packed at 2-bit and is selected by its exact repo id. Quantization is metadata of the selected model folder, not an AbstractCore request parameter. Legacy <code>mflux</code> provider values remain accepted as aliases.
 - stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure either a model path or a curated model key such as <code>flux2-klein-base-4b</code>. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.
 - Gateway/Core should pass process-level config or <code>owner.config</code> and report readiness; they should not mutate AbstractVision environment variables per request.</p>
@@ -1019,6 +1021,8 @@ instead of being reimplemented in the plugin layer.</p>
     
     
       <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../assets/js/media_carousel.js"></script>
       
     
   </body>

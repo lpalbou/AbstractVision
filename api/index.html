@@ -22,7 +22,7 @@
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
@@ -49,6 +49,8 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
+    
+      <link rel="stylesheet" href="../assets/styles/media_carousel.css">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -1043,7 +1045,7 @@ returns JSON-safe dictionaries so Core/Gateway route code can avoid private back
 <span class="n">asset</span> <span class="o">=</span> <span class="n">vm</span><span class="o">.</span><span class="n">generate_image</span><span class="p">(</span><span class="s2">&quot;a watercolor painting of a lighthouse&quot;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <p>Note: <code>allow_download=False</code> is the default. Pre-download model weights separately, or set <code>allow_download=True</code> only when you want runtime downloads.</p>
-<p><code>generate_video(...)</code> and <code>image_to_video(...)</code> are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.6+ supports Wan <code>text_to_video</code> and first-frame <code>image_to_video</code>. Generated MP4 outputs still require an <code>ffmpeg</code> executable on <code>PATH</code> whenever a backend returns frame sequences for local packaging.</p>
+<p><code>generate_video(...)</code> and <code>image_to_video(...)</code> are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.7+ supports Wan <code>text_to_video</code> and first-frame <code>image_to_video</code>. Generated MP4 outputs still require an <code>ffmpeg</code> executable on <code>PATH</code> whenever a backend returns frame sequences for local packaging.</p>
 <h3 id="local-example-mlx-gen-backend">Local example (MLX-Gen backend)<a class="headerlink" href="#local-example-mlx-gen-backend" title="Permanent link">&para;</a></h3>
 <p>Install <code>abstractvision[mlx-gen]</code> and pre-download the exact model repo first, for example <code>abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
@@ -1189,6 +1191,8 @@ Use <a href="../reference/backends/">docs/reference/backends.md</a> for backend 
     
     
       <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../assets/js/media_carousel.js"></script>
       
     
   </body>
