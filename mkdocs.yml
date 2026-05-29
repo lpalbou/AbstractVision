@@ -8,6 +8,7 @@ docs_dir: docs
 
 theme:
   name: material
+  favicon: assets/images/favicon.svg
   features:
     - navigation.instant
     - navigation.tracking
@@ -24,6 +25,12 @@ markdown_extensions:
 
 plugins:
   - search
+
+extra_css:
+  - assets/styles/media_carousel.css
+
+extra_javascript:
+  - assets/js/media_carousel.js
 
 validation:
   nav:

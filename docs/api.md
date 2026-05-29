@@ -121,7 +121,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
-`generate_video(...)` and `image_to_video(...)` are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.6+ supports Wan `text_to_video` and first-frame `image_to_video`. Generated MP4 outputs still require an `ffmpeg` executable on `PATH` whenever a backend returns frame sequences for local packaging.
+`generate_video(...)` and `image_to_video(...)` are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.7+ supports Wan `text_to_video` and first-frame `image_to_video`. Generated MP4 outputs still require an `ffmpeg` executable on `PATH` whenever a backend returns frame sequences for local packaging.
 
 ### Local example (MLX-Gen backend)
 

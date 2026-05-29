@@ -225,6 +225,7 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("policy: lists exact published model ids", out)
         self.assertIn("AbstractFramework/flux.2-klein-4b-4bit", out)
         self.assertIn("AbstractFramework/flux.2-klein-4b-8bit", out)
+        self.assertIn("prism-ml/bonsai-image-ternary-4B-mlx-2bit", out)
         self.assertIn("Qwen/Qwen-Image-2512", out)
         self.assertIn("Qwen/Qwen-Image-Edit-2511", out)
         self.assertIn("stable-diffusion-v1-5/stable-diffusion-v1-5", out)

@@ -4,7 +4,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines
-- **MLX-Gen (local Apple Silicon)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official MLX-Gen 0.18.6+ FIBO image models, and Wan 2.2 TI2V `text_to_video` / first-frame `image_to_video`
+- **MLX-Gen (local Apple Silicon)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official MLX-Gen 0.18.7+ FIBO image models, and Wan 2.2 TI2V `text_to_video` / first-frame `image_to_video`
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -327,6 +327,7 @@ abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-
 abstractvision download briaai/FIBO --provider mlx-gen
 abstractvision download briaai/Fibo-lite --provider mlx-gen
 abstractvision download briaai/Fibo-Edit --provider mlx-gen
+abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx-gen
 abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen
 ```
 
@@ -337,6 +338,9 @@ when quality is paramount and memory permits it. Quantization is part of the
 published model folder, not a generation-time parameter.
 Qwen and ERNIE q4 folders can mix q4 and q8 components, but remain the default
 prepared choice.
+Bonsai ternary is different: `prism-ml/bonsai-image-ternary-4B-mlx-2bit` is a
+pre-packed MLX checkpoint consumed directly by MLX-Gen. Use the exact repo id,
+keep guidance at 1.0, and do not use it for image-to-image.
 
 One-shot shell commands store the output in the local asset store and print the
 artifact ref followed by the local content path. Add `--open` to open the output
@@ -346,6 +350,7 @@ Text-to-image from the shell:
 
 ```bash
 abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-2512-4bit "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 20 --guidance-scale 1.0 --open
+abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 ```
 
 Image-to-image/edit from the shell:
@@ -362,6 +367,33 @@ abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "a
 abstractvision i2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
 ```
 
+Video examples (5s MP4):
+
+<div class="af_media_carousel" aria-label="AbstractVision text-to-video examples">
+  <button class="af_media_carousel__btn af_media_carousel__btn--prev" type="button" aria-label="Previous video">‹</button>
+  <div class="af_media_carousel__track" tabindex="0">
+    <figure class="af_media_carousel__item">
+      <video class="af_media_carousel__video" controls muted playsinline loop preload="metadata">
+        <source src="../assets/videos/video-river.mp4" type="video/mp4" />
+      </video>
+      <figcaption class="af_media_carousel__caption"><strong>River</strong> — smooth, clean motion (5s)</figcaption>
+    </figure>
+    <figure class="af_media_carousel__item">
+      <video class="af_media_carousel__video" controls muted playsinline loop preload="metadata">
+        <source src="../assets/videos/video-space.mp4" type="video/mp4" />
+      </video>
+      <figcaption class="af_media_carousel__caption"><strong>Space</strong> — cinematic scene (5s)</figcaption>
+    </figure>
+    <figure class="af_media_carousel__item">
+      <video class="af_media_carousel__video" controls muted playsinline loop preload="metadata">
+        <source src="../assets/videos/t2v-example.mp4" type="video/mp4" />
+      </video>
+      <figcaption class="af_media_carousel__caption"><strong>T2V example</strong> — prior sample (5s)</figcaption>
+    </figure>
+  </div>
+  <button class="af_media_carousel__btn af_media_carousel__btn--next" type="button" aria-label="Next video">›</button>
+</div>
+
 MLX-Gen video commands print frame/step progress while the video is running.
 Use `--no-progress` for quiet scripts.
 
@@ -377,6 +409,9 @@ alias) uses the same backend and request normalization:
 
 /backend mlx-gen briaai/FIBO
 /t2i "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 50 --guidance-scale 4.0 --open
+
+/backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit
+/t2i "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 
 /backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
 /t2v "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open

@@ -665,7 +665,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                 or (
                     p.target == "mlx"
                     and p.engine in {"mflux", "mlx-gen"}
-                    and p.quantization_bits in {4, 8}
+                    and p.quantization_bits in {2, 4, 8}
                 )
             ]
             if quantized:
@@ -808,7 +808,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     print(f"target: {selected_target} (auto default: {default_model_target()})")
     print(f"provider/engine: {selected_engine}")
     print(
-        "policy: lists exact published model ids; MLX-Gen q4/q8 artifacts are separate models; video fallbacks appear when no quantized artifact exists (pass --all for full list)"
+        "policy: lists exact published model ids; MLX-Gen q4/q8 and vetted pre-packed low-bit artifacts are separate models; video fallbacks appear when no quantized artifact exists (pass --all for full list)"
     )
     print("tip: `abstractvision model-presets --all-targets --all` shows the raw preset table")
     print()
@@ -1448,6 +1448,9 @@ def _repl_help() -> str:
         "  abstractvision download briaai/FIBO --provider mlx-gen\n"
         "  /backend mlx-gen briaai/FIBO\n"
         '  /t2i "a studio product photo of a white ceramic mug" --steps 50 --guidance-scale 4.0 --open\n'
+        "  abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx-gen\n"
+        "  /backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit\n"
+        '  /t2i "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open\n'
         "  abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen\n"
         "  /backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers\n"
         '  /t2v "a red fox walking through a snowy forest" --num-frames 121 --steps 50 --fps 24 --max-sequence-length 256 --open\n'
@@ -2668,7 +2671,7 @@ def build_parser() -> argparse.ArgumentParser:
         ap.add_argument(
             "--mflux-base-model",
             default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"),
-            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, or wan2.2-ti2v-5b.",
+            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, bonsai-image-ternary, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, or wan2.2-ti2v-5b.",
         )
         ap.add_argument(
             "--mflux-model-dir",

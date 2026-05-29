@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.17 - 2026-05-29
+
+- Docs: update the docs-site favicon and add an embedded text-to-video example carousel (5s MP4) to `docs/getting-started.md`.
+- Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.7,<0.19.0` so Apple Silicon installs pick up the latest Wan video/model fixes.
+- Core propagation: prepare the next AbstractVision package version (`0.3.17`) so AbstractCore can depend on the corrected MLX-Gen runtime contract.
+
 ## 0.3.16 - 2026-05-26
 
 - MLX-Gen video progress: surface Wan `text_to_video` / `image_to_video` progress events through one-shot `abstractvision t2v` / `i2v`, interactive `/t2v` / `/i2v`, and Python/Core `on_progress(event)` callbacks.

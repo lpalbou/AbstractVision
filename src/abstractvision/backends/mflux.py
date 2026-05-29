@@ -122,6 +122,7 @@ class _MFluxModelDef:
     default_guidance: Optional[float]
     supports_negative_prompt: bool = False
     supports_guidance_override: bool = True
+    image_edit_catalog_rank: int = 50
 
 
 _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
@@ -133,6 +134,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=1.0,
         supports_negative_prompt=False,
         supports_guidance_override=False,
+        image_edit_catalog_rank=40,
     ),
     "flux2-klein-9b": _MFluxModelDef(
         key="flux2-klein-9b",
@@ -142,6 +144,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=1.0,
         supports_negative_prompt=False,
         supports_guidance_override=False,
+        image_edit_catalog_rank=40,
     ),
     "flux2-klein-base-4b": _MFluxModelDef(
         key="flux2-klein-base-4b",
@@ -151,6 +154,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=1.5,
         supports_negative_prompt=False,
         supports_guidance_override=True,
+        image_edit_catalog_rank=40,
     ),
     "flux2-klein-base-9b": _MFluxModelDef(
         key="flux2-klein-base-9b",
@@ -160,6 +164,16 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=1.5,
         supports_negative_prompt=False,
         supports_guidance_override=True,
+        image_edit_catalog_rank=40,
+    ),
+    "bonsai-image-ternary": _MFluxModelDef(
+        key="bonsai-image-ternary",
+        config_method="bonsai_image_ternary",
+        family="bonsai",
+        default_steps=4,
+        default_guidance=1.0,
+        supports_negative_prompt=False,
+        supports_guidance_override=False,
     ),
     "z-image": _MFluxModelDef(
         key="z-image",
@@ -196,6 +210,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=2.5,
         supports_negative_prompt=True,
         supports_guidance_override=True,
+        image_edit_catalog_rank=2,
     ),
     "qwen-image-edit-2511": _MFluxModelDef(
         key="qwen-image-edit-2511",
@@ -205,6 +220,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=2.5,
         supports_negative_prompt=True,
         supports_guidance_override=True,
+        image_edit_catalog_rank=0,
     ),
     "qwen-image-edit-2509": _MFluxModelDef(
         key="qwen-image-edit-2509",
@@ -214,6 +230,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=2.5,
         supports_negative_prompt=True,
         supports_guidance_override=True,
+        image_edit_catalog_rank=1,
     ),
     "ernie-image-turbo": _MFluxModelDef(
         key="ernie-image-turbo",
@@ -223,6 +240,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=1.0,
         supports_negative_prompt=True,
         supports_guidance_override=True,
+        image_edit_catalog_rank=30,
     ),
     "fibo": _MFluxModelDef(
         key="fibo",
@@ -232,6 +250,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=4.0,
         supports_negative_prompt=True,
         supports_guidance_override=True,
+        image_edit_catalog_rank=25,
     ),
     "fibo-lite": _MFluxModelDef(
         key="fibo-lite",
@@ -241,6 +260,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=1.0,
         supports_negative_prompt=True,
         supports_guidance_override=False,
+        image_edit_catalog_rank=25,
     ),
     "fibo-edit": _MFluxModelDef(
         key="fibo-edit",
@@ -250,6 +270,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=4.0,
         supports_negative_prompt=True,
         supports_guidance_override=True,
+        image_edit_catalog_rank=10,
     ),
     "fibo-edit-rmbg": _MFluxModelDef(
         key="fibo-edit-rmbg",
@@ -259,6 +280,7 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_guidance=4.0,
         supports_negative_prompt=True,
         supports_guidance_override=True,
+        image_edit_catalog_rank=11,
     ),
     WAN_TI2V_MODEL_KEY: _MFluxModelDef(
         key=WAN_TI2V_MODEL_KEY,
@@ -353,6 +375,13 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "wan-ti2v": WAN_TI2V_MODEL_KEY,
     "wan-video": WAN_TI2V_MODEL_KEY,
     "wan": WAN_TI2V_MODEL_KEY,
+    "prism-ml/bonsai-image-ternary-4b-mlx-2bit": "bonsai-image-ternary",
+    "bonsai-image-ternary-4b-mlx-2bit": "bonsai-image-ternary",
+    "bonsai-image-ternary": "bonsai-image-ternary",
+    "bonsai-image-2bit": "bonsai-image-ternary",
+    "bonsai-ternary": "bonsai-image-ternary",
+    "bonsai-image": "bonsai-image-ternary",
+    "bonsai": "bonsai-image-ternary",
 }
 
 
@@ -361,6 +390,7 @@ _MFLUX_BASE_MODEL_REGISTRY_IDS: Dict[str, str] = {
     "flux2-klein-9b": "black-forest-labs/FLUX.2-klein-9B",
     "flux2-klein-base-4b": "black-forest-labs/FLUX.2-klein-base-4B",
     "flux2-klein-base-9b": "black-forest-labs/FLUX.2-klein-base-9B",
+    "bonsai-image-ternary": "prism-ml/bonsai-image-ternary-4B-mlx-2bit",
     "qwen-image": "Qwen/Qwen-Image-2512",
     "qwen-image-edit": "Qwen/Qwen-Image-Edit",
     "qwen-image-edit-2511": "Qwen/Qwen-Image-Edit-2511",
@@ -381,6 +411,7 @@ _MFLUX_BASE_MODEL_FALLBACK_TASKS: Dict[str, Tuple[str, ...]] = {
     "flux2-klein-9b": ("image_to_image", "text_to_image"),
     "flux2-klein-base-4b": ("image_to_image", "text_to_image"),
     "flux2-klein-base-9b": ("image_to_image", "text_to_image"),
+    "bonsai-image-ternary": ("text_to_image",),
     "qwen-image": ("text_to_image",),
     "qwen-image-edit": ("image_to_image",),
     "qwen-image-edit-2511": ("image_to_image",),
@@ -401,6 +432,7 @@ _MFLUX_RUNTIME_ALLOWED_TASKS: Dict[str, Tuple[str, ...]] = {
     "flux2-klein-9b": ("image_to_image", "text_to_image"),
     "flux2-klein-base-4b": ("image_to_image", "text_to_image"),
     "flux2-klein-base-9b": ("image_to_image", "text_to_image"),
+    "bonsai-image-ternary": ("text_to_image",),
     "qwen-image": ("text_to_image",),
     "qwen-image-edit": ("image_to_image",),
     "qwen-image-edit-2511": ("image_to_image",),
@@ -502,7 +534,7 @@ def _lazy_import_mflux_ernie() -> Any:
         from mflux.models.ernie_image import ErnieImageTurbo  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen ERNIE backend requires mlx-gen>=0.18.6. "
+            "MLX-Gen ERNIE backend requires mlx-gen>=0.18.7. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return ErnieImageTurbo
@@ -514,10 +546,21 @@ def _lazy_import_mflux_fibo() -> Tuple[Any, Any]:
         from mflux.models.fibo.variants.txt2img.fibo import FIBO  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen FIBO backend requires mlx-gen>=0.18.6. "
+            "MLX-Gen FIBO backend requires mlx-gen>=0.18.7. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return FIBO, FIBOEdit
+
+
+def _lazy_import_mflux_bonsai() -> Any:
+    try:
+        from mflux.models.bonsai_image.variants import BonsaiImage  # type: ignore
+    except Exception as e:
+        raise OptionalDependencyMissingError(
+            "MLX-Gen Bonsai Image generation requires mlx-gen>=0.18.7. "
+            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
+        ) from e
+    return BonsaiImage
 
 
 def _lazy_import_mflux_wan() -> Any:
@@ -525,7 +568,7 @@ def _lazy_import_mflux_wan() -> Any:
         from mflux.models.wan.variants import Wan2_2_TI2V  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen Wan video generation requires mlx-gen>=0.18.6. "
+            "MLX-Gen Wan video generation requires mlx-gen>=0.18.7. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return Wan2_2_TI2V
@@ -539,6 +582,10 @@ def _infer_bits_from_text(value: Any) -> Optional[int]:
     s = _norm(value)
     if not s:
         return None
+    if "2bit" in s or "-q2" in s or s.endswith("q2"):
+        return 2
+    if "1bit" in s or "-q1" in s or s.endswith("q1"):
+        return 1
     if "4bit" in s or "-q4" in s or s.endswith("q4"):
         return 4
     if "8bit" in s or "-q8" in s or "q8-0" in s or s.endswith("q8"):
@@ -1033,6 +1080,8 @@ def _infer_base_model(*values: Any) -> Optional[str]:
             return "qwen-image-edit-2511"
         if "qwen" in s and "image" in s:
             return "qwen-image"
+        if "bonsai" in s:
+            return "bonsai-image-ternary"
         if "z-image-turbo" in s or "zimage-turbo" in s:
             return "z-image-turbo"
         if "z-image" in s or "zimage" in s:
@@ -1300,6 +1349,24 @@ class MFluxVisionBackend(VisionBackend):
             parameter_metadata = (
                 _mflux_parameter_metadata(model_def) if model_def is not None else {}
             )
+            if task_s == "image_to_image" and model_def is not None and model_def.family == "flux2":
+                parameter_metadata = {
+                    key: (dict(value) if isinstance(value, dict) else value)
+                    for key, value in parameter_metadata.items()
+                }
+                constraints = dict(parameter_metadata.get("parameter_constraints") or {})
+                constraints.pop("guidance_scale", None)
+                parameter_metadata["parameter_constraints"] = constraints
+                parameters = dict(parameter_metadata.get("parameters") or {})
+                nested_constraints = dict(parameters.get("constraints") or {})
+                nested_constraints.pop("guidance_scale", None)
+                parameters["constraints"] = nested_constraints
+                parameter_metadata["parameters"] = parameters
+            catalog_rank = (
+                int(model_def.image_edit_catalog_rank)
+                if task_s == "image_to_image" and model_def is not None
+                else 50
+            )
             out.append(
                 ProviderModelInfo(
                     id=model_selector,
@@ -1322,6 +1389,7 @@ class MFluxVisionBackend(VisionBackend):
                         "upstream_repo_id": preset.upstream_repo_id,
                         "source": preset.source,
                         "quantization_bits": preset.quantization_bits,
+                        "catalog_rank": catalog_rank,
                         "cache_source": discovered_model.source_label,
                         "cache_source_detail": discovered_model.source_detail,
                         **parameter_metadata,
@@ -1329,6 +1397,22 @@ class MFluxVisionBackend(VisionBackend):
                 )
             )
             emitted.add(model_selector)
+        if task_s == "image_to_image":
+            def _sort_key(info: ProviderModelInfo) -> Tuple[int, int, str]:
+                raw = info.raw if isinstance(info.raw, dict) else {}
+                try:
+                    rank = int(raw.get("catalog_rank", 50))
+                except Exception:
+                    rank = 50
+                bits = raw.get("quantization_bits")
+                try:
+                    bits_i = int(bits) if bits is not None else 16
+                except Exception:
+                    bits_i = 16
+                bit_rank = {4: 0, 8: 1}.get(bits_i, 2)
+                return (rank, bit_rank, str(info.id or "").lower())
+
+            out.sort(key=_sort_key)
         return out
 
     def _resolve_model(self) -> Tuple[str, str]:
@@ -1469,6 +1553,7 @@ class MFluxVisionBackend(VisionBackend):
         for key in (
             "flux2-klein-4b",
             "flux2-klein-9b",
+            "bonsai-image-ternary",
             "z-image-turbo",
             "qwen-image",
             "ernie-image-turbo",
@@ -1487,7 +1572,7 @@ class MFluxVisionBackend(VisionBackend):
             "`abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen`."
         )
 
-    def _ensure_model_impl(self) -> Tuple[Any, _MFluxModelDef]:
+    def _ensure_model_impl(self, *, edit_variant: bool = False) -> Tuple[Any, _MFluxModelDef]:
         model_path, base_model = self._resolve_model()
         if base_model not in _MFLUX_MODELS:
             raise OptionalDependencyMissingError(
@@ -1495,9 +1580,11 @@ class MFluxVisionBackend(VisionBackend):
                 f"Supported: {', '.join(sorted(_MFLUX_MODELS))}"
             )
         model_def = _MFLUX_MODELS[base_model]
+        model_variant = "flux2-edit" if edit_variant and model_def.family == "flux2" else "default"
         key = (
             model_path,
             base_model,
+            model_variant,
             tuple(self._cfg.lora_paths or ()),
             tuple(self._cfg.lora_scales or ()),
         )
@@ -1507,13 +1594,31 @@ class MFluxVisionBackend(VisionBackend):
         ModelConfig, _DownloadRequiredError, Flux2Klein, _Flux2KleinEdit, ZImage, ZImageTurbo = (
             _lazy_import_mflux()
         )
-        from_name = getattr(ModelConfig, "from_name", None)
-        if callable(from_name):
-            model_config = from_name(model_def.key)
+        config_factory = getattr(ModelConfig, model_def.config_method, None)
+        if callable(config_factory):
+            model_config = config_factory()
         else:
-            model_config = getattr(ModelConfig, model_def.config_method)()
+            from_name = getattr(ModelConfig, "from_name", None)
+            registry_id = _MFLUX_BASE_MODEL_REGISTRY_IDS.get(model_def.key, model_def.key)
+            if not callable(from_name):
+                raise OptionalDependencyMissingError(
+                    f"Installed MLX-Gen does not expose ModelConfig.{model_def.config_method}() "
+                    f"or ModelConfig.from_name(); update mlx-gen for {registry_id}."
+                )
+            try:
+                model_config = from_name(registry_id)
+            except Exception as exc:
+                if model_def.family == "wan-video":
+                    raise OptionalDependencyMissingError(
+                        "MLX-Gen Wan video generation requires mlx-gen>=0.18.7. "
+                        'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` '
+                        f"for {registry_id}."
+                    ) from exc
+                raise
         if model_def.family == "flux2":
-            cls = Flux2Klein
+            cls = _Flux2KleinEdit if model_variant == "flux2-edit" else Flux2Klein
+        elif model_def.family == "bonsai":
+            cls = _lazy_import_mflux_bonsai()
         elif model_def.family == "z-image":
             cls = ZImage if model_def.key == "z-image" else (ZImageTurbo or ZImage)
         elif model_def.family == "qwen":
@@ -1595,7 +1700,10 @@ class MFluxVisionBackend(VisionBackend):
             if request.guidance_scale is not None
             else model_def.default_guidance
         )
-        if not model_def.supports_guidance_override and model_def.default_guidance is not None:
+        if (
+            not model_def.supports_guidance_override
+            and model_def.default_guidance is not None
+        ):
             guidance = float(model_def.default_guidance)
         negative_prompt = request.negative_prompt
         if negative_prompt and not model_def.supports_negative_prompt:
@@ -1620,7 +1728,11 @@ class MFluxVisionBackend(VisionBackend):
             if request.guidance_scale is not None
             else model_def.default_guidance
         )
-        if not model_def.supports_guidance_override and model_def.default_guidance is not None:
+        if (
+            not model_def.supports_guidance_override
+            and model_def.default_guidance is not None
+            and model_def.family != "flux2"
+        ):
             guidance = float(model_def.default_guidance)
         negative_prompt = request.negative_prompt
         if negative_prompt and not model_def.supports_negative_prompt:
@@ -1736,6 +1848,71 @@ class MFluxVisionBackend(VisionBackend):
         if len(image) >= 3 and image[:3] == b"\xff\xd8\xff":
             return ".jpg"
         return ".img"
+
+    def _prepare_i2v_conditioning_image(
+        self,
+        image_path: Path,
+        *,
+        width: int,
+        height: int,
+    ) -> Tuple[Path, Optional[Dict[str, Any]]]:
+        if width <= 0 or height <= 0:
+            return image_path, None
+        try:
+            from PIL import Image, ImageOps
+        except Exception as exc:  # pragma: no cover - Pillow is a package dependency.
+            raise OptionalDependencyMissingError(
+                "MLX-Gen image-to-video conditioning requires Pillow to preserve the source "
+                "image aspect ratio. Install or upgrade with `pip install \"abstractvision[mlx-gen]\"`."
+            ) from exc
+
+        with Image.open(image_path) as source:
+            source = ImageOps.exif_transpose(source)
+            source_width, source_height = source.size
+            if source_width == width and source_height == height:
+                return image_path, {
+                    "mode": "passthrough",
+                    "source_width": source_width,
+                    "source_height": source_height,
+                    "conditioning_width": width,
+                    "conditioning_height": height,
+                }
+
+            if source.mode in {"RGBA", "LA"} or (
+                source.mode == "P" and "transparency" in source.info
+            ):
+                rgba = source.convert("RGBA")
+                opaque = Image.new("RGBA", rgba.size, (0, 0, 0, 255))
+                opaque.alpha_composite(rgba)
+                source = opaque.convert("RGB")
+            else:
+                source = source.convert("RGB")
+
+            resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+            fitted = ImageOps.contain(source, (width, height), method=resampling)
+            pad_left = (width - fitted.width) // 2
+            pad_top = (height - fitted.height) // 2
+            canvas = Image.new("RGB", (width, height), (0, 0, 0))
+            canvas.paste(fitted, (pad_left, pad_top))
+
+            with tempfile.NamedTemporaryFile(mode="wb", suffix=".png", delete=False) as fp:
+                prepared_path = Path(fp.name)
+                canvas.save(fp, format="PNG")
+
+        return prepared_path, {
+            "mode": "letterbox",
+            "source_width": source_width,
+            "source_height": source_height,
+            "conditioning_width": width,
+            "conditioning_height": height,
+            "fit_width": fitted.width,
+            "fit_height": fitted.height,
+            "pad_left": pad_left,
+            "pad_top": pad_top,
+            "pad_right": width - fitted.width - pad_left,
+            "pad_bottom": height - fitted.height - pad_top,
+            "background": "black",
+        }
 
     def _sniff_image_dimensions(self, image: bytes) -> Optional[Tuple[int, int]]:
         if len(image) >= 24 and image[:8] == b"\x89PNG\r\n\x1a\n" and image[12:16] == b"IHDR":
@@ -1878,7 +2055,7 @@ class MFluxVisionBackend(VisionBackend):
     def _edit_image_impl(self, request: ImageEditRequest) -> GeneratedAsset:
         request = self.normalize_image_edit_request(request)
 
-        _model, model_def = self._ensure_model_impl()
+        _model, model_def = self._ensure_model_impl(edit_variant=True)
         if request.mask is not None and model_def.family != "fibo-edit":
             raise CapabilityNotSupportedError(
                 "MLX-Gen mask edits are currently implemented only for FIBO Edit models."
@@ -1930,7 +2107,7 @@ class MFluxVisionBackend(VisionBackend):
                 tmp_mask_path = Path(fp.name)
                 fp.write(request.mask)
         try:
-            if model_def.family in {"qwen-edit", "fibo-edit"}:
+            if model_def.family in {"flux2", "qwen-edit", "fibo-edit"}:
                 seed = (
                     int(request.seed)
                     if request.seed is not None
@@ -1947,7 +2124,7 @@ class MFluxVisionBackend(VisionBackend):
                     "prompt": str(request.prompt),
                     "num_inference_steps": steps,
                 }
-                if model_def.family == "qwen-edit":
+                if model_def.family in {"flux2", "qwen-edit"}:
                     kwargs["image_paths"] = [str(tmp_path)]
                 else:
                     kwargs["image_path"] = str(tmp_path)
@@ -2049,6 +2226,7 @@ class MFluxVisionBackend(VisionBackend):
         request: Union[VideoGenerationRequest, ImageToVideoRequest],
         *,
         image_path: Optional[Path] = None,
+        conditioning_image_metadata: Optional[Dict[str, Any]] = None,
     ) -> GeneratedAsset:
         if isinstance(request, VideoGenerationRequest):
             request = self.normalize_video_generation_request(request)
@@ -2147,6 +2325,11 @@ class MFluxVisionBackend(VisionBackend):
                 "fps": fps,
                 "num_frames": num_frames,
                 "guidance_scale": guidance,
+                **(
+                    {"conditioning_image": conditioning_image_metadata}
+                    if conditioning_image_metadata
+                    else {}
+                ),
                 **({"mlx_gen": mlx_metadata} if mlx_metadata else {}),
             },
         )
@@ -2166,13 +2349,30 @@ class MFluxVisionBackend(VisionBackend):
         return self.generate_video(replace(request, extra=extra))
 
     def _image_to_video_impl(self, request: ImageToVideoRequest) -> GeneratedAsset:
+        request = self.normalize_image_to_video_request(request)
         suffix = self._sniff_image_suffix(request.image)
         with tempfile.NamedTemporaryFile(mode="wb", suffix=suffix, delete=False) as fp:
             tmp_path = Path(fp.name)
             fp.write(request.image)
+        conditioning_path = tmp_path
+        conditioning_metadata: Optional[Dict[str, Any]] = None
         try:
-            return self._generate_video_impl(request, image_path=tmp_path)
+            conditioning_path, conditioning_metadata = self._prepare_i2v_conditioning_image(
+                tmp_path,
+                width=int(request.width) if request.width is not None else WAN_DEFAULT_WIDTH,
+                height=int(request.height) if request.height is not None else WAN_DEFAULT_HEIGHT,
+            )
+            return self._generate_video_impl(
+                request,
+                image_path=conditioning_path,
+                conditioning_image_metadata=conditioning_metadata,
+            )
         finally:
+            if conditioning_path != tmp_path:
+                try:
+                    conditioning_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
             try:
                 tmp_path.unlink(missing_ok=True)
             except Exception:

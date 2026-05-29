@@ -2,12 +2,21 @@ import base64
 import tempfile
 import threading
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X9+QAAAABJRU5ErkJggg=="
 )
+
+
+def _solid_png(width, height, color):
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (width, height), color).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 class _FakeImage:
@@ -49,11 +58,14 @@ class _FakeProgressEvent:
 class _FakeModelConfig:
     @staticmethod
     def from_name(model_name, base_model=None):
+        if model_name == "wan2.2-ti2v-5b":
+            raise AssertionError("Wan must use the explicit config factory, not short-name inference")
         configs = {
             "flux2-klein-4b": "flux2-4b-config",
             "flux2-klein-9b": "flux2-9b-config",
             "flux2-klein-base-4b": "flux2-base-4b-config",
             "flux2-klein-base-9b": "flux2-base-9b-config",
+            "bonsai-image-ternary": "bonsai-image-ternary-config",
             "z-image": "z-image-config",
             "z-image-turbo": "z-image-turbo-config",
             "qwen-image": "qwen-image-config",
@@ -78,6 +90,18 @@ class _FakeModelConfig:
         return "flux2-9b-config"
 
     @staticmethod
+    def flux2_klein_base_4b():
+        return "flux2-base-4b-config"
+
+    @staticmethod
+    def flux2_klein_base_9b():
+        return "flux2-base-9b-config"
+
+    @staticmethod
+    def bonsai_image_ternary():
+        return "bonsai-image-ternary-config"
+
+    @staticmethod
     def z_image_turbo():
         return "z-image-turbo-config"
 
@@ -88,6 +112,10 @@ class _FakeModelConfig:
     @staticmethod
     def qwen_image():
         return "qwen-image-config"
+
+    @staticmethod
+    def qwen_image_edit():
+        return "qwen-image-edit-config"
 
     @staticmethod
     def ernie_image_turbo():
@@ -114,6 +142,21 @@ class _FakeModelConfig:
         return "wan-ti2v-config"
 
 
+class _FakeModelConfigWithoutWanFactory:
+    last_from_name = None
+
+    @staticmethod
+    def from_name(model_name, base_model=None):
+        _FakeModelConfigWithoutWanFactory.last_from_name = (model_name, base_model)
+        return "wan-ti2v-config"
+
+
+class _FakeModelConfigWithoutWanSupport:
+    @staticmethod
+    def from_name(model_name, base_model=None):
+        raise RuntimeError(f"Cannot infer base_model from {model_name}")
+
+
 class _FakeFlux2:
     last_init = None
     last_generate = None
@@ -123,6 +166,18 @@ class _FakeFlux2:
 
     def generate_image(self, **kwargs):
         _FakeFlux2.last_generate = dict(kwargs)
+        return _Generated()
+
+
+class _FakeFlux2Edit:
+    last_init = None
+    last_generate = None
+
+    def __init__(self, **kwargs):
+        _FakeFlux2Edit.last_init = dict(kwargs)
+
+    def generate_image(self, **kwargs):
+        _FakeFlux2Edit.last_generate = dict(kwargs)
         return _Generated()
 
 
@@ -136,6 +191,18 @@ class _FakeZImage:
     def generate_image(self, **kwargs):
         _FakeZImage.last_generate = dict(kwargs)
         return _FakeImage()
+
+
+class _FakeBonsai:
+    last_init = None
+    last_generate = None
+
+    def __init__(self, **kwargs):
+        _FakeBonsai.last_init = dict(kwargs)
+
+    def generate_image(self, **kwargs):
+        _FakeBonsai.last_generate = dict(kwargs)
+        return _Generated()
 
 
 class _FakeQwenImage:
@@ -202,6 +269,9 @@ class _FakeWan:
     last_init = None
     last_generate = None
     last_image_path_existed = None
+    last_image_size = None
+    last_image_corner_pixel = None
+    last_image_center_pixel = None
 
     def __init__(self, **kwargs):
         _FakeWan.last_init = dict(kwargs)
@@ -212,6 +282,19 @@ class _FakeWan:
         _FakeWan.last_image_path_existed = (
             Path(image_path).exists() if image_path is not None else None
         )
+        _FakeWan.last_image_size = None
+        _FakeWan.last_image_corner_pixel = None
+        _FakeWan.last_image_center_pixel = None
+        if image_path is not None and _FakeWan.last_image_path_existed:
+            from PIL import Image
+
+            with Image.open(image_path) as img:
+                rgb = img.convert("RGB")
+                _FakeWan.last_image_size = rgb.size
+                _FakeWan.last_image_corner_pixel = rgb.getpixel((0, 0))
+                _FakeWan.last_image_center_pixel = rgb.getpixel(
+                    (rgb.width // 2, rgb.height // 2)
+                )
         progress_callback = kwargs.get("progress_callback")
         if callable(progress_callback):
             progress_callback(_FakeProgressEvent("start", 0, 5, 0, 2))
@@ -250,8 +333,8 @@ class _CountingFlux2:
 
 
 class TestMFluxVisionBackend(unittest.TestCase):
-    def _lazy_import_return(self, flux_cls=_FakeFlux2, z_cls=_FakeZImage):
-        return (_FakeModelConfig, _FakeDownloadRequiredError, flux_cls, _FakeFlux2, z_cls, z_cls)
+    def _lazy_import_return(self, flux_cls=_FakeFlux2, flux_edit_cls=_FakeFlux2Edit, z_cls=_FakeZImage):
+        return (_FakeModelConfig, _FakeDownloadRequiredError, flux_cls, flux_edit_cls, z_cls, z_cls)
 
     def _make_model_dir(self, root: Path, name: str) -> Path:
         model_dir = root / name
@@ -397,6 +480,79 @@ class TestMFluxVisionBackend(unittest.TestCase):
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
                 with self.assertRaisesRegex(OptionalDependencyMissingError, "flux.2-klein-9b-8bit"):
                     backend.generate_image(ImageGenerationRequest(prompt="q8", steps=2, seed=2))
+
+    def test_image_to_image_catalog_prefers_dedicated_edit_models(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            root = Path(cache_td)
+            self._make_cache_snapshot(root, "AbstractFramework/flux.2-klein-4b-4bit")
+            self._make_cache_snapshot(root, "AbstractFramework/qwen-image-edit-2511-8bit")
+            self._make_cache_snapshot(root, "AbstractFramework/qwen-image-edit-2511-4bit")
+            self._make_cache_snapshot(root, "AbstractFramework/ernie-image-turbo-4bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig())
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                models = backend.list_provider_models(task="image_to_image")
+
+        self.assertGreaterEqual(len(models), 4)
+        ids = [m.id for m in models]
+        self.assertEqual(ids[0], "AbstractFramework/qwen-image-edit-2511-4bit")
+        self.assertEqual(ids[1], "AbstractFramework/qwen-image-edit-2511-8bit")
+        self.assertLess(
+            ids.index("AbstractFramework/qwen-image-edit-2511-4bit"),
+            ids.index("AbstractFramework/flux.2-klein-4b-4bit"),
+        )
+        self.assertEqual(models[0].raw["catalog_rank"], 0)
+        flux_model = models[ids.index("AbstractFramework/flux.2-klein-4b-4bit")]
+        self.assertNotIn(
+            "guidance_scale",
+            flux_model.raw.get("parameter_constraints", {}),
+        )
+
+    def test_bonsai_ternary_routes_text_to_image(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(
+                Path(cache_td), "prism-ml/bonsai-image-ternary-4B-mlx-2bit"
+            )
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(
+                    model="prism-ml/bonsai-image-ternary-4B-mlx-2bit"
+                )
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_bonsai",
+                        return_value=_FakeBonsai,
+                    ):
+                        asset = backend.generate_image(
+                            ImageGenerationRequest(
+                                prompt="a small bonsai in a ceramic studio",
+                                negative_prompt="blur",
+                                width=128,
+                                height=128,
+                                steps=4,
+                                guidance_scale=7.0,
+                                seed=123,
+                            )
+                        )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(_FakeBonsai.last_init["model_config"], "bonsai-image-ternary-config")
+        self.assertEqual(_FakeBonsai.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeBonsai.last_generate["prompt"], "a small bonsai in a ceramic studio")
+        self.assertEqual(_FakeBonsai.last_generate["guidance"], 1.0)
+        self.assertNotIn("negative_prompt", _FakeBonsai.last_generate)
+        self.assertEqual(asset.metadata["base_model"], "bonsai-image-ternary")
+        self.assertEqual(asset.metadata["quantization_bits"], 2)
 
     def test_z_image_turbo_drops_noop_negative_prompt_and_forces_guidance_off(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -709,7 +865,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(seen, [(0, 5), (3, 5), (5, 5)])
 
-    def test_wan_routes_image_to_video_with_temp_image(self):
+    def test_wan_routes_image_to_video_with_letterboxed_temp_image(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageToVideoRequest
 
@@ -730,8 +886,10 @@ class TestMFluxVisionBackend(unittest.TestCase):
                     ):
                         asset = backend.image_to_video(
                             ImageToVideoRequest(
-                                image=PNG_1X1,
+                                image=_solid_png(32, 32, (255, 0, 0)),
                                 prompt="slow push in",
+                                width=320,
+                                height=192,
                                 fps=8,
                                 num_frames=5,
                                 steps=1,
@@ -741,12 +899,99 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(asset.media_type, "video")
         self.assertEqual(_FakeWan.last_generate["prompt"], "slow push in")
+        self.assertEqual(_FakeWan.last_generate["width"], 320)
+        self.assertEqual(_FakeWan.last_generate["height"], 192)
         self.assertEqual(_FakeWan.last_generate["fps"], 8)
         self.assertEqual(_FakeWan.last_generate["num_frames"], 5)
         self.assertEqual(_FakeWan.last_generate["num_inference_steps"], 1)
         self.assertIsNotNone(_FakeWan.last_generate.get("image_path"))
         self.assertTrue(_FakeWan.last_image_path_existed)
+        self.assertEqual(_FakeWan.last_image_size, (320, 192))
+        self.assertEqual(_FakeWan.last_image_corner_pixel, (0, 0, 0))
+        self.assertEqual(_FakeWan.last_image_center_pixel, (255, 0, 0))
         self.assertEqual(asset.metadata["task"], "image_to_video")
+        self.assertEqual(asset.metadata["conditioning_image"]["mode"], "letterbox")
+        self.assertEqual(asset.metadata["conditioning_image"]["fit_width"], 192)
+        self.assertEqual(asset.metadata["conditioning_image"]["fit_height"], 192)
+        self.assertEqual(asset.metadata["conditioning_image"]["pad_left"], 64)
+        self.assertEqual(asset.metadata["conditioning_image"]["pad_right"], 64)
+
+    def test_wan_config_fallback_uses_registry_id_without_model_def_attribute(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageToVideoRequest
+
+        _FakeModelConfigWithoutWanFactory.last_from_name = None
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(
+                        _FakeModelConfigWithoutWanFactory,
+                        _FakeDownloadRequiredError,
+                        _FakeFlux2,
+                        _FakeFlux2Edit,
+                        _FakeZImage,
+                        _FakeZImage,
+                    ),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        asset = backend.image_to_video(
+                            ImageToVideoRequest(
+                                image=_solid_png(16, 16, (0, 128, 255)),
+                                prompt="animate",
+                                steps=1,
+                            )
+                        )
+
+        self.assertEqual(asset.metadata["task"], "image_to_video")
+        self.assertEqual(
+            _FakeModelConfigWithoutWanFactory.last_from_name,
+            ("Wan-AI/Wan2.2-TI2V-5B-Diffusers", None),
+        )
+        self.assertEqual(_FakeWan.last_init["model_config"], "wan-ti2v-config")
+
+    def test_wan_config_fallback_reports_upgrade_when_installed_mlx_gen_lacks_wan(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.types import ImageToVideoRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=(
+                        _FakeModelConfigWithoutWanSupport,
+                        _FakeDownloadRequiredError,
+                        _FakeFlux2,
+                        _FakeFlux2Edit,
+                        _FakeZImage,
+                        _FakeZImage,
+                    ),
+                ):
+                    with self.assertRaisesRegex(
+                        OptionalDependencyMissingError,
+                        r"mlx-gen>=0\.18\.7",
+                    ):
+                        backend.image_to_video(
+                            ImageToVideoRequest(
+                                image=_solid_png(16, 16, (0, 128, 255)),
+                                prompt="animate",
+                                steps=1,
+                            )
+                        )
 
     def test_z_image_turbo_uses_alternate_cached_repo_for_preset_key(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1106,10 +1351,12 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(caps.supported_tasks, ["image_to_image", "text_to_image"])
         self.assertFalse(caps.supports_mask)
 
-    def test_edit_image_passes_strength_and_input_dimensions(self):
+    def test_flux2_edit_image_uses_edit_variant_and_input_dimensions(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageEditRequest
 
+        _FakeFlux2.last_generate = None
+        _FakeFlux2Edit.last_generate = None
         with tempfile.TemporaryDirectory() as cache_td:
             self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-4bit")
             backend = MFluxVisionBackend(
@@ -1125,15 +1372,21 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             prompt="watercolor",
                             image=PNG_1X1,
                             extra={"strength": 0.75},
+                            guidance_scale=2.0,
                             seed=123,
                         )
                     )
 
         self.assertTrue(asset.data.startswith(b"\x89PNG"))
-        self.assertIn("image_path", _FakeFlux2.last_generate)
-        self.assertEqual(_FakeFlux2.last_generate["image_strength"], 0.75)
-        self.assertEqual(_FakeFlux2.last_generate["width"], 1)
-        self.assertEqual(_FakeFlux2.last_generate["height"], 1)
+        self.assertIsNone(_FakeFlux2.last_generate)
+        self.assertIsNotNone(_FakeFlux2Edit.last_generate)
+        self.assertIn("image_paths", _FakeFlux2Edit.last_generate)
+        self.assertEqual(len(_FakeFlux2Edit.last_generate["image_paths"]), 1)
+        self.assertNotIn("image_strength", _FakeFlux2Edit.last_generate)
+        self.assertEqual(_FakeFlux2Edit.last_generate["guidance"], 2.0)
+        self.assertEqual(_FakeFlux2Edit.last_generate["width"], 1)
+        self.assertEqual(_FakeFlux2Edit.last_generate["height"], 1)
+        self.assertNotIn("image_strength", asset.metadata)
 
     def test_runtime_serializes_model_init_and_generate_on_same_thread(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend

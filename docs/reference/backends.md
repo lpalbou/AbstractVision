@@ -119,8 +119,9 @@ Runtime behavior notes:
 **When to use**
 - You are on Apple Silicon and want local quantized MLX generation through the optional MLX-Gen runtime.
 - You want the AbstractFramework-published q4/q8 prepared folders from the [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
-- You want the official MLX-Gen 0.18.6+ FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
-- You want local Wan 2.2 TI2V video generation (`text_to_video` and first-frame `image_to_video`) through MLX-Gen 0.18.6+.
+- You want the official MLX-Gen 0.18.7+ FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
+- You want the official Prism ML Bonsai ternary 2-bit checkpoint (`prism-ml/bonsai-image-ternary-4B-mlx-2bit`) for very small local `text_to_image`.
+- You want local Wan 2.2 TI2V video generation (`text_to_video` and first-frame `image_to_video`) through MLX-Gen 0.18.7+.
 
 Install:
 - `pip install "abstractvision[mlx-gen]"` (or `pip install "abstractvision[all-apple]"`)
@@ -143,6 +144,7 @@ Model presets:
   - `abstractvision download briaai/Fibo-lite --provider mlx-gen`
   - `abstractvision download briaai/Fibo-Edit --provider mlx-gen`
   - `abstractvision download briaai/Fibo-Edit-RMBG --provider mlx-gen`
+  - `abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx-gen`
   - `abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen`
 - q4 repos are the default recommendation for memory efficiency. Use the exact
   matching `AbstractFramework/...-8bit` model id when quality is paramount. Qwen
@@ -151,7 +153,8 @@ Model presets:
 - `abstractvision t2i`, `abstractvision i2i`, and Python callers select q4/q8
   by exact model id. Quantization is metadata of the published folder, not a
   generation-time parameter.
-- Current shipped backend coverage includes `text_to_image` for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, ERNIE Image Turbo, FIBO, and Fibo-lite. `image_to_image` edits are implemented for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, Fibo-lite, Fibo-Edit, and Fibo-Edit-RMBG; FIBO Edit snapshots support masks where the runtime supports them.
+- Bonsai ternary is a pre-packed low-bit MLX artifact, not a q4/q8 prepared folder. Use the exact repo id; guidance is fixed at 1.0 and negative prompts are ignored. The binary 1-bit Bonsai checkpoint is not surfaced because stock MLX cannot run it yet.
+- Current shipped backend coverage includes `text_to_image` for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, ERNIE Image Turbo, FIBO, Fibo-lite, and Bonsai ternary. `image_to_image` edits are implemented for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, Fibo-lite, Fibo-Edit, and Fibo-Edit-RMBG; FIBO Edit snapshots support masks where the runtime supports them.
 
 One-shot shell commands:
 
@@ -159,6 +162,7 @@ One-shot shell commands:
 abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-2512-4bit "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 20 --guidance-scale 1.0 --open
 abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-4bit --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75 --open
 abstractvision t2i --provider mlx-gen --model briaai/FIBO "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 50 --guidance-scale 4.0 --open
+abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.png "remove the background and keep the object edges clean" --steps 20 --guidance-scale 4.0 --open
 abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
 abstractvision i2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
@@ -178,6 +182,8 @@ Interactive CLI/REPL commands:
 /i2i --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75 --open
 /backend mlx-gen briaai/FIBO
 /t2i "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 50 --guidance-scale 4.0 --open
+/backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit
+/t2i "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 /backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
 /t2v "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
 /i2v --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open

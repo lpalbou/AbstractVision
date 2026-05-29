@@ -13,6 +13,7 @@ ALL_MODELS = [
     "Qwen/Qwen-Image-Edit-2511",
     "Wan-AI/Wan2.2-T2V-A14B",
     "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+    "prism-ml/bonsai-image-ternary-4B-mlx-2bit",
     "tencent/HunyuanVideo-1.5",
     "genmo/mochi-1-preview",
     "zai-org/CogVideoX-2b",
@@ -42,6 +43,7 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
 
         self.assertTrue(reg.supports("Qwen/Qwen-Image-2512", "text_to_image"))
         self.assertTrue(reg.supports("Tongyi-MAI/Z-Image-Turbo", "text_to_image"))
+        self.assertTrue(reg.supports("prism-ml/bonsai-image-ternary-4B-mlx-2bit", "text_to_image"))
 
         self.assertTrue(reg.supports("Qwen/Qwen-Image-Edit-2511", "image_to_image"))
         self.assertTrue(reg.supports("baidu/ERNIE-Image-Turbo", "image_to_image"))

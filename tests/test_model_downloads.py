@@ -160,6 +160,32 @@ class TestModelDownloads(unittest.TestCase):
         selected = find_model_preset("briaai/FIBO", target="mlx", engine="mlx-gen", require_8bit=False)
         self.assertEqual(selected.repo_id, "briaai/FIBO")
 
+    def test_bonsai_ternary_mlx_gen_preset_is_first_class_low_bit_model(self):
+        from abstractvision.model_downloads import find_model_preset, model_presets
+
+        presets = model_presets(target="mlx", engine="mlx-gen", include_non_8bit=False)
+        bonsai = next(
+            p
+            for p in presets
+            if p.repo_id == "prism-ml/bonsai-image-ternary-4B-mlx-2bit"
+        )
+
+        self.assertEqual(bonsai.key, "bonsai-image-ternary")
+        self.assertEqual(bonsai.target, "mlx")
+        self.assertEqual(bonsai.engine, "mlx-gen")
+        self.assertEqual(bonsai.quantization_bits, 2)
+        self.assertEqual(bonsai.source, "official")
+        self.assertIn("transformer-packed-mflux/*", bonsai.allow_patterns)
+        self.assertIn("text_encoder-mlx-4bit/*", bonsai.allow_patterns)
+
+        selected = find_model_preset(
+            "prism-ml/bonsai-image-ternary-4B-mlx-2bit",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=True,
+        )
+        self.assertEqual(selected.repo_id, "prism-ml/bonsai-image-ternary-4B-mlx-2bit")
+
     def test_sdcpp_gguf_presets_can_be_disabled_on_apple_silicon(self):
         from abstractvision.model_downloads import (
             MacOSGGUFUnsupportedError,

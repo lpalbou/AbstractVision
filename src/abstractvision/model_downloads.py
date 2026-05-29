@@ -113,7 +113,10 @@ _COMMON_MLX_PATTERNS = (
     "tokenizer/*",
     "tokenizer_2/*",
     "transformer/*",
+    "transformer-packed-mflux/*",
     "vae/*",
+    "text_encoder-mlx-4bit/*",
+    "assets/*",
 )
 
 _COMMON_DIFFUSERS_PATTERNS = (
@@ -1757,7 +1760,7 @@ def model_presets(
 def _is_default_quantized_preset(preset: VisionModelDownloadPreset) -> bool:
     bits = preset.quantization_bits
     if preset.target == "mlx" and preset.engine in {"mflux", "mlx-gen"}:
-        return bits in {4, 8}
+        return bits in {2, 4, 8}
     return bits == 8
 
 
