@@ -748,8 +748,12 @@ class TestCliSmoke(unittest.TestCase):
         buf = io.StringIO()
         with patch("abstractvision.cli.download_model_preset", new=fake_download):
             with patch("abstractvision.cli.resolve_sdcpp_model_selection", new=fake_resolve):
-                with contextlib.redirect_stdout(buf):
-                    rc = main(["download-model", "flux2-klein-base-4b", "--provider", "sdcpp"])
+                with patch(
+                    "abstractvision.backends.stable_diffusion_cpp._require_sd_cli",
+                    return_value="/usr/bin/sd-cli",
+                ):
+                    with contextlib.redirect_stdout(buf):
+                        rc = main(["download-model", "flux2-klein-base-4b", "--provider", "sdcpp"])
 
         out = buf.getvalue()
         self.assertEqual(rc, 0)
