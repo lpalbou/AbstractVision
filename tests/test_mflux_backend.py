@@ -78,6 +78,8 @@ class _FakeModelConfig:
             "fibo-edit": "fibo-edit-config",
             "fibo-edit-rmbg": "fibo-edit-rmbg-config",
             "wan2.2-ti2v-5b": "wan-ti2v-config",
+            "wan2.2-t2v-a14b": "wan-t2v-a14b-config",
+            "wan2.2-i2v-a14b": "wan-i2v-a14b-config",
         }
         return configs.get(model_name, str(model_name))
 
@@ -140,6 +142,14 @@ class _FakeModelConfig:
     @staticmethod
     def wan2_2_ti2v_5b():
         return "wan-ti2v-config"
+
+    @staticmethod
+    def wan2_2_t2v_a14b():
+        return "wan-t2v-a14b-config"
+
+    @staticmethod
+    def wan2_2_i2v_a14b():
+        return "wan-i2v-a14b-config"
 
 
 class _FakeModelConfigWithoutWanFactory:
@@ -799,6 +809,82 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(asset.metadata["base_model"], "wan2.2-ti2v-5b")
         self.assertEqual(asset.metadata["task"], "text_to_video")
 
+    def test_wan_a14b_routes_text_to_video_with_model_defaults(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        asset = backend.generate_video(
+                            VideoGenerationRequest(prompt="fox", seed=42)
+                        )
+
+        self.assertEqual(_FakeWan.last_init["model_config"], "wan-t2v-a14b-config")
+        self.assertEqual(_FakeWan.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeWan.last_generate["width"], 1280)
+        self.assertEqual(_FakeWan.last_generate["height"], 720)
+        self.assertEqual(_FakeWan.last_generate["fps"], 16)
+        self.assertEqual(_FakeWan.last_generate["num_frames"], 81)
+        self.assertEqual(_FakeWan.last_generate["num_inference_steps"], 40)
+        self.assertEqual(_FakeWan.last_generate["guidance"], 4.0)
+        self.assertEqual(_FakeWan.last_generate["guidance_2"], 3.0)
+        self.assertNotIn("image_path", _FakeWan.last_generate)
+        self.assertEqual(asset.metadata["base_model"], "wan2.2-t2v-a14b")
+        self.assertEqual(asset.metadata["guidance_2"], 3.0)
+
+    def test_wan_a14b_routes_image_to_video_with_model_defaults(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageToVideoRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-I2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-I2V-A14B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        asset = backend.image_to_video(
+                            ImageToVideoRequest(
+                                image=_solid_png(32, 32, "blue"),
+                                prompt="move",
+                                seed=42,
+                            )
+                        )
+
+        self.assertEqual(_FakeWan.last_init["model_config"], "wan-i2v-a14b-config")
+        self.assertEqual(_FakeWan.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeWan.last_generate["width"], 1280)
+        self.assertEqual(_FakeWan.last_generate["height"], 720)
+        self.assertEqual(_FakeWan.last_generate["fps"], 16)
+        self.assertEqual(_FakeWan.last_generate["num_frames"], 81)
+        self.assertEqual(_FakeWan.last_generate["num_inference_steps"], 40)
+        self.assertEqual(_FakeWan.last_generate["guidance"], 3.5)
+        self.assertEqual(_FakeWan.last_generate["guidance_2"], 3.5)
+        self.assertIn("image_path", _FakeWan.last_generate)
+        self.assertEqual(asset.metadata["base_model"], "wan2.2-i2v-a14b")
+        self.assertEqual(asset.metadata["guidance_2"], 3.5)
+
     def test_wan_emits_normalized_video_progress_events(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import VideoGenerationRequest, VideoProgressEvent
@@ -983,7 +1069,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.18\.7",
+                        r"mlx-gen>=0\.18\.8",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(
@@ -1244,6 +1330,26 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(t2v_models[0].raw["quantization_bits"], 16)
         self.assertEqual(len(i2v_models), 1)
         self.assertEqual(i2v_models[0].id, "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+
+    def test_wan_a14b_provider_catalog_advertises_task_specific_models(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-I2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig())
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                t2v_models = list(backend.list_provider_models(task="text_to_video"))
+                i2v_models = list(backend.list_provider_models(task="image_to_video"))
+
+        self.assertEqual([m.id for m in t2v_models], ["Wan-AI/Wan2.2-T2V-A14B-Diffusers"])
+        self.assertEqual(tuple(t2v_models[0].capabilities), ("text_to_video",))
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["num_frames"], 81)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["guidance_2"], 3.0)
+        self.assertEqual([m.id for m in i2v_models], ["Wan-AI/Wan2.2-I2V-A14B-Diffusers"])
+        self.assertEqual(tuple(i2v_models[0].capabilities), ("image_to_video",))
+        self.assertEqual(i2v_models[0].raw["parameter_defaults"]["guidance_2"], 3.5)
 
     def test_provider_catalog_exposes_cached_mlx_gen_q4_and_q8_variants(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend

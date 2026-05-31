@@ -3378,8 +3378,17 @@
     "Wan-AI/Wan2.2-T2V-A14B": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Official Wan 2.2 text-to-video Diffusers checkpoint. AbstractVision catalogs the download, but does not yet ship a local Diffusers video backend.",
+      "notes": "Official Wan 2.2 A14B text-to-video Diffusers checkpoint. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
       "downloads": [
+        {
+          "key": "wan2.2-t2v-a14b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+          "source": "official",
+          "notes": "Official Wan 2.2 A14B text-to-video snapshot consumed by MLX-Gen 0.18.8+. This is not a prepared q4/q8 folder."
+        },
         {
           "key": "wan2.2-t2v-a14b",
           "engine": "diffusers",
@@ -3406,29 +3415,36 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 1280
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 720
             },
             "fps": {
-              "required": false
+              "required": false,
+              "default": 16
             },
             "num_frames": {
-              "required": false
+              "required": false,
+              "default": 81
             },
             "steps": {
-              "required": false
+              "required": false,
+              "default": 40
             },
             "guidance_scale": {
-              "required": false
+              "required": false,
+              "default": 4.0
             },
             "seed": {
               "required": false
             }
           },
           "requires": {
-            "backend": "not_supported"
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.8"
           }
         }
       }
@@ -3436,8 +3452,17 @@
     "Wan-AI/Wan2.2-I2V-A14B": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Image-to-video foundation model. The official Wan Diffusers release exposes `WanImageToVideoPipeline`; AbstractVision catalogs the download, but does not ship a runtime backend for it yet.",
+      "notes": "Official Wan 2.2 A14B image-to-video Diffusers checkpoint. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
       "downloads": [
+        {
+          "key": "wan2.2-i2v-a14b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+          "source": "official",
+          "notes": "Official Wan 2.2 A14B image-to-video snapshot consumed by MLX-Gen 0.18.8+. This is not a prepared q4/q8 folder."
+        },
         {
           "key": "wan2.2-i2v-a14b",
           "engine": "diffusers",
@@ -3468,29 +3493,36 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 1280
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 720
             },
             "fps": {
-              "required": false
+              "required": false,
+              "default": 16
             },
             "num_frames": {
-              "required": false
+              "required": false,
+              "default": 81
             },
             "steps": {
-              "required": false
+              "required": false,
+              "default": 40
             },
             "guidance_scale": {
-              "required": false
+              "required": false,
+              "default": 3.5
             },
             "seed": {
               "required": false
             }
           },
           "requires": {
-            "backend": "not_supported"
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.8"
           }
         }
       }

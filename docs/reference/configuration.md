@@ -22,7 +22,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision cli` — interactive testing (supports `openai`, `diffusers`, `mlx-gen`, `sdcpp`; legacy alias: `abstractvision repl`; `mflux` is accepted as a compatibility alias)
 - `abstractvision playground [--host 127.0.0.1] [--port 8091]` — self-contained local web UI and `/v1/vision/*` API
 - `abstractvision serve [--host 127.0.0.1] [--port 8091]` — alias for `abstractvision playground`
-- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` / `abstractvision i2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mlx-gen`, and `sdcpp`; MLX-Gen 0.18.7+ provides Wan `t2v`/`i2v`)
+- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` / `abstractvision i2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mlx-gen`, and `sdcpp`; MLX-Gen 0.18.8+ provides Wan `t2v`/`i2v`, including A14B task-specific checkpoints)
 
 Note:
 - `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mlx-gen|sdcpp` (legacy alias: `--backend`; `mflux` remains accepted).

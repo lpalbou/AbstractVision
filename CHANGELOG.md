@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.18 - 2026-05-31
+
+- Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.8,<0.19.0` so Apple Silicon installs pick up Wan 2.2 A14B text-to-video and image-to-video support.
+- Wan A14B catalog: expose `Wan-AI/Wan2.2-T2V-A14B-Diffusers` and `Wan-AI/Wan2.2-I2V-A14B-Diffusers` through the canonical `mlx-gen` provider with task-specific defaults and capability metadata.
+- Core propagation: prepare AbstractVision `0.3.18` so AbstractCore can depend on the corrected MLX-Gen runtime contract.
+
 ## 0.3.17 - 2026-05-29
 
 - Docs: update the docs-site favicon and add an embedded text-to-video example carousel (5s MP4) to `docs/getting-started.md`.

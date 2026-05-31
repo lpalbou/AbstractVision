@@ -46,6 +46,8 @@ from .base_backend import VisionBackend
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
 WAN_TI2V_MODEL_KEY = "wan2.2-ti2v-5b"
+WAN_T2V_A14B_MODEL_KEY = "wan2.2-t2v-a14b"
+WAN_I2V_A14B_MODEL_KEY = "wan2.2-i2v-a14b"
 WAN_DEFAULT_WIDTH = 1280
 WAN_DEFAULT_HEIGHT = 704
 WAN_DEFAULT_FRAMES = 121
@@ -123,6 +125,11 @@ class _MFluxModelDef:
     supports_negative_prompt: bool = False
     supports_guidance_override: bool = True
     image_edit_catalog_rank: int = 50
+    default_width: int = WAN_DEFAULT_WIDTH
+    default_height: int = WAN_DEFAULT_HEIGHT
+    default_frames: int = WAN_DEFAULT_FRAMES
+    default_fps: int = WAN_DEFAULT_FPS
+    default_guidance_2: Optional[float] = None
 
 
 _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
@@ -291,6 +298,34 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         supports_negative_prompt=True,
         supports_guidance_override=True,
     ),
+    WAN_T2V_A14B_MODEL_KEY: _MFluxModelDef(
+        key=WAN_T2V_A14B_MODEL_KEY,
+        config_method="wan2_2_t2v_a14b",
+        family="wan-video",
+        default_steps=40,
+        default_guidance=4.0,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+        default_width=1280,
+        default_height=720,
+        default_frames=81,
+        default_fps=16,
+        default_guidance_2=3.0,
+    ),
+    WAN_I2V_A14B_MODEL_KEY: _MFluxModelDef(
+        key=WAN_I2V_A14B_MODEL_KEY,
+        config_method="wan2_2_i2v_a14b",
+        family="wan-video",
+        default_steps=40,
+        default_guidance=3.5,
+        supports_negative_prompt=True,
+        supports_guidance_override=True,
+        default_width=1280,
+        default_height=720,
+        default_frames=81,
+        default_fps=16,
+        default_guidance_2=3.5,
+    ),
 }
 
 
@@ -373,6 +408,20 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "wan2.2-ti2v-5b": WAN_TI2V_MODEL_KEY,
     "wan2-2-ti2v-5b": WAN_TI2V_MODEL_KEY,
     "wan-ti2v": WAN_TI2V_MODEL_KEY,
+    "wan-ai/wan2.2-t2v-a14b": WAN_T2V_A14B_MODEL_KEY,
+    "wan-ai/wan2.2-t2v-a14b-diffusers": WAN_T2V_A14B_MODEL_KEY,
+    "wan2.2-t2v-a14b": WAN_T2V_A14B_MODEL_KEY,
+    "wan2.2-t2v-a14b-diffusers": WAN_T2V_A14B_MODEL_KEY,
+    "wan2-2-t2v-a14b": WAN_T2V_A14B_MODEL_KEY,
+    "wan-t2v-a14b": WAN_T2V_A14B_MODEL_KEY,
+    "wan-a14b-t2v": WAN_T2V_A14B_MODEL_KEY,
+    "wan-ai/wan2.2-i2v-a14b": WAN_I2V_A14B_MODEL_KEY,
+    "wan-ai/wan2.2-i2v-a14b-diffusers": WAN_I2V_A14B_MODEL_KEY,
+    "wan2.2-i2v-a14b": WAN_I2V_A14B_MODEL_KEY,
+    "wan2.2-i2v-a14b-diffusers": WAN_I2V_A14B_MODEL_KEY,
+    "wan2-2-i2v-a14b": WAN_I2V_A14B_MODEL_KEY,
+    "wan-i2v-a14b": WAN_I2V_A14B_MODEL_KEY,
+    "wan-a14b-i2v": WAN_I2V_A14B_MODEL_KEY,
     "wan-video": WAN_TI2V_MODEL_KEY,
     "wan": WAN_TI2V_MODEL_KEY,
     "prism-ml/bonsai-image-ternary-4b-mlx-2bit": "bonsai-image-ternary",
@@ -403,6 +452,8 @@ _MFLUX_BASE_MODEL_REGISTRY_IDS: Dict[str, str] = {
     "fibo-edit": "briaai/Fibo-Edit",
     "fibo-edit-rmbg": "briaai/Fibo-Edit-RMBG",
     WAN_TI2V_MODEL_KEY: "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+    WAN_T2V_A14B_MODEL_KEY: "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    WAN_I2V_A14B_MODEL_KEY: "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
 }
 
 
@@ -424,6 +475,8 @@ _MFLUX_BASE_MODEL_FALLBACK_TASKS: Dict[str, Tuple[str, ...]] = {
     "fibo-edit": ("image_to_image",),
     "fibo-edit-rmbg": ("image_to_image",),
     WAN_TI2V_MODEL_KEY: ("image_to_video", "text_to_video"),
+    WAN_T2V_A14B_MODEL_KEY: ("text_to_video",),
+    WAN_I2V_A14B_MODEL_KEY: ("image_to_video",),
 }
 
 
@@ -445,6 +498,8 @@ _MFLUX_RUNTIME_ALLOWED_TASKS: Dict[str, Tuple[str, ...]] = {
     "fibo-edit": ("image_to_image",),
     "fibo-edit-rmbg": ("image_to_image",),
     WAN_TI2V_MODEL_KEY: ("image_to_video", "text_to_video"),
+    WAN_T2V_A14B_MODEL_KEY: ("text_to_video",),
+    WAN_I2V_A14B_MODEL_KEY: ("image_to_video",),
 }
 
 
@@ -462,12 +517,14 @@ def _mflux_parameter_metadata(model_def: _MFluxModelDef) -> Dict[str, Any]:
     if model_def.family == "wan-video":
         defaults.update(
             {
-                "width": WAN_DEFAULT_WIDTH,
-                "height": WAN_DEFAULT_HEIGHT,
-                "fps": WAN_DEFAULT_FPS,
-                "num_frames": WAN_DEFAULT_FRAMES,
+                "width": model_def.default_width,
+                "height": model_def.default_height,
+                "fps": model_def.default_fps,
+                "num_frames": model_def.default_frames,
             }
         )
+        if model_def.default_guidance_2 is not None:
+            defaults["guidance_2"] = model_def.default_guidance_2
         constraints["num_frames"] = {"format": "4n+1"}
     return {
         "parameter_defaults": defaults,
@@ -568,7 +625,7 @@ def _lazy_import_mflux_wan() -> Any:
         from mflux.models.wan.variants import Wan2_2_TI2V  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen Wan video generation requires mlx-gen>=0.18.7. "
+            "MLX-Gen Wan video generation requires mlx-gen>=0.18.8. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return Wan2_2_TI2V
@@ -1560,6 +1617,8 @@ class MFluxVisionBackend(VisionBackend):
             "fibo-lite",
             "fibo",
             WAN_TI2V_MODEL_KEY,
+            WAN_T2V_A14B_MODEL_KEY,
+            WAN_I2V_A14B_MODEL_KEY,
         ):
             discovered_model = discovered.get(key)
             if discovered_model is not None:
@@ -1610,7 +1669,7 @@ class MFluxVisionBackend(VisionBackend):
             except Exception as exc:
                 if model_def.family == "wan-video":
                     raise OptionalDependencyMissingError(
-                        "MLX-Gen Wan video generation requires mlx-gen>=0.18.7. "
+                        "MLX-Gen Wan video generation requires mlx-gen>=0.18.8. "
                         'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` '
                         f"for {registry_id}."
                     ) from exc
@@ -1773,7 +1832,7 @@ class MFluxVisionBackend(VisionBackend):
         model_def = self._resolved_model_def()
         if model_def.family != "wan-video":
             raise CapabilityNotSupportedError(
-                f"MLX-Gen video generation is only implemented for Wan TI2V models today (got {model_def.family!r})."
+                f"MLX-Gen video generation is only implemented for Wan video models today (got {model_def.family!r})."
             )
         extra = dict(request.extra or {})
         steps = int(request.steps) if request.steps is not None else int(model_def.default_steps)
@@ -1784,14 +1843,14 @@ class MFluxVisionBackend(VisionBackend):
             if request.guidance_scale is not None
             else model_def.default_guidance
         )
-        width = int(request.width) if request.width is not None else WAN_DEFAULT_WIDTH
-        height = int(request.height) if request.height is not None else WAN_DEFAULT_HEIGHT
-        fps = int(request.fps) if request.fps is not None else WAN_DEFAULT_FPS
+        width = int(request.width) if request.width is not None else int(model_def.default_width)
+        height = int(request.height) if request.height is not None else int(model_def.default_height)
+        fps = int(request.fps) if request.fps is not None else int(model_def.default_fps)
         num_frames = (
-            int(request.num_frames) if request.num_frames is not None else WAN_DEFAULT_FRAMES
+            int(request.num_frames) if request.num_frames is not None else int(model_def.default_frames)
         )
         if fps < 1:
-            fps = WAN_DEFAULT_FPS
+            fps = int(model_def.default_fps)
         if num_frames < 1:
             num_frames = 1
         max_sequence_length = extra.get("max_sequence_length")
@@ -2237,17 +2296,17 @@ class MFluxVisionBackend(VisionBackend):
         model, model_def = self._ensure_model_impl()
         if model_def.family != "wan-video":
             raise CapabilityNotSupportedError(
-                f"MLX-Gen {task} is only implemented for Wan TI2V models today (got {model_def.family!r})."
+                f"MLX-Gen {task} is only implemented for Wan video models today (got {model_def.family!r})."
             )
 
         extra = dict(request.extra or {})
         seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
         steps = int(request.steps) if request.steps is not None else int(model_def.default_steps)
-        width = int(request.width) if request.width is not None else WAN_DEFAULT_WIDTH
-        height = int(request.height) if request.height is not None else WAN_DEFAULT_HEIGHT
-        fps = int(request.fps) if request.fps is not None else WAN_DEFAULT_FPS
+        width = int(request.width) if request.width is not None else int(model_def.default_width)
+        height = int(request.height) if request.height is not None else int(model_def.default_height)
+        fps = int(request.fps) if request.fps is not None else int(model_def.default_fps)
         num_frames = (
-            int(request.num_frames) if request.num_frames is not None else WAN_DEFAULT_FRAMES
+            int(request.num_frames) if request.num_frames is not None else int(model_def.default_frames)
         )
         guidance = (
             float(request.guidance_scale)
@@ -2255,6 +2314,7 @@ class MFluxVisionBackend(VisionBackend):
             else model_def.default_guidance
         )
         max_sequence_length = extra.pop("max_sequence_length", None)
+        guidance_2 = extra.pop("guidance_2", model_def.default_guidance_2)
         progress_callbacks = [
             callback
             for callback in (
@@ -2292,6 +2352,8 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["image_path"] = image_path
         if max_sequence_length is not None:
             kwargs["max_sequence_length"] = int(max_sequence_length)
+        if guidance_2 is not None:
+            kwargs["guidance_2"] = float(guidance_2)
         if progress_callbacks or step_progress_callback is not None:
             kwargs["progress_callback"] = _progress_bridge
 
@@ -2325,6 +2387,7 @@ class MFluxVisionBackend(VisionBackend):
                 "fps": fps,
                 "num_frames": num_frames,
                 "guidance_scale": guidance,
+                **({"guidance_2": float(guidance_2)} if guidance_2 is not None else {}),
                 **(
                     {"conditioning_image": conditioning_image_metadata}
                     if conditioning_image_metadata

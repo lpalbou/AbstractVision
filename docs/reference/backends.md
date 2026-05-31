@@ -119,9 +119,9 @@ Runtime behavior notes:
 **When to use**
 - You are on Apple Silicon and want local quantized MLX generation through the optional MLX-Gen runtime.
 - You want the AbstractFramework-published q4/q8 prepared folders from the [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
-- You want the official MLX-Gen 0.18.7+ FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
+- You want the official MLX-Gen 0.18.8+ FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
 - You want the official Prism ML Bonsai ternary 2-bit checkpoint (`prism-ml/bonsai-image-ternary-4B-mlx-2bit`) for very small local `text_to_image`.
-- You want local Wan 2.2 TI2V video generation (`text_to_video` and first-frame `image_to_video`) through MLX-Gen 0.18.7+.
+- You want local Wan 2.2 TI2V video generation (`text_to_video` and first-frame `image_to_video`) through MLX-Gen 0.18.8+.
 
 Install:
 - `pip install "abstractvision[mlx-gen]"` (or `pip install "abstractvision[all-apple]"`)

@@ -166,7 +166,7 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen 0.18.7+ also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen 0.18.8+ also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`. Bonsai is a pre-packed ternary 2-bit
@@ -177,7 +177,7 @@ klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; FIBO
 Edit snapshots support mask inputs where the runtime supports them. Edit strength
 is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter
 where the runtime supports it. Wan 2.2 TI2V uses the official snapshot through
-MLX-Gen 0.18.7+ for `text_to_video` and first-frame `image_to_video`; it is not
+MLX-Gen 0.18.8+ for Wan 2.2 `text_to_video` and first-frame `image_to_video`; it is not
 an AbstractFramework q4/q8 prepared folder, so select it by its exact repo id.
 
 One-shot `t2i`, `i2i`, `t2v`, and `i2v` commands store results in the local

@@ -4,7 +4,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines
-- **MLX-Gen (local Apple Silicon)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official MLX-Gen 0.18.7+ FIBO image models, and Wan 2.2 TI2V `text_to_video` / first-frame `image_to_video`
+- **MLX-Gen (local Apple Silicon)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official MLX-Gen 0.18.8+ FIBO image models, and Wan 2.2 TI2V `text_to_video` / first-frame `image_to_video`
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
