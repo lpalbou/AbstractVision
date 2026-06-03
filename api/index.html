@@ -1008,6 +1008,11 @@ returns JSON-safe dictionaries so Core/Gateway route code can avoid private back
 <li>an artifact ref <code>dict</code> when <code>VisionManager.store</code> is configured (via <code>MediaStore.store_bytes(...)</code>)</li>
 </ul>
 <p>Artifact helpers and stores are defined in <a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>.</p>
+<p>Image sizes are backend/model-specific. <code>width</code> and <code>height</code> arguments are
+optional request overrides; omitting them lets the backend use its default or
+<code>auto</code> behavior. Passing an unsupported size is expected to fail at the selected
+provider/backend boundary rather than being silently rewritten by
+AbstractVision.</p>
 <h2 id="visionmanager-orchestrator">VisionManager (orchestrator)<a class="headerlink" href="#visionmanager-orchestrator" title="Permanent link">&para;</a></h2>
 <p><code>VisionManager</code> is intentionally thin: it validates/gates best-effort and delegates to the configured backend.</p>
 <p>Signature (see <a href="../src/abstractvision/vision_manager.py"><code>../src/abstractvision/vision_manager.py</code></a>):
