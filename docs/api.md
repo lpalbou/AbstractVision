@@ -73,6 +73,12 @@ returns JSON-safe dictionaries so Core/Gateway route code can avoid private back
 
 Artifact helpers and stores are defined in [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py).
 
+Image sizes are backend/model-specific. `width` and `height` arguments are
+optional request overrides; omitting them lets the backend use its default or
+`auto` behavior. Passing an unsupported size is expected to fail at the selected
+provider/backend boundary rather than being silently rewritten by
+AbstractVision.
+
 ## VisionManager (orchestrator)
 
 `VisionManager` is intentionally thin: it validates/gates best-effort and delegates to the configured backend.

@@ -29,6 +29,7 @@ Reality checks (current shipped behavior, anchored in code):
 - `multi_view_image` exists in the API but no built-in backend implements it yet.
 - Provider `/models` catalogs can be listed explicitly, including through the AbstractCore plugin boundary; they are not used for automatic model selection.
 - Backend normalization is shared across `VisionManager`, the playground API, and the AbstractCore plugin, so model-specific parameter constraints are enforced once in the backend layer instead of separately in each UI.
+- Image dimensions are provider/model-specific. `width`/`height` are optional request overrides; omit them to let the backend use its default or `auto` behavior, and do not assume `512x512` is universally accepted.
 
 ## Documentation
 

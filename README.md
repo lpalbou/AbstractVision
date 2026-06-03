@@ -184,6 +184,13 @@ One-shot `t2i`, `i2i`, `t2v`, and `i2v` commands store results in the local
 asset store and print an artifact ref followed by the local content path. Use
 `--open` when you want the generated output opened after storage, or
 `--store-dir <dir>` to choose the asset store directory.
+Image dimensions are provider/model-specific. `width`/`height` are optional
+request overrides; when omitted, AbstractVision lets the selected backend use
+its own default or `auto` behavior. Do not treat `512x512` as a universal
+default: some older/local models accept it, while newer OpenAI-compatible image
+models may only accept larger provider-declared sizes such as `1024x1024`,
+`1024x1536`, `1536x1024`, or `auto`. If you pass `--width`/`--height`, the
+backend may reject unsupported combinations.
 MLX-Gen video commands report frame/step progress on stderr by default; pass
 `--no-progress` when you need quiet output.
 

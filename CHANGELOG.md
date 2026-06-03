@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.3.19 - 2026-06-03
+
+- Docs: clarify MLX-Gen `0.18.8` setup, Wan 2.2 A14B text-to-video/image-to-video usage, and generated-media configuration references.
+- AI-readable docs: refresh `llms.txt` and `llms-full.txt` for the current AbstractVision Apple profile and video model surface.
+
 ## 0.3.18 - 2026-05-31
 
 - Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.8,<0.19.0` so Apple Silicon installs pick up Wan 2.2 A14B text-to-video and image-to-video support.
