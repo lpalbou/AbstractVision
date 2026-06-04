@@ -16,7 +16,7 @@
         <link rel="prev" href="..">
       
       
-        <link rel="next" href="../api/">
+        <link rel="next" href="../mlx-gen-local-examples/">
       
       
         
@@ -604,6 +604,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../mlx-gen-local-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX-Gen Local Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/" class="md-nav__link">
         
   
@@ -693,10 +720,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -714,8 +741,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1200,7 +1227,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
 <li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines</li>
-<li><strong>MLX-Gen (local Apple Silicon)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official MLX-Gen 0.18.8+ FIBO image models, and Wan 2.2 TI2V <code>text_to_video</code> / first-frame <code>image_to_video</code></li>
+<li><strong>MLX-Gen (local Apple Silicon)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen 0.18.10+ runtime, official FIBO image models, and Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code></li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
 <li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
@@ -1532,6 +1559,8 @@ abstractvision<span class="w"> </span>download<span class="w"> </span>briaai/Fib
 abstractvision<span class="w"> </span>download<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 abstractvision<span class="w"> </span>download<span class="w"> </span>prism-ml/bonsai-image-ternary-4B-mlx-2bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 abstractvision<span class="w"> </span>download<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 </code></pre></div>
 <p>The default prepared choices are q4 repos from the
 <a href="https://huggingface.co/collections/AbstractFramework/mlx-gen/">AbstractFramework/mlx-gen Hugging Face collection</a>.
@@ -1555,9 +1584,11 @@ abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span
 abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
 <p>Text-to-video and first-frame image-to-video from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
-abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
+<p>Wan 2.2 A14B uses 16px width/height multiples; <code>432x240</code> is valid for low-cost
+local checks, while larger native sizes are more appropriate for quality review.</p>
 <p>Video examples (5s MP4):</p>
 <div class="af_media_carousel" aria-label="AbstractVision text-to-video examples">
   <button class="af_media_carousel__btn af_media_carousel__btn--prev" type="button" aria-label="Previous video">‹</button>
@@ -1584,8 +1615,11 @@ abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span
   <button class="af_media_carousel__btn af_media_carousel__btn--next" type="button" aria-label="Next video">›</button>
 </div>
 
-<p>MLX-Gen video commands print frame/step progress while the video is running.
-Use <code>--no-progress</code> for quiet scripts.</p>
+<p>MLX-Gen image commands accept <code>--progress</code> for step progress. MLX-Gen video
+commands print denoise-step progress with frame context while the video is
+running. Use <code>--no-progress</code> for quiet video scripts. A complete local example
+gallery with commands and bundled outputs is available in
+<a href="../mlx-gen-local-examples/">MLX-Gen local examples</a>.</p>
 <p>Interactive CLI/REPL (<code>abstractvision cli</code>; <code>abstractvision repl</code> remains an
 alias) uses the same backend and request normalization:</p>
 <div class="highlight"><pre><span></span><code>/backend mlx-gen AbstractFramework/flux.2-klein-4b-4bit
@@ -1600,9 +1634,10 @@ alias) uses the same backend and request normalization:</p>
 /backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit
 /t2i &quot;a bonsai tree in a quiet ceramic studio&quot; --steps 4 --guidance-scale 1.0 --open
 
-/backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
-/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
-/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+/backend mlx-gen AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
+/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/backend mlx-gen AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit
+/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
 </code></pre></div>
 <p>Interactive <code>/t2v</code> and <code>/i2v</code> use the same default progress display; add
 <code>--no-progress</code> to suppress it.</p>
@@ -1784,9 +1819,10 @@ authentication, and browser-origin policy.</p>
 <h3 id="72-local-textvideo-status">7.2 Local text→video status<a class="headerlink" href="#72-local-textvideo-status" title="Permanent link">&para;</a></h3>
 <p>The packaged local Diffusers <code>text_to_video</code> groundwork remains experimental and
 is currently disabled from the normal local surfaces. The practical local Apple
-Silicon video path is MLX-Gen Wan 2.2 TI2V.</p>
+Silicon video path is MLX-Gen Wan 2.2, preferably the task-specific A14B
+packages when memory allows.</p>
 <p>Current policy:
-- use <code>abstractvision t2v/i2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers</code> for local Apple Silicon video;
+- use <code>abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit</code> and <code>abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit</code> for local Apple Silicon Wan A14B video;
 - use the OpenAI-compatible backend when video is served remotely; and
 - keep Diffusers local video behind the experimental follow-up in <a href="../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a>.</p>
 

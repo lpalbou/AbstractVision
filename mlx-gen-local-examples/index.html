@@ -10,9 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/adr/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/mlx-gen-local-examples/">
       
       
+        <link rel="prev" href="../getting-started/">
+      
+      
+        <link rel="next" href="../api/">
       
       
         
@@ -23,7 +27,7 @@
     
     
       
-        <title>ADRs - AbstractVision</title>
+        <title>MLX-Gen Local Examples - AbstractVision</title>
       
     
     
@@ -66,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adrs" class="md-skip">
+        <a href="#mlx-gen-local-examples" class="md-skip">
           Skip to content
         </a>
       
@@ -102,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADRs
+              MLX-Gen Local Examples
             
           </span>
         </div>
@@ -273,10 +277,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../mlx-gen-local-examples/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX-Gen Local Examples
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -292,6 +323,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outputs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#video-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video output
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -598,10 +693,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#accepted" class="md-nav__link">
+  <a href="#setup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Accepted
+        Setup
       
     </span>
   </a>
@@ -609,10 +704,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#superseded" class="md-nav__link">
+  <a href="#commands" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Superseded
+        Commands
       
     </span>
   </a>
@@ -620,10 +715,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#working-rules" class="md-nav__link">
+  <a href="#outputs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Working Rules
+        Outputs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#video-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video output
       
     </span>
   </a>
@@ -650,38 +756,146 @@
   
 
 
-<h1 id="adrs">ADRs<a class="headerlink" href="#adrs" title="Permanent link">&para;</a></h1>
-<p>This directory records durable engineering policy for <code>abstractvision</code>.</p>
-<h2 id="accepted">Accepted<a class="headerlink" href="#accepted" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="0003_lightweight_base_package_and_explicit_runtime_extras/">ADR 0003: Keep the base package lightweight and make local runtimes explicit</a>
-  Base installs stay dependency-light; heavy local runtimes and model-download helpers remain optional extras.</li>
-<li><a href="0004_thin_orchestrator_and_backend_owned_model_semantics/">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned</a>
-  <code>VisionManager</code> delegates; backend normalization and runtime-specific behavior stay in the backend/package layer.</li>
-<li><a href="0005_curated_capability_registry_and_download_catalog/">ADR 0005: Own a curated capability registry and cache-backed model catalog</a>
-  The packaged registry and curated download surfaces are product-facing compatibility contracts, not incidental metadata.</li>
-<li><a href="0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006: Keep runtime selection explicit and operator-controlled</a>
-  Config precedence, cache-only defaults, and model selection must stay explicit across CLI, playground, and AbstractCore.</li>
-<li><a href="0007_explicit_fallback_and_degraded_mode_disclosure/">ADR 0007: Disclose fallbacks and degraded modes explicitly</a>
-  Fallbacks that change provenance, quality, or runtime behavior must be surfaced rather than hidden.</li>
-<li><a href="0008_validation_and_evidence_based_change_reporting/">ADR 0008: Require validation and evidence-based change reporting</a>
-  Backend, catalog, and performance claims need reproducible checks and clear measured-versus-estimated reporting.</li>
-<li><a href="0009_code_first_docs_backlog_and_adr_discipline/">ADR 0009: Keep docs, backlog, and ADRs code-first</a>
-  Code is the operational source of truth; durable policy lives here, and execution history lives in <code>docs/backlog/</code>.</li>
-</ul>
-<h2 id="superseded">Superseded<a class="headerlink" href="#superseded" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="0001_curated_cross_platform_model_catalog/">ADR 0001: AbstractVision owns the curated cross-platform model catalog and compatibility layer</a>
-  Superseded by ADR 0005 and ADR 0006.</li>
-<li><a href="0002_vision_overlays_and_adapter_composition_are_package_owned/">ADR 0002: Vision overlays and adapter composition are package-owned</a>
-  Superseded by ADR 0004.</li>
-</ul>
-<h2 id="working-rules">Working Rules<a class="headerlink" href="#working-rules" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Use ADRs for durable engineering policy that should constrain future changes.</li>
-<li>Use <code>docs/backlog/</code> for planning state, implementation history, and completion reports.</li>
-<li>When code, docs, backlog, and ADRs drift, fix the drift explicitly instead of relying on chat history.</li>
-</ul>
+<h1 id="mlx-gen-local-examples">MLX-Gen local examples<a class="headerlink" href="#mlx-gen-local-examples" title="Permanent link">&para;</a></h1>
+<p>This page shows local MLX-Gen image, edit, multi-reference edit, AbstractCore
+plugin, and Wan A14B video outputs generated through AbstractVision. The
+examples use MLX-Gen <code>0.18.10</code> with cached or prepared model artifacts.</p>
+<p>MLX-Gen progress follows denoise steps. For video, the CLI percentage is
+<code>step / total_steps</code>; frame counts are displayed only as context.</p>
+<h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h2>
+<p>Install the MLX-Gen runtime extra and download the models used below:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[mlx-gen]&quot;</span>
+
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/flux.2-klein-9b-8bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+</code></pre></div>
+<p>Choose an asset store and input path names for the examples:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">STORE_DIR</span><span class="o">=</span>./mlx-gen-local-examples-store
+<span class="nv">SOURCE_IMAGE</span><span class="o">=</span>./race-car-source.png
+<span class="nv">REFERENCE_IMAGE</span><span class="o">=</span>./multi-reference-scene.png
+</code></pre></div>
+<p>The multi-reference input image used for the gallery is available here:
+<a href="../assets/mlx-gen-local-examples/multi_reference_scene.png">multi_reference_scene.png</a>.</p>
+<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">&para;</a></h2>
+<p>Create a source image for edit tests:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/flux.2-klein-9b-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--store-dir<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORE_DIR</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--width<span class="w"> </span><span class="m">768</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">12</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--seed<span class="w"> </span><span class="m">2401</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;red toy race car on clean white studio table&quot;</span>
+</code></pre></div>
+<p>Use the generated source image for a style-preserving edit:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/flux.2-klein-9b-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--store-dir<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORE_DIR</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--image<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOURCE_IMAGE</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--width<span class="w"> </span><span class="m">768</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">12</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--seed<span class="w"> </span><span class="m">2402</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;graphite pencil sketch preserving car pose&quot;</span>
+</code></pre></div>
+<p>Use the same source image for a stronger composition change:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/flux.2-klein-9b-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--store-dir<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORE_DIR</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--image<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOURCE_IMAGE</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--width<span class="w"> </span><span class="m">768</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">12</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--seed<span class="w"> </span><span class="m">2403</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;rain-soaked neon city street, low camera angle&quot;</span>
+</code></pre></div>
+<p>Use a second reference image for multi-reference composition:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/flux.2-klein-9b-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--store-dir<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORE_DIR</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--image<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOURCE_IMAGE</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--reference-image<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$REFERENCE_IMAGE</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--width<span class="w"> </span><span class="m">768</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">12</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--seed<span class="w"> </span><span class="m">2404</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;use race car + elevated runway/sunset/spotlights reference&quot;</span>
+</code></pre></div>
+<p>Generate a low-cost Wan A14B video check at <code>432x240</code>, 41 frames, and 8
+denoise steps:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--store-dir<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORE_DIR</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--num-frames<span class="w"> </span><span class="m">41</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--seed<span class="w"> </span><span class="m">2406</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;A small red toy race car rolls forward on a glossy studio floor, camera locked, soft reflections, smooth motion&quot;</span>
+</code></pre></div>
+<h2 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">&para;</a></h2>
+<p>The generated gallery below is bundled with the docs. The complete manifest is
+available as <a href="../assets/mlx-gen-local-examples/summary.json">summary.json</a>, and
+the AbstractCore plugin progress event capture is available as
+<a href="../assets/mlx-gen-local-examples/abstractcore_plugin_t2i_progress_events.json">abstractcore_plugin_t2i_progress_events.json</a>.</p>
+<p><img alt="MLX-Gen example proof table" src="../assets/mlx-gen-local-examples/proof_table.png" /></p>
+<table>
+  <thead>
+    <tr>
+      <th>Output</th>
+      <th>Prompt or intent</th>
+      <th>Result</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Text to image</td>
+      <td><code>red toy race car on clean white studio table</code></td>
+      <td><img src="assets/mlx-gen-local-examples/01_t2i_source.png" alt="Text-to-image source result" width="260" /></td>
+    </tr>
+    <tr>
+      <td>Image edit, style</td>
+      <td><code>graphite pencil sketch preserving car pose</code></td>
+      <td><img src="assets/mlx-gen-local-examples/02_i2i_style_pencil.png" alt="Image edit style result" width="260" /></td>
+    </tr>
+    <tr>
+      <td>Image edit, composition</td>
+      <td><code>rain-soaked neon city street, low camera angle</code></td>
+      <td><img src="assets/mlx-gen-local-examples/03_i2i_composition_neon.png" alt="Image edit composition result" width="260" /></td>
+    </tr>
+    <tr>
+      <td>Multi-reference edit</td>
+      <td><code>use race car + elevated runway/sunset/spotlights reference</code></td>
+      <td><img src="assets/mlx-gen-local-examples/04_i2i_multi_reference.png" alt="Multi-reference edit result" width="260" /></td>
+    </tr>
+    <tr>
+      <td>AbstractCore plugin T2I</td>
+      <td><code>blue abstract cube icon</code> with <code>on_progress(event)</code> capture</td>
+      <td><img src="assets/mlx-gen-local-examples/05_abstractcore_plugin_t2i_progress.png" alt="AbstractCore plugin text-to-image result" width="260" /></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="video-output">Video output<a class="headerlink" href="#video-output" title="Permanent link">&para;</a></h2>
+<p>The A14B example is the real generated MP4. The contact sheet shows sampled
+frames for quick inspection in static contexts.</p>
+<video controls muted playsinline preload="metadata" style="max-width: 100%; border-radius: 8px;">
+  <source src="assets/mlx-gen-local-examples/wan_a14b_t2v_432x240_race_car.mp4" type="video/mp4" />
+</video>
+
+<p><img alt="Wan A14B video contact sheet" src="../assets/mlx-gen-local-examples/video_contact_sheet.png" /></p>
 
 
 

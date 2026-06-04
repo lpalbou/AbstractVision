@@ -391,6 +391,33 @@
   
   
     <li class="md-nav__item">
+      <a href="mlx-gen-local-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX-Gen Local Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="api/" class="md-nav__link">
         
   
@@ -480,10 +507,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -501,8 +528,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -784,6 +811,7 @@
 <li><a href="api/">API reference</a></li>
 <li><a href="adr/">Architecture decisions</a></li>
 <li><a href="reference/backends/">Backends</a></li>
+<li><a href="mlx-gen-local-examples/">MLX-Gen local examples</a></li>
 <li><a href="reference/configuration/">Configuration (CLI/REPL env vars + flags)</a></li>
 <li><a href="reference/capabilities-registry/">Capability registry (<code>vision_model_capabilities.json</code>)</a></li>
 <li><a href="reference/artifacts/">Artifacts (artifact refs + stores)</a></li>
@@ -804,9 +832,9 @@
 - <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
 <p>Built-in backends implement:
 - <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Current local policy</strong>: MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V video; local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
+- <strong>Current local policy</strong>: MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V/A14B video; local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
 - <strong>Video</strong>:
-  - MLX-Gen for Wan 2.2 TI2V local <code>text_to_video</code> and first-frame <code>image_to_video</code>
+  - MLX-Gen for Wan 2.2 local <code>text_to_video</code> and first-frame <code>image_to_video</code>
   - OpenAI-compatible HTTP for optional <code>text_to_video</code> / <code>image_to_video</code> when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
 <p>If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
 <a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>../src/abstractvision/assets/vision_model_capabilities.json</code></a> (loaded by <code>VisionModelCapabilitiesRegistry</code> in <a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>).

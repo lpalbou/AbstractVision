@@ -1,0 +1,59 @@
+{
+  "mlx_gen_version": "0.18.10",
+  "proof_dir": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022",
+  "images": [
+    {
+      "label": "CLI t2i source",
+      "intent": "Create a fresh source image for edit tests",
+      "prompt": "red toy race car on clean white studio table",
+      "mode": "text_to_image / mlx-gen Flux.2 9B 8-bit",
+      "path": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/store/e9512b16a28a26912e678b40cf4a9d9e.png",
+      "size_bytes": 401518
+    },
+    {
+      "label": "CLI i2i style change",
+      "intent": "Style transfer without composition change",
+      "prompt": "graphite pencil sketch preserving car pose",
+      "mode": "image_to_image edit_reference / 1 image",
+      "path": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/store/52c182dc49715f3d2a03ffc7ce79bb9a.png",
+      "size_bytes": 671230
+    },
+    {
+      "label": "CLI i2i composition change",
+      "intent": "Change scene and camera composition",
+      "prompt": "rain-soaked neon city street, low camera angle",
+      "mode": "image_to_image edit_reference / 1 image",
+      "path": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/store/76872c8dff1a8406cad19c9a286dacba.png",
+      "size_bytes": 761960
+    },
+    {
+      "label": "CLI i2i multi-reference",
+      "intent": "Compose from primary car plus second reference image",
+      "prompt": "use race car + elevated runway/sunset/spotlights reference",
+      "mode": "image_to_image multi_reference / 2 images",
+      "path": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/store/e6a71154ca78751ad7e77c47fd381e54.png",
+      "size_bytes": 457290
+    },
+    {
+      "label": "AbstractCore plugin t2i",
+      "intent": "Real plugin integration plus progress callback",
+      "prompt": "blue abstract cube icon",
+      "mode": "AbstractCore capability plugin -> VisionManager -> mlx-gen",
+      "path": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/abstractcore_plugin_t2i_progress.png",
+      "size_bytes": 113705
+    }
+  ],
+  "multi_reference_input": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/multi_reference_scene.png",
+  "video": {
+    "path": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/store/d4ce0e59aef023b36bdccf541922f355.mp4",
+    "contact_sheet": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/video_contact_sheet.png",
+    "model": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+    "width": 432,
+    "height": 240,
+    "frames": 41,
+    "fps": 24,
+    "steps": 8
+  },
+  "abstractcore_plugin_progress_events": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/abstractcore_plugin_t2i_progress_events.json",
+  "proof_table": "/private/tmp/abstractvision_mlx_gen_proofs_20260604_163022/proof_table.png"
+}

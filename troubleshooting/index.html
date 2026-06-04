@@ -276,6 +276,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../mlx-gen-local-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX-Gen Local Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/" class="md-nav__link">
         
   
@@ -365,10 +392,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -386,8 +413,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1126,7 +1153,7 @@ abstractvision<span class="w"> </span>download<span class="w"> </span>qwen-image
 This does not apply to the MLX-Gen Wan path.</p>
 <h3 id="fix_2">Fix<a class="headerlink" href="#fix_2" title="Permanent link">&para;</a></h3>
 <ul>
-<li>use MLX-Gen Wan on Apple Silicon: <code>abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "prompt"</code>; or</li>
+<li>use MLX-Gen Wan on Apple Silicon: <code>abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "prompt"</code>; or</li>
 <li>use the OpenAI-compatible backend when video is served remotely; or</li>
 <li>follow the backlog item that tracks the local re-validation work:
   <a href="../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a></li>
@@ -1207,7 +1234,7 @@ packaged capability registry, or the backend cannot really execute that task.</p
 <p>Choose a model that advertises the task:</p>
 <ul>
 <li>image edits: a model with <code>image_to_image</code></li>
-<li>local MLX-Gen text-to-video: <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code></li>
+<li>local MLX-Gen text-to-video: <code>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit</code> or <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code></li>
 <li>remote text-to-video: an OpenAI-compatible backend configured with a video endpoint</li>
 </ul>
 <h3 id="verify_3">Verify<a class="headerlink" href="#verify_3" title="Permanent link">&para;</a></h3>

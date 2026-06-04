@@ -280,6 +280,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../mlx-gen-local-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX-Gen Local Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/" class="md-nav__link">
         
   
@@ -603,10 +630,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -624,8 +651,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1042,7 +1069,7 @@
 <h2 id="what-does-abstractvision-support-today">What does AbstractVision support today?<a class="headerlink" href="#what-does-abstractvision-support-today" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Built-in backends implement <strong>images</strong>: <code>text_to_image</code> and <code>image_to_image</code>.</li>
-<li>Local MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V <code>text_to_video</code> / first-frame <code>image_to_video</code>.</li>
+<li>Local MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code>.</li>
 <li>Local Diffusers <code>text_to_video</code> remains experimental and is temporarily disabled from the normal local runtime surfaces.</li>
 <li>OpenAI-compatible HTTP can also provide <code>text_to_video</code> / <code>image_to_video</code> <strong>when</strong> video endpoints are configured.</li>
 <li><code>multi_view_image</code> exists in the public API (<code>VisionManager.generate_angles</code>) but no built-in backend implements it yet (they raise <code>CapabilityNotSupportedError</code>).</li>
@@ -1052,7 +1079,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong> (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).</li>
 <li><strong>Diffusers (local)</strong> (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>): run Diffusers pipelines locally (heavy deps). Local <code>text_to_video</code> groundwork exists but is currently quarantined from the normal local surfaces.</li>
-<li><strong>MLX-Gen (local Apple Silicon)</strong> (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>): run MLX-optimized image models, FIBO snapshots, and Wan 2.2 TI2V locally.</li>
+<li><strong>MLX-Gen (local Apple Silicon)</strong> (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>): run MLX-optimized image models, FIBO snapshots, and Wan 2.2 video locally.</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong> (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>): run GGUF diffusion models via <code>sd-cli</code> or <code>stable-diffusion-cpp-python</code>.</li>
 </ul>
 <h2 id="what-model-should-i-start-with-local">What model should I start with (local)?<a class="headerlink" href="#what-model-should-i-start-with-local" title="Permanent link">&para;</a></h2>
@@ -1075,8 +1102,8 @@ abstractvision<span class="w"> </span>cli
 <p>For interactive local generation, use <code>abstractvision cli</code> (legacy alias: <code>abstractvision repl</code>) with <code>/backend diffusers ...</code>, <code>/backend mlx-gen ...</code>, or <code>/backend sdcpp ...</code>.</p>
 <p>Current local video note:
 - local Diffusers <code>t2v</code> is currently experimental and disabled from the normal bundled local surfaces;
-- local MLX-Gen <code>t2v</code> / <code>i2v</code> is available through <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>;
-- MLX-Gen video progress is shown by default in the shell and interactive CLI and is available to Python/Core callers through <code>on_progress(event)</code>;
+- local MLX-Gen <code>t2v</code> / <code>i2v</code> is available through task-specific Wan A14B packages such as <code>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit</code> and <code>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit</code>;
+- MLX-Gen denoise-step video progress is shown by default in the shell and interactive CLI and is available to Python/Core callers through <code>on_progress(event)</code>;
 - remote <code>text_to_video</code> / <code>image_to_video</code> still depend on the OpenAI-compatible backend being configured with video endpoints.</p>
 <h2 id="where-do-generated-outputs-go">Where do generated outputs go?<a class="headerlink" href="#where-do-generated-outputs-go" title="Permanent link">&para;</a></h2>
 <p>It depends on whether you configured a store:</p>

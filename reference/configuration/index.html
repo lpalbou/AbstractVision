@@ -280,6 +280,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../../mlx-gen-local-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX-Gen Local Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../api/" class="md-nav__link">
         
   
@@ -371,10 +398,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -392,8 +419,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -852,7 +879,7 @@
 <li><code>abstractvision cli</code> — interactive testing (supports <code>openai</code>, <code>diffusers</code>, <code>mlx-gen</code>, <code>sdcpp</code>; legacy alias: <code>abstractvision repl</code>; <code>mflux</code> is accepted as a compatibility alias)</li>
 <li><code>abstractvision playground [--host 127.0.0.1] [--port 8091]</code> — self-contained local web UI and <code>/v1/vision/*</code> API</li>
 <li><code>abstractvision serve [--host 127.0.0.1] [--port 8091]</code> — alias for <code>abstractvision playground</code></li>
-<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> / <code>abstractvision t2v ...</code> / <code>abstractvision i2v ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mlx-gen</code>, and <code>sdcpp</code>; MLX-Gen 0.18.8+ provides Wan <code>t2v</code>/<code>i2v</code>, including A14B task-specific checkpoints)</li>
+<li><code>abstractvision t2i ...</code> / <code>abstractvision i2i ...</code> / <code>abstractvision t2v ...</code> / <code>abstractvision i2v ...</code> — one-shot commands using the configured provider/backend (<code>openai</code>/<code>openai-compatible</code> by default; also supports local <code>diffusers</code>, <code>mlx-gen</code>, and <code>sdcpp</code>; MLX-Gen 0.18.10+ provides image progress, multi-reference edits, and Wan <code>t2v</code>/<code>i2v</code>, including A14B task-specific checkpoints)</li>
 </ul>
 <p>Note:
 - <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> / <code>abstractvision i2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers via <code>--provider diffusers|mlx-gen|sdcpp</code> (legacy alias: <code>--backend</code>; <code>mflux</code> remains accepted).
@@ -869,11 +896,12 @@ abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span
 abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/FIBO<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>prism-ml/bonsai-image-ternary-4B-mlx-2bit<span class="w"> </span><span class="s2">&quot;a bonsai tree in a quiet ceramic studio&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">4</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
 abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
-abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
-abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">121</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">24</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">50</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
-<p>For MLX-Gen Wan, one-shot <code>t2v</code> and <code>i2v</code> show frame/step progress on stderr
-by default. Add <code>--no-progress</code> when you need quiet shell output.</p>
+<p>For MLX-Gen Wan, one-shot <code>t2v</code> and <code>i2v</code> show denoise-step progress with
+frame context on stderr by default. Add <code>--no-progress</code> when you need quiet
+shell output.</p>
 <h2 id="interactive-cli-backend-selection">Interactive CLI backend selection<a class="headerlink" href="#interactive-cli-backend-selection" title="Permanent link">&para;</a></h2>
 <p>Inside <code>abstractvision cli</code>:</p>
 <ul>
@@ -895,12 +923,13 @@ by default. Add <code>--no-progress</code> when you need quiet shell output.</p>
 /t2i &quot;a studio product photo of a white ceramic mug&quot; --steps 50 --guidance-scale 4.0 --open
 /backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit
 /t2i &quot;a bonsai tree in a quiet ceramic studio&quot; --steps 4 --guidance-scale 1.0 --open
-/backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
-/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
-/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+/backend mlx-gen AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
+/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/backend mlx-gen AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit
+/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
 </code></pre></div>
-<p>Interactive <code>/t2v</code> and <code>/i2v</code> also show video progress by default and accept
-<code>--no-progress</code>.</p>
+<p>Interactive <code>/t2v</code> and <code>/i2v</code> also show denoise-step video progress by default
+and accept <code>--no-progress</code>.</p>
 <p>Important runtime note:
 - Model-specific request adjustments are not implemented only in the interactive UI. The shared backend normalization hooks are applied by <code>VisionManager</code> and by the playground API server, so the same parameter corrections reach <code>abstractvision cli</code>, the legacy <code>repl</code> alias, one-shot CLI commands, the playground, and the AbstractCore plugin.</p>
 <h2 id="environment-variables">Environment variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
@@ -951,8 +980,8 @@ by default. Add <code>--no-progress</code> when you need quiet shell output.</p>
 - <code>ABSTRACTVISION_DIFFUSERS_VARIANT</code> — optional model variant</p>
 <h3 id="mlx-gen-backend-apple-silicon">MLX-Gen backend (Apple Silicon)<a class="headerlink" href="#mlx-gen-backend-apple-silicon" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — exact published MLX-Gen repo id, local model path, or custom repo id (examples: <code>AbstractFramework/flux.2-klein-4b-4bit</code>, <code>AbstractFramework/ernie-image-turbo-8bit</code>, <code>briaai/FIBO</code>, <code>prism-ml/bonsai-image-ternary-4B-mlx-2bit</code>, <code>briaai/Fibo-Edit</code>, <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>, <code>/path/to/preset-dir</code>)</li>
-<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional base family for local paths or custom repos (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>flux2-klein-base-4b</code>, <code>flux2-klein-base-9b</code>, <code>bonsai-image-ternary</code>, <code>z-image</code>, <code>z-image-turbo</code>, <code>qwen-image</code>, <code>qwen-image-edit-2511</code>, <code>ernie-image-turbo</code>, <code>fibo</code>, <code>fibo-lite</code>, <code>fibo-edit</code>, <code>fibo-edit-rmbg</code>, <code>wan2.2-ti2v-5b</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_MODEL</code> — exact published MLX-Gen repo id, local model path, or custom repo id (examples: <code>AbstractFramework/flux.2-klein-4b-4bit</code>, <code>AbstractFramework/ernie-image-turbo-8bit</code>, <code>briaai/FIBO</code>, <code>prism-ml/bonsai-image-ternary-4B-mlx-2bit</code>, <code>briaai/Fibo-Edit</code>, <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>, <code>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit</code>, <code>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit</code>, <code>/path/to/preset-dir</code>)</li>
+<li><code>ABSTRACTVISION_MFLUX_BASE_MODEL</code> — optional base family for local paths or custom repos (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>, <code>flux2-klein-base-4b</code>, <code>flux2-klein-base-9b</code>, <code>bonsai-image-ternary</code>, <code>z-image</code>, <code>z-image-turbo</code>, <code>qwen-image</code>, <code>qwen-image-edit-2511</code>, <code>ernie-image-turbo</code>, <code>fibo</code>, <code>fibo-lite</code>, <code>fibo-edit</code>, <code>fibo-edit-rmbg</code>, <code>wan2.2-ti2v-5b</code>, <code>wan2.2-t2v-a14b</code>, <code>wan2.2-i2v-a14b</code>)</li>
 <li><code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD</code> — <code>0</code> (default) or <code>1</code> to permit runtime downloads when a preset/repo is missing from the local cache</li>
 <li><code>ABSTRACTVISION_MODEL_DIR</code> — legacy preset root only; curated downloads now land in the Hugging Face cache</li>
 <li>Canonical provider/model routing is <code>mlx-gen</code> / <code>mlx-gen/&lt;exact-huggingface-repo&gt;</code>, for example <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code>. Legacy <code>mflux</code> provider values, routed ids, and env var names are accepted for compatibility, but the model id itself should be the exact published repo id.</li>

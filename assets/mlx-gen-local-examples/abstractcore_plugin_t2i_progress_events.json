@@ -1,0 +1,44 @@
+[
+  {
+    "phase": "start",
+    "task": "text_to_image",
+    "step": 0,
+    "total_steps": 4,
+    "progress": 0.0
+  },
+  {
+    "phase": "denoise",
+    "task": "text_to_image",
+    "step": 1,
+    "total_steps": 4,
+    "progress": 0.25
+  },
+  {
+    "phase": "denoise",
+    "task": "text_to_image",
+    "step": 2,
+    "total_steps": 4,
+    "progress": 0.5
+  },
+  {
+    "phase": "denoise",
+    "task": "text_to_image",
+    "step": 3,
+    "total_steps": 4,
+    "progress": 0.75
+  },
+  {
+    "phase": "denoise",
+    "task": "text_to_image",
+    "step": 4,
+    "total_steps": 4,
+    "progress": 1.0
+  },
+  {
+    "phase": "complete",
+    "task": "text_to_image",
+    "step": 4,
+    "total_steps": 4,
+    "progress": 1.0
+  }
+]
