@@ -4,7 +4,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines
-- **MLX-Gen (local Apple Silicon)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official MLX-Gen 0.18.8+ FIBO image models, and Wan 2.2 TI2V `text_to_video` / first-frame `image_to_video`
+- **MLX-Gen (local Apple Silicon)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen 0.18.10+ runtime, official FIBO image models, and Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -329,6 +329,8 @@ abstractvision download briaai/Fibo-lite --provider mlx-gen
 abstractvision download briaai/Fibo-Edit --provider mlx-gen
 abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx-gen
 abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen
+abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen
+abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provider mlx-gen
 ```
 
 The default prepared choices are q4 repos from the
@@ -363,9 +365,12 @@ abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.p
 Text-to-video and first-frame image-to-video from the shell:
 
 ```bash
-abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
-abstractvision i2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
 ```
+
+Wan 2.2 A14B uses 16px width/height multiples; `432x240` is valid for low-cost
+local checks, while larger native sizes are more appropriate for quality review.
 
 Video examples (5s MP4):
 
@@ -394,8 +399,11 @@ Video examples (5s MP4):
   <button class="af_media_carousel__btn af_media_carousel__btn--next" type="button" aria-label="Next video">›</button>
 </div>
 
-MLX-Gen video commands print frame/step progress while the video is running.
-Use `--no-progress` for quiet scripts.
+MLX-Gen image commands accept `--progress` for step progress. MLX-Gen video
+commands print denoise-step progress with frame context while the video is
+running. Use `--no-progress` for quiet video scripts. A complete local example
+gallery with commands and bundled outputs is available in
+[MLX-Gen local examples](mlx-gen-local-examples.md).
 
 Interactive CLI/REPL (`abstractvision cli`; `abstractvision repl` remains an
 alias) uses the same backend and request normalization:
@@ -413,9 +421,10 @@ alias) uses the same backend and request normalization:
 /backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit
 /t2i "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 
-/backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
-/t2v "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
-/i2v --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+/backend mlx-gen AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
+/t2v "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/backend mlx-gen AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit
+/i2v --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
 ```
 
 Interactive `/t2v` and `/i2v` use the same default progress display; add
@@ -691,9 +700,10 @@ For the endpoint list, see `playground/README.md`.
 
 The packaged local Diffusers `text_to_video` groundwork remains experimental and
 is currently disabled from the normal local surfaces. The practical local Apple
-Silicon video path is MLX-Gen Wan 2.2 TI2V.
+Silicon video path is MLX-Gen Wan 2.2, preferably the task-specific A14B
+packages when memory allows.
 
 Current policy:
-- use `abstractvision t2v/i2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers` for local Apple Silicon video;
+- use `abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` and `abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit` for local Apple Silicon Wan A14B video;
 - use the OpenAI-compatible backend when video is served remotely; and
 - keep Diffusers local video behind the experimental follow-up in [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).

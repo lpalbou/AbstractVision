@@ -38,7 +38,7 @@ flowchart LR
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
-- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V for local `text_to_video` and first-frame `image_to_video`.
+- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
 - `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
@@ -147,15 +147,21 @@ abstractvision download briaai/Fibo-lite --provider mlx-gen
 abstractvision download briaai/Fibo-Edit --provider mlx-gen
 abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx-gen
 abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen
+abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen
+abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provider mlx-gen
 abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-4bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-8bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-4bit --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75
+abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-4bit --image ./input.png --reference-image ./style.png "apply the style reference while preserving the subject" --progress
 abstractvision t2i --provider mlx-gen --model briaai/FIBO "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 50 --guidance-scale 4.0
 abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0
 abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.png "remove the background and keep the object edges clean" --steps 20 --guidance-scale 4.0
-abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0
-abstractvision i2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0
+abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0
+abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0
 ```
+
+For a complete local MLX-Gen gallery with copy-paste commands and bundled
+generated outputs, see [MLX-Gen local examples](docs/mlx-gen-local-examples.md).
 
 Select q4 or q8 by using the exact published model id, for example
 `AbstractFramework/flux.2-klein-4b-4bit` or
@@ -166,19 +172,25 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen 0.18.8+ also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen 0.18.10+ also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
-`Wan-AI/Wan2.2-TI2V-5B-Diffusers`. Bonsai is a pre-packed ternary 2-bit
-checkpoint, not a q4/q8 prepared folder; use its exact repo id and keep
-guidance at 1.0. The binary 1-bit Bonsai checkpoint is not surfaced because
-stock MLX cannot run it yet. `image_to_image` is implemented for FLUX.2
-klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; FIBO
-Edit snapshots support mask inputs where the runtime supports them. Edit strength
-is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter
-where the runtime supports it. Wan 2.2 TI2V uses the official snapshot through
-MLX-Gen 0.18.8+ for Wan 2.2 `text_to_video` and first-frame `image_to_video`; it is not
-an AbstractFramework q4/q8 prepared folder, so select it by its exact repo id.
+`Wan-AI/Wan2.2-TI2V-5B-Diffusers`, and prepared Wan 2.2 A14B video packages
+such as `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` and
+`AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. Bonsai is a pre-packed
+ternary 2-bit checkpoint, not a q4/q8 prepared folder; use its exact repo id
+and keep guidance at 1.0. The binary 1-bit Bonsai checkpoint is not surfaced
+because stock MLX cannot run it yet. `image_to_image` is implemented for FLUX.2
+klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models.
+FLUX.2 and Qwen Image Edit can accept additional references with
+`--reference-image` (or Python `extra={"reference_images": [...]}`) for
+multi-reference edits. FIBO Edit snapshots support mask inputs where the runtime
+supports them. Edit strength is passed as `strength` and normalized to
+MLX-Gen's `image_strength` parameter where the runtime supports it. For video,
+prefer the task-specific prepared Wan 2.2 A14B T2V/I2V packages when memory
+allows; MLX-Gen also supports the unified TI2V-5B snapshot. Wan A14B dimensions
+must be multiples of 16; `432x240` is a valid low-cost check size, while native
+quality checks should use the model's recommended larger resolutions.
 
 One-shot `t2i`, `i2i`, `t2v`, and `i2v` commands store results in the local
 asset store and print an artifact ref followed by the local content path. Use
@@ -191,8 +203,10 @@ default: some older/local models accept it, while newer OpenAI-compatible image
 models may only accept larger provider-declared sizes such as `1024x1024`,
 `1024x1536`, `1536x1024`, or `auto`. If you pass `--width`/`--height`, the
 backend may reject unsupported combinations.
-MLX-Gen video commands report frame/step progress on stderr by default; pass
-`--no-progress` when you need quiet output.
+MLX-Gen video commands report denoise-step progress with frame context on
+stderr by default; pass `--no-progress` when you need quiet output. MLX-Gen
+image commands are quiet by default and accept `--progress` for image
+generation/edit step progress.
 
 Stable Diffusion does not currently have a curated MLX-Gen q4/q8 preset in
 AbstractVision, so full Diffusers downloads remain explicit.
@@ -333,7 +347,7 @@ from source (see [`docs/getting-started.md`](docs/getting-started.md)):
 ```
 
 Local Diffusers `text_to_video` remains experimental and is temporarily
-disabled from the normal bundled local surfaces. Use MLX-Gen Wan 2.2 TI2V for
+disabled from the normal bundled local surfaces. Use MLX-Gen Wan 2.2 A14B for
 local Apple Silicon `text_to_video` / `image_to_video`, or use the
 OpenAI-compatible backend for remote video endpoints.
 
@@ -346,12 +360,13 @@ For Apple Silicon local generation through MLX-Gen:
 /t2i "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 /backend mlx-gen AbstractFramework/qwen-image-edit-2511-4bit
 /i2i --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75 --open
-/backend mlx-gen Wan-AI/Wan2.2-TI2V-5B-Diffusers
-/t2v "a red fox walking through a snowy forest, cinematic" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
-/i2v --image ./first-frame.png "slow camera push-in" --frames 121 --fps 24 --steps 50 --guidance-scale 5.0 --open
+/backend mlx-gen AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
+/t2v "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/backend mlx-gen AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit
+/i2v --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
 ```
 
-`/t2v` and `/i2v` show MLX-Gen video progress by default; add
+`/t2v` and `/i2v` show MLX-Gen denoise-step video progress by default; add
 `--no-progress` to suppress progress output in scripts.
 
 OpenAI-compatible server example:

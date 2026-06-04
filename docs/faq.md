@@ -31,7 +31,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V `text_to_video` / first-frame `image_to_video`.
+- Local MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - OpenAI-compatible HTTP can also provide `text_to_video` / `image_to_video` **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
@@ -42,7 +42,7 @@ Details: [docs/reference/backends.md](reference/backends.md).
 
 - **OpenAI-compatible HTTP** ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).
 - **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps). Local `text_to_video` groundwork exists but is currently quarantined from the normal local surfaces.
-- **MLX-Gen (local Apple Silicon)** ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py)): run MLX-optimized image models, FIBO snapshots, and Wan 2.2 TI2V locally.
+- **MLX-Gen (local Apple Silicon)** ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py)): run MLX-optimized image models, FIBO snapshots, and Wan 2.2 video locally.
 - **stable-diffusion.cpp (local GGUF)** ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py)): run GGUF diffusion models via `sd-cli` or `stable-diffusion-cpp-python`.
 
 ## What model should I start with (local)?
@@ -74,8 +74,8 @@ For interactive local generation, use `abstractvision cli` (legacy alias: `abstr
 
 Current local video note:
 - local Diffusers `t2v` is currently experimental and disabled from the normal bundled local surfaces;
-- local MLX-Gen `t2v` / `i2v` is available through `Wan-AI/Wan2.2-TI2V-5B-Diffusers`;
-- MLX-Gen video progress is shown by default in the shell and interactive CLI and is available to Python/Core callers through `on_progress(event)`;
+- local MLX-Gen `t2v` / `i2v` is available through task-specific Wan A14B packages such as `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` and `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`;
+- MLX-Gen denoise-step video progress is shown by default in the shell and interactive CLI and is available to Python/Core callers through `on_progress(event)`;
 - remote `text_to_video` / `image_to_video` still depend on the OpenAI-compatible backend being configured with video endpoints.
 
 ## Where do generated outputs go?

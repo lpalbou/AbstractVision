@@ -1230,6 +1230,91 @@ print("ok")
         self.assertEqual(backend.unloaded, 1)
         self.assertEqual(cap.list_loaded_models(), [])
 
+    def test_abstractcore_plugin_t2i_routes_progress_kwargs_to_extra(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMFluxBackend:
+            def generate_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_mflux_backend", return_value=FakeMFluxBackend()):
+
+            def progress_callback(event):
+                return None
+
+            out = cap.t2i(
+                "draw a clean interface",
+                provider="mlx-gen",
+                model="AbstractFramework/flux.2-klein-9b-8bit",
+                width=512,
+                custom_scheduler="fast",
+                on_progress=progress_callback,
+            )
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        self.assertEqual(seen["request"].prompt, "draw a clean interface")
+        self.assertEqual(seen["request"].width, 512)
+        self.assertEqual(seen["request"].extra.get("custom_scheduler"), "fast")
+        self.assertIs(seen["request"].extra.get("on_progress"), progress_callback)
+
+    def test_abstractcore_plugin_i2i_routes_progress_and_references_to_extra(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
+        seen = {}
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMFluxBackend:
+            def edit_image(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="image", data=png, mime_type="image/png", metadata={}
+                )
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_mflux_backend", return_value=FakeMFluxBackend()):
+
+            def progress_callback(event):
+                return None
+
+            out = cap.i2i(
+                "combine the product and style references",
+                b"input-image",
+                provider="mlx-gen",
+                model="AbstractFramework/flux.2-klein-9b-8bit",
+                reference_images=[b"style-reference", b"layout-reference"],
+                strength=0.55,
+                width=768,
+                on_progress=progress_callback,
+            )
+
+        self.assertTrue(out.startswith(b"\x89PNG"))
+        self.assertEqual(seen["request"].prompt, "combine the product and style references")
+        self.assertEqual(seen["request"].image, b"input-image")
+        self.assertEqual(
+            seen["request"].extra.get("reference_images"),
+            [b"style-reference", b"layout-reference"],
+        )
+        self.assertEqual(seen["request"].extra.get("strength"), 0.55)
+        self.assertEqual(seen["request"].extra.get("width"), 768)
+        self.assertIs(seen["request"].extra.get("on_progress"), progress_callback)
+
     def test_abstractcore_plugin_i2v_routes_unknown_kwargs_to_extra(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset

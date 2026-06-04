@@ -127,11 +127,12 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
-`generate_video(...)` and `image_to_video(...)` are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.8+ supports Wan `text_to_video` and first-frame `image_to_video`, including A14B task-specific checkpoints. Generated MP4 outputs still require an `ffmpeg` executable on `PATH` whenever a backend returns frame sequences for local packaging.
+`generate_video(...)` and `image_to_video(...)` are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.10+ supports Wan `text_to_video` and first-frame `image_to_video`, including A14B task-specific checkpoints. Generated MP4 outputs still require an `ffmpeg` executable on `PATH` whenever a backend returns frame sequences for local packaging.
 
 ### Local example (MLX-Gen backend)
 
-Install `abstractvision[mlx-gen]` and pre-download the exact model repo first, for example `abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen`.
+Install `abstractvision[mlx-gen]` and pre-download the exact model repo first,
+for example `abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen`.
 
 ```python
 from pathlib import Path
@@ -139,42 +140,80 @@ from pathlib import Path
 from abstractvision import VisionManager
 from abstractvision.backends import MLXGenBackendConfig, MLXGenVisionBackend
 
-backend = MLXGenVisionBackend(
-    config=MLXGenBackendConfig(model="Wan-AI/Wan2.2-TI2V-5B-Diffusers")
-)
-vm = VisionManager(backend=backend)
-
 def on_progress(event):
-    print(f"{event.phase}: frame {event.frame}/{event.total_frames}")
+    if event.total_frames:
+        print(f"{event.phase}: frame {event.frame}/{event.total_frames}")
+    else:
+        print(f"{event.phase}: step {event.step}/{event.total_steps}")
 
-asset = vm.generate_video(
+image_backend = MLXGenVisionBackend(
+    config=MLXGenBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
+)
+image_vm = VisionManager(backend=image_backend)
+
+image_asset = image_vm.generate_image(
+    "a studio product photo of a red toy race car",
+    width=768,
+    height=512,
+    steps=12,
+    guidance_scale=1.0,
+    on_progress=on_progress,
+)
+
+edit_asset = image_vm.edit_image(
+    "compose the subject using the second image as a style and layout reference",
+    image=Path("./subject.png").read_bytes(),
+    steps=12,
+    guidance_scale=1.0,
+    on_progress=on_progress,
+    extra={"reference_images": [Path("./style-reference.png").read_bytes()]},
+)
+
+t2v_backend = MLXGenVisionBackend(
+    config=MLXGenBackendConfig(model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit")
+)
+t2v_vm = VisionManager(backend=t2v_backend)
+
+asset = t2v_vm.generate_video(
     "a red fox walking through a snowy forest, cinematic",
-    num_frames=121,
-    fps=24,
-    steps=50,
-    guidance_scale=5.0,
+    width=432,
+    height=240,
+    num_frames=41,
+    fps=10,
+    steps=20,
+    guidance_scale=4.0,
     on_progress=on_progress,
     extra={"max_sequence_length": 256},
 )
 
-first_frame_asset = vm.image_to_video(
+i2v_backend = MLXGenVisionBackend(
+    config=MLXGenBackendConfig(model="AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit")
+)
+i2v_vm = VisionManager(backend=i2v_backend)
+
+first_frame_asset = i2v_vm.image_to_video(
     image=Path("./first-frame.png").read_bytes(),
     prompt="slow camera push-in",
-    num_frames=121,
-    fps=24,
-    steps=50,
-    guidance_scale=5.0,
+    width=432,
+    height=240,
+    num_frames=41,
+    fps=10,
+    steps=20,
+    guidance_scale=4.0,
     on_progress=on_progress,
     extra={"max_sequence_length": 256},
 )
 ```
 
-For MLX-Gen Wan, `on_progress` receives an
-`abstractvision.VideoProgressEvent` with `phase`, `frame`, `total_frames`,
-`step`, `total_steps`, and normalized `progress` fields. The lower-level
-`backend.generate_video_with_progress(...)` and
-`backend.image_to_video_with_progress(...)` methods keep the existing
+For MLX-Gen, `on_progress` receives an `abstractvision.VideoProgressEvent`.
+Image generation/editing events carry `phase`, `step`, `total_steps`, and
+denoise-step `progress`. Wan video events add `frame`, `total_frames`, and
+`frame_progress`. The lower-level `backend.generate_image_with_progress(...)`,
+`backend.edit_image_with_progress(...)`, `backend.generate_video_with_progress(...)`,
+and `backend.image_to_video_with_progress(...)` methods keep the existing
 two-argument `(current, total)` callback for backend-agnostic progress bars.
+For MLX-Gen, that callback reports denoise step counts; use
+`on_progress(event)` when a UI also needs video frame context.
 
 ## Passing advanced backend parameters (`extra`)
 

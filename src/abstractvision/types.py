@@ -39,14 +39,25 @@ class VisionBackendCapabilities:
 
 @dataclass(frozen=True)
 class VideoProgressEvent:
-    """Normalized progress event for video generation backends."""
+    """Normalized progress event for local generation backends.
+
+    The name is kept for compatibility with the initial video-only callback
+    surface. Image generation backends may also emit this type.
+    `progress` is the canonical backend progress fraction. For MLX-Gen image
+    and video generation this is denoise-step progress; `frame_progress` is
+    additional video context.
+    """
 
     phase: str
-    frame: int
+    frame: Optional[int] = None
     total_frames: Optional[int] = None
     step: Optional[int] = None
     total_steps: Optional[int] = None
     progress: Optional[float] = None
+    step_progress: Optional[float] = None
+    frame_progress: Optional[float] = None
+    task: Optional[str] = None
+    timestep: Optional[float] = None
     raw: Dict[str, Any] = field(default_factory=dict)
 
 

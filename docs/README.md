@@ -15,6 +15,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 - [API reference](api.md)
 - [Architecture decisions](adr/README.md)
 - [Backends](reference/backends.md)
+- [MLX-Gen local examples](mlx-gen-local-examples.md)
 - [Configuration (CLI/REPL env vars + flags)](reference/configuration.md)
 - [Capability registry (`vision_model_capabilities.json`)](reference/capabilities-registry.md)
 - [Artifacts (artifact refs + stores)](reference/artifacts.md)
@@ -38,9 +39,9 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V video; local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V/A14B video; local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
-  - MLX-Gen for Wan 2.2 TI2V local `text_to_video` and first-frame `image_to_video`
+  - MLX-Gen for Wan 2.2 local `text_to_video` and first-frame `image_to_video`
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
 If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:

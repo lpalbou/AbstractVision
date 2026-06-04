@@ -850,6 +850,10 @@
             "image": {
               "required": true
             },
+            "reference_images": {
+              "required": false,
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+            },
             "mask": {
               "required": false
             },
@@ -974,6 +978,10 @@
             },
             "image": {
               "required": true
+            },
+            "reference_images": {
+              "required": false,
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
             },
             "mask": {
               "required": false
@@ -1100,6 +1108,10 @@
             "image": {
               "required": true
             },
+            "reference_images": {
+              "required": false,
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+            },
             "mask": {
               "required": false
             },
@@ -1224,6 +1236,10 @@
             },
             "image": {
               "required": true
+            },
+            "reference_images": {
+              "required": false,
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
             },
             "mask": {
               "required": false
@@ -1732,6 +1748,10 @@
             "image": {
               "required": true
             },
+            "reference_images": {
+              "required": false,
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+            },
             "mask": {
               "required": false
             },
@@ -1808,6 +1828,10 @@
             },
             "image": {
               "required": true
+            },
+            "reference_images": {
+              "required": false,
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
             },
             "mask": {
               "required": false
@@ -1887,6 +1911,10 @@
             },
             "image": {
               "required": true
+            },
+            "reference_images": {
+              "required": false,
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
             },
             "mask": {
               "required": false
@@ -3384,6 +3412,24 @@
           "key": "wan2.2-t2v-a14b",
           "engine": "mlx-gen",
           "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen mixed q8/BF16 prepared folder for Wan 2.2 A14B text-to-video."
+        },
+        {
+          "key": "wan2.2-t2v-a14b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "AbstractFramework/wan2.2-t2v-a14b-diffusers-bf16",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen BF16 prepared folder for Wan 2.2 A14B text-to-video."
+        },
+        {
+          "key": "wan2.2-t2v-a14b",
+          "engine": "mlx-gen",
+          "target": "mlx",
           "bits": 16,
           "repo_id": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
           "source": "official",
@@ -3454,6 +3500,24 @@
       "license": "apache-2.0",
       "notes": "Official Wan 2.2 A14B image-to-video Diffusers checkpoint. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
       "downloads": [
+        {
+          "key": "wan2.2-i2v-a14b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen mixed q8/BF16 prepared folder for Wan 2.2 A14B image-to-video."
+        },
+        {
+          "key": "wan2.2-i2v-a14b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "AbstractFramework/wan2.2-i2v-a14b-diffusers-bf16",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen BF16 prepared folder for Wan 2.2 A14B image-to-video."
+        },
         {
           "key": "wan2.2-i2v-a14b",
           "engine": "mlx-gen",

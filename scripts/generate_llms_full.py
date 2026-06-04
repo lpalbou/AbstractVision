@@ -21,6 +21,7 @@ BUNDLE: list[BundleItem] = [
     BundleItem("README.md"),
     BundleItem("docs/README.md"),
     BundleItem("docs/getting-started.md"),
+    BundleItem("docs/mlx-gen-local-examples.md"),
     BundleItem("docs/api.md"),
     BundleItem("docs/architecture.md"),
     BundleItem("docs/faq.md"),

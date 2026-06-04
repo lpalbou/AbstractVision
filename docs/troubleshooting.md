@@ -84,7 +84,7 @@ This does not apply to the MLX-Gen Wan path.
 
 ### Fix
 
-- use MLX-Gen Wan on Apple Silicon: `abstractvision t2v --provider mlx-gen --model Wan-AI/Wan2.2-TI2V-5B-Diffusers "prompt"`; or
+- use MLX-Gen Wan on Apple Silicon: `abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "prompt"`; or
 - use the OpenAI-compatible backend when video is served remotely; or
 - follow the backlog item that tracks the local re-validation work:
   [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
@@ -183,7 +183,7 @@ packaged capability registry, or the backend cannot really execute that task.
 Choose a model that advertises the task:
 
 - image edits: a model with `image_to_image`
-- local MLX-Gen text-to-video: `Wan-AI/Wan2.2-TI2V-5B-Diffusers`
+- local MLX-Gen text-to-video: `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` or `Wan-AI/Wan2.2-TI2V-5B-Diffusers`
 - remote text-to-video: an OpenAI-compatible backend configured with a video endpoint
 
 ### Verify

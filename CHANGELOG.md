@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.3.20 - 2026-06-04
+
+- Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.10,<0.19.0` so Apple Silicon installs pick up the current capability planner, shared image/video progress events, and multi-reference edit routing.
+- MLX-Gen progress: surface image generation and image edit progress through backend `*_with_progress(...)`, Python/Core `on_progress(event)` callbacks, and opt-in one-shot CLI `--progress` flags while preserving video progress availability for shell, Python, and AbstractCore callers.
+- MLX-Gen progress semantics: align normalized video progress, the CLI display, and backend progress-bar callbacks with MLX-Gen denoise-step progress while retaining video frame counters as contextual event fields.
+- MLX-Gen multi-reference edits: allow FLUX.2 and Qwen Image Edit requests to pass additional reference images through `extra.reference_images` / CLI `--reference-image`, and mark the supported model task metadata accordingly.
+- Docs/tests: document image/edit/video progress across CLI, Python, and AbstractCore plugin calls; add propagation coverage for manager, CLI, plugin, Flux.2 multi-reference edit paths, and MLX-Gen denoise-step video progress normalization.
+- Examples: add a bundled MLX-Gen local example gallery with copy-paste image/edit/video commands, generated PNG/MP4 outputs, contact sheet, manifest, and AbstractCore plugin progress-event capture.
+
 ## 0.3.19 - 2026-06-03
 
 - Docs: clarify MLX-Gen `0.18.8` setup, Wan 2.2 A14B text-to-video/image-to-video usage, and generated-media configuration references.

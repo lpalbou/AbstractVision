@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import random
 import tempfile
-import importlib.util
 import queue
 import threading
 from concurrent.futures import Future
@@ -87,15 +86,29 @@ def _progress_optional_float(value: Any) -> Optional[float]:
         return None
 
 
+def _normalize_progress_task(value: Any, default: Optional[str] = None) -> Optional[str]:
+    raw = str(value or default or "").strip().lower().replace("-", "_")
+    return raw or None
+
+
 def _normalize_video_progress_event(event: Any) -> VideoProgressEvent:
     phase = str(_progress_attr(event, "phase", "running") or "running")
-    frame = _progress_int(_progress_attr(event, "frame", 0), 0)
+    frame = _progress_optional_int(_progress_attr(event, "frame", None))
     total_frames = _progress_optional_int(_progress_attr(event, "total_frames", None))
     step = _progress_optional_int(_progress_attr(event, "step", None))
     total_steps = _progress_optional_int(_progress_attr(event, "total_steps", None))
-    progress = _progress_optional_float(_progress_attr(event, "progress", None))
-    if progress is None and total_frames and total_frames > 0:
-        progress = max(0.0, min(1.0, float(frame) / float(total_frames)))
+    task = _normalize_progress_task(_progress_attr(event, "task", None))
+    timestep = _progress_optional_float(_progress_attr(event, "timestep", None))
+    step_progress = _progress_optional_float(_progress_attr(event, "step_progress", None))
+    event_progress = _progress_optional_float(_progress_attr(event, "progress", None))
+    frame_progress = _progress_optional_float(_progress_attr(event, "frame_progress", None))
+    if step_progress is None:
+        step_progress = event_progress
+    if step_progress is None and step is not None and total_steps and total_steps > 0:
+        step_progress = max(0.0, min(1.0, float(step) / float(total_steps)))
+    if frame_progress is None and frame is not None and total_frames and total_frames > 0:
+        frame_progress = max(0.0, min(1.0, float(frame) / float(total_frames)))
+    progress = event_progress if event_progress is not None else step_progress
     raw = {
         "phase": phase,
         "frame": frame,
@@ -103,6 +116,10 @@ def _normalize_video_progress_event(event: Any) -> VideoProgressEvent:
         "step": step,
         "total_steps": total_steps,
         "progress": progress,
+        "step_progress": step_progress,
+        "frame_progress": frame_progress,
+        "task": task,
+        "timestep": timestep,
     }
     return VideoProgressEvent(
         phase=phase,
@@ -111,8 +128,30 @@ def _normalize_video_progress_event(event: Any) -> VideoProgressEvent:
         step=step,
         total_steps=total_steps,
         progress=progress,
+        step_progress=step_progress,
+        frame_progress=frame_progress,
+        task=task,
+        timestep=timestep,
         raw=raw,
     )
+
+
+def _pop_progress_callbacks(
+    extra: Dict[str, Any],
+) -> Tuple[List[Callable[[VideoProgressEvent], None]], Optional[Callable[[int, Optional[int]], None]]]:
+    callbacks = [
+        callback
+        for callback in (
+            extra.pop("on_progress", None),
+            extra.pop("progress_event_callback", None),
+            extra.pop("progress_callback", None),
+        )
+        if callable(callback)
+    ]
+    step_progress_callback = extra.pop("_step_progress_callback", None)
+    if not callable(step_progress_callback):
+        step_progress_callback = None
+    return callbacks, step_progress_callback
 
 
 @dataclass(frozen=True)
@@ -410,15 +449,23 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "wan-ti2v": WAN_TI2V_MODEL_KEY,
     "wan-ai/wan2.2-t2v-a14b": WAN_T2V_A14B_MODEL_KEY,
     "wan-ai/wan2.2-t2v-a14b-diffusers": WAN_T2V_A14B_MODEL_KEY,
+    "abstractframework/wan2.2-t2v-a14b-diffusers-8bit": WAN_T2V_A14B_MODEL_KEY,
+    "abstractframework/wan2.2-t2v-a14b-diffusers-bf16": WAN_T2V_A14B_MODEL_KEY,
     "wan2.2-t2v-a14b": WAN_T2V_A14B_MODEL_KEY,
     "wan2.2-t2v-a14b-diffusers": WAN_T2V_A14B_MODEL_KEY,
+    "wan2.2-t2v-a14b-diffusers-8bit": WAN_T2V_A14B_MODEL_KEY,
+    "wan2.2-t2v-a14b-diffusers-bf16": WAN_T2V_A14B_MODEL_KEY,
     "wan2-2-t2v-a14b": WAN_T2V_A14B_MODEL_KEY,
     "wan-t2v-a14b": WAN_T2V_A14B_MODEL_KEY,
     "wan-a14b-t2v": WAN_T2V_A14B_MODEL_KEY,
     "wan-ai/wan2.2-i2v-a14b": WAN_I2V_A14B_MODEL_KEY,
     "wan-ai/wan2.2-i2v-a14b-diffusers": WAN_I2V_A14B_MODEL_KEY,
+    "abstractframework/wan2.2-i2v-a14b-diffusers-8bit": WAN_I2V_A14B_MODEL_KEY,
+    "abstractframework/wan2.2-i2v-a14b-diffusers-bf16": WAN_I2V_A14B_MODEL_KEY,
     "wan2.2-i2v-a14b": WAN_I2V_A14B_MODEL_KEY,
     "wan2.2-i2v-a14b-diffusers": WAN_I2V_A14B_MODEL_KEY,
+    "wan2.2-i2v-a14b-diffusers-8bit": WAN_I2V_A14B_MODEL_KEY,
+    "wan2.2-i2v-a14b-diffusers-bf16": WAN_I2V_A14B_MODEL_KEY,
     "wan2-2-i2v-a14b": WAN_I2V_A14B_MODEL_KEY,
     "wan-i2v-a14b": WAN_I2V_A14B_MODEL_KEY,
     "wan-a14b-i2v": WAN_I2V_A14B_MODEL_KEY,
@@ -591,7 +638,7 @@ def _lazy_import_mflux_ernie() -> Any:
         from mflux.models.ernie_image import ErnieImageTurbo  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen ERNIE backend requires mlx-gen>=0.18.7. "
+            "MLX-Gen ERNIE backend requires mlx-gen>=0.18.10. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return ErnieImageTurbo
@@ -603,7 +650,7 @@ def _lazy_import_mflux_fibo() -> Tuple[Any, Any]:
         from mflux.models.fibo.variants.txt2img.fibo import FIBO  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen FIBO backend requires mlx-gen>=0.18.7. "
+            "MLX-Gen FIBO backend requires mlx-gen>=0.18.10. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return FIBO, FIBOEdit
@@ -614,7 +661,7 @@ def _lazy_import_mflux_bonsai() -> Any:
         from mflux.models.bonsai_image.variants import BonsaiImage  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen Bonsai Image generation requires mlx-gen>=0.18.7. "
+            "MLX-Gen Bonsai Image generation requires mlx-gen>=0.18.10. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return BonsaiImage
@@ -625,7 +672,7 @@ def _lazy_import_mflux_wan() -> Any:
         from mflux.models.wan.variants import Wan2_2_TI2V  # type: ignore
     except Exception as e:
         raise OptionalDependencyMissingError(
-            "MLX-Gen Wan video generation requires mlx-gen>=0.18.8. "
+            "MLX-Gen Wan video generation requires mlx-gen>=0.18.10. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
         ) from e
     return Wan2_2_TI2V
@@ -1153,6 +1200,10 @@ def _infer_base_model(*values: Any) -> Optional[str]:
             return "fibo-lite"
         if "fibo" in s:
             return "fibo"
+        if "wan" in s and ("t2v-a14b" in s or "t2v_a14b" in s or "t2v-a14" in s):
+            return WAN_T2V_A14B_MODEL_KEY
+        if "wan" in s and ("i2v-a14b" in s or "i2v_a14b" in s or "i2v-a14" in s):
+            return WAN_I2V_A14B_MODEL_KEY
         if (
             s == "wan"
             or "wan2.2-ti2v" in s
@@ -1669,7 +1720,7 @@ class MFluxVisionBackend(VisionBackend):
             except Exception as exc:
                 if model_def.family == "wan-video":
                     raise OptionalDependencyMissingError(
-                        "MLX-Gen Wan video generation requires mlx-gen>=0.18.8. "
+                        "MLX-Gen Wan video generation requires mlx-gen>=0.18.10. "
                         'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` '
                         f"for {registry_id}."
                     ) from exc
@@ -1908,6 +1959,79 @@ class MFluxVisionBackend(VisionBackend):
             return ".jpg"
         return ".img"
 
+    def _subscribe_progress(
+        self,
+        model: Any,
+        callback: Callable[[Any], None],
+        *,
+        task: str,
+    ) -> Callable[[], None]:
+        callbacks = getattr(model, "callbacks", None)
+        subscribe = getattr(callbacks, "subscribe_progress", None)
+        if not callable(subscribe):
+            return lambda: None
+        try:
+            unsubscribe = subscribe(callback, task=task)
+        except TypeError:
+            unsubscribe = subscribe(callback)
+        if callable(unsubscribe):
+            return unsubscribe
+        return lambda: None
+
+    def _write_temp_image_bytes(self, data: bytes) -> Path:
+        suffix = self._sniff_image_suffix(data)
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=suffix, delete=False) as fp:
+            path = Path(fp.name)
+            fp.write(data)
+        return path
+
+    def _append_reference_image_value(
+        self,
+        image_paths: List[str],
+        temp_paths: List[Path],
+        value: Any,
+    ) -> None:
+        if value is None:
+            return
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            path = self._write_temp_image_bytes(bytes(value))
+            temp_paths.append(path)
+            image_paths.append(str(path))
+            return
+        if isinstance(value, Path):
+            image_paths.append(str(value.expanduser()))
+            return
+        if isinstance(value, str):
+            text = value.strip()
+            if text:
+                image_paths.append(str(Path(text).expanduser()))
+            return
+        data = getattr(value, "data", None)
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            path = self._write_temp_image_bytes(bytes(data))
+            temp_paths.append(path)
+            image_paths.append(str(path))
+
+    def _extend_reference_image_paths(
+        self,
+        extra: Dict[str, Any],
+        image_paths: List[str],
+        temp_paths: List[Path],
+    ) -> None:
+        for key in ("reference_images", "images", "additional_images", "image_paths"):
+            values = extra.pop(key, None)
+            if values is None:
+                continue
+            if isinstance(values, (str, bytes, bytearray, memoryview, Path)):
+                iterable = [values]
+            else:
+                try:
+                    iterable = list(values)
+                except TypeError:
+                    iterable = [values]
+            for value in iterable:
+                self._append_reference_image_value(image_paths, temp_paths, value)
+
     def _prepare_i2v_conditioning_image(
         self,
         image_path: Path,
@@ -2070,6 +2194,26 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["image_strength"] = float(
                 image_strength if image_strength is not None else extra.pop("image_strength", 0.4)
             )
+        progress_callbacks, step_progress_callback = _pop_progress_callbacks(extra)
+
+        progress_task = "image-to-image" if image_path is not None else "text-to-image"
+        default_task = "image_to_image" if image_path is not None else "text_to_image"
+
+        def _progress_bridge(raw_event: Any) -> None:
+            event = _normalize_video_progress_event(raw_event)
+            if event.task is None:
+                event = replace(event, task=default_task)
+            for callback in progress_callbacks:
+                callback(event)
+            if step_progress_callback is not None:
+                current = event.step if event.step is not None else 0
+                step_progress_callback(current, event.total_steps)
+
+        unsubscribe = (
+            self._subscribe_progress(model, _progress_bridge, task=progress_task)
+            if progress_callbacks or step_progress_callback is not None
+            else (lambda: None)
+        )
 
         try:
             generated = model.generate_image(**kwargs)
@@ -2077,6 +2221,8 @@ class MFluxVisionBackend(VisionBackend):
             if _is_mlx_gen_download_required(e):
                 raise _wrap_mlx_gen_download_required(e) from e
             raise
+        finally:
+            unsubscribe()
         if self._model_key is not None:
             self._warmed_model_key = self._model_key
         pil_image = getattr(generated, "image", generated)
@@ -2110,6 +2256,17 @@ class MFluxVisionBackend(VisionBackend):
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
         return self._run_on_runtime_thread(self._generate_impl, request)
+
+    def generate_image_with_progress(
+        self,
+        request: ImageGenerationRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        if progress_callback is None:
+            return self.generate_image(request)
+        extra = dict(request.extra or {})
+        extra["_step_progress_callback"] = progress_callback
+        return self.generate_image(replace(request, extra=extra))
 
     def _edit_image_impl(self, request: ImageEditRequest) -> GeneratedAsset:
         request = self.normalize_image_edit_request(request)
@@ -2165,6 +2322,7 @@ class MFluxVisionBackend(VisionBackend):
             with tempfile.NamedTemporaryFile(mode="wb", suffix=mask_suffix, delete=False) as fp:
                 tmp_mask_path = Path(fp.name)
                 fp.write(request.mask)
+        tmp_extra_paths: List[Path] = []
         try:
             if model_def.family in {"flux2", "qwen-edit", "fibo-edit"}:
                 seed = (
@@ -2178,13 +2336,21 @@ class MFluxVisionBackend(VisionBackend):
                     if request.guidance_scale is not None
                     else model_def.default_guidance
                 )
+                progress_callbacks, step_progress_callback = _pop_progress_callbacks(extra)
+                image_paths = [str(tmp_path)]
+                self._extend_reference_image_paths(extra, image_paths, tmp_extra_paths)
+                if len(image_paths) > 1 and model_def.family not in {"flux2", "qwen-edit"}:
+                    raise CapabilityNotSupportedError(
+                        "MLX-Gen multi-reference image edits are supported for FLUX.2 and "
+                        f"Qwen Image Edit models, not {model_def.family!r}."
+                    )
                 kwargs: Dict[str, Any] = {
                     "seed": seed,
                     "prompt": str(request.prompt),
                     "num_inference_steps": steps,
                 }
                 if model_def.family in {"flux2", "qwen-edit"}:
-                    kwargs["image_paths"] = [str(tmp_path)]
+                    kwargs["image_paths"] = image_paths
                 else:
                     kwargs["image_path"] = str(tmp_path)
                     if tmp_mask_path is not None:
@@ -2200,12 +2366,31 @@ class MFluxVisionBackend(VisionBackend):
                     kwargs["scheduler"] = str(scheduler)
                 if request.negative_prompt and model_def.supports_negative_prompt:
                     kwargs["negative_prompt"] = str(request.negative_prompt)
+                task_name = "image-to-image"
+
+                def _progress_bridge(raw_event: Any) -> None:
+                    event = _normalize_video_progress_event(raw_event)
+                    if event.task is None:
+                        event = replace(event, task="image_to_image")
+                    for callback in progress_callbacks:
+                        callback(event)
+                    if step_progress_callback is not None:
+                        current = event.step if event.step is not None else 0
+                        step_progress_callback(current, event.total_steps)
+
+                unsubscribe = (
+                    self._subscribe_progress(_model, _progress_bridge, task=task_name)
+                    if progress_callbacks or step_progress_callback is not None
+                    else (lambda: None)
+                )
                 try:
                     generated = _model.generate_image(**kwargs)
                 except Exception as e:
                     if _is_mlx_gen_download_required(e):
                         raise _wrap_mlx_gen_download_required(e) from e
                     raise
+                finally:
+                    unsubscribe()
                 pil_image = getattr(generated, "image", generated)
                 buf = BytesIO()
                 pil_image.save(buf, format="PNG")
@@ -2223,6 +2408,8 @@ class MFluxVisionBackend(VisionBackend):
                         "quantization_bits": self._resolved_quantization_bits,
                         "seed": seed,
                         "steps": steps,
+                        "reference_image_count": len(image_paths),
+                        "edit_mode": "multi_reference" if len(image_paths) > 1 else "edit_reference",
                         **({"width": int(width)} if width is not None else {}),
                         **({"height": int(height)} if height is not None else {}),
                         **({"mask": True} if tmp_mask_path is not None else {}),
@@ -2243,9 +2430,25 @@ class MFluxVisionBackend(VisionBackend):
                     tmp_mask_path.unlink(missing_ok=True)
                 except Exception:
                     pass
+            for path in tmp_extra_paths:
+                try:
+                    path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         return self._run_on_runtime_thread(self._edit_image_impl, request)
+
+    def edit_image_with_progress(
+        self,
+        request: ImageEditRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        if progress_callback is None:
+            return self.edit_image(request)
+        extra = dict(request.extra or {})
+        extra["_step_progress_callback"] = progress_callback
+        return self.edit_image(replace(request, extra=extra))
 
     def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
         raise CapabilityNotSupportedError(
@@ -2315,26 +2518,17 @@ class MFluxVisionBackend(VisionBackend):
         )
         max_sequence_length = extra.pop("max_sequence_length", None)
         guidance_2 = extra.pop("guidance_2", model_def.default_guidance_2)
-        progress_callbacks = [
-            callback
-            for callback in (
-                extra.pop("on_progress", None),
-                extra.pop("progress_event_callback", None),
-                extra.pop("progress_callback", None),
-            )
-            if callable(callback)
-        ]
-        step_progress_callback = extra.pop("_step_progress_callback", None)
-        if not callable(step_progress_callback):
-            step_progress_callback = None
+        progress_callbacks, step_progress_callback = _pop_progress_callbacks(extra)
 
         def _progress_bridge(raw_event: Any) -> None:
             event = _normalize_video_progress_event(raw_event)
+            if event.task is None:
+                event = replace(event, task=task)
             for callback in progress_callbacks:
                 callback(event)
             if step_progress_callback is not None:
-                current = event.frame if event.total_frames is not None else (event.step or 0)
-                total = event.total_frames if event.total_frames is not None else event.total_steps
+                current = event.step if event.step is not None else (event.frame or 0)
+                total = event.total_steps if event.total_steps is not None else event.total_frames
                 step_progress_callback(current, total)
 
         kwargs: Dict[str, Any] = {

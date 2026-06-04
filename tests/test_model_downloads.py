@@ -133,15 +133,38 @@ class TestModelDownloads(unittest.TestCase):
 
         presets = model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True)
         wan = next(p for p in presets if p.repo_id == "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+        t2v_a14b = next(
+            p
+            for p in presets
+            if p.repo_id == "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+        )
+        i2v_a14b = next(
+            p
+            for p in presets
+            if p.repo_id == "AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit"
+        )
 
         self.assertEqual(wan.key, "wan2.2-ti2v-5b")
         self.assertEqual(wan.target, "mlx")
         self.assertEqual(wan.engine, "mlx-gen")
         self.assertEqual(wan.quantization_bits, 16)
         self.assertEqual(wan.source, "official")
+        self.assertEqual(t2v_a14b.key, "wan2.2-t2v-a14b")
+        self.assertEqual(t2v_a14b.quantization_bits, 8)
+        self.assertEqual(t2v_a14b.source, "abstractframework-mlx-gen")
+        self.assertEqual(i2v_a14b.key, "wan2.2-i2v-a14b")
+        self.assertEqual(i2v_a14b.quantization_bits, 8)
+        self.assertEqual(i2v_a14b.source, "abstractframework-mlx-gen")
 
         selected = find_model_preset("Wan-AI/Wan2.2-TI2V-5B-Diffusers", target="mlx", engine="mlx-gen", require_8bit=False)
         self.assertEqual(selected.repo_id, "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+        selected = find_model_preset(
+            "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=False,
+        )
+        self.assertEqual(selected.repo_id, "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit")
 
     def test_fibo_mlx_gen_presets_are_exact_non_quantized_runtime_models(self):
         from abstractvision.model_downloads import find_model_preset, model_presets

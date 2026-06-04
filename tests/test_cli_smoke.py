@@ -1005,15 +1005,37 @@ class TestCliSmoke(unittest.TestCase):
                 total_frames=10,
                 step=2,
                 total_steps=5,
-                progress=0.3,
+                progress=0.4,
+                frame_progress=0.3,
             )
         )
         progress.close()
 
         out = err.getvalue()
-        self.assertIn("Generating video: 3/10 frames", out)
-        self.assertIn("30.0%", out)
-        self.assertIn("denoise step 2/5", out)
+        self.assertIn("Generating video: 2/5 steps", out)
+        self.assertIn("40.0%", out)
+        self.assertIn("denoise frame 3/10", out)
+
+    def test_cli_image_progress_renders_step_status(self):
+        from abstractvision.cli import _CliVideoProgress
+        from abstractvision.types import VideoProgressEvent
+
+        err = io.StringIO()
+        progress = _CliVideoProgress(stream=err)
+        progress(
+            VideoProgressEvent(
+                phase="denoise",
+                step=2,
+                total_steps=5,
+                progress=0.4,
+                task="text_to_image",
+            )
+        )
+        progress.close()
+
+        out = err.getvalue()
+        self.assertIn("Generating image: 2/5 steps", out)
+        self.assertIn("40.0%", out)
 
     def test_cli_i2i_parser_default_steps_are_none(self):
         from abstractvision.cli import build_parser
@@ -1022,6 +1044,78 @@ class TestCliSmoke(unittest.TestCase):
         args = parser.parse_args(["i2i", "--image", "input.png", "hello"])
 
         self.assertIsNone(args.steps)
+        self.assertFalse(args.progress)
+        self.assertEqual(args.reference_images, [])
+
+    def test_cli_i2i_parser_accepts_reference_images_and_progress(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "i2i",
+                "--image",
+                "input.png",
+                "--reference-image",
+                "style.png",
+                "--reference-image",
+                "layout.png",
+                "--progress",
+                "combine them",
+            ]
+        )
+
+        self.assertTrue(args.progress)
+        self.assertEqual(args.reference_images, ["style.png", "layout.png"])
+
+    def test_cli_i2i_command_passes_reference_images_and_progress(self):
+        from abstractvision.cli import _cmd_i2i, build_parser
+
+        seen = {}
+
+        class FakeVisionManager:
+            backend = None
+            store = None
+
+            def edit_image(self, prompt, **kwargs):
+                seen["prompt"] = prompt
+                seen["kwargs"] = kwargs
+                return {"ok": True}
+
+        with tempfile.TemporaryDirectory() as td:
+            input_path = Path(td) / "input.png"
+            ref_path = Path(td) / "style.png"
+            input_path.write_bytes(b"input-image")
+            ref_path.write_bytes(b"reference-image")
+
+            parser = build_parser()
+            args = parser.parse_args(
+                [
+                    "i2i",
+                    "--image",
+                    str(input_path),
+                    "--reference-image",
+                    str(ref_path),
+                    "--strength",
+                    "0.4",
+                    "--progress",
+                    "combine references",
+                ]
+            )
+
+            with patch(
+                "abstractvision.cli._build_manager_from_args",
+                return_value=FakeVisionManager(),
+            ):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    rc = _cmd_i2i(args)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(seen["prompt"], "combine references")
+        self.assertEqual(seen["kwargs"]["image"], b"input-image")
+        self.assertEqual(seen["kwargs"]["extra"]["reference_images"], [b"reference-image"])
+        self.assertEqual(seen["kwargs"]["extra"]["strength"], 0.4)
+        self.assertIn("on_progress", seen["kwargs"]["extra"])
 
     def test_cli_t2i_parser_defaults_are_none(self):
         from abstractvision.cli import build_parser
@@ -1032,6 +1126,7 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIsNone(args.width)
         self.assertIsNone(args.height)
         self.assertIsNone(args.steps)
+        self.assertFalse(args.progress)
 
     def test_t2i_provider_mflux_alias_routes_to_mlx_gen_backend(self):
         from abstractvision.backends.mflux import MFluxVisionBackend

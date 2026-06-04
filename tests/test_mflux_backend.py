@@ -43,16 +43,48 @@ class _GeneratedVideo:
 
 
 class _FakeProgressEvent:
-    def __init__(self, phase, frame, total_frames, step, total_steps):
+    def __init__(self, phase, frame, total_frames, step, total_steps, task=None):
         self.phase = phase
         self.frame = frame
         self.total_frames = total_frames
         self.step = step
         self.total_steps = total_steps
+        self.task = task
+        self.timestep = step
 
     @property
     def progress(self):
+        if self.total_steps:
+            return self.step / self.total_steps
+        if self.total_frames:
+            return self.frame / self.total_frames
+        return 0.0
+
+    @property
+    def frame_progress(self):
+        if self.frame is None or not self.total_frames:
+            return None
         return self.frame / self.total_frames
+
+
+class _FakeCallbackRegistry:
+    def __init__(self):
+        self.subscriptions = []
+
+    def subscribe_progress(self, callback, *, task=None):
+        subscription = (callback, task)
+        self.subscriptions.append(subscription)
+
+        def unsubscribe():
+            if subscription in self.subscriptions:
+                self.subscriptions.remove(subscription)
+
+        return unsubscribe
+
+    def emit(self, event):
+        for callback, task in list(self.subscriptions):
+            if task is None or task == event.task:
+                callback(event)
 
 
 class _FakeModelConfig:
@@ -173,9 +205,13 @@ class _FakeFlux2:
 
     def __init__(self, **kwargs):
         _FakeFlux2.last_init = dict(kwargs)
+        self.callbacks = _FakeCallbackRegistry()
 
     def generate_image(self, **kwargs):
         _FakeFlux2.last_generate = dict(kwargs)
+        self.callbacks.emit(_FakeProgressEvent("start", None, None, 0, 4, task="text-to-image"))
+        self.callbacks.emit(_FakeProgressEvent("denoise", None, None, 2, 4, task="text-to-image"))
+        self.callbacks.emit(_FakeProgressEvent("complete", None, None, 4, 4, task="text-to-image"))
         return _Generated()
 
 
@@ -185,9 +221,13 @@ class _FakeFlux2Edit:
 
     def __init__(self, **kwargs):
         _FakeFlux2Edit.last_init = dict(kwargs)
+        self.callbacks = _FakeCallbackRegistry()
 
     def generate_image(self, **kwargs):
         _FakeFlux2Edit.last_generate = dict(kwargs)
+        self.callbacks.emit(_FakeProgressEvent("start", None, None, 0, 4, task="image-to-image"))
+        self.callbacks.emit(_FakeProgressEvent("denoise", None, None, 2, 4, task="image-to-image"))
+        self.callbacks.emit(_FakeProgressEvent("complete", None, None, 4, 4, task="image-to-image"))
         return _Generated()
 
 
@@ -400,6 +440,39 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(_FakeFlux2.last_generate["height"], 32)
         self.assertEqual(_FakeFlux2.last_generate["num_inference_steps"], 4)
         self.assertEqual(_FakeFlux2.last_generate["guidance"], 1.0)
+
+    def test_generate_image_emits_mlx_gen_progress_events(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest, VideoProgressEvent
+
+        seen = []
+        step_seen = []
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-4bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-4bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    backend.generate_image_with_progress(
+                        ImageGenerationRequest(
+                            prompt="hello",
+                            steps=4,
+                            extra={"on_progress": seen.append},
+                        ),
+                        progress_callback=lambda current, total: step_seen.append((current, total)),
+                    )
+
+        self.assertEqual([event.phase for event in seen], ["start", "denoise", "complete"])
+        self.assertTrue(all(isinstance(event, VideoProgressEvent) for event in seen))
+        self.assertEqual([event.task for event in seen], ["text_to_image"] * 3)
+        self.assertEqual(seen[-1].step_progress, 1.0)
+        self.assertEqual(step_seen, [(0, 4), (2, 4), (4, 4)])
 
     def test_generate_image_preserves_explicit_mlx_gen_q8_variant(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -917,13 +990,34 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual([event.phase for event in seen], ["start", "denoise", "complete"])
         self.assertTrue(all(isinstance(event, VideoProgressEvent) for event in seen))
+        self.assertEqual(seen[1].progress, 0.5)
+        self.assertEqual(seen[1].step_progress, 0.5)
+        self.assertEqual(seen[1].frame_progress, 0.6)
         self.assertEqual(seen[-1].frame, 5)
         self.assertEqual(seen[-1].total_frames, 5)
         self.assertEqual(seen[-1].step, 2)
         self.assertEqual(seen[-1].total_steps, 2)
         self.assertEqual(seen[-1].progress, 1.0)
 
-    def test_wan_generate_video_with_progress_uses_frame_counts(self):
+    def test_wan_normalizes_missing_progress_from_steps_not_frames(self):
+        from abstractvision.backends.mflux import _normalize_video_progress_event
+
+        raw_event = {
+            "phase": "denoise",
+            "frame": 3,
+            "total_frames": 10,
+            "step": 2,
+            "total_steps": 5,
+            "task": "text-to-video",
+        }
+
+        event = _normalize_video_progress_event(raw_event)
+
+        self.assertEqual(event.progress, 0.4)
+        self.assertEqual(event.step_progress, 0.4)
+        self.assertEqual(event.frame_progress, 0.3)
+
+    def test_wan_generate_video_with_progress_uses_step_counts(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import VideoGenerationRequest
 
@@ -949,7 +1043,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             progress_callback=lambda current, total: seen.append((current, total)),
                         )
 
-        self.assertEqual(seen, [(0, 5), (3, 5), (5, 5)])
+        self.assertEqual(seen, [(0, 2), (1, 2), (2, 2)])
 
     def test_wan_routes_image_to_video_with_letterboxed_temp_image(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1069,7 +1163,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.18\.8",
+                        r"mlx-gen>=0\.18\.10",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(
@@ -1351,6 +1445,39 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(tuple(i2v_models[0].capabilities), ("image_to_video",))
         self.assertEqual(i2v_models[0].raw["parameter_defaults"]["guidance_2"], 3.5)
 
+    def test_wan_a14b_provider_catalog_advertises_prepared_abstractframework_variants(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(
+                Path(cache_td), "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+            )
+            self._make_cache_snapshot(
+                Path(cache_td), "AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit"
+            )
+            backend = MFluxVisionBackend(config=MFluxBackendConfig())
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                t2v_models = list(backend.list_provider_models(task="text_to_video"))
+                i2v_models = list(backend.list_provider_models(task="image_to_video"))
+
+        self.assertEqual(
+            [m.id for m in t2v_models],
+            ["AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"],
+        )
+        self.assertEqual(tuple(t2v_models[0].capabilities), ("text_to_video",))
+        self.assertEqual(t2v_models[0].raw["base_model"], "wan2.2-t2v-a14b")
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["width"], 1280)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["height"], 720)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["guidance_2"], 3.0)
+        self.assertEqual(
+            [m.id for m in i2v_models],
+            ["AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit"],
+        )
+        self.assertEqual(tuple(i2v_models[0].capabilities), ("image_to_video",))
+        self.assertEqual(i2v_models[0].raw["base_model"], "wan2.2-i2v-a14b")
+        self.assertEqual(i2v_models[0].raw["parameter_defaults"]["guidance_2"], 3.5)
+
     def test_provider_catalog_exposes_cached_mlx_gen_q4_and_q8_variants(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
@@ -1435,6 +1562,70 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(len(_FakeQwenImageEdit.last_generate["image_paths"]), 1)
         self.assertTrue(_FakeQwenImageEdit.last_generate["image_paths"][0])
 
+    def test_qwen_edit_accepts_additional_reference_images(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(
+                Path(cache_td), "AbstractFramework/qwen-image-edit-2511-4bit"
+            )
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-edit-2511-4bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_qwen",
+                        return_value=(_FakeQwenImage, _FakeQwenImageEdit),
+                    ):
+                        asset = backend.edit_image(
+                            ImageEditRequest(
+                                prompt="combine references",
+                                image=PNG_1X1,
+                                seed=123,
+                                extra={"reference_images": [_solid_png(2, 2, "blue")]},
+                            )
+                        )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(len(_FakeQwenImageEdit.last_generate["image_paths"]), 2)
+        self.assertEqual(asset.metadata["reference_image_count"], 2)
+        self.assertEqual(asset.metadata["edit_mode"], "multi_reference")
+        for image_path in _FakeQwenImageEdit.last_generate["image_paths"]:
+            self.assertFalse(Path(image_path).exists())
+
+    def test_fibo_edit_rejects_additional_reference_images(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageEditRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "briaai/Fibo-Edit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="briaai/Fibo-Edit"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_fibo",
+                        return_value=(_FakeFIBO, _FakeFIBOEdit),
+                    ):
+                        with self.assertRaises(CapabilityNotSupportedError):
+                            backend.edit_image(
+                                ImageEditRequest(
+                                    prompt="remove background",
+                                    image=PNG_1X1,
+                                    extra={"reference_images": [PNG_1X1]},
+                                )
+                            )
+
     def test_canonical_mlx_gen_exports_alias_compatibility_backend(self):
         from abstractvision.backends import (
             MLXGenBackendConfig,
@@ -1493,6 +1684,48 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(_FakeFlux2Edit.last_generate["width"], 1)
         self.assertEqual(_FakeFlux2Edit.last_generate["height"], 1)
         self.assertNotIn("image_strength", asset.metadata)
+
+    def test_flux2_edit_accepts_additional_reference_images_and_progress(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageEditRequest, VideoProgressEvent
+
+        seen = []
+        _FakeFlux2.last_generate = None
+        _FakeFlux2Edit.last_generate = None
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-9b-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    asset = backend.edit_image(
+                        ImageEditRequest(
+                            prompt="combine references",
+                            image=PNG_1X1,
+                            extra={
+                                "reference_images": [_solid_png(2, 2, "blue")],
+                                "on_progress": seen.append,
+                            },
+                            guidance_scale=1.0,
+                            seed=123,
+                        )
+                    )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertIsNone(_FakeFlux2.last_generate)
+        self.assertIsNotNone(_FakeFlux2Edit.last_generate)
+        self.assertEqual(len(_FakeFlux2Edit.last_generate["image_paths"]), 2)
+        self.assertEqual(asset.metadata["reference_image_count"], 2)
+        self.assertEqual(asset.metadata["edit_mode"], "multi_reference")
+        self.assertEqual([event.phase for event in seen], ["start", "denoise", "complete"])
+        self.assertTrue(all(isinstance(event, VideoProgressEvent) for event in seen))
+        self.assertEqual([event.task for event in seen], ["image_to_image"] * 3)
+        for image_path in _FakeFlux2Edit.last_generate["image_paths"]:
+            self.assertFalse(Path(image_path).exists())
 
     def test_runtime_serializes_model_init_and_generate_on_same_thread(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend

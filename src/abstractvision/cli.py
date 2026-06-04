@@ -36,7 +36,6 @@ from .model_downloads import (
     MacOSGGUFUnsupportedError,
     model_presets,
     normalize_model_engine,
-    normalize_model_target,
     resolve_hf_token,
     resolve_model_target_and_engine,
     resolve_sdcpp_model_selection,
@@ -64,21 +63,27 @@ class _CliVideoProgress:
         if not self.enabled:
             return
         total_frames = event.total_frames
-        if total_frames is not None and total_frames > 0:
-            frame_part = f"{event.frame}/{total_frames} frames"
+        step = event.step if event.step is not None else 0
+        if event.total_steps is not None and event.total_steps > 0:
+            primary_part = f"{step}/{event.total_steps} steps"
         else:
-            frame_part = f"{event.frame} frames"
-        if event.progress is not None:
-            progress_part = f" ({max(0.0, min(1.0, float(event.progress))) * 100:5.1f}%)"
+            primary_part = f"{step} steps"
+        display_progress = event.progress if event.progress is not None else event.step_progress
+        if display_progress is None and event.total_steps is not None and event.total_steps > 0:
+            display_progress = float(step) / float(event.total_steps)
+        if display_progress is None:
+            display_progress = event.frame_progress
+        if display_progress is not None:
+            progress_part = f" ({max(0.0, min(1.0, float(display_progress))) * 100:5.1f}%)"
         else:
             progress_part = ""
-        step_part = ""
-        if event.step is not None:
-            if event.total_steps is not None and event.total_steps > 0:
-                step_part = f" step {event.step}/{event.total_steps}"
-            else:
-                step_part = f" step {event.step}"
-        message = f"Generating video: {frame_part}{progress_part} {event.phase}{step_part}"
+        context_part = ""
+        if total_frames is not None and total_frames > 0:
+            frame = event.frame if event.frame is not None else 0
+            context_part = f" frame {frame}/{total_frames}"
+        task = str(event.task or "").replace("-", "_")
+        media = "video" if "video" in task or total_frames is not None else "image"
+        message = f"Generating {media}: {primary_part}{progress_part} {event.phase}{context_part}"
         print("\r" + message, end="", file=self.stream, flush=True)
         self._wrote = True
         if str(event.phase or "").lower() == "complete":
@@ -1059,6 +1064,10 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
 
 def _cmd_t2i(args: argparse.Namespace) -> int:
     vm = _build_manager_from_args(args)
+    progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", False)))
+    extra: Dict[str, Any] = {}
+    if progress.enabled:
+        extra["on_progress"] = progress
     request = _resolve_t2i_request(
         vm,
         prompt=args.prompt,
@@ -1068,17 +1077,21 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
         steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
+        extra=extra,
     )
-    out = vm.generate_image(
-        request.prompt,
-        negative_prompt=request.negative_prompt,
-        width=request.width,
-        height=request.height,
-        steps=request.steps,
-        guidance_scale=request.guidance_scale,
-        seed=request.seed,
-        extra=dict(request.extra or {}),
-    )
+    try:
+        out = vm.generate_image(
+            request.prompt,
+            negative_prompt=request.negative_prompt,
+            width=request.width,
+            height=request.height,
+            steps=request.steps,
+            guidance_scale=request.guidance_scale,
+            seed=request.seed,
+            extra=dict(request.extra or {}),
+        )
+    finally:
+        progress.close()
     _print_json(out)
     if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
         p = vm.store.get_content_path(out["$artifact"])
@@ -1180,16 +1193,28 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
     extra: Dict[str, Any] = {}
     if getattr(args, "strength", None) is not None:
         extra["strength"] = float(args.strength)
-    out = vm.edit_image(
-        args.prompt,
-        image=image_bytes,
-        mask=mask_bytes,
-        negative_prompt=args.negative_prompt,
-        steps=steps,
-        guidance_scale=args.guidance_scale,
-        seed=args.seed,
-        extra=extra,
-    )
+    reference_images = [
+        Path(path).expanduser().read_bytes()
+        for path in (getattr(args, "reference_images", None) or ())
+    ]
+    if reference_images:
+        extra["reference_images"] = reference_images
+    progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", False)))
+    if progress.enabled:
+        extra["on_progress"] = progress
+    try:
+        out = vm.edit_image(
+            args.prompt,
+            image=image_bytes,
+            mask=mask_bytes,
+            negative_prompt=args.negative_prompt,
+            steps=steps,
+            guidance_scale=args.guidance_scale,
+            seed=args.seed,
+            extra=extra,
+        )
+    finally:
+        progress.close()
     _print_json(out)
     if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
         p = vm.store.get_content_path(out["$artifact"])
@@ -2741,6 +2766,19 @@ def build_parser() -> argparse.ArgumentParser:
     t2i.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     t2i.add_argument("--seed", type=int, default=None)
     t2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
+    t2i.add_argument(
+        "--progress",
+        dest="progress",
+        action="store_true",
+        default=False,
+        help="Show local image generation progress on stderr.",
+    )
+    t2i.add_argument(
+        "--no-progress",
+        dest="progress",
+        action="store_false",
+        help="Disable image generation progress output.",
+    )
     t2i.set_defaults(_fn=_cmd_t2i)
 
     i2i = sub.add_parser(
@@ -2748,6 +2786,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_provider_flags(i2i)
     i2i.add_argument("--image", required=True, help="Input image file path.")
+    i2i.add_argument(
+        "--reference-image",
+        dest="reference_images",
+        action="append",
+        default=[],
+        help="Additional reference image path for MLX-Gen multi-reference edit models.",
+    )
     i2i.add_argument("--mask", default=None, help="Optional mask file path.")
     i2i.add_argument("prompt")
     i2i.add_argument("--negative-prompt", default=None)
@@ -2761,6 +2806,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Edit strength (img2img noising/unnoising; backend-dependent).",
     )
     i2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
+    i2i.add_argument(
+        "--progress",
+        dest="progress",
+        action="store_true",
+        default=False,
+        help="Show local image edit progress on stderr.",
+    )
+    i2i.add_argument(
+        "--no-progress",
+        dest="progress",
+        action="store_false",
+        help="Disable image edit progress output.",
+    )
     i2i.set_defaults(_fn=_cmd_i2i)
 
     t2v = sub.add_parser(

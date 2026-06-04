@@ -81,7 +81,7 @@ class VisionManager:
             tags=tags,
         )
 
-    def _move_video_progress_callbacks_to_extra(self, kwargs: Dict[str, Any]) -> None:
+    def _move_progress_callbacks_to_extra(self, kwargs: Dict[str, Any]) -> None:
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in ("on_progress", "progress_event_callback", "progress_callback"):
@@ -102,6 +102,7 @@ class VisionManager:
         backend = self._require_backend()
         self._require_model_support("text_to_image")
         self._require_backend_support(backend, "text_to_image")
+        self._move_progress_callbacks_to_extra(kwargs)
         request = ImageGenerationRequest(prompt=prompt, **kwargs)
         normalize = getattr(backend, "normalize_image_generation_request", None)
         if callable(normalize):
@@ -122,6 +123,7 @@ class VisionManager:
             raise CapabilityNotSupportedError(
                 "Backend does not support masked image edits (mask parameter)."
             )
+        self._move_progress_callbacks_to_extra(kwargs)
         request = ImageEditRequest(prompt=prompt, image=image, **kwargs)
         normalize = getattr(backend, "normalize_image_edit_request", None)
         if callable(normalize):
@@ -146,7 +148,7 @@ class VisionManager:
         backend = self._require_backend()
         self._require_model_support("text_to_video")
         self._require_backend_support(backend, "text_to_video")
-        self._move_video_progress_callbacks_to_extra(kwargs)
+        self._move_progress_callbacks_to_extra(kwargs)
         request = VideoGenerationRequest(prompt=prompt, **kwargs)
         normalize = getattr(backend, "normalize_video_generation_request", None)
         if callable(normalize):
@@ -160,7 +162,7 @@ class VisionManager:
         backend = self._require_backend()
         self._require_model_support("image_to_video")
         self._require_backend_support(backend, "image_to_video")
-        self._move_video_progress_callbacks_to_extra(kwargs)
+        self._move_progress_callbacks_to_extra(kwargs)
         request = ImageToVideoRequest(image=image, **kwargs)
         normalize = getattr(backend, "normalize_image_to_video_request", None)
         if callable(normalize):

@@ -42,6 +42,7 @@ validation:
 nav:
   - Home: README.md
   - Getting Started: getting-started.md
+  - MLX-Gen Local Examples: mlx-gen-local-examples.md
   - API Overview: api.md
   - Architecture: architecture.md
   - FAQ: faq.md

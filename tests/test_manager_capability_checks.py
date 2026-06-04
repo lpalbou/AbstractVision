@@ -71,8 +71,11 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
             def generate_video(self, request):  # pragma: no cover
                 raise NotImplementedError
 
-            def image_to_video(self, request):  # pragma: no cover
-                raise NotImplementedError
+            def image_to_video(self, request):
+                seen["i2v"] = request
+                return GeneratedAsset(
+                    media_type="video", data=b"v", mime_type="video/mp4", metadata={}
+                )
 
         reg = VisionModelCapabilitiesRegistry()
         vm = VisionManager(backend=NoMaskBackend(), model_id="zai-org/GLM-Image", registry=reg)
@@ -167,6 +170,23 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
                     extra=dict(request.extra or {}),
                 )
 
+            def normalize_image_to_video_request(self, request):
+                from abstractvision.types import ImageToVideoRequest
+
+                return ImageToVideoRequest(
+                    image=request.image,
+                    prompt=request.prompt,
+                    negative_prompt=None,
+                    width=request.width,
+                    height=request.height,
+                    fps=8,
+                    num_frames=9,
+                    seed=request.seed,
+                    steps=2,
+                    guidance_scale=1.0,
+                    extra=dict(request.extra or {}),
+                )
+
             def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
                 seen["t2i"] = request
                 return GeneratedAsset(
@@ -188,18 +208,42 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
                     media_type="video", data=b"v", mime_type="video/mp4", metadata={}
                 )
 
-            def image_to_video(self, request):  # pragma: no cover
-                raise NotImplementedError
+            def image_to_video(self, request):
+                seen["i2v"] = request
+                return GeneratedAsset(
+                    media_type="video", data=b"v", mime_type="video/mp4", metadata={}
+                )
 
         vm = VisionManager(backend=NormalizingBackend())
 
         def progress_callback(event):
             return None
 
-        vm.generate_image("hello", steps=1, guidance_scale=7.0, negative_prompt="blur")
-        vm.edit_image("hello", image=b"img", steps=1, guidance_scale=7.0, negative_prompt="blur")
+        vm.generate_image(
+            "hello",
+            steps=1,
+            guidance_scale=7.0,
+            negative_prompt="blur",
+            on_progress=progress_callback,
+        )
+        vm.edit_image(
+            "hello",
+            image=b"img",
+            steps=1,
+            guidance_scale=7.0,
+            negative_prompt="blur",
+            on_progress=progress_callback,
+        )
         vm.generate_video(
             "hello",
+            steps=1,
+            guidance_scale=7.0,
+            negative_prompt="blur",
+            on_progress=progress_callback,
+        )
+        vm.image_to_video(
+            b"img",
+            prompt="hello",
             steps=1,
             guidance_scale=7.0,
             negative_prompt="blur",
@@ -209,15 +253,23 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         self.assertEqual(seen["t2i"].steps, 2)
         self.assertEqual(seen["t2i"].guidance_scale, 1.0)
         self.assertIsNone(seen["t2i"].negative_prompt)
+        self.assertIs(seen["t2i"].extra.get("on_progress"), progress_callback)
         self.assertEqual(seen["i2i"].steps, 2)
         self.assertEqual(seen["i2i"].guidance_scale, 1.0)
         self.assertIsNone(seen["i2i"].negative_prompt)
+        self.assertIs(seen["i2i"].extra.get("on_progress"), progress_callback)
         self.assertEqual(seen["t2v"].steps, 2)
         self.assertEqual(seen["t2v"].guidance_scale, 1.0)
         self.assertEqual(seen["t2v"].fps, 8)
         self.assertEqual(seen["t2v"].num_frames, 9)
         self.assertIsNone(seen["t2v"].negative_prompt)
         self.assertIs(seen["t2v"].extra.get("on_progress"), progress_callback)
+        self.assertEqual(seen["i2v"].steps, 2)
+        self.assertEqual(seen["i2v"].guidance_scale, 1.0)
+        self.assertEqual(seen["i2v"].fps, 8)
+        self.assertEqual(seen["i2v"].num_frames, 9)
+        self.assertIsNone(seen["i2v"].negative_prompt)
+        self.assertIs(seen["i2v"].extra.get("on_progress"), progress_callback)
 
 
 if __name__ == "__main__":

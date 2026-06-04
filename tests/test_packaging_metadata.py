@@ -154,7 +154,7 @@ class TestPackagingMetadata(unittest.TestCase):
 
     def test_mlx_gen_extra_uses_current_runtime_floor(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        expected = "mlx-gen>=0.18.8,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'"
+        expected = "mlx-gen>=0.18.10,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'"
 
         for extra in ("mlx-gen", "mflux", "apple", "all", "all-apple"):
             self.assertIn(expected, _optional_dependency_requirements(pyproject, extra))
