@@ -149,6 +149,7 @@ abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx
 abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen
 abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen
 abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provider mlx-gen
+abstractvision download AbstractFramework/seedvr2-3b-8bit --provider mlx-gen
 abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-4bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-8bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-4bit --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75
@@ -156,8 +157,9 @@ abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-
 abstractvision t2i --provider mlx-gen --model briaai/FIBO "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 50 --guidance-scale 4.0
 abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0
 abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.png "remove the background and keep the object edges clean" --steps 20 --guidance-scale 4.0
-abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0
-abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0
+abstractvision upscale --provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --image ./input.png --scale 2x --open
+abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0
+abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5
 ```
 
 For a complete local MLX-Gen gallery with copy-paste commands and bundled
@@ -172,12 +174,19 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen 0.18.10+ also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen 0.18.13+ also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, and prepared Wan 2.2 A14B video packages
 such as `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` and
-`AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. Bonsai is a pre-packed
+`AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. It also supports SeedVR2
+single-image upscaling through the official `ByteDance-Seed/SeedVR2-3B` and
+`ByteDance-Seed/SeedVR2-7B` bases plus the canonical
+`AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}` prepared packages. Use
+`AbstractFramework/seedvr2-3b-8bit` by default, `AbstractFramework/seedvr2-7b-8bit`
+when memory allows, and q4 variants only when memory is tight. Use `--scale 2x`
+or an integer `--resolution`; `--quantize` is only needed for official/source
+weights. Bonsai is a pre-packed
 ternary 2-bit checkpoint, not a q4/q8 prepared folder; use its exact repo id
 and keep guidance at 1.0. The binary 1-bit Bonsai checkpoint is not surfaced
 because stock MLX cannot run it yet. `image_to_image` is implemented for FLUX.2
@@ -190,7 +199,34 @@ MLX-Gen's `image_strength` parameter where the runtime supports it. For video,
 prefer the task-specific prepared Wan 2.2 A14B T2V/I2V packages when memory
 allows; MLX-Gen also supports the unified TI2V-5B snapshot. Wan A14B dimensions
 must be multiples of 16; `432x240` is a valid low-cost check size, while native
-quality checks should use the model's recommended larger resolutions.
+quality checks should use the model's recommended larger resolutions. Wan A14B
+uses two guidance stages: `guidance_scale` is the primary/high-noise guidance,
+and `guidance_2` (`--guidance-2`) is the second-stage/low-noise guidance.
+Registry defaults are `4.0` + `3.0` for T2V and `3.5` + `3.5` for I2V; omit
+`guidance_2` for single-stage video models.
+
+SeedVR2 model selection:
+
+| Model id | Use when |
+| --- | --- |
+| `AbstractFramework/seedvr2-3b-8bit` | Default upscaler: lowest-friction q8 package. |
+| `AbstractFramework/seedvr2-7b-8bit` | Higher-quality 7B upscaling when memory allows. |
+| `AbstractFramework/seedvr2-3b-4bit` | Lower-memory 3B package. |
+| `AbstractFramework/seedvr2-7b-4bit` | Lower-memory 7B package. |
+| `ByteDance-Seed/SeedVR2-3B` / `ByteDance-Seed/SeedVR2-7B` | Official source weights; pass `--quantize 8` or `--quantize 4` when runtime quantization is needed. |
+
+If you already have a prepared MLX-Gen folder, pass the folder directly as the
+model. AbstractVision infers the SeedVR2 base from names such as
+`seedvr2-7b-8bit`:
+
+```bash
+abstractvision upscale \
+  --provider mlx-gen \
+  --model /Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit \
+  --image ./input.png \
+  --scale 2x \
+  --open
+```
 
 One-shot `t2i`, `i2i`, `t2v`, and `i2v` commands store results in the local
 asset store and print an artifact ref followed by the local content path. Use
@@ -203,10 +239,10 @@ default: some older/local models accept it, while newer OpenAI-compatible image
 models may only accept larger provider-declared sizes such as `1024x1024`,
 `1024x1536`, `1536x1024`, or `auto`. If you pass `--width`/`--height`, the
 backend may reject unsupported combinations.
-MLX-Gen video commands report denoise-step progress with frame context on
-stderr by default; pass `--no-progress` when you need quiet output. MLX-Gen
-image commands are quiet by default and accept `--progress` for image
-generation/edit step progress.
+MLX-Gen video and upscale commands report denoise-step progress on stderr by
+default; video progress also includes frame context. Pass `--no-progress` when
+you need quiet output. MLX-Gen image generation/edit commands are quiet by
+default and accept `--progress` for step progress.
 
 Stable Diffusion does not currently have a curated MLX-Gen q4/q8 preset in
 AbstractVision, so full Diffusers downloads remain explicit.
@@ -361,9 +397,9 @@ For Apple Silicon local generation through MLX-Gen:
 /backend mlx-gen AbstractFramework/qwen-image-edit-2511-4bit
 /i2i --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75 --open
 /backend mlx-gen AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
-/t2v "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/t2v "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
 /backend mlx-gen AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit
-/i2v --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/i2v --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
 ```
 
 `/t2v` and `/i2v` show MLX-Gen denoise-step video progress by default; add

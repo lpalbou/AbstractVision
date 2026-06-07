@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Union
 
 
 @dataclass(frozen=True)
@@ -86,6 +86,18 @@ class ImageEditRequest:
 
 
 @dataclass(frozen=True)
+class ImageUpscaleRequest:
+    image: bytes
+    resolution: Optional[Union[int, str]] = None
+    scale: Optional[Union[int, float, str]] = None
+    seed: Optional[int] = None
+    softness: Optional[float] = None
+    quantize: Optional[int] = None
+    vae_tiling: Optional[bool] = None
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class MultiAngleRequest:
     prompt: str
     reference_image: Optional[bytes] = None
@@ -108,6 +120,7 @@ class VideoGenerationRequest:
     seed: Optional[int] = None
     steps: Optional[int] = None
     guidance_scale: Optional[float] = None
+    guidance_2: Optional[float] = None
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -123,6 +136,7 @@ class ImageToVideoRequest:
     seed: Optional[int] = None
     steps: Optional[int] = None
     guidance_scale: Optional[float] = None
+    guidance_2: Optional[float] = None
     extra: Dict[str, Any] = field(default_factory=dict)
 
 

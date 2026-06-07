@@ -20,7 +20,16 @@ class TestCapabilityRegistryCoverage(unittest.TestCase):
 
         reg = VisionModelCapabilitiesRegistry()
         tasks = set(reg.list_tasks())
-        self.assertTrue({"text_to_image", "image_to_image", "multi_view_image", "text_to_video", "image_to_video"}.issubset(tasks))
+        self.assertTrue(
+            {
+                "text_to_image",
+                "image_to_image",
+                "image_upscale",
+                "multi_view_image",
+                "text_to_video",
+                "image_to_video",
+            }.issubset(tasks)
+        )
 
     def test_every_task_has_at_least_one_model(self):
         from abstractvision import VisionModelCapabilitiesRegistry

@@ -176,10 +176,14 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
             vm = VisionManager(backend=FakeBackend(), store=store)
             reg = VisionModelCapabilitiesRegistry()
             with patch.dict(sys.modules, {"abstractcore": _fake_abstractcore_module()}):
-                t2v_tools = make_vision_tools(vision_manager=vm, model_id="zai-org/CogVideoX-2b", registry=reg)
+                t2v_tools = make_vision_tools(
+                    vision_manager=vm,
+                    model_id="Wan-AI/Wan2.2-T2V-A14B",
+                    registry=reg,
+                )
                 i2v_tools = make_vision_tools(
                     vision_manager=vm,
-                    model_id="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+                    model_id="Wan-AI/Wan2.2-I2V-A14B",
                     registry=reg,
                 )
 
@@ -195,12 +199,14 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
         self.assertEqual(seen["t2v"].num_frames, 49)
         self.assertEqual(seen["t2v"].steps, 50)
         self.assertEqual(seen["t2v"].guidance_scale, 6.0)
+        self.assertEqual(seen["t2v"].guidance_2, 3.0)
         self.assertEqual(seen["i2v"].width, 544)
         self.assertEqual(seen["i2v"].height, 960)
         self.assertEqual(seen["i2v"].fps, 16)
         self.assertEqual(seen["i2v"].num_frames, 81)
         self.assertEqual(seen["i2v"].steps, 30)
         self.assertEqual(seen["i2v"].guidance_scale, 5.0)
+        self.assertEqual(seen["i2v"].guidance_2, 3.5)
 
     def test_unsupported_task_raises(self):
         from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry

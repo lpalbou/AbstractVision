@@ -1126,6 +1126,7 @@ class PlaygroundState:
             "height",
             "steps",
             "guidance_scale",
+            "guidance_2",
             "seed",
             "extra",
         }
@@ -1188,6 +1189,7 @@ class PlaygroundState:
             "num_frames",
             "steps",
             "guidance_scale",
+            "guidance_2",
             "seed",
             "extra",
         }
@@ -1202,6 +1204,7 @@ class PlaygroundState:
             num_frames=_to_int(payload.get("num_frames")),
             steps=_to_int(payload.get("steps")),
             guidance_scale=_to_float(payload.get("guidance_scale")),
+            guidance_2=_to_float(payload.get("guidance_2")),
             seed=_to_int(payload.get("seed")),
             extra=_request_kwargs(payload, known=known),
         )

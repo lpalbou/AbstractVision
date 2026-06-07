@@ -34,6 +34,7 @@ from ..types import (
     ImageEditRequest,
     ImageGenerationRequest,
     ImageToVideoRequest,
+    ImageUpscaleRequest,
     MultiAngleRequest,
     ProviderModelInfo,
     VideoProgressEvent,
@@ -47,6 +48,8 @@ MFLUX_PROVIDER = "mflux"
 WAN_TI2V_MODEL_KEY = "wan2.2-ti2v-5b"
 WAN_T2V_A14B_MODEL_KEY = "wan2.2-t2v-a14b"
 WAN_I2V_A14B_MODEL_KEY = "wan2.2-i2v-a14b"
+SEEDVR2_3B_MODEL_KEY = "seedvr2-3b"
+SEEDVR2_7B_MODEL_KEY = "seedvr2-7b"
 WAN_DEFAULT_WIDTH = 1280
 WAN_DEFAULT_HEIGHT = 704
 WAN_DEFAULT_FRAMES = 121
@@ -328,6 +331,24 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         supports_guidance_override=True,
         image_edit_catalog_rank=11,
     ),
+    SEEDVR2_3B_MODEL_KEY: _MFluxModelDef(
+        key=SEEDVR2_3B_MODEL_KEY,
+        config_method="seedvr2_3b",
+        family="seedvr2-upscale",
+        default_steps=1,
+        default_guidance=1.0,
+        supports_negative_prompt=False,
+        supports_guidance_override=False,
+    ),
+    SEEDVR2_7B_MODEL_KEY: _MFluxModelDef(
+        key=SEEDVR2_7B_MODEL_KEY,
+        config_method="seedvr2_7b",
+        family="seedvr2-upscale",
+        default_steps=1,
+        default_guidance=1.0,
+        supports_negative_prompt=False,
+        supports_guidance_override=False,
+    ),
     WAN_TI2V_MODEL_KEY: _MFluxModelDef(
         key=WAN_TI2V_MODEL_KEY,
         config_method="wan2_2_ti2v_5b",
@@ -478,6 +499,23 @@ _KNOWN_MODEL_ALIASES: Dict[str, str] = {
     "bonsai-ternary": "bonsai-image-ternary",
     "bonsai-image": "bonsai-image-ternary",
     "bonsai": "bonsai-image-ternary",
+    "bytedance-seed/seedvr2-3b": SEEDVR2_3B_MODEL_KEY,
+    "bytedance-seed/seedvr2-7b": SEEDVR2_7B_MODEL_KEY,
+    "abstractframework/seedvr2-3b-8bit": SEEDVR2_3B_MODEL_KEY,
+    "abstractframework/seedvr2-3b-4bit": SEEDVR2_3B_MODEL_KEY,
+    "abstractframework/seedvr2-7b-8bit": SEEDVR2_7B_MODEL_KEY,
+    "abstractframework/seedvr2-7b-4bit": SEEDVR2_7B_MODEL_KEY,
+    "seedvr2": SEEDVR2_3B_MODEL_KEY,
+    "seedvr2-3b": SEEDVR2_3B_MODEL_KEY,
+    "seedvr2-3b-8bit": SEEDVR2_3B_MODEL_KEY,
+    "seedvr2-3b-4bit": SEEDVR2_3B_MODEL_KEY,
+    "seedvr2_ema_3b_fp16": SEEDVR2_3B_MODEL_KEY,
+    "seedvr2-ema-3b-fp16": SEEDVR2_3B_MODEL_KEY,
+    "seedvr2-7b": SEEDVR2_7B_MODEL_KEY,
+    "seedvr2-7b-8bit": SEEDVR2_7B_MODEL_KEY,
+    "seedvr2-7b-4bit": SEEDVR2_7B_MODEL_KEY,
+    "seedvr2_ema_7b_fp16": SEEDVR2_7B_MODEL_KEY,
+    "seedvr2-ema-7b-fp16": SEEDVR2_7B_MODEL_KEY,
 }
 
 
@@ -498,6 +536,8 @@ _MFLUX_BASE_MODEL_REGISTRY_IDS: Dict[str, str] = {
     "fibo-lite": "briaai/Fibo-lite",
     "fibo-edit": "briaai/Fibo-Edit",
     "fibo-edit-rmbg": "briaai/Fibo-Edit-RMBG",
+    SEEDVR2_3B_MODEL_KEY: "ByteDance-Seed/SeedVR2-3B",
+    SEEDVR2_7B_MODEL_KEY: "ByteDance-Seed/SeedVR2-7B",
     WAN_TI2V_MODEL_KEY: "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
     WAN_T2V_A14B_MODEL_KEY: "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
     WAN_I2V_A14B_MODEL_KEY: "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
@@ -521,6 +561,8 @@ _MFLUX_BASE_MODEL_FALLBACK_TASKS: Dict[str, Tuple[str, ...]] = {
     "fibo-lite": ("image_to_image", "text_to_image"),
     "fibo-edit": ("image_to_image",),
     "fibo-edit-rmbg": ("image_to_image",),
+    SEEDVR2_3B_MODEL_KEY: ("image_upscale",),
+    SEEDVR2_7B_MODEL_KEY: ("image_upscale",),
     WAN_TI2V_MODEL_KEY: ("image_to_video", "text_to_video"),
     WAN_T2V_A14B_MODEL_KEY: ("text_to_video",),
     WAN_I2V_A14B_MODEL_KEY: ("image_to_video",),
@@ -544,6 +586,8 @@ _MFLUX_RUNTIME_ALLOWED_TASKS: Dict[str, Tuple[str, ...]] = {
     "fibo-lite": ("image_to_image", "text_to_image"),
     "fibo-edit": ("image_to_image",),
     "fibo-edit-rmbg": ("image_to_image",),
+    SEEDVR2_3B_MODEL_KEY: ("image_upscale",),
+    SEEDVR2_7B_MODEL_KEY: ("image_upscale",),
     WAN_TI2V_MODEL_KEY: ("image_to_video", "text_to_video"),
     WAN_T2V_A14B_MODEL_KEY: ("text_to_video",),
     WAN_I2V_A14B_MODEL_KEY: ("image_to_video",),
@@ -573,6 +617,25 @@ def _mflux_parameter_metadata(model_def: _MFluxModelDef) -> Dict[str, Any]:
         if model_def.default_guidance_2 is not None:
             defaults["guidance_2"] = model_def.default_guidance_2
         constraints["num_frames"] = {"format": "4n+1"}
+    if model_def.family == "seedvr2-upscale":
+        defaults.update(
+            {
+                "resolution": "2x",
+                "scale": 2,
+                "softness": 0.0,
+                "quantize": None,
+                "vae_tiling": False,
+            }
+        )
+        constraints.update(
+            {
+                "resolution": {"type": "integer_or_scale_factor"},
+                "scale": {"min": 0.01},
+                "softness": {"min": 0.0, "max": 1.0},
+                "quantize": {"enum": [3, 4, 5, 6, 8, None]},
+                "vae_tiling": {"type": "boolean"},
+            }
+        )
     return {
         "parameter_defaults": defaults,
         "parameter_constraints": constraints,
@@ -678,6 +741,20 @@ def _lazy_import_mflux_wan() -> Any:
     return Wan2_2_TI2V
 
 
+def _lazy_import_mflux_seedvr2() -> Tuple[Any, Any, Any, Any]:
+    try:
+        from mflux.models.common.config import ModelConfig  # type: ignore
+        from mflux.models.common.vae.tiling_config import TilingConfig  # type: ignore
+        from mflux.models.seedvr2.variants.upscale.seedvr2 import SeedVR2  # type: ignore
+        from mflux.utils.scale_factor import ScaleFactor  # type: ignore
+    except Exception as e:
+        raise OptionalDependencyMissingError(
+            "MLX-Gen SeedVR2 image upscaling requires mlx-gen>=0.18.13. "
+            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` (Apple Silicon only).'
+        ) from e
+    return ModelConfig, SeedVR2, ScaleFactor, TilingConfig
+
+
 def _norm(value: Any) -> str:
     return str(value or "").strip().lower().replace("_", "-")
 
@@ -729,7 +806,10 @@ def _is_incompatible_model_tree(path: Path) -> bool:
 
 def _looks_like_mflux_packaged_repo(value: Any) -> bool:
     s = _norm(value)
-    return any(token in s for token in ("mlx-gen", "mflux", "8bit", "q8", "4bit", "q4", "quant"))
+    return any(
+        token in s
+        for token in ("mlx-gen", "mflux", "8bit", "q8", "4bit", "q4", "quant", "seedvr2")
+    )
 
 
 def _is_mlx_gen_download_required(exc: BaseException) -> bool:
@@ -826,6 +906,10 @@ def _candidate_priority(repo_id: Optional[str]) -> int:
     s = _norm(repo_id)
     if not s:
         return 99
+    if "seedvr2" in s and s.startswith("abstractframework/") and ("8bit" in s or "q8" in s):
+        return 0
+    if "seedvr2" in s and s.startswith("abstractframework/") and ("4bit" in s or "q4" in s):
+        return 1
     if s.startswith("abstractframework/") and ("4bit" in s or "q4" in s):
         return 0
     if s.startswith("abstractframework/") and ("8bit" in s or "q8" in s):
@@ -933,6 +1017,8 @@ def _mlx_gen_selector_matches_preset(selector: str, preset: Any) -> bool:
 
 def _ambiguous_mlx_gen_selector_choices(selector: Any) -> Tuple[str, ...]:
     requested = str(selector or "").strip()
+    if _norm(requested) in {"seedvr2", "seedvr2-3b", "seedvr2-7b"}:
+        return ()
     if not requested or _looks_like_path(requested) or looks_like_hf_repo_id(requested):
         if any(token in _norm(requested) for token in ("q8", "8bit", "q4", "4bit")):
             return ()
@@ -1004,16 +1090,17 @@ def _discover_cached_legacy_mflux_models(
             ) and not _looks_like_mflux_packaged_repo(entry.name):
                 continue
             source_label = _local_source_label(root_label)
-            out.setdefault(
-                base,
-                _DiscoveredMFluxModel(
-                    key=base,
-                    snapshot_dir=entry,
-                    repo_id=None,
-                    source_label=source_label,
-                    source_detail=f"{source_label} ({entry})",
-                ),
+            candidate = _DiscoveredMFluxModel(
+                key=base,
+                snapshot_dir=entry,
+                repo_id=None,
+                source_label=source_label,
+                source_detail=f"{source_label} ({entry})",
             )
+            out.setdefault(base, candidate)
+            bits = _infer_bits_from_text(entry.name)
+            if bits is not None:
+                out.setdefault(f"{base}-{int(bits)}bit", candidate)
     return out
 
 
@@ -1200,6 +1287,10 @@ def _infer_base_model(*values: Any) -> Optional[str]:
             return "fibo-lite"
         if "fibo" in s:
             return "fibo"
+        if "seedvr2" in s:
+            if "7b" in s:
+                return SEEDVR2_7B_MODEL_KEY
+            return SEEDVR2_3B_MODEL_KEY
         if "wan" in s and ("t2v-a14b" in s or "t2v_a14b" in s or "t2v-a14" in s):
             return WAN_T2V_A14B_MODEL_KEY
         if "wan" in s and ("i2v-a14b" in s or "i2v_a14b" in s or "i2v-a14" in s):
@@ -1231,6 +1322,20 @@ def _preset_for(value: Any) -> Any:
         return find_model_preset(s, target="mlx", engine="mlx-gen", require_8bit=False)
     except Exception:
         return None
+
+
+def _base_model_for_preset(configured_base: Optional[str], configured_model: Any, preset: Any) -> str:
+    if configured_base:
+        return _infer_base_model(configured_base) or str(configured_base)
+    inferred = _infer_base_model(
+        getattr(preset, "repo_id", None),
+        getattr(preset, "upstream_repo_id", None),
+        getattr(preset, "key", None),
+        configured_model,
+    )
+    if inferred:
+        return inferred
+    return str(getattr(preset, "key", "") or "")
 
 
 @lru_cache(maxsize=1)
@@ -1442,8 +1547,18 @@ class MFluxVisionBackend(VisionBackend):
                 model_dir=self._cfg.model_dir,
                 cache_dir=self._cfg.cache_dir,
             )
-            if discovered_model is None and model_selector == preset.key:
-                discovered_model = discovered.get(preset.key)
+            is_seedvr2_preset = "seedvr2" in _norm(getattr(preset, "key", "")) or "seedvr2" in _norm(
+                getattr(preset, "repo_id", "")
+            )
+            if discovered_model is None and is_seedvr2_preset:
+                local_candidate = discovered.get(preset.key)
+                if local_candidate is not None:
+                    preset_bits = getattr(preset, "quantization_bits", None)
+                    local_bits = _infer_bits_from_text(local_candidate.repo_id) or _infer_bits_from_text(
+                        local_candidate.snapshot_dir
+                    )
+                    if preset_bits is None or local_bits is None or int(preset_bits) == int(local_bits):
+                        discovered_model = local_candidate
             if discovered_model is None:
                 continue
             base_model = _infer_base_model(preset.key, preset.repo_id, preset.upstream_repo_id)
@@ -1573,7 +1688,9 @@ class MFluxVisionBackend(VisionBackend):
                         if preset.quantization_bits is not None
                         else None
                     )
-                    return str(snapshot_dir), configured_base or preset.key
+                    return str(snapshot_dir), _base_model_for_preset(
+                        configured_base, configured_model, preset
+                    )
                 if not self._cfg.allow_download:
                     raise OptionalDependencyMissingError(
                         f"MLX-Gen model preset {configured_model!r} is not available in the Hugging Face cache. "
@@ -1591,7 +1708,9 @@ class MFluxVisionBackend(VisionBackend):
                 self._resolved_quantization_bits = (
                     int(preset.quantization_bits) if preset.quantization_bits is not None else None
                 )
-                return str(downloaded), configured_base or preset.key
+                return str(downloaded), _base_model_for_preset(
+                    configured_base, configured_model, preset
+                )
 
             if _looks_like_path(configured_model):
                 raise OptionalDependencyMissingError(
@@ -1667,6 +1786,8 @@ class MFluxVisionBackend(VisionBackend):
             "ernie-image-turbo",
             "fibo-lite",
             "fibo",
+            SEEDVR2_3B_MODEL_KEY,
+            SEEDVR2_7B_MODEL_KEY,
             WAN_TI2V_MODEL_KEY,
             WAN_T2V_A14B_MODEL_KEY,
             WAN_I2V_A14B_MODEL_KEY,
@@ -1704,27 +1825,7 @@ class MFluxVisionBackend(VisionBackend):
         ModelConfig, _DownloadRequiredError, Flux2Klein, _Flux2KleinEdit, ZImage, ZImageTurbo = (
             _lazy_import_mflux()
         )
-        config_factory = getattr(ModelConfig, model_def.config_method, None)
-        if callable(config_factory):
-            model_config = config_factory()
-        else:
-            from_name = getattr(ModelConfig, "from_name", None)
-            registry_id = _MFLUX_BASE_MODEL_REGISTRY_IDS.get(model_def.key, model_def.key)
-            if not callable(from_name):
-                raise OptionalDependencyMissingError(
-                    f"Installed MLX-Gen does not expose ModelConfig.{model_def.config_method}() "
-                    f"or ModelConfig.from_name(); update mlx-gen for {registry_id}."
-                )
-            try:
-                model_config = from_name(registry_id)
-            except Exception as exc:
-                if model_def.family == "wan-video":
-                    raise OptionalDependencyMissingError(
-                        "MLX-Gen Wan video generation requires mlx-gen>=0.18.10. "
-                        'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` '
-                        f"for {registry_id}."
-                    ) from exc
-                raise
+        model_config = self._model_config_for_definition(ModelConfig, model_def)
         if model_def.family == "flux2":
             cls = _Flux2KleinEdit if model_variant == "flux2-edit" else Flux2Klein
         elif model_def.family == "bonsai":
@@ -1771,6 +1872,46 @@ class MFluxVisionBackend(VisionBackend):
         self._resolved_base_model = base_model
         return self._model, model_def
 
+    def _ensure_seedvr2_model_impl(
+        self,
+        *,
+        quantize: Optional[int],
+    ) -> Tuple[Any, _MFluxModelDef]:
+        model_path, base_model = self._resolve_model()
+        if base_model not in _MFLUX_MODELS:
+            raise OptionalDependencyMissingError(
+                f"Unsupported MLX-Gen base model {base_model!r}. "
+                f"Supported: {', '.join(sorted(_MFLUX_MODELS))}"
+            )
+        model_def = _MFLUX_MODELS[base_model]
+        if model_def.family != "seedvr2-upscale":
+            raise CapabilityNotSupportedError(
+                "MLX-Gen image_upscale is implemented for SeedVR2 models today "
+                f"(got {model_def.family!r})."
+            )
+        key = (model_path, base_model, "seedvr2-upscale", quantize)
+        if self._model is not None and self._model_key == key:
+            return self._model, model_def
+
+        ModelConfig, SeedVR2, _ScaleFactor, _TilingConfig = _lazy_import_mflux_seedvr2()
+        model_config = self._model_config_for_definition(ModelConfig, model_def)
+        try:
+            self._model = SeedVR2(
+                quantize=quantize,
+                model_path=model_path,
+                model_config=model_config,
+            )
+        except Exception as e:
+            if _is_mlx_gen_download_required(e):
+                raise _wrap_mlx_gen_download_required(e) from e
+            raise
+        self._model_key = key
+        self._warmed_model_key = None
+        self._resolved_model_path = model_path
+        self._resolved_base_model = base_model
+        self._resolved_quantization_bits = quantize or _infer_bits_from_text(model_path)
+        return self._model, model_def
+
     def _warmup_request(self, model_def: _MFluxModelDef) -> ImageGenerationRequest:
         return ImageGenerationRequest(
             prompt="abstractvision preload warmup",
@@ -1780,6 +1921,11 @@ class MFluxVisionBackend(VisionBackend):
         )
 
     def _preload_impl(self) -> None:
+        model_def = self._resolved_model_def()
+        if model_def.family == "seedvr2-upscale":
+            self._ensure_seedvr2_model_impl(quantize=self._default_upscale_quantize())
+            self._warmed_model_key = self._model_key
+            return
         _model, model_def = self._ensure_model_impl()
         if self._model_key is not None and self._warmed_model_key == self._model_key:
             return
@@ -1796,6 +1942,34 @@ class MFluxVisionBackend(VisionBackend):
                 f"Supported: {', '.join(sorted(_MFLUX_MODELS))}"
             )
         return _MFLUX_MODELS[base_model]
+
+    def _model_config_for_definition(self, ModelConfig: Any, model_def: _MFluxModelDef) -> Any:
+        config_factory = getattr(ModelConfig, model_def.config_method, None)
+        if callable(config_factory):
+            return config_factory()
+        from_name = getattr(ModelConfig, "from_name", None)
+        registry_id = _MFLUX_BASE_MODEL_REGISTRY_IDS.get(model_def.key, model_def.key)
+        if not callable(from_name):
+            raise OptionalDependencyMissingError(
+                f"Installed MLX-Gen does not expose ModelConfig.{model_def.config_method}() "
+                f"or ModelConfig.from_name(); update mlx-gen for {registry_id}."
+            )
+        try:
+            return from_name(registry_id)
+        except Exception as exc:
+            if model_def.family == "wan-video":
+                raise OptionalDependencyMissingError(
+                    "MLX-Gen Wan video generation requires mlx-gen>=0.18.10. "
+                    'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` '
+                    f"for {registry_id}."
+                ) from exc
+            if model_def.family == "seedvr2-upscale":
+                raise OptionalDependencyMissingError(
+                    "MLX-Gen SeedVR2 image upscaling requires mlx-gen>=0.18.13. "
+                    'Install/upgrade it with `pip install "abstractvision[mlx-gen]"` '
+                    f"for {registry_id}."
+                ) from exc
+            raise
 
     def normalize_image_generation_request(
         self,
@@ -1952,6 +2126,131 @@ class MFluxVisionBackend(VisionBackend):
             extra=values["extra"],
         )
 
+    def _normalize_upscale_scale_value(self, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip().lower()
+        if not text:
+            return None
+        if text.endswith("x"):
+            return text
+        try:
+            numeric = float(text)
+        except Exception:
+            return text
+        if numeric <= 0:
+            raise ValueError("image_upscale scale must be positive.")
+        if numeric.is_integer():
+            return f"{int(numeric)}x"
+        return f"{numeric:g}x"
+
+    def _normalize_upscale_bool(self, value: Any, *, default: bool = False) -> bool:
+        if value is None:
+            return bool(default)
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in {"", "0", "false", "no", "off", "none"}:
+            return False
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        return bool(value)
+
+    def _normalize_upscale_quantize(self, value: Any) -> Optional[int]:
+        if value is None:
+            return None
+        text = str(value).strip().lower()
+        if text in {"", "0", "none", "false", "off", "no"}:
+            return None
+        try:
+            quantize = int(value)
+        except Exception as exc:
+            raise ValueError("image_upscale quantize must be 3, 4, 5, 6, 8, or none.") from exc
+        if quantize not in {3, 4, 5, 6, 8}:
+            raise ValueError("image_upscale quantize must be 3, 4, 5, 6, 8, or none.")
+        return quantize
+
+    def _default_upscale_quantize(self) -> Optional[int]:
+        model_def = self._resolved_model_def()
+        if model_def.family != "seedvr2-upscale":
+            return None
+        if self._resolved_quantization_bits in {3, 4, 5, 6, 8}:
+            return None
+        return 8
+
+    def normalize_image_upscale_request(
+        self,
+        request: ImageUpscaleRequest,
+    ) -> ImageUpscaleRequest:
+        model_def = self._resolved_model_def()
+        if model_def.family != "seedvr2-upscale":
+            raise CapabilityNotSupportedError(
+                "MLX-Gen image_upscale is implemented for SeedVR2 models today "
+                f"(got {model_def.family!r})."
+            )
+        extra = dict(request.extra or {})
+        resolution = request.resolution
+        if resolution is None and "resolution" in extra:
+            resolution = extra.pop("resolution")
+        scale = request.scale
+        if scale is None and "scale" in extra:
+            scale = extra.pop("scale")
+        if resolution is None:
+            resolution = self._normalize_upscale_scale_value(scale) or "2x"
+        softness = request.softness
+        if softness is None and "softness" in extra:
+            softness = extra.pop("softness")
+        softness_f = 0.0 if softness is None else float(softness)
+        if softness_f < 0.0:
+            softness_f = 0.0
+        if softness_f > 1.0:
+            softness_f = 1.0
+        quantize_raw = request.quantize if request.quantize is not None else extra.pop("quantize", None)
+        quantize_value = (
+            self._default_upscale_quantize()
+            if quantize_raw is None
+            else self._normalize_upscale_quantize(quantize_raw)
+        )
+        vae_tiling_raw = (
+            request.vae_tiling if request.vae_tiling is not None else extra.pop("vae_tiling", None)
+        )
+        return replace(
+            request,
+            resolution=resolution,
+            scale=scale,
+            softness=softness_f,
+            quantize=quantize_value,
+            vae_tiling=self._normalize_upscale_bool(vae_tiling_raw, default=False),
+            extra=extra,
+        )
+
+    def _coerce_seedvr2_resolution(self, resolution: Any) -> Any:
+        if isinstance(resolution, str):
+            text = resolution.strip().lower()
+            if text.endswith("x"):
+                _ModelConfig, _SeedVR2, ScaleFactor, _TilingConfig = _lazy_import_mflux_seedvr2()
+                return ScaleFactor.parse(text)
+            try:
+                return int(text)
+            except Exception as exc:
+                raise ValueError(
+                    "image_upscale resolution must be an integer shortest-edge target "
+                    "or a scale factor such as '2x'."
+                ) from exc
+        if resolution is None:
+            _ModelConfig, _SeedVR2, ScaleFactor, _TilingConfig = _lazy_import_mflux_seedvr2()
+            return ScaleFactor.parse("2x")
+        try:
+            target = int(resolution)
+        except Exception as exc:
+            raise ValueError(
+                "image_upscale resolution must be an integer shortest-edge target "
+                "or a scale factor such as '2x'."
+            ) from exc
+        if target <= 0:
+            raise ValueError("image_upscale resolution must be positive.")
+        return target
+
     def _sniff_image_suffix(self, image: bytes) -> str:
         if len(image) >= 8 and image[:8] == b"\x89PNG\r\n\x1a\n":
             return ".png"
@@ -1964,14 +2263,14 @@ class MFluxVisionBackend(VisionBackend):
         model: Any,
         callback: Callable[[Any], None],
         *,
-        task: str,
+        task: Optional[str],
     ) -> Callable[[], None]:
         callbacks = getattr(model, "callbacks", None)
         subscribe = getattr(callbacks, "subscribe_progress", None)
         if not callable(subscribe):
             return lambda: None
         try:
-            unsubscribe = subscribe(callback, task=task)
+            unsubscribe = subscribe(callback, task=task) if task is not None else subscribe(callback, task=None)
         except TypeError:
             unsubscribe = subscribe(callback)
         if callable(unsubscribe):
@@ -2450,6 +2749,98 @@ class MFluxVisionBackend(VisionBackend):
         extra["_step_progress_callback"] = progress_callback
         return self.edit_image(replace(request, extra=extra))
 
+    def _upscale_image_impl(self, request: ImageUpscaleRequest) -> GeneratedAsset:
+        request = self.normalize_image_upscale_request(request)
+        model, _model_def = self._ensure_seedvr2_model_impl(quantize=request.quantize)
+        _ModelConfig, _SeedVR2, _ScaleFactor, TilingConfig = _lazy_import_mflux_seedvr2()
+        try:
+            setattr(model, "tiling_config", TilingConfig() if request.vae_tiling else None)
+        except Exception:
+            pass
+
+        extra = dict(request.extra or {})
+        progress_callbacks, step_progress_callback = _pop_progress_callbacks(extra)
+        seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
+        resolution_arg = self._coerce_seedvr2_resolution(request.resolution)
+        softness = 0.0 if request.softness is None else float(request.softness)
+
+        def _progress_bridge(raw_event: Any) -> None:
+            event = _normalize_video_progress_event(raw_event)
+            event = replace(event, task="image_upscale")
+            for callback in progress_callbacks:
+                callback(event)
+            if step_progress_callback is not None:
+                current = event.step if event.step is not None else 0
+                step_progress_callback(current, event.total_steps)
+
+        tmp_path = self._write_temp_image_bytes(request.image)
+        unsubscribe = (
+            self._subscribe_progress(model, _progress_bridge, task=None)
+            if progress_callbacks or step_progress_callback is not None
+            else (lambda: None)
+        )
+        try:
+            generated = model.generate_image(
+                seed=seed,
+                image_path=tmp_path,
+                resolution=resolution_arg,
+                softness=softness,
+            )
+        except Exception as e:
+            if _is_mlx_gen_download_required(e):
+                raise _wrap_mlx_gen_download_required(e) from e
+            raise
+        finally:
+            unsubscribe()
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        if self._model_key is not None:
+            self._warmed_model_key = self._model_key
+        pil_image = getattr(generated, "image", generated)
+        buf = BytesIO()
+        pil_image.save(buf, format="PNG")
+        data = buf.getvalue()
+        resolution_meta: Any = (
+            str(resolution_arg) if not isinstance(resolution_arg, int) else resolution_arg
+        )
+        return GeneratedAsset(
+            media_type="image",
+            data=data,
+            mime_type="image/png",
+            metadata={
+                "source": MLX_GEN_RUNTIME,
+                "engine": MLX_GEN_RUNTIME,
+                "legacy_engine": MFLUX_PROVIDER,
+                "runtime_package": MLX_GEN_RUNTIME,
+                "task": "image_upscale",
+                "model": self._resolved_model_path,
+                "base_model": self._resolved_base_model,
+                "quantization_bits": self._resolved_quantization_bits,
+                "seed": seed,
+                "steps": 1,
+                "resolution": resolution_meta,
+                **({"scale": request.scale} if request.scale is not None else {}),
+                "softness": softness,
+                "vae_tiling": bool(request.vae_tiling),
+            },
+        )
+
+    def upscale_image(self, request: ImageUpscaleRequest) -> GeneratedAsset:
+        return self._run_on_runtime_thread(self._upscale_image_impl, request)
+
+    def upscale_image_with_progress(
+        self,
+        request: ImageUpscaleRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        if progress_callback is None:
+            return self.upscale_image(request)
+        extra = dict(request.extra or {})
+        extra["_step_progress_callback"] = progress_callback
+        return self.upscale_image(replace(request, extra=extra))
+
     def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
         raise CapabilityNotSupportedError(
             "MLX-Gen backend does not implement multi-view generation."
@@ -2517,7 +2908,11 @@ class MFluxVisionBackend(VisionBackend):
             else model_def.default_guidance
         )
         max_sequence_length = extra.pop("max_sequence_length", None)
-        guidance_2 = extra.pop("guidance_2", model_def.default_guidance_2)
+        guidance_2 = (
+            request.guidance_2
+            if request.guidance_2 is not None
+            else model_def.default_guidance_2
+        )
         progress_callbacks, step_progress_callback = _pop_progress_callbacks(extra)
 
         def _progress_bridge(raw_event: Any) -> None:

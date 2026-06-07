@@ -7,10 +7,10 @@ Local Diffusers, stable-diffusion.cpp, and MFLUX runtimes are explicit extras.
 
 from .artifacts import LocalAssetStore, RuntimeArtifactStoreAdapter, is_artifact_ref
 from .model_capabilities import VisionModelCapabilitiesRegistry
-from .types import ProviderModelInfo, VideoProgressEvent
+from .types import ImageUpscaleRequest, ProviderModelInfo, VideoProgressEvent
 from .vision_manager import VisionManager
 
-__version__ = "0.3.20"
+__version__ = "0.3.22"
 __author__ = "Laurent-Philippe Albou"
 __email__ = "contact@abstractcore.ai"
 
@@ -18,6 +18,7 @@ __all__ = [
     "VisionManager",
     "ProviderModelInfo",
     "VideoProgressEvent",
+    "ImageUpscaleRequest",
     "VisionModelCapabilitiesRegistry",
     "LocalAssetStore",
     "RuntimeArtifactStoreAdapter",

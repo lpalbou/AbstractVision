@@ -213,6 +213,59 @@ def make_vision_tools(
         return out
 
     @tool(
+        name="vision_image_upscale",
+        description="Upscale or restore an input image and return an artifact ref.",
+        tags=["vision", "upscale", "image"],
+        when_to_use="Use when you need to increase image resolution without changing the image composition.",
+    )
+    def vision_image_upscale(
+        image_artifact: Optional[Dict[str, Any]] = None,
+        image_b64: Optional[str] = None,
+        scale: Optional[float] = None,
+        resolution: Optional[str] = None,
+        softness: Optional[float] = None,
+        seed: Optional[int] = None,
+        quantize: Optional[int] = None,
+        vae_tiling: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        reg.require_support(model_id, "image_upscale")
+        image_bytes = _resolve_input_bytes(
+            store=store,
+            artifact=image_artifact,
+            b64=image_b64,
+            name="image",
+            required=True,
+        )
+        out = vision_manager.upscale_image(
+            image_bytes or b"",
+            scale=scale if scale is not None else _task_param_value("image_upscale", "scale", None),
+            resolution=(
+                resolution
+                if resolution is not None
+                else _task_param_value("image_upscale", "resolution", None)
+            ),
+            softness=(
+                softness
+                if softness is not None
+                else _task_param_value("image_upscale", "softness", None)
+            ),
+            seed=seed,
+            quantize=(
+                quantize
+                if quantize is not None
+                else _task_param_value("image_upscale", "quantize", None)
+            ),
+            vae_tiling=(
+                vae_tiling
+                if vae_tiling is not None
+                else _task_param_value("image_upscale", "vae_tiling", None)
+            ),
+        )
+        if not (isinstance(out, dict) and is_artifact_ref(out)):
+            raise AbstractVisionError("vision_image_upscale expected artifact-ref output; ensure VisionManager.store is set.")
+        return out
+
+    @tool(
         name="vision_text_to_video",
         description="Generate a video from a text prompt and return an artifact ref.",
         tags=["vision", "generate", "video"],
@@ -227,6 +280,7 @@ def make_vision_tools(
         num_frames: Optional[int] = None,
         steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
+        guidance_2: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
         reg.require_support(model_id, "text_to_video")
@@ -244,6 +298,11 @@ def make_vision_tools(
                 guidance_scale
                 if guidance_scale is not None
                 else _task_param_value("text_to_video", "guidance_scale", None)
+            ),
+            guidance_2=(
+                guidance_2
+                if guidance_2 is not None
+                else _task_param_value("text_to_video", "guidance_2", None)
             ),
             seed=seed,
         )
@@ -268,6 +327,7 @@ def make_vision_tools(
         num_frames: Optional[int] = None,
         steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
+        guidance_2: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
         reg.require_support(model_id, "image_to_video")
@@ -288,6 +348,11 @@ def make_vision_tools(
                 if guidance_scale is not None
                 else _task_param_value("image_to_video", "guidance_scale", None)
             ),
+            guidance_2=(
+                guidance_2
+                if guidance_2 is not None
+                else _task_param_value("image_to_video", "guidance_2", None)
+            ),
             seed=seed,
         )
         if not (isinstance(out, dict) and is_artifact_ref(out)):
@@ -298,6 +363,7 @@ def make_vision_tools(
         vision_text_to_image,
         vision_image_to_image,
         vision_multi_view_image,
+        vision_image_upscale,
         vision_text_to_video,
         vision_image_to_video,
     ]

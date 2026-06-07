@@ -41,7 +41,7 @@ from .model_downloads import (
     resolve_sdcpp_model_selection,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
-from .types import ImageEditRequest, ImageGenerationRequest, VideoProgressEvent
+from .types import ImageEditRequest, ImageGenerationRequest, ImageUpscaleRequest, VideoProgressEvent
 from .vision_manager import VisionManager
 
 DEFAULT_REPL_BACKEND = ""
@@ -116,6 +116,10 @@ def _normalize_catalog_task_filter(value: Any) -> str:
         "t2i": "text_to_image",
         "i2i": "image_to_image",
         "image_edit": "image_to_image",
+        "upscale": "image_upscale",
+        "image_upscale": "image_upscale",
+        "image_upscaling": "image_upscale",
+        "super_resolution": "image_upscale",
         "t2v": "text_to_video",
         "i2v": "image_to_video",
         "video": "text_to_video",
@@ -1225,6 +1229,69 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_upscale(args: argparse.Namespace) -> int:
+    if not _first_nonempty(
+        getattr(args, "provider", None),
+        getattr(args, "backend", None),
+        _env("ABSTRACTVISION_PROVIDER"),
+        _env("ABSTRACTVISION_BACKEND"),
+    ):
+        setattr(args, "provider", "mlx-gen")
+    if not _first_nonempty(
+        getattr(args, "model", None),
+        getattr(args, "model_id", None),
+        getattr(args, "mflux_model", None),
+        _env("ABSTRACTVISION_MODEL"),
+        _env("ABSTRACTVISION_MODEL_ID"),
+        _env("ABSTRACTVISION_MFLUX_MODEL"),
+    ):
+        setattr(args, "model", "AbstractFramework/seedvr2-3b-8bit")
+    vm = _build_manager_from_args(args)
+    image_bytes = Path(args.image).expanduser().read_bytes()
+    progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", True)))
+    extra: Dict[str, Any] = {}
+    if progress.enabled:
+        extra["on_progress"] = progress
+    request = ImageUpscaleRequest(
+        image=image_bytes,
+        resolution=getattr(args, "resolution", None),
+        scale=getattr(args, "scale", None),
+        seed=getattr(args, "seed", None),
+        softness=getattr(args, "softness", None),
+        quantize=getattr(args, "quantize", None),
+        vae_tiling=getattr(args, "vae_tiling", None),
+        extra=extra,
+    )
+    backend = getattr(vm, "backend", None)
+    normalize = getattr(backend, "normalize_image_upscale_request", None)
+    if callable(normalize):
+        try:
+            request = normalize(request)
+        except Exception:
+            pass
+    try:
+        out = vm.upscale_image(
+            image_bytes,
+            resolution=request.resolution,
+            scale=request.scale,
+            seed=request.seed,
+            softness=request.softness,
+            quantize=request.quantize,
+            vae_tiling=request.vae_tiling,
+            extra=dict(request.extra or {}),
+        )
+    finally:
+        progress.close()
+    _print_json(out)
+    if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
+        p = vm.store.get_content_path(out["$artifact"])
+        if p is not None:
+            print(str(p))
+            if args.open:
+                _open_file(p)
+    return 0
+
+
 def _cmd_t2v(args: argparse.Namespace) -> int:
     vm = _build_manager_from_args(args)
     extra: Dict[str, Any] = {}
@@ -1243,6 +1310,7 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
             num_frames=args.num_frames,
             steps=args.steps,
             guidance_scale=args.guidance_scale,
+            guidance_2=args.guidance_2,
             seed=args.seed,
             extra=extra or None,
         )
@@ -1278,6 +1346,7 @@ def _cmd_i2v(args: argparse.Namespace) -> int:
             num_frames=args.num_frames,
             steps=args.steps,
             guidance_scale=args.guidance_scale,
+            guidance_2=args.guidance_2,
             seed=args.seed,
             extra=extra or None,
         )
@@ -1408,6 +1477,7 @@ class _ReplState:
                     "num_frames": None,
                     "steps": None,
                     "guidance_scale": None,
+                    "guidance_2": None,
                     "seed": None,
                     "negative_prompt": None,
                 },
@@ -1418,6 +1488,7 @@ class _ReplState:
                     "num_frames": None,
                     "steps": None,
                     "guidance_scale": None,
+                    "guidance_2": None,
                     "seed": None,
                     "negative_prompt": None,
                 },
@@ -1452,7 +1523,7 @@ def _repl_help() -> str:
         "Defaults and output:\n"
         "  /cap-model <id|off>         Set capability-gating model id (from registry) or 'off'\n"
         "  /store <dir|default>        Set local store dir\n"
-        "  /set <k> <v>                Set a default param (width, height, steps, seed, guidance_scale, negative_prompt)\n"
+        "  /set <k> <v>                Set a default param (width, height, steps, seed, guidance_scale, guidance_2, negative_prompt)\n"
         "  /unset <k>                  Unset a default param\n"
         "  /defaults                   Show current defaults\n"
         "  /open <artifact_id>         Open a locally stored artifact (LocalAssetStore only)\n"
@@ -1460,8 +1531,8 @@ def _repl_help() -> str:
         "Generation:\n"
         "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
         "  /i2i --image path <prompt...> [--mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
-        "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open] [--no-progress]\n"
-        "  /i2v --image path [prompt...] [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open] [--no-progress]\n"
+        "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
+        "  /i2v --image path [prompt...] [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
         "      extra flags are forwarded through request.extra\n"
         "\n"
         "Quick examples:\n"
@@ -2239,6 +2310,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                         "num_frames",
                         "steps",
                         "guidance_scale",
+                        "guidance_2",
                         "seed",
                         "negative_prompt",
                         "open",
@@ -2260,6 +2332,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                         num_frames=_coerce_int(d.get("num_frames")),
                         steps=_coerce_int(d.get("steps")),
                         guidance_scale=_coerce_float(d.get("guidance_scale")),
+                        guidance_2=_coerce_float(d.get("guidance_2")),
                         seed=_coerce_int(d.get("seed")),
                         extra=extra,
                     )
@@ -2308,6 +2381,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                         "num_frames",
                         "steps",
                         "guidance_scale",
+                        "guidance_2",
                         "seed",
                         "negative_prompt",
                         "open",
@@ -2331,6 +2405,7 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                         num_frames=_coerce_int(d.get("num_frames")),
                         steps=_coerce_int(d.get("steps")),
                         guidance_scale=_coerce_float(d.get("guidance_scale")),
+                        guidance_2=_coerce_float(d.get("guidance_2")),
                         seed=_coerce_int(d.get("seed")),
                         extra=extra,
                     )
@@ -2696,7 +2771,7 @@ def build_parser() -> argparse.ArgumentParser:
         ap.add_argument(
             "--mflux-base-model",
             default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"),
-            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, bonsai-image-ternary, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, or wan2.2-ti2v-5b.",
+            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, bonsai-image-ternary, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, seedvr2-3b/seedvr2-7b, or wan2.2-ti2v-5b.",
         )
         ap.add_argument(
             "--mflux-model-dir",
@@ -2821,6 +2896,59 @@ def build_parser() -> argparse.ArgumentParser:
     )
     i2i.set_defaults(_fn=_cmd_i2i)
 
+    upscale = sub.add_parser(
+        "upscale",
+        help=(
+            "One-shot image upscaling with SeedVR2/MLX-Gen "
+            "(defaults to --provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit)."
+        ),
+    )
+    _add_provider_flags(upscale)
+    upscale.add_argument("--image", required=True, help="Input image file path.")
+    upscale.add_argument(
+        "--scale",
+        default=None,
+        help="Friendly scale factor such as 2, 2x, or 1.5x. Ignored when --resolution is set.",
+    )
+    upscale.add_argument(
+        "--resolution",
+        default=None,
+        help="SeedVR2 target shortest edge in pixels or scale factor such as 2x.",
+    )
+    upscale.add_argument("--softness", type=float, default=None, help="SeedVR2 softness in [0.0, 1.0].")
+    upscale.add_argument("--seed", type=int, default=None)
+    upscale.add_argument(
+        "--quantize",
+        type=int,
+        choices=[3, 4, 5, 6, 8],
+        default=None,
+        help=(
+            "Runtime quantization for official/source SeedVR2 model loading. "
+            "The default CLI model is already the canonical 8-bit package."
+        ),
+    )
+    upscale.add_argument(
+        "--vae-tiling",
+        action="store_true",
+        default=None,
+        help="Enable SeedVR2 tiled VAE encode/decode for very large outputs.",
+    )
+    upscale.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
+    upscale.add_argument(
+        "--progress",
+        dest="progress",
+        action="store_true",
+        default=True,
+        help="Show image upscaling progress on stderr.",
+    )
+    upscale.add_argument(
+        "--no-progress",
+        dest="progress",
+        action="store_false",
+        help="Disable image upscaling progress output.",
+    )
+    upscale.set_defaults(_fn=_cmd_upscale)
+
     t2v = sub.add_parser(
         "t2v", help="One-shot text-to-video (stores output and prints artifact ref + path)."
     )
@@ -2834,6 +2962,13 @@ def build_parser() -> argparse.ArgumentParser:
     t2v.add_argument("--max-sequence-length", type=int, default=None)
     t2v.add_argument("--steps", type=int, default=None)
     t2v.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
+    t2v.add_argument(
+        "--guidance-2",
+        type=float,
+        default=None,
+        dest="guidance_2",
+        help="Optional second-stage low-noise guidance scale for dual-transformer Wan A14B models.",
+    )
     t2v.add_argument("--seed", type=int, default=None)
     t2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     t2v.add_argument(
@@ -2866,6 +3001,13 @@ def build_parser() -> argparse.ArgumentParser:
     i2v.add_argument("--max-sequence-length", type=int, default=None)
     i2v.add_argument("--steps", type=int, default=None)
     i2v.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
+    i2v.add_argument(
+        "--guidance-2",
+        type=float,
+        default=None,
+        dest="guidance_2",
+        help="Optional second-stage low-noise guidance scale for dual-transformer Wan A14B models.",
+    )
     i2v.add_argument("--seed", type=int, default=None)
     i2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     i2v.add_argument(

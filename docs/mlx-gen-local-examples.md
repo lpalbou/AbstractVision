@@ -1,8 +1,10 @@
 # MLX-Gen local examples
 
-This page shows local MLX-Gen image, edit, multi-reference edit, AbstractCore
-plugin, and Wan A14B video outputs generated through AbstractVision. The
-examples use MLX-Gen `0.18.10` with cached or prepared model artifacts.
+This page shows local MLX-Gen image, edit, multi-reference edit, SeedVR2
+upscale, AbstractCore plugin, and Wan A14B video outputs generated through
+AbstractVision. The commands target the current MLX-Gen `0.18.13+` runtime with
+cached or prepared model artifacts; the included proof manifests record the
+runtime used for each artifact group.
 
 MLX-Gen progress follows denoise steps. For video, the CLI percentage is
 `step / total_steps`; frame counts are displayed only as context.
@@ -15,7 +17,31 @@ Install the MLX-Gen runtime extra and download the models used below:
 pip install "abstractvision[mlx-gen]"
 
 abstractvision download AbstractFramework/flux.2-klein-9b-8bit --provider mlx-gen
+abstractvision download AbstractFramework/seedvr2-3b-8bit --provider mlx-gen
+abstractvision download AbstractFramework/seedvr2-7b-8bit --provider mlx-gen
 abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen
+```
+
+SeedVR2 upscaler selection:
+
+| Model id | Use when |
+| --- | --- |
+| `AbstractFramework/seedvr2-3b-8bit` | Default q8 package. |
+| `AbstractFramework/seedvr2-7b-8bit` | Higher-quality 7B package when memory allows. |
+| `AbstractFramework/seedvr2-3b-4bit` / `AbstractFramework/seedvr2-7b-4bit` | Lower-memory packages. |
+| `ByteDance-Seed/SeedVR2-3B` / `ByteDance-Seed/SeedVR2-7B` | Official source weights; use `--quantize 8` or `--quantize 4` only when runtime quantization is needed. |
+
+Prepared local model folders can also be used directly. For the local folders
+from the MLX-Gen checkout:
+
+```bash
+abstractvision upscale \
+  --provider mlx-gen \
+  --model /Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit \
+  --image ./input.png \
+  --scale 2x \
+  --progress \
+  --open
 ```
 
 Choose an asset store and input path names for the examples:
@@ -24,6 +50,7 @@ Choose an asset store and input path names for the examples:
 STORE_DIR=./mlx-gen-local-examples-store
 SOURCE_IMAGE=./race-car-source.png
 REFERENCE_IMAGE=./multi-reference-scene.png
+UPSCALE_SOURCE=./race-car-source.png
 ```
 
 The multi-reference input image used for the gallery is available here:
@@ -95,6 +122,33 @@ abstractvision i2i \
   "use race car + elevated runway/sunset/spotlights reference"
 ```
 
+Upscale the source image with SeedVR2. The default package is
+`AbstractFramework/seedvr2-3b-8bit`; use
+`AbstractFramework/seedvr2-7b-8bit` when memory allows, or the matching q4
+package when memory is tight. Pass either a scale factor such as `2x` or a
+shortest-edge target resolution.
+
+```bash
+abstractvision catalog --provider mlx-gen --task upscale
+
+abstractvision upscale \
+  --provider mlx-gen \
+  --model AbstractFramework/seedvr2-3b-8bit \
+  --store-dir "$STORE_DIR" \
+  --image "$UPSCALE_SOURCE" \
+  --scale 2x \
+  --seed 2405 \
+  --open
+
+abstractvision upscale \
+  --provider mlx-gen \
+  --model AbstractFramework/seedvr2-7b-8bit \
+  --store-dir "$STORE_DIR" \
+  --image "$UPSCALE_SOURCE" \
+  --resolution 1024 \
+  --seed 2405
+```
+
 Generate a low-cost Wan A14B video check at `432x240`, 41 frames, and 8
 denoise steps:
 
@@ -109,6 +163,7 @@ abstractvision t2v \
   --fps 24 \
   --steps 8 \
   --guidance-scale 4.0 \
+  --guidance-2 3.0 \
   --seed 2406 \
   --progress \
   "A small red toy race car rolls forward on a glossy studio floor, camera locked, soft reflections, smooth motion"
@@ -120,6 +175,8 @@ The generated gallery below is bundled with the docs. The complete manifest is
 available as [summary.json](assets/mlx-gen-local-examples/summary.json), and
 the AbstractCore plugin progress event capture is available as
 [abstractcore_plugin_t2i_progress_events.json](assets/mlx-gen-local-examples/abstractcore_plugin_t2i_progress_events.json).
+The SeedVR2 upscaler proof was run separately against MLX-Gen `0.18.13`; its
+manifest is [seedvr2_upscale_proof.json](assets/mlx-gen-local-examples/seedvr2_upscale_proof.json).
 
 ![MLX-Gen example proof table](assets/mlx-gen-local-examples/proof_table.png)
 
@@ -151,6 +208,22 @@ the AbstractCore plugin progress event capture is available as
       <td>Multi-reference edit</td>
       <td><code>use race car + elevated runway/sunset/spotlights reference</code></td>
       <td><img src="assets/mlx-gen-local-examples/04_i2i_multi_reference.png" alt="Multi-reference edit result" width="260" /></td>
+    </tr>
+    <tr>
+      <td>SeedVR2 upscale</td>
+      <td><code>seedvr2-7b-8bit</code>, <code>scale=2x</code>, local prepared folder</td>
+      <td>
+        <img src="assets/mlx-gen-local-examples/seedvr2_upscale_input.png" alt="SeedVR2 input image" width="120" />
+        <img src="assets/mlx-gen-local-examples/seedvr2_upscale_2x.png" alt="SeedVR2 2x upscaled result" width="240" />
+      </td>
+    </tr>
+    <tr>
+      <td>SeedVR2 upscale, q4 and Core</td>
+      <td><code>seedvr2-7b-4bit</code> CLI proof plus Core <code>/v1/images/upscale</code> q8 route proof</td>
+      <td>
+        <img src="assets/mlx-gen-local-examples/seedvr2_upscale_7b_4bit.png" alt="SeedVR2 7B q4 2x result" width="220" />
+        <img src="assets/mlx-gen-local-examples/seedvr2_upscale_core_7b_8bit.png" alt="AbstractCore SeedVR2 7B q8 2x result" width="220" />
+      </td>
     </tr>
     <tr>
       <td>AbstractCore plugin T2I</td>

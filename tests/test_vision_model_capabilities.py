@@ -24,6 +24,8 @@ ALL_MODELS = [
     "briaai/Fibo-Edit",
     "briaai/Fibo-Edit-RMBG",
     "Lightricks/LTX-2",
+    "ByteDance-Seed/SeedVR2-3B",
+    "ByteDance-Seed/SeedVR2-7B",
 ]
 
 
@@ -63,6 +65,34 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         self.assertTrue(reg.supports("zai-org/CogVideoX-2b", "text_to_video"))
 
         self.assertTrue(reg.supports("Lightricks/LTX-2", "image_to_video"))
+        self.assertTrue(reg.supports("ByteDance-Seed/SeedVR2-3B", "image_upscale"))
+        self.assertTrue(reg.supports("ByteDance-Seed/SeedVR2-7B", "image_upscale"))
+        self.assertTrue(reg.supports("AbstractFramework/seedvr2-3b-8bit", "image_upscale"))
+        self.assertTrue(reg.supports("AbstractFramework/seedvr2-7b-4bit", "image_upscale"))
+        self.assertTrue(reg.supports("seedvr2-3b", "image_upscale"))
+        self.assertTrue(reg.supports("seedvr2-7b", "image_upscale"))
+
+    def test_seedvr2_upscale_capability_and_defaults_are_explicit(self):
+        from abstractvision import VisionModelCapabilitiesRegistry
+
+        reg = VisionModelCapabilitiesRegistry()
+        spec = reg.get("ByteDance-Seed/SeedVR2-3B")
+        self.assertIs(reg.get("seedvr2-3b"), spec)
+        self.assertIs(reg.get("AbstractFramework/seedvr2-3b-8bit"), spec)
+        task = spec.tasks["image_upscale"]
+
+        self.assertEqual(list(task.inputs), ["image"])
+        self.assertEqual(list(task.outputs), ["image"])
+        self.assertEqual(task.params["resolution"]["default"], "2x")
+        self.assertEqual(task.params["scale"]["default"], 2)
+        self.assertIsNone(task.params["quantize"]["default"])
+        self.assertEqual(task.params["quantize"]["enum"], [3, 4, 5, 6, 8, None])
+        self.assertEqual(task.requires["backend"], "mlx-gen")
+        self.assertEqual(task.requires["min_runtime_version"], "0.18.13")
+
+        spec_7b = reg.get("ByteDance-Seed/SeedVR2-7B")
+        self.assertIs(reg.get("seedvr2-7b"), spec_7b)
+        self.assertIs(reg.get("AbstractFramework/seedvr2-7b-8bit"), spec_7b)
 
     def test_glm_edit_capability_and_defaults_are_explicit(self):
         from abstractvision import VisionModelCapabilitiesRegistry

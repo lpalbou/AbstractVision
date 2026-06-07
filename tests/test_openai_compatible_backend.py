@@ -312,8 +312,9 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual([m.id for m in models], ["local-image-model", "local-video-model"])
 
     @unittest.skipUnless(
-        os.environ.get("OPENAI_API_KEY"),
-        "OPENAI_API_KEY not configured",
+        os.environ.get("OPENAI_API_KEY")
+        and os.environ.get("ABSTRACTVISION_RUN_LIVE_OPENAI_TESTS") == "1",
+        "set OPENAI_API_KEY and ABSTRACTVISION_RUN_LIVE_OPENAI_TESTS=1 to run live OpenAI catalog test",
     )
     def test_list_provider_models_default_openai_catalog_live(self):
         from abstractvision import VisionManager
@@ -367,7 +368,15 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
 
         with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
             out = backend.generate_video(
-                VideoGenerationRequest(prompt="move", width=320, height=240, fps=12, num_frames=8)
+                VideoGenerationRequest(
+                    prompt="move",
+                    width=320,
+                    height=240,
+                    fps=12,
+                    num_frames=8,
+                    guidance_scale=4.0,
+                    guidance_2=2.5,
+                )
             )
 
         self.assertEqual(out.media_type, "video")
@@ -376,6 +385,8 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual(seen["body"].get("model"), "video-model")
         self.assertEqual(seen["body"].get("fps"), 12)
         self.assertEqual(seen["body"].get("num_frames"), 8)
+        self.assertEqual(seen["body"].get("guidance_scale"), 4.0)
+        self.assertEqual(seen["body"].get("guidance_2"), 2.5)
 
     def test_image_to_video_json_b64_payload(self):
         from abstractvision.backends.openai_compatible import (
@@ -400,11 +411,14 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         backend = OpenAICompatibleVisionBackend(config=cfg)
 
         with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
-            out = backend.image_to_video(ImageToVideoRequest(image=b"image-bytes", prompt="move"))
+            out = backend.image_to_video(
+                ImageToVideoRequest(image=b"image-bytes", prompt="move", guidance_2=3.5)
+            )
 
         self.assertEqual(out.mime_type, "video/mp4")
         self.assertEqual(base64.b64decode(seen["body"]["image_b64"]), b"image-bytes")
         self.assertEqual(seen["body"].get("prompt"), "move")
+        self.assertEqual(seen["body"].get("guidance_2"), 3.5)
 
     def test_image_to_video_multipart_payload(self):
         from abstractvision.backends.openai_compatible import (
@@ -421,6 +435,8 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
             self.assertIn(b'name="image"; filename="image.png"', body)
             self.assertIn(b"image-bytes", body)
             self.assertIn(b'name="prompt"', body)
+            self.assertIn(b'name="guidance_2"', body)
+            self.assertIn(b"3.5", body)
             return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
 
         cfg = OpenAICompatibleBackendConfig(
@@ -430,7 +446,9 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         backend = OpenAICompatibleVisionBackend(config=cfg)
 
         with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
-            out = backend.image_to_video(ImageToVideoRequest(image=b"image-bytes", prompt="move"))
+            out = backend.image_to_video(
+                ImageToVideoRequest(image=b"image-bytes", prompt="move", guidance_2=3.5)
+            )
 
         self.assertEqual(out.mime_type, "video/mp4")
 

@@ -63,6 +63,10 @@ class TestModelDownloads(unittest.TestCase):
             "AbstractFramework/z-image-turbo-8bit",
             "AbstractFramework/ernie-image-turbo-4bit",
             "AbstractFramework/ernie-image-turbo-8bit",
+            "AbstractFramework/seedvr2-3b-8bit",
+            "AbstractFramework/seedvr2-3b-4bit",
+            "AbstractFramework/seedvr2-7b-8bit",
+            "AbstractFramework/seedvr2-7b-4bit",
         }
         repos = {
             preset.repo_id
@@ -127,6 +131,35 @@ class TestModelDownloads(unittest.TestCase):
         self.assertEqual(quality_ernie.repo_id, "AbstractFramework/ernie-image-turbo-8bit")
         self.assertEqual(default_ernie.local_dir_name, "ernie-image-turbo-mlx-gen-4bit")
         self.assertEqual(quality_ernie.local_dir_name, "ernie-image-turbo-mlx-gen-8bit")
+
+    def test_seedvr2_defaults_to_canonical_q8_and_accepts_exact_q4_q8(self):
+        from abstractvision.model_downloads import find_model_preset
+
+        default_3b = find_model_preset(
+            "seedvr2-3b",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=False,
+        )
+        default_7b = find_model_preset(
+            "seedvr2-7b",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=False,
+        )
+        exact_4bit = find_model_preset(
+            "AbstractFramework/seedvr2-7b-4bit",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=False,
+        )
+
+        self.assertEqual(default_3b.repo_id, "AbstractFramework/seedvr2-3b-8bit")
+        self.assertEqual(default_3b.quantization_bits, 8)
+        self.assertEqual(default_7b.repo_id, "AbstractFramework/seedvr2-7b-8bit")
+        self.assertEqual(default_7b.quantization_bits, 8)
+        self.assertEqual(exact_4bit.repo_id, "AbstractFramework/seedvr2-7b-4bit")
+        self.assertEqual(exact_4bit.quantization_bits, 4)
 
     def test_wan_mlx_gen_preset_is_available_as_non_quantized_video_fallback(self):
         from abstractvision.model_downloads import find_model_preset, model_presets

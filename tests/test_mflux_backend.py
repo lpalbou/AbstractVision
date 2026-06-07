@@ -183,6 +183,14 @@ class _FakeModelConfig:
     def wan2_2_i2v_a14b():
         return "wan-i2v-a14b-config"
 
+    @staticmethod
+    def seedvr2_3b():
+        return "seedvr2-3b-config"
+
+    @staticmethod
+    def seedvr2_7b():
+        return "seedvr2-7b-config"
+
 
 class _FakeModelConfigWithoutWanFactory:
     last_from_name = None
@@ -353,6 +361,51 @@ class _FakeWan:
         return _GeneratedVideo()
 
 
+class _FakeScaleFactor:
+    last_parsed = None
+
+    def __init__(self, value):
+        self.value = value
+
+    @classmethod
+    def parse(cls, value):
+        cls.last_parsed = value
+        return cls(value)
+
+    def __str__(self):
+        return self.value
+
+
+class _FakeTilingConfig:
+    pass
+
+
+class _FakeSeedVR2:
+    last_init = None
+    last_generate = None
+    last_image_path_existed = None
+    last_instance = None
+
+    def __init__(self, **kwargs):
+        _FakeSeedVR2.last_init = dict(kwargs)
+        _FakeSeedVR2.last_instance = self
+        self.callbacks = _FakeCallbackRegistry()
+        self.tiling_config = "unset"
+
+    def generate_image(self, *, seed, image_path, resolution, softness):
+        _FakeSeedVR2.last_generate = {
+            "seed": seed,
+            "image_path": image_path,
+            "resolution": resolution,
+            "softness": softness,
+        }
+        _FakeSeedVR2.last_image_path_existed = Path(image_path).exists()
+        self.callbacks.emit(_FakeProgressEvent("start", None, None, 0, 1, task="text-to-image"))
+        self.callbacks.emit(_FakeProgressEvent("denoise", None, None, 1, 1, task="text-to-image"))
+        self.callbacks.emit(_FakeProgressEvent("complete", None, None, 1, 1, task="text-to-image"))
+        return _Generated()
+
+
 class _FakeDownloadRequiredError(FileNotFoundError):
     download_command = "mlxgen download --model AbstractFramework/flux.2-klein-4b-4bit"
     prepare_command = "mlxgen prepare --model AbstractFramework/flux.2-klein-4b-4bit --path ./models/flux2-klein-4b -q 4"
@@ -473,6 +526,163 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual([event.task for event in seen], ["text_to_image"] * 3)
         self.assertEqual(seen[-1].step_progress, 1.0)
         self.assertEqual(step_seen, [(0, 4), (2, 4), (4, 4)])
+
+    def test_seedvr2_upscale_routes_cached_model_and_progress(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageUpscaleRequest, VideoProgressEvent
+
+        seen = []
+        step_seen = []
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(Path(cache_td), "AbstractFramework/seedvr2-3b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="seedvr2-3b"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux_seedvr2",
+                    return_value=(
+                        _FakeModelConfig,
+                        _FakeSeedVR2,
+                        _FakeScaleFactor,
+                        _FakeTilingConfig,
+                    ),
+                ):
+                    asset = backend.upscale_image_with_progress(
+                        ImageUpscaleRequest(
+                            image=PNG_1X1,
+                            scale=2,
+                            seed=42,
+                            softness=0.25,
+                            quantize=8,
+                            vae_tiling=True,
+                            extra={"on_progress": seen.append},
+                        ),
+                        progress_callback=lambda current, total: step_seen.append((current, total)),
+                    )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(asset.media_type, "image")
+        self.assertEqual(asset.metadata["task"], "image_upscale")
+        self.assertEqual(asset.metadata["base_model"], "seedvr2-3b")
+        self.assertEqual(asset.metadata["quantization_bits"], 8)
+        self.assertEqual(asset.metadata["seed"], 42)
+        self.assertEqual(asset.metadata["resolution"], "2x")
+        self.assertEqual(asset.metadata["scale"], 2)
+        self.assertEqual(asset.metadata["softness"], 0.25)
+        self.assertTrue(asset.metadata["vae_tiling"])
+        self.assertEqual(_FakeSeedVR2.last_init["model_config"], "seedvr2-3b-config")
+        self.assertEqual(_FakeSeedVR2.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeSeedVR2.last_init["quantize"], 8)
+        self.assertEqual(_FakeSeedVR2.last_generate["seed"], 42)
+        self.assertTrue(_FakeSeedVR2.last_image_path_existed)
+        self.assertEqual(str(_FakeSeedVR2.last_generate["resolution"]), "2x")
+        self.assertEqual(_FakeScaleFactor.last_parsed, "2x")
+        self.assertEqual(_FakeSeedVR2.last_generate["softness"], 0.25)
+        self.assertIsInstance(_FakeSeedVR2.last_instance.tiling_config, _FakeTilingConfig)
+        self.assertEqual([event.phase for event in seen], ["start", "denoise", "complete"])
+        self.assertTrue(all(isinstance(event, VideoProgressEvent) for event in seen))
+        self.assertEqual([event.task for event in seen], ["image_upscale"] * 3)
+        self.assertEqual(seen[-1].step_progress, 1.0)
+        self.assertEqual(step_seen, [(0, 1), (1, 1), (1, 1)])
+
+    def test_seedvr2_exact_canonical_package_ids_resolve_to_runtime_base_models(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageUpscaleRequest
+
+        cases = [
+            ("AbstractFramework/seedvr2-3b-8bit", "seedvr2-3b", 8, "seedvr2-3b-config"),
+            ("AbstractFramework/seedvr2-3b-4bit", "seedvr2-3b", 4, "seedvr2-3b-config"),
+            ("AbstractFramework/seedvr2-7b-8bit", "seedvr2-7b", 8, "seedvr2-7b-config"),
+            ("AbstractFramework/seedvr2-7b-4bit", "seedvr2-7b", 4, "seedvr2-7b-config"),
+        ]
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshots = {
+                repo_id: self._make_cache_snapshot(Path(cache_td), repo_id)
+                for repo_id, _base, _bits, _config in cases
+            }
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux_seedvr2",
+                    return_value=(
+                        _FakeModelConfig,
+                        _FakeSeedVR2,
+                        _FakeScaleFactor,
+                        _FakeTilingConfig,
+                    ),
+                ):
+                    for repo_id, base_model, bits, config_name in cases:
+                        with self.subTest(repo_id=repo_id):
+                            backend = MFluxVisionBackend(
+                                config=MFluxBackendConfig(model=repo_id)
+                            )
+                            asset = backend.upscale_image(
+                                ImageUpscaleRequest(image=PNG_1X1, scale=2, seed=42)
+                            )
+
+                            self.assertTrue(asset.data.startswith(b"\x89PNG"))
+                            self.assertEqual(asset.metadata["base_model"], base_model)
+                            self.assertEqual(asset.metadata["quantization_bits"], bits)
+                            self.assertEqual(_FakeSeedVR2.last_init["model_config"], config_name)
+                            self.assertEqual(_FakeSeedVR2.last_init["model_path"], str(snapshots[repo_id]))
+                            self.assertIsNone(_FakeSeedVR2.last_init["quantize"])
+
+    def test_seedvr2_preload_uses_upscale_model_without_generation_warmup(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        _FakeSeedVR2.last_generate = None
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/seedvr2-7b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="seedvr2-7b"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux_seedvr2",
+                    return_value=(
+                        _FakeModelConfig,
+                        _FakeSeedVR2,
+                        _FakeScaleFactor,
+                        _FakeTilingConfig,
+                    ),
+                ):
+                    backend.preload()
+
+        self.assertEqual(_FakeSeedVR2.last_init["model_config"], "seedvr2-7b-config")
+        self.assertIsNone(_FakeSeedVR2.last_init["quantize"])
+        self.assertIsNone(_FakeSeedVR2.last_generate)
+
+    def test_seedvr2_local_prepared_folder_infers_7b_base_model(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as td:
+            model_dir = self._make_model_dir(Path(td), "seedvr2-7b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=str(model_dir)))
+
+            caps = backend.get_capabilities()
+
+        self.assertEqual(caps.supported_tasks, ["image_upscale"])
+
+    def test_seedvr2_provider_catalog_surfaces_local_q8_and_q4_folders(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as model_td, tempfile.TemporaryDirectory() as cache_td:
+            root = Path(model_td)
+            self._make_model_dir(root, "seedvr2-7b-8bit")
+            self._make_model_dir(root, "seedvr2-7b-4bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model_dir=model_td, cache_dir=cache_td)
+            )
+
+            models = backend.list_provider_models(task="image_upscale")
+
+        by_id = {str(info.id): info for info in models}
+        self.assertIn("AbstractFramework/seedvr2-7b-8bit", by_id)
+        self.assertIn("AbstractFramework/seedvr2-7b-4bit", by_id)
+        self.assertEqual(by_id["AbstractFramework/seedvr2-7b-8bit"].raw["quantization_bits"], 8)
+        self.assertEqual(by_id["AbstractFramework/seedvr2-7b-4bit"].raw["quantization_bits"], 4)
 
     def test_generate_image_preserves_explicit_mlx_gen_q8_variant(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -918,6 +1128,32 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(asset.metadata["base_model"], "wan2.2-t2v-a14b")
         self.assertEqual(asset.metadata["guidance_2"], 3.0)
 
+    def test_wan_a14b_text_to_video_accepts_explicit_guidance_2(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        asset = backend.generate_video(
+                            VideoGenerationRequest(prompt="fox", seed=42, guidance_2=2.25)
+                        )
+
+        self.assertEqual(_FakeWan.last_generate["guidance_2"], 2.25)
+        self.assertEqual(asset.metadata["guidance_2"], 2.25)
+
     def test_wan_a14b_routes_image_to_video_with_model_defaults(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageToVideoRequest
@@ -957,6 +1193,37 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertIn("image_path", _FakeWan.last_generate)
         self.assertEqual(asset.metadata["base_model"], "wan2.2-i2v-a14b")
         self.assertEqual(asset.metadata["guidance_2"], 3.5)
+
+    def test_wan_a14b_image_to_video_accepts_explicit_guidance_2(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageToVideoRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-I2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-I2V-A14B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        asset = backend.image_to_video(
+                            ImageToVideoRequest(
+                                image=_solid_png(32, 32, "blue"),
+                                prompt="move",
+                                seed=42,
+                                guidance_2=2.75,
+                            )
+                        )
+
+        self.assertEqual(_FakeWan.last_generate["guidance_2"], 2.75)
+        self.assertEqual(asset.metadata["guidance_2"], 2.75)
 
     def test_wan_emits_normalized_video_progress_events(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend

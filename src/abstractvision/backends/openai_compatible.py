@@ -545,6 +545,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             payload["steps"] = int(request.steps)
         if request.guidance_scale is not None:
             payload["guidance_scale"] = float(request.guidance_scale)
+        if request.guidance_2 is not None:
+            payload["guidance_2"] = float(request.guidance_2)
         if isinstance(request.extra, dict) and request.extra:
             payload.update(dict(request.extra))
         if payload.get("model") is not None:
@@ -580,6 +582,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 payload["steps"] = int(request.steps)
             if request.guidance_scale is not None:
                 payload["guidance_scale"] = float(request.guidance_scale)
+            if request.guidance_2 is not None:
+                payload["guidance_2"] = float(request.guidance_2)
             if isinstance(request.extra, dict) and request.extra:
                 payload.update(dict(request.extra))
             if payload.get("model") is not None:
@@ -608,6 +612,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             fields["steps"] = str(int(request.steps))
         if request.guidance_scale is not None:
             fields["guidance_scale"] = str(float(request.guidance_scale))
+        if request.guidance_2 is not None:
+            fields["guidance_2"] = str(float(request.guidance_2))
         if isinstance(request.extra, dict) and request.extra:
             for k, v in request.extra.items():
                 if v is None:

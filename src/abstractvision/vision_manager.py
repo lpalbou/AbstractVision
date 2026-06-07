@@ -12,6 +12,7 @@ from .types import (
     ImageEditRequest,
     ImageGenerationRequest,
     ImageToVideoRequest,
+    ImageUpscaleRequest,
     MultiAngleRequest,
     ProviderModelInfo,
     VideoGenerationRequest,
@@ -131,6 +132,20 @@ class VisionManager:
         asset = backend.edit_image(request)
         return self._maybe_store(
             asset, tags={"kind": "generated_media", "modality": "image", "task": "image_to_image"}
+        )
+
+    def upscale_image(self, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
+        backend = self._require_backend()
+        self._require_model_support("image_upscale")
+        self._require_backend_support(backend, "image_upscale")
+        self._move_progress_callbacks_to_extra(kwargs)
+        request = ImageUpscaleRequest(image=image, **kwargs)
+        normalize = getattr(backend, "normalize_image_upscale_request", None)
+        if callable(normalize):
+            request = normalize(request)
+        asset = backend.upscale_image(request)
+        return self._maybe_store(
+            asset, tags={"kind": "generated_media", "modality": "image", "task": "image_upscale"}
         )
 
     def generate_angles(

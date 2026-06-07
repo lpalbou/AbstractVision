@@ -123,7 +123,12 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
     def test_manager_applies_backend_request_normalization(self):
         from abstractvision import VisionManager
         from abstractvision.backends import VisionBackend
-        from abstractvision.types import GeneratedAsset, ImageEditRequest, ImageGenerationRequest
+        from abstractvision.types import (
+            GeneratedAsset,
+            ImageEditRequest,
+            ImageGenerationRequest,
+            ImageUpscaleRequest,
+        )
 
         seen = {}
 
@@ -187,6 +192,20 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
                     extra=dict(request.extra or {}),
                 )
 
+            def normalize_image_upscale_request(
+                self, request: ImageUpscaleRequest
+            ) -> ImageUpscaleRequest:
+                return ImageUpscaleRequest(
+                    image=request.image,
+                    resolution="2x",
+                    scale=2,
+                    seed=request.seed,
+                    softness=0.25,
+                    quantize=8,
+                    vae_tiling=False,
+                    extra=dict(request.extra or {}),
+                )
+
             def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
                 seen["t2i"] = request
                 return GeneratedAsset(
@@ -212,6 +231,12 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
                 seen["i2v"] = request
                 return GeneratedAsset(
                     media_type="video", data=b"v", mime_type="video/mp4", metadata={}
+                )
+
+            def upscale_image(self, request: ImageUpscaleRequest) -> GeneratedAsset:
+                seen["upscale"] = request
+                return GeneratedAsset(
+                    media_type="image", data=b"u", mime_type="image/png", metadata={}
                 )
 
         vm = VisionManager(backend=NormalizingBackend())
@@ -249,6 +274,13 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
             negative_prompt="blur",
             on_progress=progress_callback,
         )
+        vm.upscale_image(
+            b"img",
+            resolution=384,
+            softness=0.9,
+            quantize=4,
+            on_progress=progress_callback,
+        )
 
         self.assertEqual(seen["t2i"].steps, 2)
         self.assertEqual(seen["t2i"].guidance_scale, 1.0)
@@ -270,6 +302,12 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         self.assertEqual(seen["i2v"].num_frames, 9)
         self.assertIsNone(seen["i2v"].negative_prompt)
         self.assertIs(seen["i2v"].extra.get("on_progress"), progress_callback)
+        self.assertEqual(seen["upscale"].resolution, "2x")
+        self.assertEqual(seen["upscale"].scale, 2)
+        self.assertEqual(seen["upscale"].softness, 0.25)
+        self.assertEqual(seen["upscale"].quantize, 8)
+        self.assertFalse(seen["upscale"].vae_tiling)
+        self.assertIs(seen["upscale"].extra.get("on_progress"), progress_callback)
 
 
 if __name__ == "__main__":

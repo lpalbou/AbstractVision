@@ -8,11 +8,13 @@ from ..types import (
     ImageEditRequest,
     ImageGenerationRequest,
     ImageToVideoRequest,
+    ImageUpscaleRequest,
     MultiAngleRequest,
     ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
+from ..errors import CapabilityNotSupportedError
 
 
 class VisionBackend(ABC):
@@ -43,6 +45,13 @@ class VisionBackend(ABC):
         self,
         request: ImageToVideoRequest,
     ) -> ImageToVideoRequest:
+        """Best-effort request normalization before execution."""
+        return request
+
+    def normalize_image_upscale_request(
+        self,
+        request: ImageUpscaleRequest,
+    ) -> ImageUpscaleRequest:
         """Best-effort request normalization before execution."""
         return request
 
@@ -82,6 +91,15 @@ class VisionBackend(ABC):
         _ = progress_callback
         return self.image_to_video(request)
 
+    def upscale_image_with_progress(
+        self,
+        request: ImageUpscaleRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        """Upscale an image, optionally reporting progress (best-effort)."""
+        _ = progress_callback
+        return self.upscale_image(request)
+
     def get_capabilities(self) -> Optional[VisionBackendCapabilities]:
         """Return backend-level capability constraints (optional)."""
         return None
@@ -117,3 +135,9 @@ class VisionBackend(ABC):
 
     @abstractmethod
     def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset: ...
+
+    def upscale_image(self, request: ImageUpscaleRequest) -> GeneratedAsset:
+        _ = request
+        raise CapabilityNotSupportedError(
+            f"{self.__class__.__name__} does not support image_upscale."
+        )

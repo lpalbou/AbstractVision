@@ -7,6 +7,9 @@
     "image_to_image": {
       "description": "Edit/transform an input image using a text prompt (optionally with a mask)."
     },
+    "image_upscale": {
+      "description": "Upscale or restore an input image without changing its semantic content."
+    },
     "multi_view_image": {
       "description": "Generate multiple consistent views/angles for a concept (optionally conditioned on a reference image)."
     },
@@ -3484,6 +3487,10 @@
               "required": false,
               "default": 4.0
             },
+            "guidance_2": {
+              "required": false,
+              "default": 3.0
+            },
             "seed": {
               "required": false
             }
@@ -3577,6 +3584,10 @@
               "default": 40
             },
             "guidance_scale": {
+              "required": false,
+              "default": 3.5
+            },
+            "guidance_2": {
               "required": false,
               "default": 3.5
             },
@@ -4182,6 +4193,209 @@
             "seed": {
               "required": false
             }
+          }
+        }
+      }
+    },
+    "ByteDance-Seed/SeedVR2-3B": {
+      "provider": "mlx-gen",
+      "license": "apache-2.0",
+      "notes": "Official SeedVR2 3B single-image super-resolution base model. AbstractVision defaults to the canonical AbstractFramework 8-bit MLX-Gen package for local Apple Silicon runs; the official base remains available when callers explicitly want source weights/runtime quantization.",
+      "downloads": [
+        {
+          "key": "seedvr2-3b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/seedvr2-3b-8bit",
+          "source": "abstractframework-mlx-gen",
+          "aliases": [
+            "seedvr2",
+            "seedvr2-3b",
+            "seedvr2-3b-8bit",
+            "AbstractFramework/seedvr2-3b-8bit"
+          ],
+          "notes": "Canonical prepared 8-bit package and default recommendation."
+        },
+        {
+          "key": "seedvr2-3b-4bit",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/seedvr2-3b-4bit",
+          "source": "abstractframework-mlx-gen",
+          "aliases": [
+            "seedvr2-3b-4bit",
+            "AbstractFramework/seedvr2-3b-4bit"
+          ],
+          "notes": "Canonical prepared 4-bit package for lower-memory runs."
+        },
+        {
+          "key": "seedvr2-3b-source",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "ByteDance-Seed/SeedVR2-3B",
+          "source": "official",
+          "aliases": [
+            "ByteDance-Seed/SeedVR2-3B",
+            "seedvr2-3b-source"
+          ],
+          "notes": "Official base model; use runtime quantize when preparing local artifacts."
+        }
+      ],
+      "tasks": {
+        "image_upscale": {
+          "inputs": [
+            "image"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "image": {
+              "required": true
+            },
+            "scale": {
+              "required": false,
+              "default": 2,
+              "description": "Friendly scale factor converted to SeedVR2 resolution, for example 2 or 1.5."
+            },
+            "resolution": {
+              "required": false,
+              "default": "2x",
+              "description": "SeedVR2 target shortest edge in pixels or a scale factor such as 2x."
+            },
+            "softness": {
+              "required": false,
+              "default": 0.0,
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "seed": {
+              "required": false
+            },
+            "quantize": {
+              "required": false,
+              "default": null,
+              "enum": [
+                3,
+                4,
+                5,
+                6,
+                8,
+                null
+              ]
+            },
+            "vae_tiling": {
+              "required": false,
+              "default": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.13"
+          }
+        }
+      }
+    },
+    "ByteDance-Seed/SeedVR2-7B": {
+      "provider": "mlx-gen",
+      "license": "apache-2.0",
+      "notes": "Official SeedVR2 7B single-image super-resolution base model. Use the canonical AbstractFramework 8-bit prepared package by default when memory allows, or the 4-bit package for lower-memory runs.",
+      "downloads": [
+        {
+          "key": "seedvr2-7b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/seedvr2-7b-8bit",
+          "source": "abstractframework-mlx-gen",
+          "aliases": [
+            "seedvr2-7b",
+            "seedvr2-7b-8bit",
+            "AbstractFramework/seedvr2-7b-8bit"
+          ],
+          "notes": "Canonical prepared 8-bit package and default recommendation for 7B."
+        },
+        {
+          "key": "seedvr2-7b-4bit",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/seedvr2-7b-4bit",
+          "source": "abstractframework-mlx-gen",
+          "aliases": [
+            "seedvr2-7b-4bit",
+            "AbstractFramework/seedvr2-7b-4bit"
+          ],
+          "notes": "Canonical prepared 4-bit package for lower-memory 7B runs."
+        },
+        {
+          "key": "seedvr2-7b-source",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "ByteDance-Seed/SeedVR2-7B",
+          "source": "official",
+          "aliases": [
+            "ByteDance-Seed/SeedVR2-7B",
+            "seedvr2-7b-source"
+          ],
+          "notes": "Official base model; use runtime quantize when preparing local artifacts."
+        }
+      ],
+      "tasks": {
+        "image_upscale": {
+          "inputs": [
+            "image"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "image": {
+              "required": true
+            },
+            "scale": {
+              "required": false,
+              "default": 2,
+              "description": "Friendly scale factor converted to SeedVR2 resolution, for example 2 or 1.5."
+            },
+            "resolution": {
+              "required": false,
+              "default": "2x",
+              "description": "SeedVR2 target shortest edge in pixels or a scale factor such as 2x."
+            },
+            "softness": {
+              "required": false,
+              "default": 0.0,
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "seed": {
+              "required": false
+            },
+            "quantize": {
+              "required": false,
+              "default": null,
+              "enum": [
+                3,
+                4,
+                5,
+                6,
+                8,
+                null
+              ]
+            },
+            "vae_tiling": {
+              "required": false,
+              "default": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.18.13"
           }
         }
       }

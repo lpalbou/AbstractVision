@@ -28,6 +28,7 @@ The package exports the following symbols from `abstractvision` (see [`../src/ab
 
 - `generate_image(...)` → `text_to_image`
 - `edit_image(...)` → `image_to_image`
+- `upscale_image(...)` → `image_upscale`
 - `generate_video(...)` → `text_to_video` (backend-dependent)
 - `image_to_video(...)` → `image_to_video` (backend-dependent)
 - `generate_angles(...)` → `multi_view_image` (API exists; no built-in backend implements it yet)
@@ -127,7 +128,13 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
-`generate_video(...)` and `image_to_video(...)` are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.10+ supports Wan `text_to_video` and first-frame `image_to_video`, including A14B task-specific checkpoints. Generated MP4 outputs still require an `ffmpeg` executable on `PATH` whenever a backend returns frame sequences for local packaging.
+`upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
+of the public API. MLX-Gen 0.18.13+ supports SeedVR2 `image_upscale`, Wan
+`text_to_video`, and first-frame `image_to_video`, including A14B task-specific
+checkpoints. Local Diffusers video remains experimental and disabled from the
+normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
+executable on `PATH` whenever a backend returns frame sequences for local
+packaging.
 
 ### Local example (MLX-Gen backend)
 
@@ -169,6 +176,16 @@ edit_asset = image_vm.edit_image(
     extra={"reference_images": [Path("./style-reference.png").read_bytes()]},
 )
 
+upscale_backend = MLXGenVisionBackend(config=MLXGenBackendConfig(model="AbstractFramework/seedvr2-3b-8bit"))
+upscale_vm = VisionManager(backend=upscale_backend)
+
+upscaled_asset = upscale_vm.upscale_image(
+    image=Path("./subject.png").read_bytes(),
+    scale="2x",
+    seed=2405,
+    on_progress=on_progress,
+)
+
 t2v_backend = MLXGenVisionBackend(
     config=MLXGenBackendConfig(model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit")
 )
@@ -182,6 +199,7 @@ asset = t2v_vm.generate_video(
     fps=10,
     steps=20,
     guidance_scale=4.0,
+    guidance_2=3.0,
     on_progress=on_progress,
     extra={"max_sequence_length": 256},
 )
@@ -199,18 +217,26 @@ first_frame_asset = i2v_vm.image_to_video(
     num_frames=41,
     fps=10,
     steps=20,
-    guidance_scale=4.0,
+    guidance_scale=3.5,
+    guidance_2=3.5,
     on_progress=on_progress,
     extra={"max_sequence_length": 256},
 )
 ```
 
+Wan 2.2 A14B has two guidance controls. Use `guidance_scale` for the
+primary/high-noise stage and `guidance_2` for the second/low-noise stage. The
+registry default is `guidance_2=3.0` for text-to-video A14B and `3.5` for
+image-to-video A14B. Other video models should omit `guidance_2` unless their
+registry task declares it.
+
 For MLX-Gen, `on_progress` receives an `abstractvision.VideoProgressEvent`.
-Image generation/editing events carry `phase`, `step`, `total_steps`, and
-denoise-step `progress`. Wan video events add `frame`, `total_frames`, and
+Image generation/editing/upscaling events carry `phase`, `step`, `total_steps`,
+and denoise-step `progress`. Wan video events add `frame`, `total_frames`, and
 `frame_progress`. The lower-level `backend.generate_image_with_progress(...)`,
-`backend.edit_image_with_progress(...)`, `backend.generate_video_with_progress(...)`,
-and `backend.image_to_video_with_progress(...)` methods keep the existing
+`backend.edit_image_with_progress(...)`, `backend.upscale_image_with_progress(...)`,
+`backend.generate_video_with_progress(...)`, and
+`backend.image_to_video_with_progress(...)` methods keep the existing
 two-argument `(current, total)` callback for backend-agnostic progress bars.
 For MLX-Gen, that callback reports denoise step counts; use
 `on_progress(event)` when a UI also needs video frame context.

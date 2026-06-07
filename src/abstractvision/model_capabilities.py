@@ -19,6 +19,7 @@ class VisionModelDownloadSpec:
     repo_id: str
     source: str = ""
     notes: str = ""
+    aliases: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,7 @@ class VisionModelCapabilitiesRegistry:
         self._schema_version: str = ""
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._models: Dict[str, VisionModelSpec] = {}
-        self._download_repo_aliases: Dict[str, str] = {}
+        self._model_aliases: Dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
@@ -71,7 +72,7 @@ class VisionModelCapabilitiesRegistry:
             raise ValueError("Invalid capability asset: `models` must be an object keyed by model_id.")
 
         parsed: Dict[str, VisionModelSpec] = {}
-        repo_aliases: Dict[str, str] = {}
+        model_aliases: Dict[str, str] = {}
         for model_id, spec in models.items():
             provider = str(spec.get("provider", "unknown"))
             license_name = str(spec.get("license", "unknown"))
@@ -107,9 +108,17 @@ class VisionModelCapabilitiesRegistry:
                             repo_id=repo_id,
                             source=str(item.get("source", "") or "").strip(),
                             notes=str(item.get("notes", "") or "").strip(),
+                            aliases=[
+                                str(alias).strip()
+                                for alias in item.get("aliases", [])
+                                if isinstance(alias, str) and str(alias).strip()
+                            ]
                         )
                     )
-                    repo_aliases.setdefault(repo_id.lower(), str(model_id))
+                    for alias in [key, repo_id, *downloads[-1].aliases]:
+                        alias_s = str(alias or "").strip()
+                        if alias_s:
+                            model_aliases.setdefault(alias_s.lower(), str(model_id))
 
             tasks_raw = spec.get("tasks", {})
             if not isinstance(tasks_raw, dict):
@@ -139,7 +148,7 @@ class VisionModelCapabilitiesRegistry:
             )
 
         self._models = parsed
-        self._download_repo_aliases = repo_aliases
+        self._model_aliases = model_aliases
 
     def list_models(self) -> List[str]:
         return sorted(self._models.keys())
@@ -161,7 +170,7 @@ class VisionModelCapabilitiesRegistry:
         try:
             return self._models[model_id]
         except KeyError as e:
-            alias_target = self._download_repo_aliases.get(str(model_id or "").strip().lower())
+            alias_target = self._model_aliases.get(str(model_id or "").strip().lower())
             if alias_target:
                 return self._models[alias_target]
             raise UnknownModelError(f"Unknown vision model id: {model_id}") from e
@@ -303,8 +312,18 @@ def validate_capabilities_json(data: Any) -> None:
             requires = t.get("requires")
             if requires is not None:
                 robj = _expect_dict(requires, [*tpath, "requires"])
+                allowed_requires_keys = {"backend", "base_model_id", "min_runtime_version"}
+                for rkey in robj:
+                    if rkey not in allowed_requires_keys:
+                        _err([*tpath, "requires", str(rkey)], "unknown requires key")
                 base_model_id = robj.get("base_model_id")
                 if base_model_id is not None:
                     _expect_str(base_model_id, [*tpath, "requires", "base_model_id"])
                     if base_model_id not in models:
                         _err([*tpath, "requires", "base_model_id"], f"unknown model id: {base_model_id!r}")
+                backend = robj.get("backend")
+                if backend is not None:
+                    _expect_str(backend, [*tpath, "requires", "backend"])
+                min_runtime_version = robj.get("min_runtime_version")
+                if min_runtime_version is not None:
+                    _expect_str(min_runtime_version, [*tpath, "requires", "min_runtime_version"])

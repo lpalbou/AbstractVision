@@ -106,6 +106,8 @@ _COMMON_MLX_PATTERNS = (
     "model_index.json",
     "*.json",
     "*.md",
+    "*.pth",
+    "*.pt",
     "LICENSE*",
     "scheduler/*",
     "text_encoder/*",
@@ -618,6 +620,87 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         allow_patterns=("README.md", "LICENSE*", "z-image-turbo-Q8_0.gguf"),
         notes="Q8_0 GGUF for stable-diffusion.cpp style runtimes.",
         source_priority=40,
+    ),
+    VisionModelDownloadPreset(
+        key="seedvr2-3b",
+        display_name="SeedVR2 3B MLX-Gen q8 upscaler",
+        repo_id="AbstractFramework/seedvr2-3b-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="seedvr2-3b-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="ByteDance-Seed/SeedVR2-3B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "seedvr2",
+            "seedvr2-3b",
+            "seedvr2-3b-8bit",
+            "AbstractFramework/seedvr2-3b-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes=(
+            "Canonical AbstractFramework MLX-Gen prepared SeedVR2 3B 8-bit upscaler. "
+            "This is the default upscaler package for local Apple Silicon runs."
+        ),
+        source_priority=18,
+    ),
+    VisionModelDownloadPreset(
+        key="seedvr2-3b-4bit",
+        display_name="SeedVR2 3B MLX-Gen q4 upscaler",
+        repo_id="AbstractFramework/seedvr2-3b-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="seedvr2-3b-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="ByteDance-Seed/SeedVR2-3B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "seedvr2-3b-4bit",
+            "AbstractFramework/seedvr2-3b-4bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="Canonical AbstractFramework MLX-Gen prepared SeedVR2 3B 4-bit upscaler.",
+        source_priority=19,
+    ),
+    VisionModelDownloadPreset(
+        key="seedvr2-7b",
+        display_name="SeedVR2 7B MLX-Gen q8 upscaler",
+        repo_id="AbstractFramework/seedvr2-7b-8bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="seedvr2-7b-mlx-gen-8bit",
+        quantization_bits=8,
+        upstream_repo_id="ByteDance-Seed/SeedVR2-7B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "seedvr2-7b",
+            "seedvr2-7b-8bit",
+            "AbstractFramework/seedvr2-7b-8bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes=(
+            "Canonical AbstractFramework MLX-Gen prepared SeedVR2 7B 8-bit upscaler. "
+            "Use this larger default-quality package when memory allows."
+        ),
+        source_priority=18,
+    ),
+    VisionModelDownloadPreset(
+        key="seedvr2-7b-4bit",
+        display_name="SeedVR2 7B MLX-Gen q4 upscaler",
+        repo_id="AbstractFramework/seedvr2-7b-4bit",
+        target="mlx",
+        engine="mlx-gen",
+        local_dir_name="seedvr2-7b-mlx-gen-4bit",
+        quantization_bits=4,
+        upstream_repo_id="ByteDance-Seed/SeedVR2-7B",
+        source="abstractframework-mlx-gen",
+        aliases=(
+            "seedvr2-7b-4bit",
+            "AbstractFramework/seedvr2-7b-4bit",
+        ),
+        allow_patterns=_COMMON_MLX_PATTERNS,
+        notes="Canonical AbstractFramework MLX-Gen prepared SeedVR2 7B 4-bit upscaler.",
+        source_priority=19,
     ),
     VisionModelDownloadPreset(
         key="qwen-image",
@@ -1823,6 +1906,24 @@ def find_model_preset(
                 key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
             )[0]
         if mlx_gen_matches:
+            if requested in {"seedvr2", "seedvr2-3b", "seedvr2-7b"}:
+                preferred = [
+                    p
+                    for p in mlx_gen_matches
+                    if int(p.quantization_bits or 0) == 8
+                    and str(p.repo_id).lower().startswith("abstractframework/seedvr2")
+                ]
+                if preferred:
+                    return sorted(
+                        preferred,
+                        key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
+                    )[0]
+            repo_choices = {p.repo_id for p in mlx_gen_matches}
+            if len(repo_choices) == 1:
+                return sorted(
+                    mlx_gen_matches,
+                    key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
+                )[0]
             available = ", ".join(sorted({p.repo_id for p in mlx_gen_matches}))
             raise ValueError(
                 f"MLX-Gen model selector {name!r} is not an exact published model id. "

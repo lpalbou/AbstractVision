@@ -22,7 +22,8 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision cli` — interactive testing (supports `openai`, `diffusers`, `mlx-gen`, `sdcpp`; legacy alias: `abstractvision repl`; `mflux` is accepted as a compatibility alias)
 - `abstractvision playground [--host 127.0.0.1] [--port 8091]` — self-contained local web UI and `/v1/vision/*` API
 - `abstractvision serve [--host 127.0.0.1] [--port 8091]` — alias for `abstractvision playground`
-- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` / `abstractvision i2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mlx-gen`, and `sdcpp`; MLX-Gen 0.18.10+ provides image progress, multi-reference edits, and Wan `t2v`/`i2v`, including A14B task-specific checkpoints)
+- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` / `abstractvision i2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mlx-gen`, and `sdcpp`; MLX-Gen 0.18.13+ provides image progress, multi-reference edits, SeedVR2 upscaling, and Wan `t2v`/`i2v`, including A14B task-specific checkpoints)
+- `abstractvision upscale ...` — one-shot SeedVR2 image upscaling; defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit` and supports `--scale`, `--resolution`, `--softness`, `--seed`, optional source-weight `--quantize`, and `--vae-tiling`
 
 Note:
 - `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mlx-gen|sdcpp` (legacy alias: `--backend`; `mflux` remains accepted).
@@ -42,13 +43,14 @@ abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-
 abstractvision t2i --provider mlx-gen --model briaai/FIBO "a studio product photo of a white ceramic mug" --steps 50 --guidance-scale 4.0 --open
 abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.png "remove the background and keep the object edges clean" --steps 20 --guidance-scale 4.0 --open
-abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
-abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+abstractvision upscale --provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --image ./input.png --scale 2x --open
+abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
+abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
 ```
 
 For MLX-Gen Wan, one-shot `t2v` and `i2v` show denoise-step progress with
-frame context on stderr by default. Add `--no-progress` when you need quiet
-shell output.
+frame context on stderr by default. `upscale` also shows denoise-step progress
+by default. Add `--no-progress` when you need quiet shell output.
 
 ## Interactive CLI backend selection
 
@@ -77,9 +79,9 @@ Examples:
 /backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit
 /t2i "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 /backend mlx-gen AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
-/t2v "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/t2v "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
 /backend mlx-gen AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit
-/i2v --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/i2v --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
 ```
 
 Interactive `/t2v` and `/i2v` also show denoise-step video progress by default

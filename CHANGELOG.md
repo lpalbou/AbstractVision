@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.3.22 - 2026-06-07
+
+- Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.13,<0.19.0` so Apple Silicon installs pick up the current SeedVR2 upscaler, official base-model support, canonical q8/q4 packages, and the latest image-edit fixes.
+- Image upscaling: add first-class `ImageUpscaleRequest`, `VisionManager.upscale_image(...)`, backend `upscale_image_with_progress(...)`, and canonical `image_upscale` capability metadata.
+- MLX-Gen SeedVR2: surface official `ByteDance-Seed/SeedVR2-3B` and `ByteDance-Seed/SeedVR2-7B` base models plus canonical `AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}` packages. Short selectors such as `seedvr2-3b` resolve to the recommended 8-bit package, while exact q4/q8 model ids remain exact.
+- CLI/Core integration: add one-shot `abstractvision upscale` with default `mlx-gen/AbstractFramework/seedvr2-3b-8bit`, AbstractCore plugin tool support, and residency/catalog support for upscaler-only models.
+- Progress events: relay SeedVR2 denoise-step progress through the same normalized progress event surface used by image/video generation, with `task="image_upscale"`.
+
+## 0.3.21 - 2026-06-04
+
+- Wan A14B guidance controls: promote MLX-Gen `guidance_2` to a first-class `VideoGenerationRequest` / `ImageToVideoRequest` field, CLI `--guidance-2` flag, REPL flag, playground job parameter, and AbstractCore tool parameter.
+- Model registry: declare `guidance_2` defaults for Wan 2.2 A14B text-to-video and image-to-video tasks so discovery, tool defaults, and provider catalogs agree.
+- OpenAI-compatible video: forward typed `guidance_2` to custom text-to-video and image-to-video endpoints that support the Wan-style two-stage guidance contract.
+
 ## 0.3.20 - 2026-06-04
 
 - Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.10,<0.19.0` so Apple Silicon installs pick up the current capability planner, shared image/video progress events, and multi-reference edit routing.

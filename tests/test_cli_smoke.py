@@ -185,6 +185,40 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("AbstractFramework/flux.2-klein-4b-4bit", out)
         self.assertNotIn("stable-diffusion-3-medium", out)
 
+    def test_upscale_command_defaults_to_seedvr2_mlx_gen(self):
+        from abstractvision.cli import main
+
+        seen = {}
+
+        class _FakeManager:
+            store = None
+            backend = None
+
+            def upscale_image(self, image, **kwargs):
+                seen["image"] = image
+                seen["kwargs"] = dict(kwargs)
+                return {"ok": True}
+
+        def fake_build(args):
+            seen["provider"] = args.provider
+            seen["model"] = args.model
+            return _FakeManager()
+
+        with tempfile.TemporaryDirectory() as td:
+            img = Path(td) / "input.png"
+            img.write_bytes(b"\x89PNG\r\n\x1a\n")
+            with patch.dict("os.environ", {}, clear=True):
+                with patch("abstractvision.cli._build_manager_from_args", new=fake_build):
+                    with patch("abstractvision.cli._print_json", new=lambda _value: None):
+                        rc = main(["upscale", "--image", str(img), "--no-progress"])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(seen["provider"], "mlx-gen")
+        self.assertEqual(seen["model"], "AbstractFramework/seedvr2-3b-8bit")
+        self.assertEqual(seen["image"], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(seen["kwargs"]["resolution"], None)
+        self.assertEqual(seen["kwargs"]["scale"], None)
+
     def test_model_presets_accepts_legacy_mflux_engine_alias(self):
         from abstractvision.cli import main
 
@@ -875,10 +909,12 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIsNone(state.defaults["t2v"]["width"])
         self.assertIsNone(state.defaults["t2v"]["fps"])
         self.assertIsNone(state.defaults["t2v"]["steps"])
+        self.assertIsNone(state.defaults["t2v"]["guidance_2"])
         self.assertIn("i2v", state.defaults)
         self.assertIsNone(state.defaults["i2v"]["width"])
         self.assertIsNone(state.defaults["i2v"]["fps"])
         self.assertIsNone(state.defaults["i2v"]["steps"])
+        self.assertIsNone(state.defaults["i2v"]["guidance_2"])
 
     def test_repl_state_defaults_to_openai_when_base_url_is_configured(self):
         from abstractvision.cli import _ReplState
@@ -953,6 +989,7 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(args.fps, 8)
         self.assertEqual(args.max_sequence_length, 256)
         self.assertIsNone(args.steps)
+        self.assertIsNone(args.guidance_2)
         self.assertTrue(args.progress)
         self.assertTrue(callable(args._fn))
 

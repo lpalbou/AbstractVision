@@ -42,6 +42,12 @@ _RESIDENCY_TASK_ALIASES = {
     "i2i": "image_to_image",
     "image_edit": "image_to_image",
     "image-edit": "image_to_image",
+    "image_upscale": "image_upscale",
+    "image-upscale": "image_upscale",
+    "upscale": "image_upscale",
+    "upscale_image": "image_upscale",
+    "super_resolution": "image_upscale",
+    "super-resolution": "image_upscale",
     "text_to_video": "text_to_video",
     "text-to-video": "text_to_video",
     "t2v": "text_to_video",
@@ -411,7 +417,7 @@ def _normalize_residency_task(value: Any) -> Optional[str]:
     task = _RESIDENCY_TASK_ALIASES.get(raw)
     if task is None:
         raise AbstractVisionError(
-            f"Unsupported residency task {value!r}. Use 'text_to_image', 'image_to_image', 'text_to_video', or 'image_to_video'."
+            f"Unsupported residency task {value!r}. Use 'text_to_image', 'image_to_image', 'image_upscale', 'text_to_video', or 'image_to_video'."
         )
     return task
 
@@ -1589,6 +1595,7 @@ class _AbstractVisionCapability:
             "seed",
             "steps",
             "guidance_scale",
+            "guidance_2",
             "extra",
         }
         extra = kwargs.get("extra")
@@ -1635,6 +1642,7 @@ class _AbstractVisionCapability:
             "seed",
             "steps",
             "guidance_scale",
+            "guidance_2",
             "extra",
         }
         extra = kwargs.get("extra")
@@ -1679,6 +1687,51 @@ class _AbstractVisionCapability:
 
     def generate_angles(self, prompt: str, **kwargs: Any):
         return self.multi_view_image(prompt, **kwargs)
+
+    def upscale_image(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
+        store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        image_b = _resolve_bytes_input(image, artifact_store=store)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        allowed_request_keys = {
+            "resolution",
+            "scale",
+            "seed",
+            "softness",
+            "quantize",
+            "vae_tiling",
+            "extra",
+        }
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            out = vm.upscale_image(image=image_b, **kwargs)
+            if binding.get("local_control"):
+                self._record_loaded_model(binding, task="image_upscale", resident=False, source="request")
+            if isinstance(out, dict):
+                return out
+            return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
+
+    def image_upscale(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
+        return self.upscale_image(image=image, **kwargs)
 
     def t2v(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
