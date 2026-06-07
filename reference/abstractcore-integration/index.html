@@ -812,7 +812,7 @@
 - Compatible HTTP: set <code>OPENAI_BASE_URL</code> to a local/remote compatible <code>/v1</code> server. Set <code>ABSTRACTVISION_BACKEND=openai-compatible</code> when you want to force compatible-endpoint semantics.
 - Legacy <code>abstractvision:openai-compatible</code>: keeps compatible-endpoint defaults when that backend id is selected directly.
 - Local Diffusers: install <code>abstractvision[diffusers]</code>, then set <code>ABSTRACTVISION_BACKEND=diffusers</code> with <code>runwayml/stable-diffusion-v1-5</code> or another supported Diffusers model. It is cache-only/offline unless <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code> is set. Local <code>text_to_video</code> groundwork exists but is currently experimental and disabled from the normal local plugin surfaces.
-- Local MLX-Gen (Apple Silicon): install <code>abstractvision[mlx-gen]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mlx-gen</code>. Download exact model repos such as <code>abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-gen</code>, <code>abstractvision download briaai/FIBO --provider mlx-gen</code>, <code>abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx-gen</code>, <code>abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen</code>, or <code>abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provider mlx-gen</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed exact model ids such as <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code>, <code>mlx-gen/prism-ml/bonsai-image-ternary-4B-mlx-2bit</code>, <code>mlx-gen/AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit</code>, or <code>mlx-gen/AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit</code>. q4 repos are the memory-efficient default recommendation when a q4/q8 AbstractFramework pair exists; q8 repos remain available for quality-focused runs. Bonsai ternary is already pre-packed at 2-bit and is selected by its exact repo id. Quantization is metadata of the selected model folder, not an AbstractCore request parameter. Legacy <code>mflux</code> provider values remain accepted as aliases.
+- Local MLX-Gen (Apple Silicon): install <code>abstractvision[mlx-gen]</code> (or <code>abstractvision[all-apple]</code>), then set <code>ABSTRACTVISION_BACKEND=mlx-gen</code>. Download exact model repos such as <code>abstractvision download AbstractFramework/flux.2-klein-4b-4bit --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/ernie-image-turbo-8bit --provider mlx-gen</code>, <code>abstractvision download briaai/FIBO --provider mlx-gen</code>, <code>abstractvision download prism-ml/bonsai-image-ternary-4B-mlx-2bit --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/seedvr2-3b-8bit --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/seedvr2-7b-8bit --provider mlx-gen</code>, <code>abstractvision download Wan-AI/Wan2.2-TI2V-5B-Diffusers --provider mlx-gen</code>, <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen</code>, or <code>abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provider mlx-gen</code> (stored in the Hugging Face cache; <code>ABSTRACTVISION_MODEL_DIR</code> is only a legacy import root). Use routed exact model ids such as <code>mlx-gen/AbstractFramework/flux.2-klein-4b-4bit</code>, <code>mlx-gen/prism-ml/bonsai-image-ternary-4B-mlx-2bit</code>, <code>mlx-gen/AbstractFramework/seedvr2-3b-8bit</code>, <code>mlx-gen/AbstractFramework/seedvr2-7b-8bit</code>, <code>mlx-gen/AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit</code>, or <code>mlx-gen/AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit</code>. q4 repos are the memory-efficient default recommendation for most generation/edit models; SeedVR2 defaults to canonical q8 packages and offers q4 packages for tighter memory. Bonsai ternary is already pre-packed at 2-bit and is selected by its exact repo id. Legacy <code>mflux</code> provider values remain accepted as aliases.
 - stable-diffusion.cpp: set <code>ABSTRACTVISION_BACKEND=sdcpp</code> and configure either a model path or a curated model key such as <code>flux2-klein-base-4b</code>. Use an external <code>sd-cli</code>, or install <code>abstractvision[sdcpp]</code> for the python binding fallback.
 - The plugin reads AbstractCore owner config keys when present, then falls back to <code>ABSTRACTVISION_*</code> env vars.
 - Gateway/Core should pass process-level config or <code>owner.config</code> and report readiness; they should not mutate AbstractVision environment variables per request.</p>
@@ -904,6 +904,7 @@ repo id; there is no separate quantization parameter.</p>
     <span class="n">fps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+    <span class="n">guidance_2</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
     <span class="n">max_sequence_length</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_video_progress</span><span class="p">,</span>
 <span class="p">)</span>
@@ -918,7 +919,8 @@ repo id; there is no separate quantization parameter.</p>
     <span class="n">num_frames</span><span class="o">=</span><span class="mi">41</span><span class="p">,</span>
     <span class="n">fps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
-    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">3.5</span><span class="p">,</span>
+    <span class="n">guidance_2</span><span class="o">=</span><span class="mf">3.5</span><span class="p">,</span>
     <span class="n">max_sequence_length</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_video_progress</span><span class="p">,</span>
 <span class="p">)</span>
@@ -934,6 +936,9 @@ request <code>extra</code> dict for local backends. <code>llm.vision.t2i(...)</c
 <code>on_progress</code> to MLX-Gen. Image/edit events include diffusion-step progress;
 Wan video events use diffusion-step <code>progress</code> and also include frame counters
 and <code>frame_progress</code>.</p>
+<p>For task-specific Wan A14B video models, <code>guidance_2</code> is a typed request
+parameter for the second-stage/low-noise guidance path. Pass it directly to
+<code>t2v(...)</code> / <code>i2v(...)</code>; do not wrap it in <code>extra</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># OpenAI API.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>...
 <span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_IMAGE_MODEL</span><span class="o">=</span>gpt-image-1
@@ -1006,6 +1011,7 @@ instead of being reimplemented in the plugin layer.</p>
 <p><code>make_vision_tools(...)</code> builds AbstractCore <code>@tool</code> callables for:
 - text→image
 - image→image
+- image upscaling
 - multi-view image
 - text→video
 - image→video</p>

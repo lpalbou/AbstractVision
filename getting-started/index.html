@@ -1227,7 +1227,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
 <li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines</li>
-<li><strong>MLX-Gen (local Apple Silicon)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen 0.18.10+ runtime, official FIBO image models, and Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code></li>
+<li><strong>MLX-Gen (local Apple Silicon)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen 0.18.13+ runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, and Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code></li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
 <li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
@@ -1561,6 +1561,7 @@ abstractvision<span class="w"> </span>download<span class="w"> </span>prism-ml/b
 abstractvision<span class="w"> </span>download<span class="w"> </span>Wan-AI/Wan2.2-TI2V-5B-Diffusers<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
+abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/seedvr2-3b-8bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 </code></pre></div>
 <p>The default prepared choices are q4 repos from the
 <a href="https://huggingface.co/collections/AbstractFramework/mlx-gen/">AbstractFramework/mlx-gen Hugging Face collection</a>.
@@ -1571,7 +1572,14 @@ Qwen and ERNIE q4 folders can mix q4 and q8 components, but remain the default
 prepared choice.
 Bonsai ternary is different: <code>prism-ml/bonsai-image-ternary-4B-mlx-2bit</code> is a
 pre-packed MLX checkpoint consumed directly by MLX-Gen. Use the exact repo id,
-keep guidance at 1.0, and do not use it for image-to-image.</p>
+keep guidance at 1.0, and do not use it for image-to-image.
+SeedVR2 uses the official <code>ByteDance-Seed/SeedVR2-3B</code> and
+<code>ByteDance-Seed/SeedVR2-7B</code> bases plus canonical prepared packages:
+<code>AbstractFramework/seedvr2-3b-8bit</code> is the default upscaler,
+<code>AbstractFramework/seedvr2-7b-8bit</code> is the larger q8 variant, and q4 variants
+are available for tighter memory. Use <code>--scale 2x</code> for normal upscaling or
+<code>--resolution &lt;pixels&gt;</code> for a target short edge. Runtime <code>--quantize</code> is only
+needed for official/source weights.</p>
 <p>One-shot shell commands store the output in the local asset store and print the
 artifact ref followed by the local content path. Add <code>--open</code> to open the output
 after generation, or <code>--store-dir &lt;dir&gt;</code> to select the store directory.</p>
@@ -1583,9 +1591,12 @@ abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
 abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
+<p>Image upscaling from the shell:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>upscale<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/seedvr2-3b-8bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span>--scale<span class="w"> </span>2x<span class="w"> </span>--open
+</code></pre></div>
 <p>Text-to-video and first-frame image-to-video from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
-abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--open
 </code></pre></div>
 <p>Wan 2.2 A14B uses 16px width/height multiples; <code>432x240</code> is valid for low-cost
 local checks, while larger native sizes are more appropriate for quality review.</p>
@@ -1615,9 +1626,10 @@ local checks, while larger native sizes are more appropriate for quality review.
   <button class="af_media_carousel__btn af_media_carousel__btn--next" type="button" aria-label="Next video">›</button>
 </div>
 
-<p>MLX-Gen image commands accept <code>--progress</code> for step progress. MLX-Gen video
-commands print denoise-step progress with frame context while the video is
-running. Use <code>--no-progress</code> for quiet video scripts. A complete local example
+<p>MLX-Gen image generation/edit commands accept <code>--progress</code> for step progress.
+MLX-Gen upscale and video commands print denoise-step progress by default;
+video events also include frame context while the video is running. Use
+<code>--no-progress</code> for quiet video or upscaling scripts. A complete local example
 gallery with commands and bundled outputs is available in
 <a href="../mlx-gen-local-examples/">MLX-Gen local examples</a>.</p>
 <p>Interactive CLI/REPL (<code>abstractvision cli</code>; <code>abstractvision repl</code> remains an
@@ -1635,9 +1647,9 @@ alias) uses the same backend and request normalization:</p>
 /t2i &quot;a bonsai tree in a quiet ceramic studio&quot; --steps 4 --guidance-scale 1.0 --open
 
 /backend mlx-gen AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
-/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
 /backend mlx-gen AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit
-/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --open
+/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
 </code></pre></div>
 <p>Interactive <code>/t2v</code> and <code>/i2v</code> use the same default progress display; add
 <code>--no-progress</code> to suppress it.</p>

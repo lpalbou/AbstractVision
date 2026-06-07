@@ -1,0 +1,32 @@
+{
+  "mlx_gen_version": "0.18.13",
+  "abstractvision_command": "PYTHONPATH=src python -m abstractvision.cli upscale --provider mlx-gen --model /Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit --image /private/tmp/abstractvision_seedvr2_20260607/input.png --scale 2x --seed 2407 --store-dir /private/tmp/abstractvision_seedvr2_20260607/store --progress",
+  "abstractvision_q4_command": "PYTHONPATH=src python -m abstractvision.cli upscale --provider mlx-gen --model /Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-4bit --image /private/tmp/abstractvision_seedvr2_20260607/input.png --scale 2x --seed 2408 --store-dir /private/tmp/abstractvision_seedvr2_20260607/store_q4 --progress",
+  "abstractcore_command": "ABSTRACTCORE_SERVER_ALLOW_UNAUTHENTICATED=1 PYTHONPATH=/Users/albou/tmp/abstractframework/abstractvision/src:. python - <<'PY' # FastAPI TestClient POST /v1/images/upscale provider=mlx-gen model=/Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit scale=2x seed=2409",
+  "abstractcore_exact_q4_command": "ABSTRACTCORE_SERVER_ALLOW_UNAUTHENTICATED=1 PYTHONPATH=/Users/albou/tmp/abstractframework/abstractvision/src:/Users/albou/tmp/abstractframework/abstractcore HF_HUB_CACHE=/private/tmp/abstractcore_seedvr2_q4_exact_proof/hf-cache ABSTRACTCORE_VISION_MODEL_DIR=/private/tmp/abstractcore_seedvr2_q4_exact_proof/models python - <<'PY' # FastAPI TestClient POST /v1/images/upscale provider=mlx-gen model=AbstractFramework/seedvr2-7b-4bit scale=2x seed=2410",
+  "model": "/Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit",
+  "canonical_models": [
+    "AbstractFramework/seedvr2-3b-8bit",
+    "AbstractFramework/seedvr2-3b-4bit",
+    "AbstractFramework/seedvr2-7b-8bit",
+    "AbstractFramework/seedvr2-7b-4bit"
+  ],
+  "official_base_models": [
+    "ByteDance-Seed/SeedVR2-3B",
+    "ByteDance-Seed/SeedVR2-7B"
+  ],
+  "task": "image_upscale",
+  "runtime_package": "mlx-gen",
+  "scale": "2x",
+  "seed": 2407,
+  "input_asset": "seedvr2_upscale_input.png",
+  "output_asset": "seedvr2_upscale_2x.png",
+  "q4_output_asset": "seedvr2_upscale_7b_4bit.png",
+  "abstractcore_output_asset": "seedvr2_upscale_core_7b_8bit.png",
+  "abstractcore_exact_q4_output": "/private/tmp/abstractcore_seedvr2_q4_exact_proof/core_exact_q4_seedvr2_7b_upscale.png",
+  "abstractcore_exact_q4_output_size": [192, 128],
+  "output_size": [192, 128],
+  "output_sha256": "fbd933eff78854498e3dc6861b9a99557bb183f4fed6873e05310b6d5bdb0c53",
+  "q4_output_sha256": "d626b275fd70c6cf771ba165dd9ef06382ac69036b909fa6ebfbc6ab826aa9db",
+  "abstractcore_output_sha256": "b2deb02b66745c4c2a15fb3a550ccf3564d3c3535a673fc1d3843274d3857b3f"
+}

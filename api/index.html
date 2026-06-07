@@ -1002,6 +1002,7 @@
 <ul>
 <li><code>generate_image(...)</code> → <code>text_to_image</code></li>
 <li><code>edit_image(...)</code> → <code>image_to_image</code></li>
+<li><code>upscale_image(...)</code> → <code>image_upscale</code></li>
 <li><code>generate_video(...)</code> → <code>text_to_video</code> (backend-dependent)</li>
 <li><code>image_to_video(...)</code> → <code>image_to_video</code> (backend-dependent)</li>
 <li><code>generate_angles(...)</code> → <code>multi_view_image</code> (API exists; no built-in backend implements it yet)</li>
@@ -1077,7 +1078,13 @@ AbstractVision.</p>
 <span class="n">asset</span> <span class="o">=</span> <span class="n">vm</span><span class="o">.</span><span class="n">generate_image</span><span class="p">(</span><span class="s2">&quot;a watercolor painting of a lighthouse&quot;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 </code></pre></div>
 <p>Note: <code>allow_download=False</code> is the default. Pre-download model weights separately, or set <code>allow_download=True</code> only when you want runtime downloads.</p>
-<p><code>generate_video(...)</code> and <code>image_to_video(...)</code> are part of the public API. Local Diffusers video remains experimental and disabled from the normal local surfaces, while MLX-Gen 0.18.10+ supports Wan <code>text_to_video</code> and first-frame <code>image_to_video</code>, including A14B task-specific checkpoints. Generated MP4 outputs still require an <code>ffmpeg</code> executable on <code>PATH</code> whenever a backend returns frame sequences for local packaging.</p>
+<p><code>upscale_image(...)</code>, <code>generate_video(...)</code>, and <code>image_to_video(...)</code> are part
+of the public API. MLX-Gen 0.18.13+ supports SeedVR2 <code>image_upscale</code>, Wan
+<code>text_to_video</code>, and first-frame <code>image_to_video</code>, including A14B task-specific
+checkpoints. Local Diffusers video remains experimental and disabled from the
+normal local surfaces. Generated MP4 outputs still require an <code>ffmpeg</code>
+executable on <code>PATH</code> whenever a backend returns frame sequences for local
+packaging.</p>
 <h3 id="local-example-mlx-gen-backend">Local example (MLX-Gen backend)<a class="headerlink" href="#local-example-mlx-gen-backend" title="Permanent link">&para;</a></h3>
 <p>Install <code>abstractvision[mlx-gen]</code> and pre-download the exact model repo first,
 for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen</code>.</p>
@@ -1115,6 +1122,16 @@ for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diff
     <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;reference_images&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./style-reference.png&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()]},</span>
 <span class="p">)</span>
 
+<span class="n">upscale_backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/seedvr2-3b-8bit&quot;</span><span class="p">))</span>
+<span class="n">upscale_vm</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">upscale_backend</span><span class="p">)</span>
+
+<span class="n">upscaled_asset</span> <span class="o">=</span> <span class="n">upscale_vm</span><span class="o">.</span><span class="n">upscale_image</span><span class="p">(</span>
+    <span class="n">image</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./subject.png&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(),</span>
+    <span class="n">scale</span><span class="o">=</span><span class="s2">&quot;2x&quot;</span><span class="p">,</span>
+    <span class="n">seed</span><span class="o">=</span><span class="mi">2405</span><span class="p">,</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
+<span class="p">)</span>
+
 <span class="n">t2v_backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span>
     <span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit&quot;</span><span class="p">)</span>
 <span class="p">)</span>
@@ -1128,6 +1145,7 @@ for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diff
     <span class="n">fps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+    <span class="n">guidance_2</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
     <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;max_sequence_length&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">},</span>
 <span class="p">)</span>
@@ -1145,17 +1163,24 @@ for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diff
     <span class="n">num_frames</span><span class="o">=</span><span class="mi">41</span><span class="p">,</span>
     <span class="n">fps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
-    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">3.5</span><span class="p">,</span>
+    <span class="n">guidance_2</span><span class="o">=</span><span class="mf">3.5</span><span class="p">,</span>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
     <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;max_sequence_length&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">},</span>
 <span class="p">)</span>
 </code></pre></div>
+<p>Wan 2.2 A14B has two guidance controls. Use <code>guidance_scale</code> for the
+primary/high-noise stage and <code>guidance_2</code> for the second/low-noise stage. The
+registry default is <code>guidance_2=3.0</code> for text-to-video A14B and <code>3.5</code> for
+image-to-video A14B. Other video models should omit <code>guidance_2</code> unless their
+registry task declares it.</p>
 <p>For MLX-Gen, <code>on_progress</code> receives an <code>abstractvision.VideoProgressEvent</code>.
-Image generation/editing events carry <code>phase</code>, <code>step</code>, <code>total_steps</code>, and
-denoise-step <code>progress</code>. Wan video events add <code>frame</code>, <code>total_frames</code>, and
+Image generation/editing/upscaling events carry <code>phase</code>, <code>step</code>, <code>total_steps</code>,
+and denoise-step <code>progress</code>. Wan video events add <code>frame</code>, <code>total_frames</code>, and
 <code>frame_progress</code>. The lower-level <code>backend.generate_image_with_progress(...)</code>,
-<code>backend.edit_image_with_progress(...)</code>, <code>backend.generate_video_with_progress(...)</code>,
-and <code>backend.image_to_video_with_progress(...)</code> methods keep the existing
+<code>backend.edit_image_with_progress(...)</code>, <code>backend.upscale_image_with_progress(...)</code>,
+<code>backend.generate_video_with_progress(...)</code>, and
+<code>backend.image_to_video_with_progress(...)</code> methods keep the existing
 two-argument <code>(current, total)</code> callback for backend-agnostic progress bars.
 For MLX-Gen, that callback reports denoise step counts; use
 <code>on_progress(event)</code> when a UI also needs video frame context.</p>
