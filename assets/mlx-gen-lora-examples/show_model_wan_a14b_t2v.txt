@@ -1,0 +1,36 @@
+Wan-AI/Wan2.2-T2V-A14B
+provider: huggingface
+license: apache-2.0
+notes: Official Wan 2.2 A14B text-to-video Diffusers checkpoint. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.
+downloads:
+  - wan2.2-t2v-a14b  engine=mlx-gen  target=mlx  bits=8  repo=AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit  source=abstractframework-mlx-gen
+      notes: AbstractFramework MLX-Gen mixed q8/BF16 prepared folder for Wan 2.2 A14B text-to-video.
+  - wan2.2-t2v-a14b  engine=mlx-gen  target=mlx  bits=16  repo=AbstractFramework/wan2.2-t2v-a14b-diffusers-bf16  source=abstractframework-mlx-gen
+      notes: AbstractFramework MLX-Gen BF16 prepared folder for Wan 2.2 A14B text-to-video.
+  - wan2.2-t2v-a14b  engine=mlx-gen  target=mlx  bits=16  repo=Wan-AI/Wan2.2-T2V-A14B-Diffusers  source=official
+      notes: Official Wan 2.2 A14B text-to-video snapshot consumed by MLX-Gen 0.18.8+. This is not a prepared q4/q8 folder.
+  - wan2.2-t2v-a14b  engine=diffusers  target=diffusers  bits=16  repo=Wan-AI/Wan2.2-T2V-A14B-Diffusers  source=official
+      notes: Official Diffusers snapshot for the Wan 2.2 text-to-video checkpoint.
+tasks:
+  - text_to_video
+      requires: {"backend": "mlx-gen", "min_runtime_version": "0.18.8"}
+      required params: prompt
+      optional params: flow_shift, fps, guidance_2, guidance_scale, height, negative_prompt, num_frames, seed, steps, width
+      defaults: flow_shift=3.0, fps=16, guidance_2=3.0, guidance_scale=4.0, height=720, num_frames=81, steps=40, width=1280
+runtime routes:
+  - AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
+      task: text_to_video
+        supports_lora: True
+        lora_status: validated
+        lora_target_roles: high_noise_transformer, low_noise_transformer
+        lora_validation_profile: lora_wan_a14b_q8_lightx2v_4step_t2v_2026_06_12
+  - AbstractFramework/wan2.2-t2v-a14b-diffusers-bf16
+      task: text_to_video
+        supports_lora: True
+        lora_status: mapped-unvalidated
+        lora_target_roles: high_noise_transformer, low_noise_transformer
+  - Wan-AI/Wan2.2-T2V-A14B
+      task: text_to_video
+        supports_lora: True
+        lora_status: mapped-unvalidated
+        lora_target_roles: high_noise_transformer, low_noise_transformer

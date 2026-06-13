@@ -564,6 +564,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#how-do-i-know-whether-a-model-route-supports-lora" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I know whether a model route supports LoRA?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -979,6 +990,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#how-do-i-know-whether-a-model-route-supports-lora" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I know whether a model route supports LoRA?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1069,7 +1091,7 @@
 <h2 id="what-does-abstractvision-support-today">What does AbstractVision support today?<a class="headerlink" href="#what-does-abstractvision-support-today" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Built-in backends implement <strong>images</strong>: <code>text_to_image</code> and <code>image_to_image</code>.</li>
-<li>Local MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code>.</li>
+<li>Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code>. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream <code>mlx-gen</code> / <code>mlx</code> markers are available.</li>
 <li>Local Diffusers <code>text_to_video</code> remains experimental and is temporarily disabled from the normal local runtime surfaces.</li>
 <li>OpenAI-compatible HTTP can also provide <code>text_to_video</code> / <code>image_to_video</code> <strong>when</strong> video endpoints are configured.</li>
 <li><code>multi_view_image</code> exists in the public API (<code>VisionManager.generate_angles</code>) but no built-in backend implements it yet (they raise <code>CapabilityNotSupportedError</code>).</li>
@@ -1079,7 +1101,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong> (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).</li>
 <li><strong>Diffusers (local)</strong> (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>): run Diffusers pipelines locally (heavy deps). Local <code>text_to_video</code> groundwork exists but is currently quarantined from the normal local surfaces.</li>
-<li><strong>MLX-Gen (local Apple Silicon)</strong> (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>): run MLX-optimized image models, FIBO snapshots, and Wan 2.2 video locally.</li>
+<li><strong>MLX-Gen (local, Apple-first)</strong> (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>): run MLX-optimized image models, FIBO snapshots, shared LoRA adapters, and Wan 2.2 video locally.</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong> (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>): run GGUF diffusion models via <code>sd-cli</code> or <code>stable-diffusion-cpp-python</code>.</li>
 </ul>
 <h2 id="what-model-should-i-start-with-local">What model should I start with (local)?<a class="headerlink" href="#what-model-should-i-start-with-local" title="Permanent link">&para;</a></h2>
@@ -1146,10 +1168,30 @@ abstractvision<span class="w"> </span>cli
 <h2 id="how-do-i-pass-advanced-flags-parameters">How do I pass advanced flags / parameters?<a class="headerlink" href="#how-do-i-pass-advanced-flags-parameters" title="Permanent link">&para;</a></h2>
 <p>AbstractVision exposes an <code>extra</code> dict on requests (<a href="../src/abstractvision/types.py"><code>../src/abstractvision/types.py</code></a>), and the REPL forwards unknown <code>--flags</code> into <code>request.extra</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
 <p>Examples:
-- Diffusers backend: accepts extra keys like <code>loras_json</code> and <code>rapid_aio_repo</code> (used by Qwen Image Edit flows; see <a href="../getting-started/">docs/getting-started.md</a> and <a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>).
+- Shared LoRA contract: use <code>lora_adapters=[LoRAAdapterSpec(...)]</code> in Python, or repeated <code>--lora</code> / <code>--lora-scale</code> / <code>--lora-target-role</code> in the CLI.
+- Diffusers backend: still accepts compatibility keys like <code>loras_json</code> and <code>rapid_aio_repo</code> (used by older Qwen Image Edit flows; see <a href="../getting-started/">docs/getting-started.md</a> and <a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>).
 - stable-diffusion.cpp backend:
   - CLI mode forwards flags to <code>sd-cli</code>
   - python-binding mode maps supported keys to binding kwargs and ignores unsupported keys (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)</p>
+<h2 id="how-do-i-know-whether-a-model-route-supports-lora">How do I know whether a model route supports LoRA?<a class="headerlink" href="#how-do-i-know-whether-a-model-route-supports-lora" title="Permanent link">&para;</a></h2>
+<p>Use provider/model discovery:</p>
+<ul>
+<li><code>abstractvision catalog --provider mlx-gen</code> to browse downloadable models</li>
+<li><code>abstractvision show-model &lt;model-id&gt;</code> for the exact runtime route contract</li>
+<li><code>abstractvision adapters --provider mlx-gen --model &lt;model-id&gt; --task &lt;task&gt;</code> for locally cached overlays that match one route</li>
+<li><code>VisionManager.list_provider_models(...)</code></li>
+<li><code>VisionManager.list_provider_adapters(...)</code></li>
+<li><code>llm.vision.list_provider_models(...)</code> through the AbstractCore plugin</li>
+</ul>
+<p>MLX-Gen route rows surface:</p>
+<ul>
+<li><code>supports_lora</code></li>
+<li><code>lora_status</code></li>
+<li><code>lora_target_roles</code></li>
+<li><code>lora_validation_profile</code></li>
+</ul>
+<p>Wan TI2V-5B uses one target role, <code>transformer</code>. Wan A14B routes require
+explicit <code>high_noise_transformer</code> / <code>low_noise_transformer</code> assignment.</p>
 <h2 id="what-does-the-capability-registry-mean-and-what-does-it-not-mean">What does the capability registry mean (and what does it not mean)?<a class="headerlink" href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" title="Permanent link">&para;</a></h2>
 <p>The registry answers “what a model <em>claims</em> to support” (task keys/params) and can be used for <strong>optional gating</strong>:</p>
 <ul>

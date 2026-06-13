@@ -1,0 +1,1052 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Model-agnostic generative vision abstractions for image and video workflows.">
+      
+      
+      
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/completed/025_shared_lora_request_contract_for_mlx_gen_and_diffusers/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>025 shared lora request contract for mlx gen and diffusers - AbstractVision</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/styles/media_carousel.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#task-025-shared-lora-request-contract-for-mlx-gen-and-diffusers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AbstractVision
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              025 shared lora request contract for mlx gen and diffusers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    AbstractVision
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/lpalbou/abstractvision" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    lpalbou/abstractvision
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../mlx-gen-local-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX-Gen Local Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/artifacts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Artifacts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/capabilities-registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities Registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/abstractcore-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AbstractCore Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#task-025-shared-lora-request-contract-for-mlx-gen-and-diffusers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 025: Shared LoRA request contract for MLX-Gen and Diffusers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#main-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Main goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secondary-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secondary goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#context-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context / problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#research-options-and-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Research, options, and references
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#success-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Success criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Report
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Report">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>025 shared lora request contract for mlx gen and diffusers</h1>
+
+<h2 id="task-025-shared-lora-request-contract-for-mlx-gen-and-diffusers">Task 025: Shared LoRA request contract for MLX-Gen and Diffusers<a class="headerlink" href="#task-025-shared-lora-request-contract-for-mlx-gen-and-diffusers" title="Permanent link">&para;</a></h2>
+<p><strong>Date</strong>: 2026-06-11<br />
+<strong>Status</strong>: Completed<br />
+<strong>Priority</strong>: P0</p>
+<hr />
+<h2 id="main-goals">Main goals<a class="headerlink" href="#main-goals" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Add one package-owned LoRA adapter request contract for <code>text_to_image</code>, <code>image_to_image</code>, <code>text_to_video</code>, and <code>image_to_video</code>.</li>
+<li>Upgrade AbstractVision to the current <code>mlx-gen</code> runtime floor and surface its route-level LoRA capability metadata.</li>
+<li>Keep exact LoRA compatibility truth backend-owned while making CLI, Python, and AbstractCore request surfaces consistent.</li>
+</ul>
+<h2 id="secondary-goals">Secondary goals<a class="headerlink" href="#secondary-goals" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Preserve compatibility with existing Diffusers <code>extra["loras*"]</code> callers.</li>
+<li>Preserve MLX-Gen backend-level default adapter config as a separate residency/runtime concern.</li>
+<li>Improve generated-media provenance so operators can see which adapters were requested and which ones actually applied.</li>
+</ul>
+<hr />
+<h2 id="context-problem">Context / problem<a class="headerlink" href="#context-problem" title="Permanent link">&para;</a></h2>
+<p>AbstractVision already has real LoRA execution paths, but the public contract is fragmented:</p>
+<ul>
+<li>Diffusers accepts LoRA payloads through <code>request.extra</code> keys such as <code>loras</code>, <code>loras_json</code>,
+  <code>lora</code>, and <code>lora_json</code>.</li>
+<li>MLX-Gen exposes constructor-level <code>lora_paths</code> / <code>lora_scales</code> config in the backend, but not a
+  request-level contract shared with the other surfaces.</li>
+<li>One-shot <code>abstractvision t2i/i2i/t2v/i2v</code> commands do not expose first-class LoRA flags.</li>
+<li>AbstractCore request whitelists do not preserve a typed adapter field, and <code>t2v</code> / <code>i2v</code> still
+  drift from the typed request surface by dropping <code>guidance_2</code> into <code>extra</code>.</li>
+<li>Provider-model discovery does not surface the new MLX-Gen route-level LoRA fields such as
+  <code>supports_lora</code>, <code>lora_status</code>, <code>lora_target_roles</code>, and <code>lora_validation_profile</code>.</li>
+</ul>
+<p>That leaves users with a backend feature but not a stable package contract. The current state is
+especially weak for Wan video LoRA, because A14B routes require explicit target-role assignment.</p>
+<hr />
+<h2 id="constraints">Constraints<a class="headerlink" href="#constraints" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Keep orchestration thin and backend semantics backend-owned per ADR 0004.</li>
+<li>Do not make the packaged registry the source of truth for MLX-Gen route-level LoRA validation.</li>
+<li>Keep backward compatibility for existing Diffusers <code>extra["loras*"]</code> users during migration.</li>
+<li>Do not promote adapter repositories as standalone runnable model families.</li>
+<li>Keep the base package lightweight and local runtimes optional.</li>
+<li>Do not create Apple-only public API semantics. The shared request contract must describe adapters,
+  not a host platform.</li>
+</ul>
+<hr />
+<h2 id="research-options-and-references">Research, options, and references<a class="headerlink" href="#research-options-and-references" title="Permanent link">&para;</a></h2>
+<p>This section is self-contained on purpose so later implementation or review work can reuse it.</p>
+<ul>
+<li><strong>Option A: keep backend-specific LoRA passthrough only</strong></li>
+<li>Lowest immediate code churn, but it keeps CLI/Python/Core inconsistent and keeps Wan target-role
+    support effectively hidden.</li>
+<li>Rejected because it does not create a trustworthy package contract.</li>
+<li>
+<p>References:</p>
+<ul>
+<li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
+<li><code>src/abstractvision/backends/mflux.py</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Option B: move exact LoRA truth into <code>vision_model_capabilities.json</code></strong></p>
+</li>
+<li>Centralized, but wrong authority boundary. MLX-Gen now reports route-level LoRA truth dynamically,
+    including validation status and target roles, and those fields are release-sensitive.</li>
+<li>Rejected because it duplicates backend truth and will drift.</li>
+<li>
+<p>References:</p>
+<ul>
+<li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+<li><code>docs/adr/0005_curated_capability_registry_and_download_catalog.md</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Option C: shared request contract in AbstractVision + dynamic route truth in backends</strong></p>
+</li>
+<li>AbstractVision owns one request shape across CLI/Python/Core.</li>
+<li>Diffusers and MLX-Gen keep authority over compatibility, loader semantics, and validation truth.</li>
+<li>Chosen because it matches ADR 0004 and the current MLX-Gen capability API.</li>
+<li>References:<ul>
+<li><code>docs/adr/0004_thin_orchestrator_and_backend_owned_model_semantics.md</code></li>
+<li><code>docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md</code></li>
+<li><code>https://github.com/lpalbou/mlx-gen</code></li>
+<li><code>https://raw.githubusercontent.com/lpalbou/mlx-gen/main/docs/lora.md</code></li>
+<li><code>https://raw.githubusercontent.com/lpalbou/mlx-gen/main/docs/api.md</code></li>
+</ul>
+</li>
+</ul>
+<p>Additional upstream findings re-checked on 2026-06-11:</p>
+<ul>
+<li><code>mlx-gen</code> latest release is <code>0.18.16</code>.</li>
+<li><code>mlx-gen</code> now exposes route-level LoRA capability fields:
+  <code>supports_lora</code>, <code>lora_status</code>, <code>lora_target_roles</code>, <code>lora_validation_profile</code>.</li>
+<li>Wan video LoRA is now supported through the shared runtime with:</li>
+<li>one target role (<code>transformer</code>) on TI2V-5B routes;</li>
+<li>two explicit roles (<code>high_noise_transformer</code>, <code>low_noise_transformer</code>) on A14B routes.</li>
+<li>MLX-Gen package metadata is no longer Darwin-only; upstream declares Linux/CUDA installation
+  markers as well. AbstractVision still needs to decide what is release-validated versus merely
+  installable.</li>
+</ul>
+<hr />
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p><strong>Chosen approach</strong>: add a typed request-level <code>lora_adapters</code> contract in AbstractVision, keep
+backend-exact LoRA truth backend-owned, and surface MLX-Gen route metadata dynamically through
+provider-model discovery.</p>
+<p><strong>Why</strong>:
+- It gives users one stable package concept without inventing fake cross-backend compatibility.
+- It keeps Wan target-role semantics honest instead of flattening them into image-style adapter
+  behavior.
+- It lets Diffusers and MLX-Gen keep their real loader/runtime constraints while still sharing CLI,
+  Python, and AbstractCore request shapes.
+- It preserves existing <code>extra["loras*"]</code> usage as a compatibility bridge instead of breaking older
+  callers immediately.</p>
+<hr />
+<h2 id="dependencies">Dependencies<a class="headerlink" href="#dependencies" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>ADRs</strong>:</li>
+<li><code>docs/adr/0004_thin_orchestrator_and_backend_owned_model_semantics.md</code></li>
+<li><code>docs/adr/0005_curated_capability_registry_and_download_catalog.md</code></li>
+<li><strong>Backlog tasks</strong>:</li>
+<li>Planned: <code>docs/backlog/planned/020_adapter_aware_model_graph_and_catalog.md</code></li>
+<li>Completed: <code>docs/backlog/completed/016_abstractcore_plugin_catalog_discovery_surface.md</code></li>
+<li>Completed: <code>docs/backlog/completed/019_best_effort_preload_warmup_for_local_backends.md</code></li>
+</ul>
+<hr />
+<h2 id="implementation-plan">Implementation plan<a class="headerlink" href="#implementation-plan" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Add a typed <code>LoRAAdapterSpec</code> request object and attach <code>lora_adapters</code> to the four shared
+  generation/edit/video request types.</li>
+<li>Add package-owned normalization helpers that:</li>
+<li>parse typed adapter lists;</li>
+<li>bridge legacy <code>extra["loras*"]</code> payloads;</li>
+<li>serialize requested adapters for metadata and docs.</li>
+<li>Upgrade the MLX-Gen optional dependency floor and update install markers to match the current
+  upstream package metadata.</li>
+<li>Update the MLX-Gen backend to:</li>
+<li>accept request-level adapters;</li>
+<li>preserve backend-level default adapters as a separate config path;</li>
+<li>pass Wan <code>lora_target_roles</code> when needed;</li>
+<li>include adapter signature in its model residency/cache key;</li>
+<li>surface route-level LoRA metadata through provider-model discovery;</li>
+<li>preserve generated-image/video LoRA provenance from upstream metadata.</li>
+<li>Update the Diffusers backend to consume the shared adapter parser first, then fall back to legacy
+  <code>extra["loras*"]</code>.</li>
+<li>Add explicit one-shot CLI LoRA flags for <code>t2i</code>, <code>i2i</code>, <code>t2v</code>, and <code>i2v</code>.</li>
+<li>Fix AbstractCore request whitelists so typed fields survive, including <code>guidance_2</code> for <code>t2v</code>
+  and <code>i2v</code>.</li>
+<li>Add focused tests for typed request routing, metadata propagation, provider discovery metadata,
+  and packaging markers.</li>
+</ul>
+<hr />
+<h2 id="success-criteria">Success criteria<a class="headerlink" href="#success-criteria" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Python callers can pass one <code>lora_adapters=[...]</code> contract to T2I, I2I, T2V, and I2V requests.</li>
+<li>One-shot CLI exposes first-class adapter flags on <code>t2i</code>, <code>i2i</code>, <code>t2v</code>, and <code>i2v</code>.</li>
+<li>MLX-Gen provider-model discovery surfaces route-level LoRA metadata for supported routes.</li>
+<li>Wan A14B requests can carry explicit target-role assignments through AbstractVision.</li>
+<li>Diffusers legacy <code>extra["loras*"]</code> callers still work.</li>
+<li>Generated metadata includes requested adapter provenance and backend-applied LoRA metadata where
+  the backend can provide it.</li>
+</ul>
+<hr />
+<h2 id="test-plan">Test plan<a class="headerlink" href="#test-plan" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>PYTHONPATH=abstractvision/src python -m pytest abstractvision/tests/test_packaging_metadata.py -q</code></li>
+<li><code>PYTHONPATH=abstractvision/src python -m pytest abstractvision/tests/test_mflux_backend.py -q</code></li>
+<li><code>PYTHONPATH=abstractvision/src python -m pytest abstractvision/tests/test_huggingface_diffusers_backend.py -q</code></li>
+<li><code>PYTHONPATH=abstractvision/src python -m pytest abstractvision/tests/test_abstractcore_plugin.py -q</code></li>
+<li>Manual proof:</li>
+<li>MLX-Gen T2I LoRA run on a validated route.</li>
+<li>MLX-Gen I2I LoRA run on a validated route.</li>
+<li>MLX-Gen T2V LoRA run on a validated Wan route.</li>
+<li>MLX-Gen I2V LoRA run on a validated Wan route.</li>
+</ul>
+<hr />
+<h2 id="report">Report<a class="headerlink" href="#report" title="Permanent link">&para;</a></h2>
+<h3 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h3>
+<p>AbstractVision now owns one typed LoRA adapter request contract across <code>text_to_image</code>,
+<code>image_to_image</code>, <code>text_to_video</code>, and <code>image_to_video</code>, while MLX-Gen and Diffusers keep
+authority over route compatibility and runtime application rules.</p>
+<p>The shipped implementation adds <code>LoRAAdapterSpec</code> and per-request <code>lora_adapters</code>, updates the
+MLX-Gen backend to consume those adapters directly, preserves Diffusers <code>extra["loras*"]</code>
+compatibility as a bridge, upgrades the optional MLX-Gen runtime floor to <code>0.18.16</code>, and surfaces
+route-level LoRA truth through provider discovery (<code>supports_lora</code>, <code>lora_status</code>,
+<code>lora_target_roles</code>, <code>lora_validation_profile</code>).</p>
+<p>The AbstractCore plugin path now forwards typed LoRA adapters and backend-default LoRA config, and
+the CLI exposes first-class repeated <code>--lora*</code> flags for <code>t2i</code>, <code>i2i</code>, <code>t2v</code>, and <code>i2v</code>.</p>
+<p>During proof work, one real integration bug surfaced in MLX-Gen model config resolution for exact
+Qwen edit variants. The fix was to prefer <code>ModelConfig.from_name(&lt;exact-registry-id&gt;)</code> before
+falling back to generic config factories, so exact route identity, capability checks, and LoRA
+compatibility stay aligned.</p>
+<h3 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Focused tests passed:</li>
+<li><code>python -m pytest abstractvision/tests/test_mflux_backend.py -q</code></li>
+<li><code>python -m pytest abstractvision/tests/test_cli_smoke.py abstractvision/tests/test_abstractcore_plugin.py abstractvision/tests/test_huggingface_diffusers_backend.py abstractvision/tests/test_packaging_metadata.py -q</code></li>
+<li>Real MLX-Gen proof runs saved under <code>/private/tmp/abstractvision_lora_proofs_20260612_002853</code>:</li>
+<li>T2I: <code>AbstractFramework/qwen-image-2512-8bit</code> with a pixel-art LoRA</li>
+<li>I2I: <code>AbstractFramework/qwen-image-edit-2511-8bit</code> with a multi-angle LoRA</li>
+<li>T2V: <code>AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit</code> with a Wan TI2V LoRA</li>
+<li>I2V: <code>AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit</code> with the same Wan TI2V LoRA</li>
+<li>Bundled documentation proof assets were copied into
+  <code>docs/assets/mlx-gen-lora-examples/</code>, including:</li>
+<li><code>summary.json</code></li>
+<li><code>provider_catalog_lora.json</code></li>
+<li>generated PNG/MP4 outputs</li>
+<li>contact sheets</li>
+<li>denoise-step progress logs</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../../assets/js/media_carousel.js"></script>
+      
+    
+  </body>
+</html>

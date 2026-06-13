@@ -424,10 +424,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#22-apple-silicon-mlx-gen-q4-first" class="md-nav__link">
+  <a href="#22-mlx-gen-local-q4-first" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2.2) Apple Silicon MLX-Gen (q4 first)
+        2.2) MLX-Gen local (q4 first)
       
     </span>
   </a>
@@ -1037,10 +1037,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#22-apple-silicon-mlx-gen-q4-first" class="md-nav__link">
+  <a href="#22-mlx-gen-local-q4-first" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2.2) Apple Silicon MLX-Gen (q4 first)
+        2.2) MLX-Gen local (q4 first)
       
     </span>
   </a>
@@ -1227,7 +1227,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
 <li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines</li>
-<li><strong>MLX-Gen (local Apple Silicon)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen 0.18.13+ runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, and Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code></li>
+<li><strong>MLX-Gen (local, Apple-first)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V/A14B video routes. The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream <code>mlx-gen</code> / <code>mlx</code> support is available.</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
 <li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
@@ -1247,7 +1247,7 @@
 <p>From PyPI:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>abstractvision
 </code></pre></div>
-<p>AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, <code>abstractvision[mlx-gen]</code> for Apple Silicon MLX-Gen, or <code>abstractvision[all-apple]</code> for the full native macOS stack. <code>abstractvision[mflux]</code> remains available as a compatibility alias for older install instructions.</p>
+<p>AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, <code>abstractvision[mlx-gen]</code> for MLX-Gen, or <code>abstractvision[all-apple]</code> for the full native macOS stack. <code>abstractvision[mflux]</code> remains available as a compatibility alias for older install instructions.</p>
 <p>If you see “missing pipeline class” errors for newer model families, install the <code>diffusers-dev</code> extra (or compatibility alias <code>huggingface-dev</code>) to get compatible dependencies, then install Diffusers from source (<code>main</code>).</p>
 <p>For that newer-pipeline workflow from a <strong>repo checkout</strong>, install the <code>diffusers-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[diffusers-dev]&quot;</span>
@@ -1299,7 +1299,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 </tr>
 <tr>
 <td><code>mlx-gen</code></td>
-<td>Installs the optional MLX-Gen runtime for Apple Silicon MLX image/video generation.</td>
+<td>Installs the optional MLX-Gen runtime. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream <code>mlx-gen</code> / <code>mlx</code> markers are available.</td>
 </tr>
 <tr>
 <td><code>mflux</code></td>
@@ -1311,7 +1311,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 </tr>
 <tr>
 <td><code>gpu</code></td>
-<td>GPU-friendly profile for Diffusers/Torch (does not include MLX-Gen).</td>
+<td>GPU-friendly profile for Diffusers/Torch and MLX-Gen when the platform markers match.</td>
 </tr>
 <tr>
 <td><code>huggingface</code></td>
@@ -1331,7 +1331,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 </tr>
 <tr>
 <td><code>all-gpu</code></td>
-<td>Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings).</td>
+<td>Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings + MLX-Gen when the platform markers match).</td>
 </tr>
 <tr>
 <td><code>abstractcore</code></td>
@@ -1376,7 +1376,7 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 <p>AbstractVision can run “locally” via three main routes:</p>
 <ul>
 <li><strong>Diffusers backend</strong>: uses Torch device selection (<code>cuda</code> / <code>mps</code> / <code>cpu</code>).</li>
-<li><strong>MLX-Gen backend (<code>mlx-gen</code>)</strong>: Apple Silicon MLX generation through the optional MLX-Gen runtime. q4 AbstractFramework model repos are the default recommendation; q8 variants are separate exact model ids for quality-focused runs.</li>
+<li><strong>MLX-Gen backend (<code>mlx-gen</code>)</strong>: Apple-first MLX generation through the optional MLX-Gen runtime. q4 AbstractFramework model repos are the default recommendation; q8 variants are separate exact model ids for quality-focused runs.</li>
 <li><strong>stable-diffusion.cpp backend (<code>sdcpp</code>)</strong>: runs GGUF diffusion models using:</li>
 <li><code>sd-cli</code> (<strong>recommended</strong> when you want GPU backends like <strong>Metal</strong> or <strong>CUDA</strong>)</li>
 <li>or <code>stable-diffusion-cpp-python</code> (convenient, but often <strong>CPU-only</strong>, especially on macOS)</li>
@@ -1542,11 +1542,14 @@ abstractvision<span class="w"> </span>provider-models<span class="w"> </span>--b
 </code></pre></div>
 <p>If your server also supports video endpoints, configure them via <code>ABSTRACTVISION_TEXT_TO_VIDEO_PATH</code> / <code>ABSTRACTVISION_IMAGE_TO_VIDEO_PATH</code> (see <a href="../reference/configuration/">docs/reference/configuration.md</a>).</p>
 <hr />
-<h2 id="22-apple-silicon-mlx-gen-q4-first">2.2) Apple Silicon MLX-Gen (q4 first)<a class="headerlink" href="#22-apple-silicon-mlx-gen-q4-first" title="Permanent link">&para;</a></h2>
-<p>Use this path on Apple Silicon when you want local MLX-optimized image/video models
-without running a separate server. AbstractVision uses the <code>mlx-gen</code> Python API
-in-process and expects prepared model folders to exist in the Hugging Face
-cache. It does not silently download weights during generation.</p>
+<h2 id="22-mlx-gen-local-q4-first">2.2) MLX-Gen local (q4 first)<a class="headerlink" href="#22-mlx-gen-local-q4-first" title="Permanent link">&para;</a></h2>
+<p>Use this path when you want local MLX-optimized image/video models without
+running a separate server. The current AbstractVision release is validated on
+Apple Silicon first. The <code>abstractvision[mlx-gen]</code> extra also installs on Linux
+when upstream <code>mlx-gen</code> / <code>mlx</code> support is available. AbstractVision uses the
+<code>mlx-gen</code> Python API in-process and expects prepared model folders to exist in
+the Hugging Face cache. It does not silently download weights during
+generation.</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[models,mlx-gen]&quot;</span>
 abstractvision<span class="w"> </span>catalog<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/flux.2-klein-4b-4bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
@@ -1577,9 +1580,10 @@ SeedVR2 uses the official <code>ByteDance-Seed/SeedVR2-3B</code> and
 <code>ByteDance-Seed/SeedVR2-7B</code> bases plus canonical prepared packages:
 <code>AbstractFramework/seedvr2-3b-8bit</code> is the default upscaler,
 <code>AbstractFramework/seedvr2-7b-8bit</code> is the larger q8 variant, and q4 variants
-are available for tighter memory. Use <code>--scale 2x</code> for normal upscaling or
-<code>--resolution &lt;pixels&gt;</code> for a target short edge. Runtime <code>--quantize</code> is only
-needed for official/source weights.</p>
+are available for tighter memory. The default upscale request uses
+<code>--resolution 2x</code> and <code>--softness 0.25</code>; pass <code>--resolution &lt;pixels&gt;</code> for a
+target short edge. <code>--scale 2x</code> remains accepted when <code>--resolution</code> is omitted.
+Runtime <code>--quantize</code> is only needed for official/source weights.</p>
 <p>One-shot shell commands store the output in the local asset store and print the
 artifact ref followed by the local content path. Add <code>--open</code> to open the output
 after generation, or <code>--store-dir &lt;dir&gt;</code> to select the store directory.</p>
@@ -1592,14 +1596,73 @@ abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span
 abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
 <p>Image upscaling from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>upscale<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/seedvr2-3b-8bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span>--scale<span class="w"> </span>2x<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>upscale<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/seedvr2-3b-8bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span>--resolution<span class="w"> </span>2x<span class="w"> </span>--softness<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span>--open
 </code></pre></div>
 <p>Text-to-video and first-frame image-to-video from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.0<span class="w"> </span>--open
-abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">432</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--open
 </code></pre></div>
-<p>Wan 2.2 A14B uses 16px width/height multiples; <code>432x240</code> is valid for low-cost
+<p>Wan 2.2 A14B uses 16px width/height multiples; <code>480x240</code> is valid for low-cost
 local checks, while larger native sizes are more appropriate for quality review.</p>
+<p>Shared LoRA adapters:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora<span class="w"> </span>prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;Pixel art astronaut floating above Earth&quot;</span>
+
+abstractvision<span class="w"> </span>i2i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora<span class="w"> </span>fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">0</span>.9<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">6</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;Use the source subject as the same object. &lt;sks&gt; back view low-angle shot wide shot.&quot;</span>
+
+abstractvision<span class="w"> </span>t2v<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora<span class="w"> </span>AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">0</span>.8<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora-target-role<span class="w"> </span>transformer<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--width<span class="w"> </span><span class="m">832</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--height<span class="w"> </span><span class="m">480</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--frames<span class="w"> </span><span class="m">17</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--fps<span class="w"> </span><span class="m">16</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--flow-shift<span class="w"> </span><span class="m">3</span>.0<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk, pedestrians in wool coats, historical street lamps glowing, gentle cinematic motion.&quot;</span>
+</code></pre></div>
+<p>Use provider/model discovery to check the route before a long LoRA run.
+Use <code>abstractvision catalog --provider mlx-gen</code> to browse downloadable models,
+then <code>abstractvision show-model &lt;model-id&gt;</code> for the exact runtime route
+contract. Use <code>abstractvision adapters --provider mlx-gen --model &lt;model-id&gt; --task &lt;task&gt;</code>
+to list locally cached overlays for one route. MLX-Gen route rows surface
+<code>supports_lora</code>, <code>lora_status</code>, <code>lora_target_roles</code>, and
+<code>lora_validation_profile</code>.</p>
+<p>Batch generation:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-8bit<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--count<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--seeds<span class="w"> </span><span class="m">2512</span>,2513<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora<span class="w"> </span>prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--width<span class="w"> </span><span class="m">768</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--height<span class="w"> </span><span class="m">768</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;Pixel art isometric research outpost on an icy exoplanet at blue hour, tiny service drones, crisp tiles, retro RPG palette&quot;</span>
+</code></pre></div>
 <p>Video examples (5s MP4):</p>
 <div class="af_media_carousel" aria-label="AbstractVision text-to-video examples">
   <button class="af_media_carousel__btn af_media_carousel__btn--prev" type="button" aria-label="Previous video">‹</button>
@@ -1690,9 +1753,9 @@ Rapid-AIO weights separately before using repo ids here. If you intentionally wa
 defaults to the input image size for image-to-image edits to avoid unexpected memory spikes. To request a specific output
 resolution, pass <code>--width</code>/<code>--height</code> flags in the REPL (forwarded via <code>request.extra</code>) or set them in the playground
 Extra JSON field.</p>
-<p>LoRA example (REPL; note: <code>loras_json</code> is forwarded via <code>request.extra</code>):</p>
+<p>LoRA example (REPL; prefer the shared adapter flags):</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
-/i2i --image ./input.png &quot;make it watercolor&quot; --steps 8 --guidance-scale 1 --loras_json &#39;[{&quot;source&quot;:&quot;lightx2v/Qwen-Image-Edit-2511-Lightning&quot;,&quot;scale&quot;:1.0}]&#39; --open
+/i2i --image ./input.png &quot;make it watercolor&quot; --steps 8 --guidance-scale 1 --lora lightx2v/Qwen-Image-Edit-2511-Lightning --lora-scale 1.0 --open
 </code></pre></div>
 <p>Rapid-AIO example (distilled transformer override; Qwen Image Edit):</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16

@@ -1,0 +1,135 @@
+{
+  "artifact_id": "8b5010157aad3e195d58e1a603216332",
+  "content_file": "8b5010157aad3e195d58e1a603216332.png",
+  "content_type": "image/png",
+  "created_at": "2026-06-13T04:12:11.128331+00:00",
+  "metadata": {
+    "base_model": "qwen-image-edit-2509",
+    "edit_mode": "edit_reference",
+    "engine": "mlx-gen",
+    "height": 432,
+    "legacy_engine": "mflux",
+    "lora_application_reports": [
+      {
+        "applied_target_count": 720,
+        "matched_key_count": 2160,
+        "requested_path": "lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
+        "role": null,
+        "scale": 1.0,
+        "total_key_count": 2160,
+        "unmatched_key_count": 0
+      },
+      {
+        "applied_target_count": 720,
+        "matched_key_count": 1440,
+        "requested_path": "dx8152/Qwen-Edit-2509-Multiple-angles:\u955c\u5934\u8f6c\u6362.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/\u955c\u5934\u8f6c\u6362.safetensors",
+        "role": null,
+        "scale": 0.9,
+        "total_key_count": 1440,
+        "unmatched_key_count": 0
+      }
+    ],
+    "lora_applied_file_count": 2,
+    "lora_applied_target_count": 1440,
+    "lora_paths": [
+      "/Users/albou/Library/Caches/mflux/loras/Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
+      "/Users/albou/Library/Caches/mflux/loras/\u955c\u5934\u8f6c\u6362.safetensors"
+    ],
+    "lora_scales": [
+      1.0,
+      0.9
+    ],
+    "mlx_gen": {
+      "base_model": "None",
+      "canvas_policy": "source-aspect",
+      "controlnet_image_path": null,
+      "controlnet_strength": null,
+      "created_at": "2026-06-13T06:12:11.023377",
+      "depth_image_path": null,
+      "generation_time_seconds": 289.55,
+      "guidance": 1.0,
+      "height": 432,
+      "image_path": "/var/folders/2n/0v7_ckq916q9s57rj5kymkj40000gn/T/tmpl3lu13f6.png",
+      "image_paths": [
+        "/var/folders/2n/0v7_ckq916q9s57rj5kymkj40000gn/T/tmpl3lu13f6.png"
+      ],
+      "image_strength": null,
+      "lora_application_reports": [
+        {
+          "applied_target_count": 720,
+          "matched_key_count": 2160,
+          "requested_path": "lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
+          "role": null,
+          "scale": 1.0,
+          "total_key_count": 2160,
+          "unmatched_key_count": 0
+        },
+        {
+          "applied_target_count": 720,
+          "matched_key_count": 1440,
+          "requested_path": "dx8152/Qwen-Edit-2509-Multiple-angles:\u955c\u5934\u8f6c\u6362.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/\u955c\u5934\u8f6c\u6362.safetensors",
+          "role": null,
+          "scale": 0.9,
+          "total_key_count": 1440,
+          "unmatched_key_count": 0
+        }
+      ],
+      "lora_applied_file_count": 2,
+      "lora_applied_target_count": 1440,
+      "lora_paths": [
+        "/Users/albou/Library/Caches/mflux/loras/Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
+        "/Users/albou/Library/Caches/mflux/loras/\u955c\u5934\u8f6c\u6362.safetensors"
+      ],
+      "lora_scales": [
+        1.0,
+        0.9
+      ],
+      "masked_image_path": null,
+      "mflux_version": "0.18.18",
+      "model": "Qwen/Qwen-Image-Edit-2509",
+      "negative_prompt": null,
+      "precision": "mlx.core.bfloat16",
+      "prompt": "Use the source starfighter as the same object. Re-render it from behind and slightly above, banking left over the snowy canyon, keeping the same vehicle identity and environment.",
+      "quantize": 8,
+      "redux_image_paths": null,
+      "redux_image_strengths": null,
+      "requested_height": 432,
+      "requested_width": 768,
+      "seed": 9701,
+      "source_image_height": 432,
+      "source_image_width": 768,
+      "steps": 8,
+      "width": 768
+    },
+    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--qwen-image-edit-2509-8bit/snapshots/6696a69ed9412d4141cd476e7d946dd88681220e",
+    "quantization_bits": 8,
+    "reference_image_count": 1,
+    "requested_lora_adapters": [
+      {
+        "scale": 1.0,
+        "source": "lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors"
+      },
+      {
+        "scale": 0.9,
+        "source": "dx8152/Qwen-Edit-2509-Multiple-angles:\u955c\u5934\u8f6c\u6362.safetensors"
+      }
+    ],
+    "runtime_package": "mlx-gen",
+    "seed": 9701,
+    "source": "mlx-gen",
+    "steps": 8,
+    "width": 768
+  },
+  "schema": "abstractvision.asset.v1",
+  "sha256": "8b5010157aad3e195d58e1a603216332277c5ec4263e03f24767f7ddcaf280f6",
+  "size_bytes": 382293,
+  "tags": {
+    "kind": "generated_media",
+    "modality": "image",
+    "task": "image_to_image"
+  }
+}

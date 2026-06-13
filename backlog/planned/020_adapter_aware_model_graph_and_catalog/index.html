@@ -23,7 +23,7 @@
     
     
       
-        <title>Planned: Model family, component, and overlay graph for catalog and curated local flows - AbstractVision</title>
+        <title>Planned: Model family, component, overlay, and adapter inventory graph for catalog and curated local flows - AbstractVision</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#planned-model-family-component-and-overlay-graph-for-catalog-and-curated-local-flows" class="md-skip">
+        <a href="#planned-model-family-component-overlay-and-adapter-inventory-graph-for-catalog-and-curated-local-flows" class="md-skip">
           Skip to content
         </a>
       
@@ -102,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Planned: Model family, component, and overlay graph for catalog and curated local flows
+              Planned: Model family, component, overlay, and adapter inventory graph for catalog and curated local flows
             
           </span>
         </div>
@@ -731,6 +731,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#4a-backend-owned-installed-adapter-compatibility-is-allowed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4a. Backend-owned installed-adapter compatibility is allowed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4b-multi-output-is-orchestration-not-a-new-single-request-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4b. Multi-output is orchestration, not a new single-request contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#5-tool-exposure-is-conditional-not-automatic" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -807,6 +829,17 @@
     <span class="md-ellipsis">
       
         Phase 4: evaluate higher-level surfaces
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-5-codify-wan-ti2v-route-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5: codify Wan TI2V route policy
       
     </span>
   </a>
@@ -915,7 +948,7 @@
   
 
 
-<h1 id="planned-model-family-component-and-overlay-graph-for-catalog-and-curated-local-flows">Planned: Model family, component, and overlay graph for catalog and curated local flows<a class="headerlink" href="#planned-model-family-component-and-overlay-graph-for-catalog-and-curated-local-flows" title="Permanent link">&para;</a></h1>
+<h1 id="planned-model-family-component-overlay-and-adapter-inventory-graph-for-catalog-and-curated-local-flows">Planned: Model family, component, overlay, and adapter inventory graph for catalog and curated local flows<a class="headerlink" href="#planned-model-family-component-overlay-and-adapter-inventory-graph-for-catalog-and-curated-local-flows" title="Permanent link">&para;</a></h1>
 <h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Created: 2026-05-20</li>
@@ -987,9 +1020,23 @@ surface does not yet model them honestly enough.</p>
 <li><code>_parse_loras()</code></li>
 <li><code>_apply_loras()</code></li>
 <li>documented <code>loras_json</code> and <code>rapid_aio_repo</code> request-extra flows</li>
-<li>MFLUX already has backend-level <code>lora_paths</code> / <code>lora_scales</code> config support.</li>
-<li><code>ImageGenerationRequest</code> and <code>ImageEditRequest</code> already include <code>extra</code>, so the package has a
-  low-level carrier for backend-owned overlay metadata.</li>
+<li>MLX-Gen now also has a package-owned typed LoRA request contract through
+  <code>LoRAAdapterSpec</code> / <code>lora_adapters=[...]</code> across <code>text_to_image</code>,
+  <code>image_to_image</code>, <code>text_to_video</code>, and <code>image_to_video</code>.</li>
+<li><code>VisionManager</code> now exposes public batch orchestration methods:</li>
+<li><code>generate_image_batch(...)</code></li>
+<li><code>edit_image_batch(...)</code></li>
+<li><code>generate_video_batch(...)</code></li>
+<li><code>image_to_video_batch(...)</code></li>
+<li><code>VisionManager.list_provider_adapters(...)</code> and <code>abstractvision adapters ...</code>
+  now expose backend-owned MLX-Gen installed-adapter discovery by exact
+  model/task route.</li>
+<li>Wan video requests now have typed <code>flow_shift</code>.</li>
+<li>The bundled MLX-Gen proof page and proof assets now use a corrected TI2V-5B
+  visual validation at <code>832x480</code>.</li>
+<li><code>ImageGenerationRequest</code> and <code>ImageEditRequest</code> still include <code>extra</code>, so the
+  package retains a low-level carrier for backend-owned overlay metadata where a
+  typed surface is not appropriate yet.</li>
 </ul>
 <p>What is missing or brittle:</p>
 <ul>
@@ -1002,12 +1049,15 @@ surface does not yet model them honestly enough.</p>
   shipped JSON does not yet exercise <code>base_model_id</code> as a real runtime contract.</li>
 <li><code>_PRESETS</code> and curated bundle logic still encode important catalog truth in code rather than in a
   clearer package data model.</li>
-<li>AbstractCore tools expose fixed prompt/image/mask parameters only. They do not expose package-
-  owned overlay composition or typed <code>extra</code> inputs.</li>
+<li>Installed-adapter discovery is currently MLX-Gen-specific. There is still no
+  cross-backend overlay inventory story for Diffusers or stable-diffusion.cpp.</li>
 <li>The current docs show working Diffusers overlay examples, but the catalog cannot yet tell a user
   whether a repo is a standalone model, a required component, or an overlay attachment.</li>
 <li><code>multi_view_image</code> exists as a task key, but no shipped backend currently implements it, so LoRA
   repos that imply multi-view behavior must not be cataloged as if they were runnable tasks.</li>
+<li>The catalog still lacks an explicit artifact-role taxonomy, so overlays,
+  required components, and runtime-ready variants are not yet modeled as a
+  first-class graph in package data.</li>
 </ul>
 <h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
 <p>The current registry and download surfaces are still too flat. They are good at listing model ids
@@ -1031,8 +1081,10 @@ back onto the user.</p>
 <li>curated local runtime resolution</li>
 <li>overlay-aware generation surfaces where the backend already supports them</li>
 </ul>
-<p>The first goal is not “generic adapter orchestration.” The first goal is to stop confusing model
-families, required components, and optional overlays.</p>
+<p>The first goal is still not “generic adapter orchestration.” The first goal is to stop confusing
+model families, required components, and optional overlays. The second goal is to expose locally
+installed overlays honestly enough that users can discover, select, and apply them without leaving
+AbstractVision.</p>
 <h2 id="why">Why<a class="headerlink" href="#why" title="Permanent link">&para;</a></h2>
 <p>Users are not asking for a raw list of Hugging Face repos. They want reliable answers to:</p>
 <ul>
@@ -1058,6 +1110,15 @@ resolution for curated flows. That pattern should be extended deliberately, not 
 <h3 id="4-backend-owned-overlay-semantics-must-stay-backend-owned">4. Backend-owned overlay semantics must stay backend-owned<a class="headerlink" href="#4-backend-owned-overlay-semantics-must-stay-backend-owned" title="Permanent link">&para;</a></h3>
 <p>This task must not invent a fake generic cross-backend adapter runtime if Diffusers and MFLUX need
 different semantics. A shared package surface is acceptable only if it preserves backend truth.</p>
+<h3 id="4a-backend-owned-installed-adapter-compatibility-is-allowed">4a. Backend-owned installed-adapter compatibility is allowed<a class="headerlink" href="#4a-backend-owned-installed-adapter-compatibility-is-allowed" title="Permanent link">&para;</a></h3>
+<p>The package may expose a typed adapter inventory surface, but exact compatibility classification
+must stay backend-owned. For MLX-Gen, that means using cached model-card metadata, file layout
+knowledge, and route truth from <code>mlxgen capabilities</code>, not duplicating adapter compatibility tables
+in a static AbstractVision asset unless a dynamic path proves insufficient.</p>
+<h3 id="4b-multi-output-is-orchestration-not-a-new-single-request-contract">4b. Multi-output is orchestration, not a new single-request contract<a class="headerlink" href="#4b-multi-output-is-orchestration-not-a-new-single-request-contract" title="Permanent link">&para;</a></h3>
+<p>Generating N images or N videos is a useful public feature, but it should not distort the core
+single-request generation dataclasses. Batch generation belongs above exact single-run requests and
+can reuse the same backend truth with repeated seeds.</p>
 <h3 id="5-tool-exposure-is-conditional-not-automatic">5. Tool exposure is conditional, not automatic<a class="headerlink" href="#5-tool-exposure-is-conditional-not-automatic" title="Permanent link">&para;</a></h3>
 <p>AbstractCore tool surfaces should expose overlay-aware inputs only after the package has a clean,
 typed, package-owned contract for them. The current fixed-parameter tools are safer than exposing
@@ -1068,6 +1129,12 @@ aspirational generic adapter knobs.</p>
 <li>Represent engine/format-specific runnable downloads as runtime variants, not as independent model
   families.</li>
 <li>Represent required side artifacts explicitly and separately from optional overlays.</li>
+<li>Expose installed adapter inventory for backends that can classify cached adapters honestly enough
+  for local discovery.</li>
+<li>Preserve route-specific adapter facts such as target roles and validation status.</li>
+<li>Preserve a simple public way to request multiple outputs without pretending every backend has a
+  native batched generation contract.</li>
+<li>Keep TI2V-5B route constraints honest in both normalization and proof artifacts.</li>
 <li>Preserve direct HF repo metadata where useful, but stop presenting overlays as if they were
   standalone runnable models.</li>
 <li>Surface runtime state clearly:</li>
@@ -1113,16 +1180,37 @@ aspirational generic adapter knobs.</p>
 <li>decide whether to keep them as explicit <code>extra</code> conventions or introduce a typed package-owned
     overlay field</li>
 <li>MFLUX:</li>
-<li>decide whether current config-only LoRA support should stay config-bound or also become
-    request-level when the runtime semantics are clear</li>
+<li>keep request-level typed LoRA adapters as the primary path;</li>
+<li>add installed-adapter discovery that resolves cached LoRAs into model/task-aware inventory rows
+    using backend-owned compatibility logic;</li>
+<li>surface exact route facts such as <code>supports_lora</code>, <code>lora_status</code>, <code>lora_target_roles</code>, and
+    <code>lora_validation_profile</code> alongside installed adapters.</li>
 <li>Do not promise cross-backend overlay parity if the runtimes are materially different.</li>
 </ul>
 <h3 id="phase-4-evaluate-higher-level-surfaces">Phase 4: evaluate higher-level surfaces<a class="headerlink" href="#phase-4-evaluate-higher-level-surfaces" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Add a package-owned adapter inventory DTO and manager/backend hooks such as
+  <code>list_provider_adapters(...)</code>.</li>
+<li>Add a package-owned batch orchestration surface above single exact requests, for example:</li>
+<li><code>generate_image_batch(...)</code></li>
+<li><code>edit_image_batch(...)</code></li>
+<li><code>generate_video_batch(...)</code></li>
+<li><code>image_to_video_batch(...)</code></li>
+<li>Keep seed planning explicit and reproducible. Batch mode should accept either explicit seed lists
+  or a count plus deterministic/random expansion policy.</li>
 <li>Update CLI and catalog output so overlays are not mistaken for runnable models.</li>
+<li>Add CLI discovery for locally installed adapters and simple batch generation entry points.</li>
 <li>Only extend <code>integrations/abstractcore.py</code> after the package-owned overlay surface is explicit
   enough to expose safely.</li>
 <li>Add early rejection paths when a user selects an overlay without a compatible parent/runtime.</li>
+</ul>
+<h3 id="phase-5-codify-wan-ti2v-route-policy">Phase 5: codify Wan TI2V route policy<a class="headerlink" href="#phase-5-codify-wan-ti2v-route-policy" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add typed <code>flow_shift</code> request fields for video routes that support it.</li>
+<li>Keep model-default <code>flow_shift</code> backend-owned, but document and normalize the current practical
+  TI2V-5B 480p-class policy (<code>832x480</code> / <code>480x832</code> with <code>flow_shift=3</code>) without hiding the native
+  720p-class defaults.</li>
+<li>Replace stale undersized TI2V proof runs with real validation assets.</li>
 </ul>
 <h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
 <p>Included:</p>
@@ -1132,6 +1220,9 @@ aspirational generic adapter knobs.</p>
 <li>downloader and catalog alignment with that taxonomy;</li>
 <li>curated local-flow improvement where the package can already own required-component resolution;</li>
 <li>overlay-aware generation surface design for backends that already support overlays;</li>
+<li>installed-adapter discovery for MLX-Gen when cached metadata is sufficient;</li>
+<li>typed <code>flow_shift</code> surfacing for Wan routes;</li>
+<li>multi-output orchestration above single exact generation calls;</li>
 <li>clear rejection behavior for unsupported overlay/runtime combinations.</li>
 </ul>
 <h2 id="non-goals">Non-goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h2>
@@ -1142,6 +1233,8 @@ aspirational generic adapter knobs.</p>
 <li>Expose overlay parameters through AbstractCore tools before the package-facing contract is clean.</li>
 <li>Reclassify every historical repo in one risky pass without a compatibility strategy.</li>
 <li>Ship local video runtime work as part of this item.</li>
+<li>Invent a static adapter-capabilities asset first if dynamic backend-owned discovery is already
+  sufficient.</li>
 </ul>
 <h2 id="dependencies-and-related-tasks">Dependencies and related tasks<a class="headerlink" href="#dependencies-and-related-tasks" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1162,6 +1255,11 @@ aspirational generic adapter knobs.</p>
   only, a required component, or an optional overlay.</li>
 <li>Overlay-aware generation is either clearly supported end to end for a backend/model path or
   clearly rejected with an actionable error.</li>
+<li>Locally cached LoRAs can be discovered and filtered by compatible model/task route through a
+  package-owned adapter inventory surface without pretending overlays are standalone models.</li>
+<li>TI2V proof assets and docs no longer use undersized smoke-check runs as visual validation.</li>
+<li>Users can request multiple outputs through a simple public surface while the core single-request
+  generation contract stays stable.</li>
 <li>AbstractCore integration does not advertise overlay composition beyond what the package can
   really honor.</li>
 </ul>
@@ -1192,7 +1290,7 @@ aspirational generic adapter knobs.</p>
 <li>[ ] Decide whether the schema evolves directly or through a compatibility translation layer.</li>
 <li>[ ] Move at least one existing component-based curated flow onto the clearer taxonomy.</li>
 <li>[ ] Update catalog/download output so overlays are not shown as standalone runnable models.</li>
-<li>[ ] Decide the package-owned overlay input contract for backends that already support overlays.</li>
+<li>[x] Decide the package-owned overlay input contract for backends that already support overlays.</li>
 <li>[ ] Add tests and docs for runnable versus download-only versus component versus overlay states.</li>
 </ul>
 <h2 id="guidance-for-the-implementing-agent">Guidance for the implementing agent<a class="headerlink" href="#guidance-for-the-implementing-agent" title="Permanent link">&para;</a></h2>

@@ -1,0 +1,103 @@
+{
+  "artifact_id": "e7494cd3884079c5de961489110c492f",
+  "content_file": "e7494cd3884079c5de961489110c492f.png",
+  "content_type": "image/png",
+  "created_at": "2026-06-11T22:34:32.682369+00:00",
+  "metadata": {
+    "base_model": "qwen-image",
+    "engine": "mlx-gen",
+    "height": 640,
+    "legacy_engine": "mflux",
+    "lora_application_reports": [
+      {
+        "applied_target_count": 840,
+        "matched_key_count": 1680,
+        "requested_path": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
+        "role": null,
+        "scale": 1.0,
+        "total_key_count": 1680,
+        "unmatched_key_count": 0
+      }
+    ],
+    "lora_applied_file_count": 1,
+    "lora_applied_target_count": 840,
+    "lora_paths": [
+      "/Users/albou/Library/Caches/mflux/loras/Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors"
+    ],
+    "lora_scales": [
+      1.0
+    ],
+    "mlx_gen": {
+      "base_model": "None",
+      "canvas_policy": null,
+      "controlnet_image_path": null,
+      "controlnet_strength": null,
+      "created_at": "2026-06-12T00:34:32.624199",
+      "depth_image_path": null,
+      "generation_time_seconds": 315.27,
+      "guidance": 5.0,
+      "height": 640,
+      "image_path": null,
+      "image_paths": null,
+      "image_strength": null,
+      "lora_application_reports": [
+        {
+          "applied_target_count": 840,
+          "matched_key_count": 1680,
+          "requested_path": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
+          "role": null,
+          "scale": 1.0,
+          "total_key_count": 1680,
+          "unmatched_key_count": 0
+        }
+      ],
+      "lora_applied_file_count": 1,
+      "lora_applied_target_count": 840,
+      "lora_paths": [
+        "/Users/albou/Library/Caches/mflux/loras/Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors"
+      ],
+      "lora_scales": [
+        1.0
+      ],
+      "masked_image_path": null,
+      "mflux_version": "0.18.16",
+      "model": "Qwen/Qwen-Image",
+      "negative_prompt": null,
+      "precision": "mlx.core.bfloat16",
+      "prompt": "Pixel Art, a pixelated image of a space astronaut floating in zero gravity. The astronaut wears a white spacesuit with orange stripes. Earth appears in the background with blue oceans and white clouds, rendered in classic 8-bit style.",
+      "quantize": 8,
+      "redux_image_paths": null,
+      "redux_image_strengths": null,
+      "requested_height": null,
+      "requested_width": null,
+      "seed": 9941,
+      "source_image_height": null,
+      "source_image_width": null,
+      "steps": 20,
+      "width": 640
+    },
+    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--qwen-image-2512-8bit/snapshots/f70648e7146ce762557dcebd40809586c32ec558",
+    "quantization_bits": 8,
+    "requested_lora_adapters": [
+      {
+        "scale": 1.0,
+        "source": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors"
+      }
+    ],
+    "runtime_package": "mlx-gen",
+    "seed": 9941,
+    "source": "mlx-gen",
+    "steps": 20,
+    "width": 640
+  },
+  "schema": "abstractvision.asset.v1",
+  "sha256": "e7494cd3884079c5de961489110c492fe21c56177802a7f6e5030b641275434e",
+  "size_bytes": 456864,
+  "tags": {
+    "kind": "generated_media",
+    "modality": "image",
+    "task": "text_to_image"
+  }
+}

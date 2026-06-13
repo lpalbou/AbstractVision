@@ -870,15 +870,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mps-was-requested-but-is-unavailable" class="md-nav__link">
+  <a href="#mlx-gen-lora-is-rejected-as-incompatible" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mps was requested but is unavailable
+        MLX-Gen LoRA is rejected as incompatible
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="mps was requested but is unavailable">
+    <nav class="md-nav" aria-label="MLX-Gen LoRA is rejected as incompatible">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -897,17 +897,6 @@
     <span class="md-ellipsis">
       
         Likely cause
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Checks
       
     </span>
   </a>
@@ -942,15 +931,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#playground-panel-is-disabled" class="md-nav__link">
+  <a href="#mps-was-requested-but-is-unavailable" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Playground panel is disabled
+        mps was requested but is unavailable
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Playground panel is disabled">
+    <nav class="md-nav" aria-label="mps was requested but is unavailable">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -969,6 +958,17 @@
     <span class="md-ellipsis">
       
         Likely cause
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checks
       
     </span>
   </a>
@@ -1003,15 +1003,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#abstractcore-tool-expected-an-artifact-ref" class="md-nav__link">
+  <a href="#playground-panel-is-disabled" class="md-nav__link">
     <span class="md-ellipsis">
       
-        AbstractCore tool expected an artifact ref
+        Playground panel is disabled
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="AbstractCore tool expected an artifact ref">
+    <nav class="md-nav" aria-label="Playground panel is disabled">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1049,6 +1049,67 @@
         
           <li class="md-nav__item">
   <a href="#verify_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#abstractcore-tool-expected-an-artifact-ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AbstractCore tool expected an artifact ref
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AbstractCore tool expected an artifact ref">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symptom_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symptom
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#likely-cause_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Likely cause
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fix_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verify_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Verify
@@ -1106,7 +1167,7 @@ unless you choose the matching extra.</p>
 <li>Diffusers: <code>pip install "abstractvision[diffusers]"</code></li>
 <li>If the error mentions missing <code>torchvision</code>: <code>pip install torchvision</code> (or upgrade/reinstall <code>abstractvision[diffusers]</code>)</li>
 <li>stable-diffusion.cpp bindings: <code>pip install "abstractvision[sdcpp]"</code></li>
-<li>MLX-Gen on Apple Silicon: <code>pip install "abstractvision[mlx-gen]"</code> (or compatibility alias <code>abstractvision[mflux]</code>)</li>
+<li>MLX-Gen: <code>pip install "abstractvision[mlx-gen]"</code> (or compatibility alias <code>abstractvision[mflux]</code>). The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream <code>mlx-gen</code> / <code>mlx</code> markers are available.</li>
 </ul>
 <h3 id="verify">Verify<a class="headerlink" href="#verify" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1153,7 +1214,7 @@ abstractvision<span class="w"> </span>download<span class="w"> </span>qwen-image
 This does not apply to the MLX-Gen Wan path.</p>
 <h3 id="fix_2">Fix<a class="headerlink" href="#fix_2" title="Permanent link">&para;</a></h3>
 <ul>
-<li>use MLX-Gen Wan on Apple Silicon: <code>abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "prompt"</code>; or</li>
+<li>use MLX-Gen Wan locally: <code>abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "prompt"</code>; or</li>
 <li>use the OpenAI-compatible backend when video is served remotely; or</li>
 <li>follow the backlog item that tracks the local re-validation work:
   <a href="../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/"><code>docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</code></a></li>
@@ -1198,12 +1259,43 @@ capability.</p>
 <p>Notes:
 - MLX-Gen edit strength is passed as <code>strength</code> and normalized to the runtime <code>image_strength</code> parameter where the model supports it.
 - If you need stricter scene preservation, Diffusers often remains the more conservative baseline for <code>image_to_image</code>.</p>
-<h2 id="mps-was-requested-but-is-unavailable"><code>mps</code> was requested but is unavailable<a class="headerlink" href="#mps-was-requested-but-is-unavailable" title="Permanent link">&para;</a></h2>
+<h2 id="mlx-gen-lora-is-rejected-as-incompatible">MLX-Gen LoRA is rejected as incompatible<a class="headerlink" href="#mlx-gen-lora-is-rejected-as-incompatible" title="Permanent link">&para;</a></h2>
 <h3 id="symptom_5">Symptom<a class="headerlink" href="#symptom_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li>a local MLX-Gen image or video run fails before generation with a LoRA
+  compatibility error</li>
+<li>the message says the adapter targets a different base model than the selected
+  route</li>
+</ul>
+<h3 id="likely-cause_5">Likely cause<a class="headerlink" href="#likely-cause_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li>the adapter model card targets a different base model family</li>
+<li>the selected route does not expose LoRA support</li>
+<li>a Wan route requires explicit target-role assignment and none was provided</li>
+</ul>
+<h3 id="fix_5">Fix<a class="headerlink" href="#fix_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li>inspect the route first with <code>abstractvision show-model &lt;model-id&gt;</code> or
+  <code>abstractvision catalog --provider mlx-gen</code></li>
+<li>confirm the route advertises <code>supports_lora: true</code></li>
+<li>match the adapter to the route's base model family</li>
+<li>for Wan TI2V-5B, pass <code>--lora-target-role transformer</code></li>
+<li>for Wan A14B, pass explicit
+  <code>high_noise_transformer</code> / <code>low_noise_transformer</code> roles</li>
+</ul>
+<h3 id="verify_2">Verify<a class="headerlink" href="#verify_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>rerun with the same model id and a compatible adapter</li>
+<li>confirm the generated metadata includes requested/applied LoRA details such as
+  <code>requested_lora_adapters</code>, <code>lora_application_reports</code>,
+  <code>lora_applied_file_count</code>, and <code>lora_applied_target_count</code></li>
+</ul>
+<h2 id="mps-was-requested-but-is-unavailable"><code>mps</code> was requested but is unavailable<a class="headerlink" href="#mps-was-requested-but-is-unavailable" title="Permanent link">&para;</a></h2>
+<h3 id="symptom_6">Symptom<a class="headerlink" href="#symptom_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li>local Diffusers startup fails with an error mentioning <code>mps</code></li>
 </ul>
-<h3 id="likely-cause_5">Likely cause<a class="headerlink" href="#likely-cause_5" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_6">Likely cause<a class="headerlink" href="#likely-cause_6" title="Permanent link">&para;</a></h3>
 <p>PyTorch does not report Apple Metal / MPS as available in the current
 environment.</p>
 <h3 id="checks">Checks<a class="headerlink" href="#checks" title="Permanent link">&para;</a></h3>
@@ -1212,49 +1304,49 @@ environment.</p>
 <span class="s">print(torch.backends.mps.is_available())</span>
 <span class="s">PY</span>
 </code></pre></div>
-<h3 id="fix_5">Fix<a class="headerlink" href="#fix_5" title="Permanent link">&para;</a></h3>
+<h3 id="fix_6">Fix<a class="headerlink" href="#fix_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li>use a PyTorch build with MPS support on Apple Silicon;</li>
 <li>or switch the backend device to <code>cpu</code>.</li>
 </ul>
-<h3 id="verify_2">Verify<a class="headerlink" href="#verify_2" title="Permanent link">&para;</a></h3>
+<h3 id="verify_3">Verify<a class="headerlink" href="#verify_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li>rerun the check above;</li>
 <li>then retry with <code>--diffusers-device mps</code> or <code>--diffusers-device cpu</code></li>
 </ul>
 <h2 id="playground-panel-is-disabled">Playground panel is disabled<a class="headerlink" href="#playground-panel-is-disabled" title="Permanent link">&para;</a></h2>
-<h3 id="symptom_6">Symptom<a class="headerlink" href="#symptom_6" title="Permanent link">&para;</a></h3>
+<h3 id="symptom_7">Symptom<a class="headerlink" href="#symptom_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Image → Image or Text → Video controls stay disabled in the playground</li>
 </ul>
-<h3 id="likely-cause_6">Likely cause<a class="headerlink" href="#likely-cause_6" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_7">Likely cause<a class="headerlink" href="#likely-cause_7" title="Permanent link">&para;</a></h3>
 <p>The currently selected model does not advertise the required task in the
 packaged capability registry, or the backend cannot really execute that task.</p>
-<h3 id="fix_6">Fix<a class="headerlink" href="#fix_6" title="Permanent link">&para;</a></h3>
+<h3 id="fix_7">Fix<a class="headerlink" href="#fix_7" title="Permanent link">&para;</a></h3>
 <p>Choose a model that advertises the task:</p>
 <ul>
 <li>image edits: a model with <code>image_to_image</code></li>
 <li>local MLX-Gen text-to-video: <code>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit</code> or <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code></li>
 <li>remote text-to-video: an OpenAI-compatible backend configured with a video endpoint</li>
 </ul>
-<h3 id="verify_3">Verify<a class="headerlink" href="#verify_3" title="Permanent link">&para;</a></h3>
+<h3 id="verify_4">Verify<a class="headerlink" href="#verify_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li>open <code>GET /v1/vision/models</code></li>
 <li>inspect the selected model’s <code>tasks</code> and <code>task_specs</code></li>
 </ul>
 <h2 id="abstractcore-tool-expected-an-artifact-ref">AbstractCore tool expected an artifact ref<a class="headerlink" href="#abstractcore-tool-expected-an-artifact-ref" title="Permanent link">&para;</a></h2>
-<h3 id="symptom_7">Symptom<a class="headerlink" href="#symptom_7" title="Permanent link">&para;</a></h3>
+<h3 id="symptom_8">Symptom<a class="headerlink" href="#symptom_8" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>vision_text_to_image</code>, <code>vision_image_to_image</code>, or <code>vision_text_to_video</code>
   reports that an artifact ref was expected</li>
 </ul>
-<h3 id="likely-cause_7">Likely cause<a class="headerlink" href="#likely-cause_7" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_8">Likely cause<a class="headerlink" href="#likely-cause_8" title="Permanent link">&para;</a></h3>
 <p><code>make_vision_tools(...)</code> expects <code>VisionManager.store</code> to be set so outputs can
 be returned as artifact references instead of raw bytes.</p>
-<h3 id="fix_7">Fix<a class="headerlink" href="#fix_7" title="Permanent link">&para;</a></h3>
+<h3 id="fix_8">Fix<a class="headerlink" href="#fix_8" title="Permanent link">&para;</a></h3>
 <p>Create the manager with a store, for example <code>LocalAssetStore()</code> or a runtime
 adapter.</p>
-<h3 id="verify_4">Verify<a class="headerlink" href="#verify_4" title="Permanent link">&para;</a></h3>
+<h3 id="verify_5">Verify<a class="headerlink" href="#verify_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li>rerun the tool call and confirm the result contains <code>"$artifact"</code></li>
 </ul>

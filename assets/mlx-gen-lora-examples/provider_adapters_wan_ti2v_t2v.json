@@ -1,0 +1,116 @@
+[
+  {
+    "base_models": [
+      "Wan-AI/Wan2.2-TI2V-5B"
+    ],
+    "compatible_models": [
+      "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_video"
+    ],
+    "id": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "wan2.2-ti2v-5b",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_wan_ti2v5b_q8_hstoric_t2v_2026_06_11",
+          "model": "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+          "supports_lora": true,
+          "task": "text_to_video"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "HSToric_color_Wan22_5b_LoRA.safetensors",
+      "repo_id": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--AlekseyCalvin--HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets/snapshots/fb47fbdfb7fa391ed6d29f1d1b06f78bc815d7c0"
+    },
+    "repo_id": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  },
+  {
+    "base_models": [
+      "Wan-AI/Wan2.2-TI2V-5B"
+    ],
+    "compatible_models": [
+      "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_video"
+    ],
+    "id": "ostris/wan22_5b_i2v_crush_it_lora:wan22_5b_i2v_crush_it_lora.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "wan2.2-ti2v-5b",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_wan_ti2v5b_q8_hstoric_t2v_2026_06_11",
+          "model": "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+          "supports_lora": true,
+          "task": "text_to_video"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "wan22_5b_i2v_crush_it_lora.safetensors",
+      "repo_id": "ostris/wan22_5b_i2v_crush_it_lora",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--ostris--wan22_5b_i2v_crush_it_lora/snapshots/e4b85be20d75c2ca2ee1b901ba2cf49d9416e233"
+    },
+    "repo_id": "ostris/wan22_5b_i2v_crush_it_lora",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  },
+  {
+    "base_models": [
+      "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
+    ],
+    "compatible_models": [
+      "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_video"
+    ],
+    "id": "wouterverweirder/wan_2_2_5B_woven_fabric_02-lora:wan_2_2_5B_woven_fabric_02.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "wan2.2-ti2v-5b",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_wan_ti2v5b_q8_hstoric_t2v_2026_06_11",
+          "model": "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+          "supports_lora": true,
+          "task": "text_to_video"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "wan_2_2_5B_woven_fabric_02.safetensors",
+      "repo_id": "wouterverweirder/wan_2_2_5B_woven_fabric_02-lora",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--wouterverweirder--wan_2_2_5B_woven_fabric_02-lora/snapshots/17ee8a366a74b3abca25a22e4f88bd00673adb4f"
+    },
+    "repo_id": "wouterverweirder/wan_2_2_5B_woven_fabric_02-lora",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  }
+]

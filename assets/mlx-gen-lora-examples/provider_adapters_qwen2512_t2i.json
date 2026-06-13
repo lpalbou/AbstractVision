@@ -1,0 +1,116 @@
+[
+  {
+    "base_models": [
+      "Qwen/Qwen-Image"
+    ],
+    "compatible_models": [
+      "AbstractFramework/qwen-image-2512-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_image"
+    ],
+    "id": "flymy-ai/qwen-image-realism-lora:flymy_realism.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "qwen-image",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_qwen2512_q8_pixel_art_t2i_2026_06_11",
+          "model": "AbstractFramework/qwen-image-2512-8bit",
+          "supports_lora": true,
+          "task": "text_to_image"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "flymy_realism.safetensors",
+      "repo_id": "flymy-ai/qwen-image-realism-lora",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--flymy-ai--qwen-image-realism-lora/snapshots/9b5a5951d4f9c998349000aeb84bc2823fc7975f"
+    },
+    "repo_id": "flymy-ai/qwen-image-realism-lora",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  },
+  {
+    "base_models": [
+      "Qwen/Qwen-Image-2512"
+    ],
+    "compatible_models": [
+      "AbstractFramework/qwen-image-2512-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_image"
+    ],
+    "id": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "qwen-image",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_qwen2512_q8_pixel_art_t2i_2026_06_11",
+          "model": "AbstractFramework/qwen-image-2512-8bit",
+          "supports_lora": true,
+          "task": "text_to_image"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
+      "repo_id": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--prithivMLmods--Qwen-Image-2512-Pixel-Art-LoRA/snapshots/e14eea588e8e4a9c753439e52a203d06288769c5"
+    },
+    "repo_id": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  },
+  {
+    "base_models": [
+      "Qwen/Qwen-Image"
+    ],
+    "compatible_models": [
+      "AbstractFramework/qwen-image-2512-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_image"
+    ],
+    "id": "prithivMLmods/Qwen-Image-Studio-Realism:qwen-studio-realism.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "qwen-image",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_qwen2512_q8_pixel_art_t2i_2026_06_11",
+          "model": "AbstractFramework/qwen-image-2512-8bit",
+          "supports_lora": true,
+          "task": "text_to_image"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "qwen-studio-realism.safetensors",
+      "repo_id": "prithivMLmods/Qwen-Image-Studio-Realism",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--prithivMLmods--Qwen-Image-Studio-Realism/snapshots/6ff46f64ff945644f48189eae4695352559ffce9"
+    },
+    "repo_id": "prithivMLmods/Qwen-Image-Studio-Realism",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  }
+]
