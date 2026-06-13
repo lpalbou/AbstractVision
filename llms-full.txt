@@ -4190,6 +4190,10 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 ## Unreleased
 
+## 0.3.24 - 2026-06-13
+
+- Provider discovery: fix SeedVR2 local prepared-folder discovery so `AbstractFramework/seedvr2-7b-8bit` and `AbstractFramework/seedvr2-7b-4bit` both surface correctly from a configured local model directory even when no Hugging Face cache is available, while keeping the canonical base alias aligned with the preferred local variant.
+
 ## 0.3.23 - 2026-06-13
 
 - Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.18,<0.19.0` and expose the same upstream install surface that now includes Linux/CUDA markers in addition to Apple Silicon.

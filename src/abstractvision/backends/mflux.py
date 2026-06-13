@@ -1351,11 +1351,19 @@ def _discover_cached_legacy_mflux_models(
             candidate = _DiscoveredMFluxModel(
                 key=base,
                 snapshot_dir=entry,
-                repo_id=None,
+                repo_id=entry.name,
                 source_label=source_label,
                 source_detail=f"{source_label} ({entry})",
             )
-            out.setdefault(base, candidate)
+            chosen = out.get(base)
+            candidate_priority = _candidate_priority(candidate.repo_id)
+            chosen_priority = (
+                _candidate_priority(chosen.repo_id) if chosen is not None else None
+            )
+            if chosen is None or (
+                chosen_priority is not None and candidate_priority < chosen_priority
+            ):
+                out[base] = candidate
             bits = _infer_bits_from_text(entry.name)
             if bits is not None:
                 out.setdefault(f"{base}-{int(bits)}bit", candidate)
