@@ -630,6 +630,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#batch-generation-through-core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch generation through Core
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#local-model-residency-control" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -726,6 +737,17 @@
     <span class="md-ellipsis">
       
         Provider Catalog Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-generation-through-core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch generation through Core
       
     </span>
   </a>
@@ -982,6 +1004,47 @@ inspection only: it does not mutate the configured backend or select a generatio
 of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
 remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate <code>~/models</code> download tree.</p>
+<p>The same capability object also exposes installed adapter discovery for routes
+that support LoRAs:</p>
+<div class="highlight"><pre><span></span><code><span class="n">adapters</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_provider_adapters</span><span class="p">(</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit&quot;</span><span class="p">,</span>
+    <span class="n">task</span><span class="o">=</span><span class="s2">&quot;text_to_video&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">for</span> <span class="n">adapter</span> <span class="ow">in</span> <span class="n">adapters</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">adapter</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">],</span> <span class="n">adapter</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;suggested_target_roles&quot;</span><span class="p">))</span>
+</code></pre></div>
+<p>Adapter truth stays backend-owned. The plugin serializes
+<code>ProviderAdapterInfo</code> into JSON-safe dictionaries, but it does not invent
+compatibility metadata on its own.</p>
+<h3 id="batch-generation-through-core">Batch generation through Core<a class="headerlink" href="#batch-generation-through-core" title="Permanent link">&para;</a></h3>
+<p>The plugin now exposes explicit batch helpers in addition to the singular task
+methods:</p>
+<ul>
+<li><code>llm.vision.t2i_batch(...)</code></li>
+<li><code>llm.vision.i2i_batch(...)</code></li>
+<li><code>llm.vision.t2v_batch(...)</code></li>
+<li><code>llm.vision.i2v_batch(...)</code></li>
+</ul>
+<p>These methods use the same typed request contract as the singular calls:
+stacked <code>lora_adapters=[...]</code>, explicit <code>seeds=[...]</code>, optional base <code>seed</code>
+expansion, and typed video controls such as <code>guidance_2</code> / <code>flow_shift</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">videos</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2v_batch</span><span class="p">(</span>
+    <span class="s2">&quot;A compact silver spaceship lifts off from an icy canyon at dawn.&quot;</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit&quot;</span><span class="p">,</span>
+    <span class="n">count</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">seeds</span><span class="o">=</span><span class="p">[</span><span class="mi">6251</span><span class="p">,</span> <span class="mi">6252</span><span class="p">],</span>
+    <span class="n">flow_shift</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
+    <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">&quot;owner/wan-style:video.safetensors&quot;</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
+            <span class="n">target_role</span><span class="o">=</span><span class="s2">&quot;transformer&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">],</span>
+<span class="p">)</span>
+</code></pre></div>
 <h3 id="local-model-residency-control">Local Model Residency Control<a class="headerlink" href="#local-model-residency-control" title="Permanent link">&para;</a></h3>
 <p>Core/Gateway hosts can also control in-process local model residency through the same capability
 object:</p>
@@ -1029,12 +1092,28 @@ instead of being reimplemented in the plugin layer.</p>
   the backend rather than surfacing as per-surface validation bugs.</p>
 <h2 id="2-tool-helpers-make_vision_tools">2) Tool helpers (<code>make_vision_tools</code>)<a class="headerlink" href="#2-tool-helpers-make_vision_tools" title="Permanent link">&para;</a></h2>
 <p><code>make_vision_tools(...)</code> builds AbstractCore <code>@tool</code> callables for:
+- adapter discovery for the selected model
 - text→image
+- batch text→image
 - image→image
+- batch image→image
 - image upscaling
 - multi-view image
 - text→video
-- image→video</p>
+- batch text→video
+- image→video
+- batch image→video</p>
+<p>The helper surface now stays aligned with the main AbstractCore capability
+plugin surface:</p>
+<ul>
+<li><code>lora_adapters=[...]</code> is accepted on text→image, image→image, text→video,
+  and image→video tool calls.</li>
+<li>batch tools accept <code>count</code> plus optional explicit <code>seeds=[...]</code>.</li>
+<li>image-edit tools accept <code>reference_images=[...]</code>, where each item can be an
+  artifact ref dict or a <code>{"b64": "..."}</code> payload.</li>
+<li><code>vision_list_adapters(task=...)</code> returns the currently discovered compatible
+  adapter inventory for the selected model.</li>
+</ul>
 <p>Important:
 - Tool outputs are designed to be <strong>artifact refs</strong>, so <code>VisionManager.store</code> must be set (<a href="../../src/abstractvision/integrations/abstractcore.py"><code>../../src/abstractvision/integrations/abstractcore.py</code></a>).
 - This module requires AbstractCore to be installed by the host application. AbstractVision does not install AbstractCore as a dependency.</p>
