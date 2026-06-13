@@ -981,9 +981,9 @@ def _candidate_priority(repo_id: Optional[str]) -> int:
     s = _norm(repo_id)
     if not s:
         return 99
-    if "seedvr2" in s and s.startswith("abstractframework/") and ("8bit" in s or "q8" in s):
+    if "seedvr2" in s and ("8bit" in s or "q8" in s):
         return 0
-    if "seedvr2" in s and s.startswith("abstractframework/") and ("4bit" in s or "q4" in s):
+    if "seedvr2" in s and ("4bit" in s or "q4" in s):
         return 1
     if s.startswith("abstractframework/") and ("4bit" in s or "q4" in s):
         return 0

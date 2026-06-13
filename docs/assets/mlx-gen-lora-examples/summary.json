@@ -1,6 +1,6 @@
 {
   "mlx_gen_version": "0.18.18",
-  "abstractvision_version": "0.3.24",
+  "abstractvision_version": "0.3.25",
   "validated_platform": "Apple Silicon",
   "notes": [
     "The public video bundle only includes validated Wan proofs: TI2V-5B at 832x480 or above, and task-specific Wan A14B proofs at 480x240.",

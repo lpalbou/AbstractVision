@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.3.25 - 2026-06-13
+
+- Provider discovery: fix SeedVR2 local prepared-folder discovery for bare local folder names such as `seedvr2-7b-8bit` and `seedvr2-7b-4bit`, so clean environments surface both exact local upscaler variants without relying on a populated Hugging Face cache.
+
 ## 0.3.24 - 2026-06-13
 
 - Provider discovery: fix SeedVR2 local prepared-folder discovery so `AbstractFramework/seedvr2-7b-8bit` and `AbstractFramework/seedvr2-7b-4bit` both surface correctly from a configured local model directory even when no Hugging Face cache is available, while keeping the canonical base alias aligned with the preferred local variant.
