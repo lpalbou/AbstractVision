@@ -92,7 +92,7 @@ Optional extras:
 | `apple` | Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
 | `gpu` | GPU-friendly profile for Diffusers/Torch and MLX-Gen when the platform markers match. |
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
-| `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
+| `local` | Convenience extra for the Diffusers + `sdcpp` local runtime stack. Add `mlx-gen` separately, or use `all` / `all-apple`, when you also want MLX-Gen. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
 | `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MLX-Gen. |
 | `all-gpu` | Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings + MLX-Gen when the platform markers match). |

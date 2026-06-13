@@ -223,6 +223,55 @@ of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cp
 remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate `~/models` download tree.
 
+The same capability object also exposes installed adapter discovery for routes
+that support LoRAs:
+
+```python
+adapters = llm.vision.list_provider_adapters(
+    provider="mlx-gen",
+    model="AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+    task="text_to_video",
+)
+for adapter in adapters:
+    print(adapter["id"], adapter.get("suggested_target_roles"))
+```
+
+Adapter truth stays backend-owned. The plugin serializes
+`ProviderAdapterInfo` into JSON-safe dictionaries, but it does not invent
+compatibility metadata on its own.
+
+### Batch generation through Core
+
+The plugin now exposes explicit batch helpers in addition to the singular task
+methods:
+
+- `llm.vision.t2i_batch(...)`
+- `llm.vision.i2i_batch(...)`
+- `llm.vision.t2v_batch(...)`
+- `llm.vision.i2v_batch(...)`
+
+These methods use the same typed request contract as the singular calls:
+stacked `lora_adapters=[...]`, explicit `seeds=[...]`, optional base `seed`
+expansion, and typed video controls such as `guidance_2` / `flow_shift`.
+
+```python
+videos = llm.vision.t2v_batch(
+    "A compact silver spaceship lifts off from an icy canyon at dawn.",
+    provider="mlx-gen",
+    model="AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+    count=2,
+    seeds=[6251, 6252],
+    flow_shift=3.0,
+    lora_adapters=[
+        LoRAAdapterSpec(
+            source="owner/wan-style:video.safetensors",
+            scale=0.9,
+            target_role="transformer",
+        )
+    ],
+)
+```
+
 ### Local Model Residency Control
 
 Core/Gateway hosts can also control in-process local model residency through the same capability
@@ -281,12 +330,28 @@ Current examples:
 ## 2) Tool helpers (`make_vision_tools`)
 
 `make_vision_tools(...)` builds AbstractCore `@tool` callables for:
+- adapter discovery for the selected model
 - text→image
+- batch text→image
 - image→image
+- batch image→image
 - image upscaling
 - multi-view image
 - text→video
+- batch text→video
 - image→video
+- batch image→video
+
+The helper surface now stays aligned with the main AbstractCore capability
+plugin surface:
+
+- `lora_adapters=[...]` is accepted on text→image, image→image, text→video,
+  and image→video tool calls.
+- batch tools accept `count` plus optional explicit `seeds=[...]`.
+- image-edit tools accept `reference_images=[...]`, where each item can be an
+  artifact ref dict or a `{"b64": "..."}` payload.
+- `vision_list_adapters(task=...)` returns the currently discovered compatible
+  adapter inventory for the selected model.
 
 Important:
 - Tool outputs are designed to be **artifact refs**, so `VisionManager.store` must be set ([`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)).

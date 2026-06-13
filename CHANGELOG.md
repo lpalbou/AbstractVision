@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.3.26 - 2026-06-13
+
+- AbstractCore plugin surface: expose `list_provider_adapters(...)` plus first-class batch methods for `t2i`, `i2i`, `t2v`, and `i2v`, keeping stacked LoRA adapters, explicit seed planning, and route-specific video controls on the same typed boundary used by direct `VisionManager` callers.
+- AbstractCore tool helpers: bring `make_vision_tools(...)` up to the same contract with adapter discovery, stacked LoRA adapters, batch helpers, and multi-reference image-edit inputs.
+- Core-hosted proof: expand regression coverage so the plugin contract is explicitly validated for installed-adapter discovery, image batch seed expansion, and video batch forwarding.
+- Packaging docs: clarify that `abstractvision[local]` covers the Diffusers + `sdcpp` runtime stack, while MLX-Gen stays explicit through `abstractvision[mlx-gen]` or the aggregate `all` / `all-apple` profiles.
+
 ## 0.3.25 - 2026-06-13
 
 - Provider discovery: fix SeedVR2 local prepared-folder discovery for bare local folder names such as `seedvr2-7b-8bit` and `seedvr2-7b-4bit`, so clean environments surface both exact local upscaler variants without relying on a populated Hugging Face cache.

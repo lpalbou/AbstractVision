@@ -210,6 +210,134 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
         self.assertEqual(seen["i2v"].guidance_2, 3.5)
         self.assertEqual(seen["i2v"].flow_shift, 3.0)
 
+    def test_make_vision_tools_expose_adapter_catalog_and_batch_lora_surface(self):
+        from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry
+        from abstractvision.backends import VisionBackend
+        from abstractvision.integrations.abstractcore import make_vision_tools
+        from abstractvision.types import (
+            GeneratedAsset,
+            ImageEditRequest,
+            ImageToVideoRequest,
+            ProviderAdapterInfo,
+            VideoGenerationRequest,
+        )
+
+        seen = {"i2i": [], "t2v": [], "i2v": []}
+
+        class FakeBackend(VisionBackend):
+            def list_provider_adapters(self, *, model=None, task=None):
+                return [
+                    ProviderAdapterInfo(
+                        id="AbstractFramework/pencil-style-lora",
+                        repo_id="AbstractFramework/pencil-style-lora",
+                        compatible_models=(str(model or ""),),
+                        compatible_tasks=((str(task),) if task else ("text_to_image", "image_to_image")),
+                        suggested_target_roles=("style",),
+                        raw={"validated": True},
+                    )
+                ]
+
+            def generate_image(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
+                seen["i2i"].append(request)
+                return GeneratedAsset(media_type="image", data=b"edit", mime_type="image/png", metadata={})
+
+            def generate_angles(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
+                seen["t2v"].append(request)
+                return GeneratedAsset(media_type="video", data=b"video", mime_type="video/mp4", metadata={})
+
+            def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
+                seen["i2v"].append(request)
+                return GeneratedAsset(media_type="video", data=b"video", mime_type="video/mp4", metadata={})
+
+        with tempfile.TemporaryDirectory() as td:
+            store = LocalAssetStore(td)
+            vm = VisionManager(backend=FakeBackend(), store=store)
+            reg = VisionModelCapabilitiesRegistry()
+            with patch.dict(sys.modules, {"abstractcore": _fake_abstractcore_module()}):
+                i2i_tools = make_vision_tools(
+                    vision_manager=vm,
+                    model_id="Qwen/Qwen-Image-Edit-2511",
+                    registry=reg,
+                )
+                t2v_tools = make_vision_tools(
+                    vision_manager=vm,
+                    model_id="Wan-AI/Wan2.2-T2V-A14B",
+                    registry=reg,
+                )
+                i2v_tools = make_vision_tools(
+                    vision_manager=vm,
+                    model_id="Wan-AI/Wan2.2-I2V-A14B",
+                    registry=reg,
+                )
+
+            by_name_i2i = {t._tool_definition.name: t for t in i2i_tools if hasattr(t, "_tool_definition")}
+            by_name_t2v = {t._tool_definition.name: t for t in t2v_tools if hasattr(t, "_tool_definition")}
+            by_name_i2v = {t._tool_definition.name: t for t in i2v_tools if hasattr(t, "_tool_definition")}
+
+            image_in = store.store_bytes(b"input", content_type="image/png")
+            ref_one = store.store_bytes(b"style-ref", content_type="image/png")
+            ref_two_b64 = "cmVmLXR3bw=="
+
+            adapters = by_name_i2i["vision_list_adapters"](task="image_to_image")
+            self.assertEqual(adapters[0]["id"], "AbstractFramework/pencil-style-lora")
+            self.assertEqual(adapters[0]["compatible_tasks"], ["image_to_image"])
+
+            i2i_out = by_name_i2i["vision_image_to_image_batch"](
+                prompt="edit this",
+                image_artifact=image_in,
+                count=2,
+                seeds=[101, 202],
+                reference_images=[ref_one, {"b64": ref_two_b64}],
+                lora_adapters=[
+                    {"source": "AbstractFramework/pencil-style-lora", "scale": 0.7, "target_role": "style"},
+                    {"source": "AbstractFramework/layout-helper-lora", "scale": 0.3, "target_role": "composition"},
+                ],
+            )
+            self.assertEqual(len(i2i_out), 2)
+
+            t2v_out = by_name_t2v["vision_text_to_video_batch"](
+                prompt="move slowly",
+                count=2,
+                seeds=[303, 404],
+                guidance_2=3.0,
+                flow_shift=4.5,
+                lora_adapters=[{"source": "AbstractFramework/cinematic-lora", "scale": 0.8}],
+            )
+            self.assertEqual(len(t2v_out), 2)
+
+            i2v_out = by_name_i2v["vision_image_to_video_batch"](
+                image_artifact=image_in,
+                prompt="animate it",
+                count=2,
+                seeds=[505, 606],
+                guidance_2=3.5,
+                flow_shift=3.0,
+                lora_adapters=[{"source": "AbstractFramework/cinematic-lora", "scale": 0.6}],
+            )
+            self.assertEqual(len(i2v_out), 2)
+
+        self.assertEqual([request.seed for request in seen["i2i"]], [101, 202])
+        self.assertEqual([request.seed for request in seen["t2v"]], [303, 404])
+        self.assertEqual([request.seed for request in seen["i2v"]], [505, 606])
+        self.assertEqual(len(seen["i2i"][0].lora_adapters), 2)
+        self.assertEqual(seen["i2i"][0].lora_adapters[0].source, "AbstractFramework/pencil-style-lora")
+        self.assertEqual(seen["i2i"][0].lora_adapters[1].target_role, "composition")
+        self.assertEqual(
+            seen["i2i"][0].extra["reference_images"],
+            [b"style-ref", b"ref-two"],
+        )
+        self.assertEqual(seen["t2v"][0].flow_shift, 4.5)
+        self.assertEqual(seen["t2v"][0].guidance_2, 3.0)
+        self.assertEqual(seen["t2v"][0].lora_adapters[0].source, "AbstractFramework/cinematic-lora")
+        self.assertEqual(seen["i2v"][0].guidance_2, 3.5)
+        self.assertEqual(seen["i2v"][0].flow_shift, 3.0)
+
     def test_unsupported_task_raises(self):
         from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry
         from abstractvision.backends import VisionBackend

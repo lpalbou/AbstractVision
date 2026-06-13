@@ -69,7 +69,7 @@ Optional extras:
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
 | `abstractvision[mlx-gen]` | Install the optional MLX-Gen image/video runtime. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` support is available. |
 | `abstractvision[mflux]` | Compatibility alias for the MLX-Gen runtime. |
-| `abstractvision[local]` | Convenience for both local backend dependency sets, including `diffusers` and `sdcpp`. |
+| `abstractvision[local]` | Convenience for the Diffusers + `sdcpp` local runtime stack. Add `abstractvision[mlx-gen]` or use `abstractvision[all]` / `abstractvision[all-apple]` when you also want MLX-Gen. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
 | `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
 | `abstractvision[gpu]` | GPU-oriented local profile: Diffusers/Torch plus MLX-Gen when the platform markers match. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |

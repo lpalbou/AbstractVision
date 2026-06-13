@@ -13,7 +13,7 @@ Note:
 - **No test-driven special casing**: implementation must be general-purpose logic, not tailored to tests.
 - **Keep the public contract stable**: preserve the integrator-facing API (`VisionManager.generate_image/edit_image/generate_angles/generate_video/image_to_video/...`).
 - **Artifact-first outputs**: generated images/videos must be representable as small JSON objects (refs), not inlined bytes, to support tool calling + workflows + third-party integrations.
-- **Lightweight base install, explicit local runtimes**: the default install supports shared contracts, the capability registry, artifact refs, the OpenAI-compatible HTTP backend, CLI glue, and AbstractCore plugin discovery without installing local inference runtimes. Local Diffusers is explicit through `abstractvision[diffusers]`; stable-diffusion.cpp python bindings are explicit through `abstractvision[sdcpp]`; `abstractvision[local]` installs both. Importing `abstractvision` should not eagerly import heavy runtime stacks unless needed (avoid model loads/weight downloads at import time; defer heavy backend imports until backend construction or first use).
+- **Lightweight base install, explicit local runtimes**: the default install supports shared contracts, the capability registry, artifact refs, the OpenAI-compatible HTTP backend, CLI glue, and AbstractCore plugin discovery without installing local inference runtimes. Local Diffusers is explicit through `abstractvision[diffusers]`; stable-diffusion.cpp python bindings are explicit through `abstractvision[sdcpp]`; `abstractvision[local]` installs that Diffusers + `sdcpp` stack; MLX-Gen stays explicit through `abstractvision[mlx-gen]` or the aggregate `all` / `all-apple` profiles. Importing `abstractvision` should not eagerly import heavy runtime stacks unless needed (avoid model loads/weight downloads at import time; defer heavy backend imports until backend construction or first use).
 - **Prefer permissive licensing**: only adopt MIT/Apache/BSD-compatible components. If none exist, document feasibility and create a backlog item.
 
 Note: older completed backlog items may describe either a “default Diffusers install” phase or earlier “heavy deps behind extras” plans.
@@ -33,7 +33,7 @@ Treat `pyproject.toml` and the latest planned/completed packaging task as the so
 
 - Planned: 3 items
 - Proposed: 0 items
-- Completed: 23 items
+- Completed: 24 items
 - Deprecated: 2 items
 
 ### Current planned items

@@ -1404,6 +1404,123 @@ print("ok")
             "high_noise_transformer",
         )
 
+    def test_abstractcore_plugin_lists_provider_adapters(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import ProviderAdapterInfo
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMFluxBackend:
+            def list_provider_adapters(self, *, model=None, task=None):
+                return [
+                    ProviderAdapterInfo(
+                        id="owner/wan-lora",
+                        repo_id="owner/wan-lora",
+                        base_models=("Wan-AI/Wan2.2-TI2V-5B-Diffusers",),
+                        compatible_models=("AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",),
+                        compatible_tasks=("text_to_video", "image_to_video"),
+                        suggested_target_roles=("transformer", "high_noise_transformer"),
+                        raw={"provider": "mlx-gen", "installed": True},
+                    )
+                ]
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        with patch.object(cap, "_make_mflux_backend", return_value=FakeMFluxBackend()):
+            adapters = cap.list_provider_adapters(
+                provider="mlx-gen",
+                model="AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+                task="text_to_video",
+            )
+
+        self.assertEqual(len(adapters), 1)
+        self.assertEqual(adapters[0]["id"], "owner/wan-lora")
+        self.assertEqual(adapters[0]["provider"], "mlx-gen")
+        self.assertEqual(
+            adapters[0]["compatible_models"],
+            ["AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"],
+        )
+        self.assertEqual(
+            adapters[0]["suggested_target_roles"],
+            ["transformer", "high_noise_transformer"],
+        )
+
+    def test_abstractcore_plugin_t2i_batch_expands_seed_plan(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        seen = {"seeds": []}
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMFluxBackend:
+            def generate_image(self, request):
+                seen["seeds"].append(request.seed)
+                return GeneratedAsset(
+                    media_type="image",
+                    data=f"png-{request.seed}".encode("utf-8"),
+                    mime_type="image/png",
+                    metadata={"seed": request.seed},
+                )
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        with patch.object(cap, "_make_mflux_backend", return_value=FakeMFluxBackend()):
+            out = cap.t2i_batch(
+                "draw a clean interface",
+                provider="mlx-gen",
+                model="AbstractFramework/flux.2-klein-9b-8bit",
+                count=3,
+                seed=41,
+            )
+
+        self.assertEqual(seen["seeds"], [41, 42, 43])
+        self.assertEqual(out, [b"png-41", b"png-42", b"png-43"])
+
+    def test_abstractcore_plugin_t2v_batch_passes_video_controls(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        seen = {"requests": []}
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMFluxBackend:
+            def generate_video(self, request):
+                seen["requests"].append(request)
+                return GeneratedAsset(
+                    media_type="video",
+                    data=f"mp4-{request.seed}".encode("utf-8"),
+                    mime_type="video/mp4",
+                    metadata={"seed": request.seed},
+                )
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+        with patch.object(cap, "_make_mflux_backend", return_value=FakeMFluxBackend()):
+            out = cap.t2v_batch(
+                "move slowly",
+                provider="mlx-gen",
+                model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+                count=2,
+                seeds=[101, 202],
+                guidance_2=3.0,
+                flow_shift=5.0,
+                lora_adapters=[
+                    {
+                        "source": "owner/wan-lora:video.safetensors",
+                        "scale": 0.75,
+                        "target_role": "high_noise_transformer",
+                    }
+                ],
+            )
+
+        self.assertEqual([request.seed for request in seen["requests"]], [101, 202])
+        self.assertEqual(seen["requests"][0].guidance_2, 3.0)
+        self.assertEqual(seen["requests"][0].flow_shift, 5.0)
+        self.assertEqual(seen["requests"][0].lora_adapters[0]["scale"], 0.75)
+        self.assertEqual(out, [b"mp4-101", b"mp4-202"])
+
     def test_runtime_installed_recognizes_linux_mlx_gen_runtime(self):
         from abstractvision.integrations.abstractcore_plugin import _runtime_installed
 

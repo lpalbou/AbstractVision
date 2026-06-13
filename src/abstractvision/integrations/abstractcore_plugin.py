@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
 from ..backends.base_backend import VisionBackend
 from ..errors import AbstractVisionError
-from ..types import ProviderModelInfo
+from ..types import ProviderAdapterInfo, ProviderModelInfo
 from ..vision_manager import VisionManager
 
 _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
@@ -375,6 +375,28 @@ def _provider_model_to_dict(info: ProviderModelInfo) -> Dict[str, Any]:
         if isinstance(value, dict):
             item[key] = value
     return item
+
+
+def _provider_adapter_to_dict(info: ProviderAdapterInfo) -> Dict[str, Any]:
+    raw = _json_safe_provider_value(info.raw if isinstance(info.raw, dict) else {})
+    raw_obj = raw if isinstance(raw, dict) else {}
+    provider = ""
+    for key in ("provider", "provider_id", "provider_name", "backend", "engine_id"):
+        value = raw_obj.get(key)
+        if isinstance(value, str) and value.strip():
+            provider = value.strip()
+            break
+    return {
+        "id": str(info.id),
+        "adapter": str(info.id),
+        "provider": provider or None,
+        "repo_id": str(info.repo_id).strip() if info.repo_id is not None else None,
+        "base_models": [str(value) for value in info.base_models],
+        "compatible_models": [str(value) for value in info.compatible_models],
+        "compatible_tasks": [str(value) for value in info.compatible_tasks],
+        "suggested_target_roles": [str(value) for value in info.suggested_target_roles],
+        "raw": raw_obj,
+    }
 
 
 def _backend_supports_provider_catalog(backend: Any) -> bool:
@@ -1347,6 +1369,17 @@ class _AbstractVisionCapability:
         store = RuntimeArtifactStoreAdapter(artifact_store) if artifact_store is not None else None
         return VisionManager(backend=self._get_backend(), store=store)
 
+    @staticmethod
+    def _request_store_adapter(
+        artifact_store: Any,
+        *,
+        run_id: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        if artifact_store is None:
+            return None
+        return RuntimeArtifactStoreAdapter(artifact_store, run_id=run_id, tags=tags)
+
     def list_provider_models(self, *, task: Optional[str] = None) -> List[Dict[str, Any]]:
         backends: list[tuple[Any, Optional[str]]] = []
         last_error: Optional[Exception] = None
@@ -1448,6 +1481,114 @@ class _AbstractVisionCapability:
         raise AbstractVisionError(
             "The selected AbstractVision backend does not support provider model catalogs."
         )
+
+    def list_provider_adapters(
+        self,
+        *,
+        model: Optional[str] = None,
+        task: Optional[str] = None,
+        provider: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        backends: list[tuple[Any, Optional[str]]] = []
+        last_error: Optional[Exception] = None
+        injected_backend = False
+        configured_base_url = _configured_openai_base_url(self._owner)
+        configured_api_key = _owner_cfg(self._owner, "vision_api_key") or _openai_api_key()
+        configured_remote_provider = (
+            "openai-compatible"
+            if _base_url_implies_openai_compatible(configured_base_url)
+            else "openai"
+        )
+
+        if provider:
+            binding = self._resolve_backend_binding(provider=provider, model=model)
+            backends.append((binding["backend"], binding.get("provider")))
+        else:
+            try:
+                owner_cfg = getattr(self._owner, "config", None)
+                injected_backend = isinstance(owner_cfg, dict) and (
+                    owner_cfg.get("vision_backend_instance") is not None
+                    or owner_cfg.get("vision_backend_factory") is not None
+                )
+            except Exception:
+                injected_backend = False
+
+            try:
+                active_backend = self._get_backend()
+                backends.append((active_backend, _provider_id_for_backend(active_backend)))
+            except Exception:
+                pass
+
+            active_provider = backends[0][1] if backends else None
+            if not injected_backend and active_provider != "mlx-gen":
+                try:
+                    backends.append((self._make_mflux_backend(model_id=model), "mlx-gen"))
+                except Exception:
+                    pass
+            if not injected_backend and active_provider != "huggingface":
+                try:
+                    backends.append((self._make_diffusers_backend(model_id=model), "huggingface"))
+                except Exception:
+                    pass
+            if (
+                not injected_backend
+                and active_provider != configured_remote_provider
+                and _remote_provider_catalog_enabled(
+                    configured_remote_provider,
+                    base_url=configured_base_url,
+                    api_key=configured_api_key,
+                )
+            ):
+                try:
+                    backends.append(
+                        (
+                            self._make_openai_backend(
+                                provider_id=configured_remote_provider,
+                                model_id=model,
+                            ),
+                            configured_remote_provider,
+                        )
+                    )
+                except Exception:
+                    pass
+
+        out: List[Dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        attempted = False
+        for idx, (backend, backend_provider) in enumerate(backends):
+            if not (injected_backend and idx == 0) and not _backend_catalog_enabled(
+                self._owner, backend_provider, backend
+            ):
+                continue
+            method = getattr(backend, "list_provider_adapters", None)
+            if not callable(method):
+                continue
+            attempted = True
+            try:
+                adapters = list(method(model=model, task=task) or [])
+            except Exception as exc:
+                last_error = exc
+                continue
+            for adapter in adapters:
+                item = _provider_adapter_to_dict(adapter)
+                if backend_provider and not item.get("provider"):
+                    item["provider"] = backend_provider
+                adapter_id = str(item.get("adapter") or item.get("id") or "").strip()
+                provider_id = str(item.get("provider") or backend_provider or "").strip()
+                if not adapter_id:
+                    continue
+                key = (provider_id, adapter_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(item)
+        if out:
+            return out
+        if last_error is not None:
+            raise AbstractVisionError(str(last_error))
+        if attempted:
+            return []
+        return []
 
     def available_providers(self, *, task: Optional[str] = None) -> Dict[str, Any]:
         """Return fast provider availability without remote model discovery.
@@ -1654,7 +1795,7 @@ class _AbstractVisionCapability:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
             backend=backend,
-            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
         try:
@@ -1664,6 +1805,56 @@ class _AbstractVisionCapability:
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
+
+    def t2i_batch(self, prompt: str, **kwargs: Any):
+        store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        count = kwargs.pop("count", 1)
+        seeds = kwargs.pop("seeds", None)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        allowed_request_keys = {
+            "negative_prompt",
+            "width",
+            "height",
+            "seed",
+            "steps",
+            "guidance_scale",
+            "guidance_2",
+            "lora_adapters",
+            "extra",
+        }
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
+            merged_extra["model"] = model.strip()
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            outputs = vm.generate_image_batch(
+                str(prompt),
+                count=int(count or 1),
+                seeds=seeds,
+                **kwargs,
+            )
+            if binding.get("local_control") and outputs:
+                self._record_loaded_model(binding, task="text_to_image", resident=False, source="request")
+            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
         finally:
             self._release_backend_snapshot(backend)
 
@@ -1708,7 +1899,7 @@ class _AbstractVisionCapability:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
             backend=backend,
-            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
         try:
@@ -1718,6 +1909,67 @@ class _AbstractVisionCapability:
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
+
+    def i2i_batch(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
+        store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        count = kwargs.pop("count", 1)
+        seeds = kwargs.pop("seeds", None)
+        image_b = _resolve_bytes_input(image, artifact_store=store)
+        mask = kwargs.pop("mask", None)
+        mask_b = None
+        if mask is not None:
+            mask_b = _resolve_bytes_input(mask, artifact_store=store)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        allowed_request_keys = {
+            "negative_prompt",
+            "seed",
+            "steps",
+            "guidance_scale",
+            "guidance_2",
+            "lora_adapters",
+            "extra",
+        }
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in ("strength", "width", "height"):
+            if key not in kwargs:
+                continue
+            value = kwargs.pop(key)
+            if value is not None:
+                merged_extra[str(key)] = value
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
+            merged_extra["model"] = model.strip()
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            outputs = vm.edit_image_batch(
+                str(prompt),
+                image=image_b,
+                mask=mask_b,
+                count=int(count or 1),
+                seeds=seeds,
+                **kwargs,
+            )
+            if binding.get("local_control") and outputs:
+                self._record_loaded_model(binding, task="image_to_image", resident=False, source="request")
+            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
         finally:
             self._release_backend_snapshot(backend)
 
@@ -1761,7 +2013,7 @@ class _AbstractVisionCapability:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
             backend=backend,
-            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
         try:
@@ -1812,7 +2064,7 @@ class _AbstractVisionCapability:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
             backend=backend,
-            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
         try:
@@ -1822,6 +2074,59 @@ class _AbstractVisionCapability:
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
+
+    def t2v_batch(self, prompt: str, **kwargs: Any):
+        store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        count = kwargs.pop("count", 1)
+        seeds = kwargs.pop("seeds", None)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        allowed_request_keys = {
+            "negative_prompt",
+            "width",
+            "height",
+            "fps",
+            "num_frames",
+            "seed",
+            "steps",
+            "guidance_scale",
+            "guidance_2",
+            "flow_shift",
+            "lora_adapters",
+            "extra",
+        }
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
+            merged_extra["model"] = model.strip()
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            outputs = vm.generate_video_batch(
+                str(prompt),
+                count=int(count or 1),
+                seeds=seeds,
+                **kwargs,
+            )
+            if binding.get("local_control") and outputs:
+                self._record_loaded_model(binding, task="text_to_video", resident=False, source="request")
+            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
         finally:
             self._release_backend_snapshot(backend)
 
@@ -1860,7 +2165,7 @@ class _AbstractVisionCapability:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
             backend=backend,
-            store=RuntimeArtifactStoreAdapter(store, run_id=run_id, tags=tags) if store is not None else None,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
         try:
@@ -1870,6 +2175,59 @@ class _AbstractVisionCapability:
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
+        finally:
+            self._release_backend_snapshot(backend)
+
+    def i2v_batch(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
+        store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        count = kwargs.pop("count", 1)
+        seeds = kwargs.pop("seeds", None)
+        image_b = _resolve_bytes_input(image, artifact_store=store)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        allowed_request_keys = {
+            "prompt",
+            "negative_prompt",
+            "width",
+            "height",
+            "fps",
+            "num_frames",
+            "seed",
+            "steps",
+            "guidance_scale",
+            "guidance_2",
+            "flow_shift",
+            "lora_adapters",
+            "extra",
+        }
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            outputs = vm.image_to_video_batch(
+                image=image_b,
+                count=int(count or 1),
+                seeds=seeds,
+                **kwargs,
+            )
+            if binding.get("local_control") and outputs:
+                self._record_loaded_model(binding, task="image_to_video", resident=False, source="request")
+            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
         finally:
             self._release_backend_snapshot(backend)
 
