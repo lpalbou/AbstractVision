@@ -615,7 +615,7 @@ class StableDiffusionCppBackendConfig:
     extra_args: Sequence[str] = field(default_factory=tuple)
 
     # Safety
-    timeout_s: float = 60.0 * 60.0  # 1h (image generation can be slow on CPU)
+    timeout_s: Optional[float] = None
     cwd: Optional[str] = None
 
 
@@ -913,10 +913,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 t = threading.Thread(target=_pump, daemon=True)
                 t.start()
                 try:
-                    rc = proc.wait(timeout=float(self._cfg.timeout_s))
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    raise
+                    rc = proc.wait()
                 finally:
                     try:
                         t.join(timeout=1.0)
@@ -933,10 +930,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     cwd=str(self._cfg.cwd) if self._cfg.cwd else None,
-                    timeout=float(self._cfg.timeout_s),
                 )
-        except subprocess.TimeoutExpired as e:
-            raise RuntimeError(f"sd-cli timed out after {self._cfg.timeout_s}s") from e
         except subprocess.CalledProcessError as e:
             out = (getattr(e, "output", None) or getattr(e, "stdout", None) or b"") + b"\n" + (getattr(e, "stderr", None) or b"")
             # Prefer the tail so we keep the most actionable lines (e.g. missing backend ops / abort reason).

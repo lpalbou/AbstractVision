@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import inspect
 import os
-import hashlib
 import shutil
 import subprocess
 import tempfile
@@ -14,6 +13,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
+from ..lora_adapters import (
+    lora_adapter_signature,
+    resolve_request_lora_adapters,
+    resolved_adapter_name,
+    serialize_lora_adapters,
+)
 from ..model_capabilities import VisionModelCapabilitiesRegistry, VisionTaskSpec
 from ..model_cache import (
     cached_hf_model_sources,
@@ -1625,105 +1630,20 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             ),
         )
 
-    def _lora_signature(self, loras: List[Dict[str, Any]]) -> Optional[str]:
-        if not loras:
-            return None
-        parts: List[str] = []
-        for spec in sorted(loras, key=lambda x: str(x.get("source") or "")):
-            parts.append(
-                "|".join(
-                    [
-                        str(spec.get("source") or ""),
-                        str(spec.get("subfolder") or ""),
-                        str(spec.get("weight_name") or ""),
-                        str(spec.get("scale") or 1.0),
-                    ]
-                )
-            )
-        combined = "::".join(parts)
-        return hashlib.md5(combined.encode("utf-8")).hexdigest()[:12]
-
-    def _parse_loras(self, extra: Any) -> List[Dict[str, Any]]:
-        if not isinstance(extra, dict) or not extra:
-            return []
-
-        raw: Any = None
-        for k in ("loras", "loras_json", "lora", "lora_json"):
-            if k in extra and extra.get(k) is not None:
-                raw = extra.get(k)
-                break
-        if raw is None:
-            return []
-
-        import json
-
-        items: Any = raw
-        if isinstance(raw, str):
-            s = raw.strip()
-            if not s:
-                return []
-            # Prefer JSON, but allow a simple comma-separated list of sources.
-            if s.startswith("[") or s.startswith("{"):
-                try:
-                    items = json.loads(s)
-                except Exception:
-                    items = raw
-            if isinstance(items, str):
-                parts = [p.strip() for p in items.split(",") if p.strip()]
-                items = [{"source": p} for p in parts]
-
-        if isinstance(items, dict):
-            items = [items]
-        if isinstance(items, str):
-            return [{"source": items.strip()}] if items.strip() else []
-        if not isinstance(items, list):
-            return []
-
-        out: List[Dict[str, Any]] = []
-        for el in items:
-            if isinstance(el, str):
-                src = el.strip()
-                if src:
-                    out.append({"source": src, "scale": 1.0})
-                continue
-            if not isinstance(el, dict):
-                continue
-            src = str(el.get("source") or "").strip()
-            if not src:
-                continue
-            spec: Dict[str, Any] = {"source": src}
-            if el.get("subfolder") is not None:
-                spec["subfolder"] = str(el.get("subfolder") or "").strip() or None
-            if el.get("weight_name") is not None:
-                spec["weight_name"] = str(el.get("weight_name") or "").strip() or None
-            if el.get("adapter_name") is not None:
-                spec["adapter_name"] = str(el.get("adapter_name") or "").strip() or None
-            try:
-                spec["scale"] = float(el.get("scale") if el.get("scale") is not None else 1.0)
-            except Exception:
-                spec["scale"] = 1.0
-            out.append(spec)
-        return out
-
-    def _resolved_adapter_name(self, spec: Dict[str, Any]) -> str:
-        name = str(spec.get("adapter_name") or "").strip()
-        if name:
-            return name
-        key = "|".join(
-            [
-                str(spec.get("source") or ""),
-                str(spec.get("subfolder") or ""),
-                str(spec.get("weight_name") or ""),
-            ]
-        )
-        return "lora_" + hashlib.md5(key.encode("utf-8")).hexdigest()[:12]
-
-    def _apply_loras(self, *, kind: str, pipe: Any, extra: Any) -> Optional[str]:
-        loras = self._parse_loras(extra)
-        new_sig = self._lora_signature(loras)
+    def _apply_loras(
+        self,
+        *,
+        kind: str,
+        pipe: Any,
+        request_lora_adapters: Any = None,
+        extra: Any,
+    ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+        adapters = resolve_request_lora_adapters(request_lora_adapters, extra=extra)
+        loras = serialize_lora_adapters(adapters)
+        new_sig = lora_adapter_signature(adapters)
         cur_sig = self._fused_lora_signature.get(kind)
         if new_sig == cur_sig:
-            return cur_sig
+            return cur_sig, loras
 
         # Always clear previous adapters before applying a new set.
         if hasattr(pipe, "unfuse_lora"):
@@ -1739,14 +1659,14 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         if not loras:
             self._fused_lora_signature[kind] = None
-            return None
+            return None, []
 
         adapter_names: List[str] = []
         adapter_scales: List[float] = []
 
         with _hf_offline_env(not bool(self._cfg.allow_download)):
-            for spec in loras:
-                adapter_name = self._resolved_adapter_name(spec)
+            for adapter_spec, spec in zip(adapters, loras):
+                adapter_name = resolved_adapter_name(adapter_spec)
                 adapter_names.append(adapter_name)
                 adapter_scales.append(float(spec.get("scale") or 1.0))
 
@@ -1785,7 +1705,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     pass
 
         self._fused_lora_signature[kind] = new_sig
-        return new_sig
+        return new_sig, loras
 
     def _maybe_apply_rapid_aio_transformer(
         self, *, pipe: Any, extra: Any, torch_dtype: Any
@@ -2877,7 +2797,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             rapid_repo = self._maybe_apply_rapid_aio_transformer(
                 pipe=pipe, extra=request.extra, torch_dtype=torch_dtype
             )
-            lora_sig = self._apply_loras(kind="t2i", pipe=pipe, extra=request.extra)
+            lora_sig, lora_specs = self._apply_loras(
+                kind="t2i",
+                pipe=pipe,
+                request_lora_adapters=request.lora_adapters,
+                extra=request.extra,
+            )
 
             kwargs: Dict[str, Any] = {
                 "prompt": request.prompt,
@@ -2961,6 +2886,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 meta["rapid_aio_repo"] = rapid_repo
             if lora_sig:
                 meta["lora_signature"] = lora_sig
+                meta["requested_lora_adapters"] = lora_specs
+                meta["applied_lora_adapters"] = lora_specs
             if retried_fp32:
                 meta["retried_fp32"] = True
             if had_invalid_cast:
@@ -3017,7 +2944,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             rapid_repo = self._maybe_apply_rapid_aio_transformer(
                 pipe=pipe, extra=request.extra, torch_dtype=torch_dtype
             )
-            lora_sig = self._apply_loras(kind=kind, pipe=pipe, extra=request.extra)
+            lora_sig, lora_specs = self._apply_loras(
+                kind=kind,
+                pipe=pipe,
+                request_lora_adapters=request.lora_adapters,
+                extra=request.extra,
+            )
 
             img = self._pil_from_bytes(request.image)
             image_input: Any = (
@@ -3117,6 +3049,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 meta["rapid_aio_repo"] = rapid_repo
             if lora_sig:
                 meta["lora_signature"] = lora_sig
+                meta["requested_lora_adapters"] = lora_specs
+                meta["applied_lora_adapters"] = lora_specs
             if retried_fp32:
                 meta["retried_fp32"] = True
             if had_invalid_cast:

@@ -27,7 +27,7 @@ unless you choose the matching extra.
 - Diffusers: `pip install "abstractvision[diffusers]"`
 - If the error mentions missing `torchvision`: `pip install torchvision` (or upgrade/reinstall `abstractvision[diffusers]`)
 - stable-diffusion.cpp bindings: `pip install "abstractvision[sdcpp]"`
-- MLX-Gen on Apple Silicon: `pip install "abstractvision[mlx-gen]"` (or compatibility alias `abstractvision[mflux]`)
+- MLX-Gen: `pip install "abstractvision[mlx-gen]"` (or compatibility alias `abstractvision[mflux]`). The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` markers are available.
 
 ### Verify
 
@@ -84,7 +84,7 @@ This does not apply to the MLX-Gen Wan path.
 
 ### Fix
 
-- use MLX-Gen Wan on Apple Silicon: `abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "prompt"`; or
+- use MLX-Gen Wan locally: `abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "prompt"`; or
 - use the OpenAI-compatible backend when video is served remotely; or
 - follow the backlog item that tracks the local re-validation work:
   [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md)
@@ -136,6 +136,38 @@ The follow-up investigation is tracked in:
 Notes:
 - MLX-Gen edit strength is passed as `strength` and normalized to the runtime `image_strength` parameter where the model supports it.
 - If you need stricter scene preservation, Diffusers often remains the more conservative baseline for `image_to_image`.
+
+## MLX-Gen LoRA is rejected as incompatible
+
+### Symptom
+
+- a local MLX-Gen image or video run fails before generation with a LoRA
+  compatibility error
+- the message says the adapter targets a different base model than the selected
+  route
+
+### Likely cause
+
+- the adapter model card targets a different base model family
+- the selected route does not expose LoRA support
+- a Wan route requires explicit target-role assignment and none was provided
+
+### Fix
+
+- inspect the route first with `abstractvision show-model <model-id>` or
+  `abstractvision catalog --provider mlx-gen`
+- confirm the route advertises `supports_lora: true`
+- match the adapter to the route's base model family
+- for Wan TI2V-5B, pass `--lora-target-role transformer`
+- for Wan A14B, pass explicit
+  `high_noise_transformer` / `low_noise_transformer` roles
+
+### Verify
+
+- rerun with the same model id and a compatible adapter
+- confirm the generated metadata includes requested/applied LoRA details such as
+  `requested_lora_adapters`, `lora_application_reports`,
+  `lora_applied_file_count`, and `lora_applied_target_count`
 
 ## `mps` was requested but is unavailable
 

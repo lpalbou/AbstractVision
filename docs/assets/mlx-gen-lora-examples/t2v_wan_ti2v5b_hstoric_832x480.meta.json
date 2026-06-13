@@ -1,0 +1,113 @@
+{
+  "artifact_id": "9af0cb090c58ba30fd93913f85a3ff10",
+  "content_file": "9af0cb090c58ba30fd93913f85a3ff10.mp4",
+  "content_type": "video/mp4",
+  "created_at": "2026-06-13T04:17:38.350214+00:00",
+  "metadata": {
+    "base_model": "wan2.2-ti2v-5b",
+    "engine": "mlx-gen",
+    "flow_shift": 3.0,
+    "fps": 16,
+    "guidance_scale": 4.0,
+    "height": 480,
+    "legacy_engine": "mflux",
+    "lora_application_reports": [
+      {
+        "applied_target_count": 300,
+        "matched_key_count": 600,
+        "requested_path": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/HSToric_color_Wan22_5b_LoRA.safetensors",
+        "role": "transformer",
+        "scale": 0.8,
+        "total_key_count": 600,
+        "unmatched_key_count": 0
+      }
+    ],
+    "lora_applied_file_count": 1,
+    "lora_applied_target_count": 300,
+    "lora_paths": [
+      "/Users/albou/Library/Caches/mflux/loras/HSToric_color_Wan22_5b_LoRA.safetensors"
+    ],
+    "lora_scales": [
+      0.8
+    ],
+    "lora_target_roles": [
+      "transformer"
+    ],
+    "mlx_gen": {
+      "base_model": "None",
+      "created_at": "2026-06-13T06:17:38.348582",
+      "duration_seconds": 1.062,
+      "flow_shift": 3.0,
+      "fps": 16,
+      "frames": 17,
+      "generation_time_seconds": 265.49,
+      "guidance": 4.0,
+      "guidance_2": null,
+      "height": 480,
+      "image_path": null,
+      "lora_application_reports": [
+        {
+          "applied_target_count": 300,
+          "matched_key_count": 600,
+          "requested_path": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/HSToric_color_Wan22_5b_LoRA.safetensors",
+          "role": "transformer",
+          "scale": 0.8,
+          "total_key_count": 600,
+          "unmatched_key_count": 0
+        }
+      ],
+      "lora_applied_file_count": 1,
+      "lora_applied_target_count": 300,
+      "lora_paths": [
+        "/Users/albou/Library/Caches/mflux/loras/HSToric_color_Wan22_5b_LoRA.safetensors"
+      ],
+      "lora_scales": [
+        0.8
+      ],
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "mflux_version": "0.18.18",
+      "model": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+      "negative_prompt": null,
+      "precision": "mlx.core.bfloat16",
+      "prompt": "HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk, pedestrians in wool coats, historical street lamps glowing, gentle cinematic motion.",
+      "quantize": 8,
+      "requested_height": null,
+      "requested_width": null,
+      "seed": 6301,
+      "solver": "unipc",
+      "source_image_height": null,
+      "source_image_width": null,
+      "steps": 20,
+      "task": "text-to-video",
+      "width": 832
+    },
+    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--wan2.2-ti2v-5b-diffusers-8bit/snapshots/6875952a110b6bdbcfc00d72b1d89a8e02ab0fc3",
+    "num_frames": 17,
+    "quantization_bits": 8,
+    "requested_lora_adapters": [
+      {
+        "scale": 0.8,
+        "source": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+        "target_role": "transformer"
+      }
+    ],
+    "runtime_package": "mlx-gen",
+    "seed": 6301,
+    "source": "mlx-gen",
+    "steps": 20,
+    "task": "text_to_video",
+    "width": 832
+  },
+  "schema": "abstractvision.asset.v1",
+  "sha256": "9af0cb090c58ba30fd93913f85a3ff10be90e5ce4d6b80f45f7048b6a485ed7b",
+  "size_bytes": 365543,
+  "tags": {
+    "kind": "generated_media",
+    "modality": "video",
+    "task": "text_to_video"
+  }
+}

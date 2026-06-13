@@ -1357,6 +1357,63 @@ print("ok")
         self.assertEqual(seen["request"].extra.get("max_sequence_length"), 128)
         self.assertIs(seen["request"].extra.get("on_progress"), progress_callback)
 
+    def test_abstractcore_plugin_t2v_passes_guidance_2_and_lora_adapters(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+        from abstractvision.types import GeneratedAsset
+
+        mp4 = b"ftyp" + (b"\x00" * 16)
+        seen = {}
+
+        class _DummyOwner:
+            config = {}
+
+        class FakeMFluxBackend:
+            def generate_video(self, request):
+                seen["request"] = request
+                return GeneratedAsset(
+                    media_type="video", data=mp4, mime_type="video/mp4", metadata={}
+                )
+
+        cap = _AbstractVisionCapability(_DummyOwner())
+
+        with patch.object(cap, "_make_mflux_backend", return_value=FakeMFluxBackend()):
+            out = cap.t2v(
+                "move slowly",
+                provider="mlx-gen",
+                model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+                guidance_2=3.0,
+                lora_adapters=[
+                    {
+                        "source": "owner/wan-lora:video.safetensors",
+                        "scale": 0.9,
+                        "target_role": "high_noise_transformer",
+                    }
+                ],
+            )
+
+        self.assertTrue(out.startswith(b"ftyp"))
+        self.assertEqual(seen["request"].guidance_2, 3.0)
+        self.assertEqual(len(seen["request"].lora_adapters), 1)
+        self.assertEqual(
+            seen["request"].lora_adapters[0]["source"],
+            "owner/wan-lora:video.safetensors",
+        )
+        self.assertEqual(seen["request"].lora_adapters[0]["scale"], 0.9)
+        self.assertEqual(
+            seen["request"].lora_adapters[0]["target_role"],
+            "high_noise_transformer",
+        )
+
+    def test_runtime_installed_recognizes_linux_mlx_gen_runtime(self):
+        from abstractvision.integrations.abstractcore_plugin import _runtime_installed
+
+        with patch("abstractvision.integrations.abstractcore_plugin.sys.platform", "linux"):
+            with patch(
+                "abstractvision.integrations.abstractcore_plugin.importlib.util.find_spec",
+                side_effect=lambda name: object() if name in {"mflux", "mlx"} else None,
+            ):
+                self.assertTrue(_runtime_installed("mlx-gen"))
+
     def test_abstractcore_plugin_resident_backend_survives_model_switches(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset

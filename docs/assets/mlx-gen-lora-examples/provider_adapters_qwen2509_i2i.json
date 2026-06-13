@@ -1,0 +1,112 @@
+[
+  {
+    "base_models": [
+      "Qwen/Qwen-Image-Edit-2509"
+    ],
+    "compatible_models": [
+      "AbstractFramework/qwen-image-edit-2509-8bit"
+    ],
+    "compatible_tasks": [
+      "image_to_image"
+    ],
+    "id": "dx8152/Qwen-Edit-2509-Multiple-angles:\u955c\u5934\u8f6c\u6362.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "qwen-image-edit-2509",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_qwen2509_q8_single_edit_multi_angle_2026_06_11",
+          "model": "AbstractFramework/qwen-image-edit-2509-8bit",
+          "supports_lora": true,
+          "task": "image_to_image"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "\u955c\u5934\u8f6c\u6362.safetensors",
+      "repo_id": "dx8152/Qwen-Edit-2509-Multiple-angles",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--dx8152--Qwen-Edit-2509-Multiple-angles/snapshots/c342b0e746c3a3275af1a4a0c6ae78e0e4802531"
+    },
+    "repo_id": "dx8152/Qwen-Edit-2509-Multiple-angles",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  },
+  {
+    "base_models": [],
+    "compatible_models": [
+      "AbstractFramework/qwen-image-edit-2509-8bit"
+    ],
+    "compatible_tasks": [
+      "image_to_image"
+    ],
+    "id": "lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "qwen-image-edit-2509",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_qwen2509_q8_single_edit_multi_angle_2026_06_11",
+          "model": "AbstractFramework/qwen-image-edit-2509-8bit",
+          "supports_lora": true,
+          "task": "image_to_image"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors",
+      "repo_id": "lightx2v/Qwen-Image-Lightning",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--lightx2v--Qwen-Image-Lightning/snapshots/e74da8d4e71a54b341de86aa9f8d2509165aa513"
+    },
+    "repo_id": "lightx2v/Qwen-Image-Lightning",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  },
+  {
+    "base_models": [],
+    "compatible_models": [
+      "AbstractFramework/qwen-image-edit-2509-8bit"
+    ],
+    "compatible_tasks": [
+      "image_to_image"
+    ],
+    "id": "lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "qwen-image-edit-2509",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "transformer"
+          ],
+          "lora_validation_profile": "lora_qwen2509_q8_single_edit_multi_angle_2026_06_11",
+          "model": "AbstractFramework/qwen-image-edit-2509-8bit",
+          "supports_lora": true,
+          "task": "image_to_image"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
+      "repo_id": "lightx2v/Qwen-Image-Lightning",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--lightx2v--Qwen-Image-Lightning/snapshots/e74da8d4e71a54b341de86aa9f8d2509165aa513"
+    },
+    "repo_id": "lightx2v/Qwen-Image-Lightning",
+    "suggested_target_roles": [
+      "transformer"
+    ]
+  }
+]

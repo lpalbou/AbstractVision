@@ -4,7 +4,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines
-- **MLX-Gen (local Apple Silicon)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen 0.18.13+ runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, and Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`
+- **MLX-Gen (local, Apple-first)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V/A14B video routes. The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` support is available.
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -30,7 +30,7 @@ From PyPI:
 pip install abstractvision
 ```
 
-AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, `abstractvision[mlx-gen]` for Apple Silicon MLX-Gen, or `abstractvision[all-apple]` for the full native macOS stack. `abstractvision[mflux]` remains available as a compatibility alias for older install instructions.
+AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, `abstractvision[mlx-gen]` for MLX-Gen, or `abstractvision[all-apple]` for the full native macOS stack. `abstractvision[mflux]` remains available as a compatibility alias for older install instructions.
 
 If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
@@ -87,15 +87,15 @@ Optional extras:
 | `openai-compatible` | Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today. |
 | `diffusers` | Installs Torch/Diffusers and related packages for local Diffusers generation. |
 | `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
-| `mlx-gen` | Installs the optional MLX-Gen runtime for Apple Silicon MLX image/video generation. |
+| `mlx-gen` | Installs the optional MLX-Gen runtime. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` markers are available. |
 | `mflux` | Compatibility alias for the MLX-Gen runtime. |
 | `apple` | Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
-| `gpu` | GPU-friendly profile for Diffusers/Torch (does not include MLX-Gen). |
+| `gpu` | GPU-friendly profile for Diffusers/Torch and MLX-Gen when the platform markers match. |
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for both local backend dependency sets, including `sdcpp`. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
 | `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MLX-Gen. |
-| `all-gpu` | Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings). |
+| `all-gpu` | Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings + MLX-Gen when the platform markers match). |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 
 Contributor-only extras:
@@ -121,7 +121,7 @@ python scripts/download_model_sets.py --set sd15_diffusers
 AbstractVision can run “locally” via three main routes:
 
 - **Diffusers backend**: uses Torch device selection (`cuda` / `mps` / `cpu`).
-- **MLX-Gen backend (`mlx-gen`)**: Apple Silicon MLX generation through the optional MLX-Gen runtime. q4 AbstractFramework model repos are the default recommendation; q8 variants are separate exact model ids for quality-focused runs.
+- **MLX-Gen backend (`mlx-gen`)**: Apple-first MLX generation through the optional MLX-Gen runtime. q4 AbstractFramework model repos are the default recommendation; q8 variants are separate exact model ids for quality-focused runs.
 - **stable-diffusion.cpp backend (`sdcpp`)**: runs GGUF diffusion models using:
   - `sd-cli` (**recommended** when you want GPU backends like **Metal** or **CUDA**)
   - or `stable-diffusion-cpp-python` (convenient, but often **CPU-only**, especially on macOS)
@@ -309,12 +309,15 @@ If your server also supports video endpoints, configure them via `ABSTRACTVISION
 
 ---
 
-## 2.2) Apple Silicon MLX-Gen (q4 first)
+## 2.2) MLX-Gen local (q4 first)
 
-Use this path on Apple Silicon when you want local MLX-optimized image/video models
-without running a separate server. AbstractVision uses the `mlx-gen` Python API
-in-process and expects prepared model folders to exist in the Hugging Face
-cache. It does not silently download weights during generation.
+Use this path when you want local MLX-optimized image/video models without
+running a separate server. The current AbstractVision release is validated on
+Apple Silicon first. The `abstractvision[mlx-gen]` extra also installs on Linux
+when upstream `mlx-gen` / `mlx` support is available. AbstractVision uses the
+`mlx-gen` Python API in-process and expects prepared model folders to exist in
+the Hugging Face cache. It does not silently download weights during
+generation.
 
 ```bash
 pip install "abstractvision[models,mlx-gen]"
@@ -348,9 +351,10 @@ SeedVR2 uses the official `ByteDance-Seed/SeedVR2-3B` and
 `ByteDance-Seed/SeedVR2-7B` bases plus canonical prepared packages:
 `AbstractFramework/seedvr2-3b-8bit` is the default upscaler,
 `AbstractFramework/seedvr2-7b-8bit` is the larger q8 variant, and q4 variants
-are available for tighter memory. Use `--scale 2x` for normal upscaling or
-`--resolution <pixels>` for a target short edge. Runtime `--quantize` is only
-needed for official/source weights.
+are available for tighter memory. The default upscale request uses
+`--resolution 2x` and `--softness 0.25`; pass `--resolution <pixels>` for a
+target short edge. `--scale 2x` remains accepted when `--resolution` is omitted.
+Runtime `--quantize` is only needed for official/source weights.
 
 One-shot shell commands store the output in the local asset store and print the
 artifact ref followed by the local content path. Add `--open` to open the output
@@ -373,18 +377,84 @@ abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.p
 Image upscaling from the shell:
 
 ```bash
-abstractvision upscale --provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --image ./input.png --scale 2x --open
+abstractvision upscale --provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --image ./input.png --resolution 2x --softness 0.25 --open
 ```
 
 Text-to-video and first-frame image-to-video from the shell:
 
 ```bash
-abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
-abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
+abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 480 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
+abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 480 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
 ```
 
-Wan 2.2 A14B uses 16px width/height multiples; `432x240` is valid for low-cost
+Wan 2.2 A14B uses 16px width/height multiples; `480x240` is valid for low-cost
 local checks, while larger native sizes are more appropriate for quality review.
+
+Shared LoRA adapters:
+
+```bash
+abstractvision t2i \
+  --provider mlx-gen \
+  --model AbstractFramework/qwen-image-2512-8bit \
+  --lora prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors \
+  --lora-scale 1.0 \
+  --steps 20 \
+  --guidance-scale 5.0 \
+  --progress \
+  "Pixel art astronaut floating above Earth"
+
+abstractvision i2i \
+  --provider mlx-gen \
+  --model AbstractFramework/qwen-image-edit-2511-8bit \
+  --image ./input.png \
+  --lora fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors \
+  --lora-scale 0.9 \
+  --steps 6 \
+  --guidance-scale 4.0 \
+  --progress \
+  "Use the source subject as the same object. <sks> back view low-angle shot wide shot."
+
+abstractvision t2v \
+  --provider mlx-gen \
+  --model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit \
+  --lora AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors \
+  --lora-scale 0.8 \
+  --lora-target-role transformer \
+  --width 832 \
+  --height 480 \
+  --frames 17 \
+  --fps 16 \
+  --steps 20 \
+  --flow-shift 3.0 \
+  --progress \
+  "HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk, pedestrians in wool coats, historical street lamps glowing, gentle cinematic motion."
+```
+
+Use provider/model discovery to check the route before a long LoRA run.
+Use `abstractvision catalog --provider mlx-gen` to browse downloadable models,
+then `abstractvision show-model <model-id>` for the exact runtime route
+contract. Use `abstractvision adapters --provider mlx-gen --model <model-id> --task <task>`
+to list locally cached overlays for one route. MLX-Gen route rows surface
+`supports_lora`, `lora_status`, `lora_target_roles`, and
+`lora_validation_profile`.
+
+Batch generation:
+
+```bash
+abstractvision t2i \
+  --provider mlx-gen \
+  --model AbstractFramework/qwen-image-2512-8bit \
+  --count 2 \
+  --seeds 2512,2513 \
+  --lora prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors \
+  --lora-scale 1.0 \
+  --width 768 \
+  --height 768 \
+  --steps 20 \
+  --guidance-scale 5.0 \
+  --progress \
+  "Pixel art isometric research outpost on an icy exoplanet at blue hour, tiny service drones, crisp tiles, retro RPG palette"
+```
 
 Video examples (5s MP4):
 
@@ -497,11 +567,11 @@ defaults to the input image size for image-to-image edits to avoid unexpected me
 resolution, pass `--width`/`--height` flags in the REPL (forwarded via `request.extra`) or set them in the playground
 Extra JSON field.
 
-LoRA example (REPL; note: `loras_json` is forwarded via `request.extra`):
+LoRA example (REPL; prefer the shared adapter flags):
 
 ```text
 /backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
-/i2i --image ./input.png "make it watercolor" --steps 8 --guidance-scale 1 --loras_json '[{"source":"lightx2v/Qwen-Image-Edit-2511-Lightning","scale":1.0}]' --open
+/i2i --image ./input.png "make it watercolor" --steps 8 --guidance-scale 1 --lora lightx2v/Qwen-Image-Edit-2511-Lightning --lora-scale 1.0 --open
 ```
 
 Rapid-AIO example (distilled transformer override; Qwen Image Edit):

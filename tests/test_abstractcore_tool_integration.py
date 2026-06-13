@@ -200,6 +200,7 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
         self.assertEqual(seen["t2v"].steps, 50)
         self.assertEqual(seen["t2v"].guidance_scale, 6.0)
         self.assertEqual(seen["t2v"].guidance_2, 3.0)
+        self.assertEqual(seen["t2v"].flow_shift, 3.0)
         self.assertEqual(seen["i2v"].width, 544)
         self.assertEqual(seen["i2v"].height, 960)
         self.assertEqual(seen["i2v"].fps, 16)
@@ -207,6 +208,7 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
         self.assertEqual(seen["i2v"].steps, 30)
         self.assertEqual(seen["i2v"].guidance_scale, 5.0)
         self.assertEqual(seen["i2v"].guidance_2, 3.5)
+        self.assertEqual(seen["i2v"].flow_shift, 3.0)
 
     def test_unsupported_task_raises(self):
         from abstractvision import LocalAssetStore, VisionManager, VisionModelCapabilitiesRegistry

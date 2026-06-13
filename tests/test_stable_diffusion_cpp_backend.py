@@ -85,7 +85,10 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
             )
         )
 
-        def fake_run(cmd, check, stdout, stderr, cwd, timeout):
+        seen_timeouts = []
+
+        def fake_run(cmd, check, stdout, stderr, cwd, timeout=None):
+            seen_timeouts.append(timeout)
             out_path = cmd[cmd.index("--output") + 1]
             Path(out_path).write_bytes(PNG_1X1)
 
@@ -106,6 +109,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
 
         self.assertEqual(asset.media_type, "image")
         self.assertTrue(asset.data.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(seen_timeouts, [None])
 
         cmd = run_mock.call_args[0][0]
         self.assertIn("--diffusion-model", cmd)
@@ -147,7 +151,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
             )
         )
 
-        def fake_run(cmd, check, stdout, stderr, cwd, timeout):
+        def fake_run(cmd, check, stdout, stderr, cwd, timeout=None):
             out_path = cmd[cmd.index("--output") + 1]
             Path(out_path).write_bytes(PNG_1X1)
 
@@ -316,7 +320,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
             )
         )
 
-        def fake_run(cmd, check, stdout, stderr, cwd, timeout):
+        def fake_run(cmd, check, stdout, stderr, cwd, timeout=None):
             out_path = cmd[cmd.index("--output") + 1]
             Path(out_path).write_bytes(PNG_1X1)
 

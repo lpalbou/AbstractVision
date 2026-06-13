@@ -10,6 +10,7 @@ from ..types import (
     ImageToVideoRequest,
     ImageUpscaleRequest,
     MultiAngleRequest,
+    ProviderAdapterInfo,
     ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
@@ -110,6 +111,17 @@ class VisionBackend(ABC):
         This is explicit provider catalog discovery. Backends must not use it to
         silently select or change the configured model.
         """
+        _ = task
+        return ()
+
+    def list_provider_adapters(
+        self,
+        *,
+        model: Optional[str] = None,
+        task: Optional[str] = None,
+    ) -> Sequence[ProviderAdapterInfo]:
+        """Return backend-discoverable adapter entries, when supported."""
+        _ = model
         _ = task
         return ()
 

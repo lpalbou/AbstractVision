@@ -20,6 +20,14 @@ from ..types import (
 )
 from .base_backend import VisionBackend
 
+_INTERNAL_PROGRESS_EXTRA_KEYS = {
+    "on_progress",
+    "progress_event_callback",
+    "progress_callback",
+    "_step_progress_callback",
+    "__abstractvision_progress_callback",
+}
+
 
 def _join_url(base_url: str, path: str) -> str:
     b = str(base_url or "").rstrip("/")
@@ -29,6 +37,20 @@ def _join_url(base_url: str, path: str) -> str:
     if not p.startswith("/"):
         p = "/" + p
     return b + p
+
+
+def _upstream_extra(extra: Any) -> Dict[str, Any]:
+    if not isinstance(extra, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key, value in extra.items():
+        key_s = str(key)
+        if key_s in _INTERNAL_PROGRESS_EXTRA_KEYS:
+            continue
+        if callable(value):
+            continue
+        out[key_s] = value
+    return out
 
 
 def _sniff_mime_type(content: bytes, fallback: str) -> str:
@@ -280,7 +302,7 @@ class OpenAICompatibleBackendConfig:
     base_url: str
     api_key: Optional[str] = None
     model_id: Optional[str] = None
-    timeout_s: float = 300.0
+    timeout_s: Optional[float] = 300.0
 
     # Endpoints (OpenAI-shaped HTTP).
     image_generations_path: str = "/images/generations"
@@ -358,11 +380,20 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             headers["Authorization"] = f"Bearer {self._cfg.api_key}"
         return headers
 
+    def _control_timeout(self) -> Optional[float]:
+        if self._cfg.timeout_s is None:
+            return None
+        timeout = float(self._cfg.timeout_s)
+        return timeout if timeout > 0 else None
+
+    def _generation_timeout(self) -> Optional[float]:
+        return None
+
     def _get_json(self, *, path: str) -> Dict[str, Any]:
         url = _join_url(self._cfg.base_url, path)
         req = Request(url=url, method="GET", headers=self._headers())
         try:
-            with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
+            with urlopen(req, timeout=self._control_timeout()) as resp:
                 raw = resp.read()
         except HTTPError as e:
             raise RuntimeError(_format_http_error(e)) from e
@@ -383,7 +414,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             headers=self._headers(content_type="application/json"),
         )
         try:
-            with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
+            with urlopen(req, timeout=self._generation_timeout()) as resp:
                 raw = resp.read()
         except HTTPError as e:
             raise RuntimeError(_format_http_error(e)) from e
@@ -402,7 +433,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         ctype = f"multipart/form-data; boundary={boundary}"
         req = Request(url=url, data=body, method="POST", headers=self._headers(content_type=ctype))
         try:
-            with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp:
+            with urlopen(req, timeout=self._generation_timeout()) as resp:
                 raw = resp.read()
         except HTTPError as e:
             raise RuntimeError(_format_http_error(e)) from e
@@ -427,7 +458,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             u = str(item.get("url"))
             req = Request(url=u, method="GET")
             try:
-                with urlopen(req, timeout=float(self._cfg.timeout_s)) as resp2:
+                with urlopen(req, timeout=self._generation_timeout()) as resp2:
                     content = resp2.read()
                     ct = resp2.headers.get("Content-Type") or fallback_mime
             except HTTPError as e:
@@ -473,8 +504,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             payload["steps"] = int(request.steps)
         if request.guidance_scale is not None and not openai_api:
             payload["guidance_scale"] = float(request.guidance_scale)
-        if isinstance(request.extra, dict) and request.extra:
-            payload.update(dict(request.extra))
+        payload.update(_upstream_extra(request.extra))
         if payload.get("model") is not None:
             payload["model"] = _upstream_model_id(payload.get("model"))
         if family == "gpt-image":
@@ -507,11 +537,10 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             fields["steps"] = str(int(request.steps))
         if request.guidance_scale is not None and not openai_api:
             fields["guidance_scale"] = str(float(request.guidance_scale))
-        if isinstance(request.extra, dict) and request.extra:
-            for k, v in request.extra.items():
-                if v is None:
-                    continue
-                fields[str(k)] = str(v)
+        for k, v in _upstream_extra(request.extra).items():
+            if v is None:
+                continue
+            fields[str(k)] = str(v)
         if fields.get("model") is not None:
             fields["model"] = _upstream_model_id(fields.get("model"))
 
@@ -547,8 +576,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             payload["guidance_scale"] = float(request.guidance_scale)
         if request.guidance_2 is not None:
             payload["guidance_2"] = float(request.guidance_2)
-        if isinstance(request.extra, dict) and request.extra:
-            payload.update(dict(request.extra))
+        payload.update(_upstream_extra(request.extra))
         if payload.get("model") is not None:
             payload["model"] = _upstream_model_id(payload.get("model"))
         resp = self._post_json(path=str(self._cfg.text_to_video_path), payload=payload)
@@ -584,8 +612,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 payload["guidance_scale"] = float(request.guidance_scale)
             if request.guidance_2 is not None:
                 payload["guidance_2"] = float(request.guidance_2)
-            if isinstance(request.extra, dict) and request.extra:
-                payload.update(dict(request.extra))
+            payload.update(_upstream_extra(request.extra))
             if payload.get("model") is not None:
                 payload["model"] = _upstream_model_id(payload.get("model"))
             resp = self._post_json(path=str(self._cfg.image_to_video_path), payload=payload)
@@ -614,11 +641,10 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             fields["guidance_scale"] = str(float(request.guidance_scale))
         if request.guidance_2 is not None:
             fields["guidance_2"] = str(float(request.guidance_2))
-        if isinstance(request.extra, dict) and request.extra:
-            for k, v in request.extra.items():
-                if v is None:
-                    continue
-                fields[str(k)] = str(v)
+        for k, v in _upstream_extra(request.extra).items():
+            if v is None:
+                continue
+            fields[str(k)] = str(v)
         if fields.get("model") is not None:
             fields["model"] = _upstream_model_id(fields.get("model"))
 

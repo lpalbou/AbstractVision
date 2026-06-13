@@ -166,6 +166,16 @@ class TestModelDownloads(unittest.TestCase):
 
         presets = model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True)
         wan = next(p for p in presets if p.repo_id == "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+        wan_ti2v_8bit = next(
+            p
+            for p in presets
+            if p.repo_id == "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"
+        )
+        wan_ti2v_bf16 = next(
+            p
+            for p in presets
+            if p.repo_id == "AbstractFramework/wan2.2-ti2v-5b-diffusers-bf16"
+        )
         t2v_a14b = next(
             p
             for p in presets
@@ -182,6 +192,14 @@ class TestModelDownloads(unittest.TestCase):
         self.assertEqual(wan.engine, "mlx-gen")
         self.assertEqual(wan.quantization_bits, 16)
         self.assertEqual(wan.source, "official")
+        self.assertEqual(wan_ti2v_8bit.key, "wan2.2-ti2v-5b")
+        self.assertEqual(wan_ti2v_8bit.quantization_bits, 8)
+        self.assertEqual(wan_ti2v_8bit.source, "abstractframework-mlx-gen")
+        self.assertEqual(wan_ti2v_8bit.upstream_repo_id, "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+        self.assertEqual(wan_ti2v_bf16.key, "wan2.2-ti2v-5b")
+        self.assertEqual(wan_ti2v_bf16.quantization_bits, 16)
+        self.assertEqual(wan_ti2v_bf16.source, "abstractframework-mlx-gen")
+        self.assertEqual(wan_ti2v_bf16.upstream_repo_id, "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
         self.assertEqual(t2v_a14b.key, "wan2.2-t2v-a14b")
         self.assertEqual(t2v_a14b.quantization_bits, 8)
         self.assertEqual(t2v_a14b.source, "abstractframework-mlx-gen")
@@ -191,6 +209,20 @@ class TestModelDownloads(unittest.TestCase):
 
         selected = find_model_preset("Wan-AI/Wan2.2-TI2V-5B-Diffusers", target="mlx", engine="mlx-gen", require_8bit=False)
         self.assertEqual(selected.repo_id, "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+        selected = find_model_preset(
+            "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=False,
+        )
+        self.assertEqual(selected.repo_id, "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit")
+        selected = find_model_preset(
+            "AbstractFramework/wan2.2-ti2v-5b-diffusers-bf16",
+            target="mlx",
+            engine="mlx-gen",
+            require_8bit=False,
+        )
+        self.assertEqual(selected.repo_id, "AbstractFramework/wan2.2-ti2v-5b-diffusers-bf16")
         selected = find_model_preset(
             "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
             target="mlx",
@@ -204,6 +236,8 @@ class TestModelDownloads(unittest.TestCase):
 
         presets = model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True)
         fibo = next(p for p in presets if p.repo_id == "briaai/FIBO")
+        fibo_4bit = next(p for p in presets if p.repo_id == "AbstractFramework/fibo-4bit")
+        fibo_8bit = next(p for p in presets if p.repo_id == "AbstractFramework/fibo-8bit")
         fibo_edit = next(p for p in presets if p.repo_id == "briaai/Fibo-Edit")
 
         self.assertEqual(fibo.key, "fibo")
@@ -211,10 +245,22 @@ class TestModelDownloads(unittest.TestCase):
         self.assertEqual(fibo.engine, "mlx-gen")
         self.assertEqual(fibo.quantization_bits, 16)
         self.assertEqual(fibo.source, "official")
+        self.assertEqual(fibo_4bit.key, "fibo")
+        self.assertEqual(fibo_4bit.quantization_bits, 4)
+        self.assertEqual(fibo_4bit.source, "abstractframework-mlx-gen")
+        self.assertEqual(fibo_4bit.upstream_repo_id, "briaai/FIBO")
+        self.assertEqual(fibo_8bit.key, "fibo")
+        self.assertEqual(fibo_8bit.quantization_bits, 8)
+        self.assertEqual(fibo_8bit.source, "abstractframework-mlx-gen")
+        self.assertEqual(fibo_8bit.upstream_repo_id, "briaai/FIBO")
         self.assertEqual(fibo_edit.key, "fibo-edit")
 
         selected = find_model_preset("briaai/FIBO", target="mlx", engine="mlx-gen", require_8bit=False)
         self.assertEqual(selected.repo_id, "briaai/FIBO")
+        selected = find_model_preset("AbstractFramework/fibo-4bit", target="mlx", engine="mlx-gen", require_8bit=False)
+        self.assertEqual(selected.repo_id, "AbstractFramework/fibo-4bit")
+        selected = find_model_preset("AbstractFramework/fibo-8bit", target="mlx", engine="mlx-gen", require_8bit=False)
+        self.assertEqual(selected.repo_id, "AbstractFramework/fibo-8bit")
 
     def test_bonsai_ternary_mlx_gen_preset_is_first_class_low_bit_model(self):
         from abstractvision.model_downloads import find_model_preset, model_presets

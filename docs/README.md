@@ -15,7 +15,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 - [API reference](api.md)
 - [Architecture decisions](adr/README.md)
 - [Backends](reference/backends.md)
-- [MLX-Gen local examples](mlx-gen-local-examples.md)
+- [MLX-Gen local examples](mlx-gen-local-examples.md) (current LoRA route proofs, progress logs, and generated assets)
 - [Configuration (CLI/REPL env vars + flags)](reference/configuration.md)
 - [Capability registry (`vision_model_capabilities.json`)](reference/capabilities-registry.md)
 - [Artifacts (artifact refs + stores)](reference/artifacts.md)
@@ -34,12 +34,14 @@ AbstractVision is part of the **AbstractFramework** ecosystem and is designed to
 
 Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) exposes:
 - `generate_image` (`text_to_image`), `edit_image` (`image_to_image`)
+- `generate_image_batch`, `edit_image_batch` (repeatable orchestration with explicit seed planning)
 - `generate_video` (`text_to_video`), `image_to_video` (`image_to_video`) (backend-dependent)
+- `generate_video_batch`, `image_to_video_batch` (repeatable orchestration with explicit seed planning)
 - `generate_angles` (`multi_view_image`) (API exists; no built-in backend implements it yet)
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MLX-Gen supports curated q4/q8 Apple Silicon image presets, official FIBO image snapshots, and Wan 2.2 TI2V/A14B video; local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
   - MLX-Gen for Wan 2.2 local `text_to_video` and first-frame `image_to_video`
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))

@@ -1,0 +1,175 @@
+{
+  "mlx_gen_version": "0.18.18",
+  "abstractvision_version": "0.3.23",
+  "validated_platform": "Apple Silicon",
+  "notes": [
+    "The public video bundle only includes validated Wan proofs: TI2V-5B at 832x480 or above, and task-specific Wan A14B proofs at 480x240.",
+    "Batch generation is implemented above the exact single-run requests. The image and video batch proofs here are real CLI runs using --count and explicit seeds.",
+    "Installed adapter discovery is backend-owned and filtered to optional overlays only; prepared/full model component files are excluded from the inventory."
+  ],
+  "provider_inventory_files": [
+    "provider_adapters_qwen2512_t2i.json",
+    "provider_adapters_qwen2509_i2i.json",
+    "provider_adapters_wan_ti2v_t2v.json",
+    "provider_adapters_wan_a14b_t2v.json",
+    "provider_adapters_wan_a14b_i2v.json",
+    "show_model_wan_ti2v_5b.txt",
+    "show_model_wan_a14b_t2v.txt"
+  ],
+  "proof_table": "proof_table.png",
+  "video_contact_sheet": "video_contact_sheet.png",
+  "runs": [
+    {
+      "slug": "t2i_qwen2512_pixel_art_batch",
+      "proof_kind": "real_batch_generation",
+      "task": "text_to_image",
+      "model": "AbstractFramework/qwen-image-2512-8bit",
+      "count": 2,
+      "command": "PYTHONPATH=src python -m abstractvision.cli t2i \"Pixel art isometric research outpost on an icy exoplanet at blue hour, tiny service drones, crisp tiles, retro RPG palette\" --provider mlx-gen --model AbstractFramework/qwen-image-2512-8bit --store-dir <store> --width 768 --height 768 --steps 20 --guidance-scale 5.0 --count 2 --seeds 2512,2513 --lora prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors --lora-scale 1.0 --progress",
+      "artifacts": [
+        {
+          "seed": 2512,
+          "doc_asset": "t2i_qwen2512_pixel_art_batch_seed2512.png",
+          "doc_meta": "t2i_qwen2512_pixel_art_batch_seed2512.meta.json",
+          "artifact_id": "920710d7ffe367e692866c643845de42"
+        },
+        {
+          "seed": 2513,
+          "doc_asset": "t2i_qwen2512_pixel_art_batch_seed2513.png",
+          "doc_meta": "t2i_qwen2512_pixel_art_batch_seed2513.meta.json",
+          "artifact_id": "807a03f7ced31ca76b6ebe543a365370"
+        }
+      ],
+      "progress_log": "t2i_batch_qwen2512_pixel_art.progress.log",
+      "contact_sheet": "t2i_qwen2512_pixel_art_batch_contact_sheet.png",
+      "requested_lora_adapters": [
+        {
+          "scale": 1.0,
+          "source": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors"
+        }
+      ]
+    },
+    {
+      "slug": "i2i_qwen2509_stacked_loras",
+      "proof_kind": "real_stacked_lora_edit",
+      "task": "image_to_image",
+      "model": "AbstractFramework/qwen-image-edit-2509-8bit",
+      "command": "PYTHONPATH=src python -m abstractvision.cli i2i \"Use the source starfighter as the same object. Re-render it from behind and slightly above, banking left over the snowy canyon, keeping the same vehicle identity and environment.\" --provider mlx-gen --model AbstractFramework/qwen-image-edit-2509-8bit --store-dir <store> --image ./input.png --steps 8 --guidance-scale 1.0 --seed 9701 --lora lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors --lora dx8152/Qwen-Edit-2509-Multiple-angles:镜头转换.safetensors --lora-scale 1.0 --lora-scale 0.9 --progress",
+      "artifact_id": "8b5010157aad3e195d58e1a603216332",
+      "doc_asset": "i2i_qwen2509_stacked_loras.png",
+      "doc_input": "i2i_qwen2509_stacked_loras_input.png",
+      "doc_meta": "i2i_qwen2509_stacked_loras.meta.json",
+      "progress_log": "i2i_qwen2509_stacked_loras.progress.log",
+      "requested_lora_adapters": [
+        {
+          "scale": 1.0,
+          "source": "lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors"
+        },
+        {
+          "scale": 0.9,
+          "source": "dx8152/Qwen-Edit-2509-Multiple-angles:镜头转换.safetensors"
+        }
+      ],
+      "lora_applied_file_count": 2,
+      "lora_applied_target_count": 1440
+    },
+    {
+      "slug": "t2v_wan_ti2v5b_hstoric_832x480",
+      "proof_kind": "real_visual_ti2v_proof",
+      "task": "text_to_video",
+      "model": "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+      "command": "HF_HUB_OFFLINE=1 PYTHONPATH=src python -m abstractvision.cli t2v \"HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk, pedestrians in wool coats, historical street lamps glowing, gentle cinematic motion.\" --provider mlx-gen --model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit --store-dir <store> --width 832 --height 480 --frames 17 --steps 20 --guidance-scale 4.0 --flow-shift 3.0 --fps 16 --seed 6301 --lora AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors --lora-target-role transformer --lora-scale 0.8 --progress",
+      "artifact_id": "9af0cb090c58ba30fd93913f85a3ff10",
+      "doc_asset": "t2v_wan_ti2v5b_hstoric_832x480.mp4",
+      "doc_meta": "t2v_wan_ti2v5b_hstoric_832x480.meta.json",
+      "doc_contact": "t2v_wan_ti2v5b_hstoric_832x480_contact_sheet.png",
+      "progress_log": "t2v_wan_ti2v5b_hstoric_832x480.progress.log",
+      "flow_shift": 3.0,
+      "requested_lora_adapters": [
+        {
+          "scale": 0.8,
+          "source": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+          "target_role": "transformer"
+        }
+      ]
+    },
+    {
+      "slug": "t2v_batch_wan_ti2v5b_832x480",
+      "proof_kind": "real_batch_generation",
+      "task": "text_to_video",
+      "model": "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+      "count": 2,
+      "command": "HF_HUB_OFFLINE=1 PYTHONPATH=src python -m abstractvision.cli t2v \"A compact silver spaceship rests in a frozen canyon at dawn. Blue engines begin to glow, loose snow drifts across the landing pad, and the camera holds a stable wide composition with gentle atmospheric motion.\" --provider mlx-gen --model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit --store-dir <store> --width 832 --height 480 --frames 9 --steps 8 --guidance-scale 4.0 --flow-shift 3.0 --fps 8 --count 2 --seeds 6251,6252 --progress",
+      "artifacts": [
+        {
+          "seed": 6251,
+          "doc_asset": "t2v_batch_wan_ti2v5b_832x480_seed6251.mp4",
+          "doc_meta": "t2v_batch_wan_ti2v5b_832x480_seed6251.meta.json",
+          "thumb": "t2v_batch_wan_ti2v5b_832x480_seed6251_first_frame.png",
+          "artifact_id": "2be5f3ed9cc9e1ba4b4475292a9182d8"
+        },
+        {
+          "seed": 6252,
+          "doc_asset": "t2v_batch_wan_ti2v5b_832x480_seed6252.mp4",
+          "doc_meta": "t2v_batch_wan_ti2v5b_832x480_seed6252.meta.json",
+          "thumb": "t2v_batch_wan_ti2v5b_832x480_seed6252_first_frame.png",
+          "artifact_id": "f2eacafb74d05bfed752d9e7167d111c"
+        }
+      ],
+      "progress_log": "t2v_batch_wan_ti2v5b_832x480.progress.log",
+      "contact_sheet": "t2v_batch_wan_ti2v5b_832x480_contact_sheet.png",
+      "requested_lora_adapters": []
+    },
+    {
+      "slug": "t2v_wan_a14b_lightning_480x240",
+      "proof_kind": "real_task_specific_a14b_proof",
+      "task": "text_to_video",
+      "model": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+      "command": "HF_HUB_OFFLINE=1 PYTHONPATH=src python -m abstractvision.cli t2v \"A cinematic wide-angle movie shot of a massive futuristic starship taking off from a frozen tundra. The ship features sleek dark metallic armor. Two massive warp nacelles pulse with bright blue plasma. Violent snow squalls whip around the hull. The camera slowly tilts up as the thrusters ignite and massive clouds of snow blast away from the launch pad. Photorealistic, highly detailed, dramatic lighting.\" --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --store-dir <store> --negative \"oversaturated colors, overexposed, static shot, blurry details, subtitles, text, watermark, painting, illustration, ugly, deformed, broken anatomy, extra limbs, cluttered background, frozen frame, low quality, jpeg artifacts\" --width 480 --height 240 --frames 41 --steps 4 --guidance-scale 1 --guidance-2 1 --flow-shift 5 --fps 20 --seed 8401 --lora lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors --lora lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors --lora-target-role high_noise_transformer --lora-target-role low_noise_transformer --lora-scale 1 --lora-scale 1 --progress",
+      "artifact_id": "e239a8e98b647f9581a07c8f29e178b5",
+      "doc_asset": "t2v_wan_a14b_lightning_480x240.mp4",
+      "doc_meta": "t2v_wan_a14b_lightning_480x240.meta.json",
+      "doc_contact": "t2v_wan_a14b_lightning_480x240_contact_sheet.png",
+      "progress_log": "t2v_wan_a14b_lightning_480x240.progress.log",
+      "flow_shift": 5.0,
+      "requested_lora_adapters": [
+        {
+          "scale": 1.0,
+          "source": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+          "target_role": "high_noise_transformer"
+        },
+        {
+          "scale": 1.0,
+          "source": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+          "target_role": "low_noise_transformer"
+        }
+      ]
+    },
+    {
+      "slug": "i2v_wan_a14b_lightning_480x240",
+      "proof_kind": "real_task_specific_a14b_proof",
+      "task": "image_to_video",
+      "model": "AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit",
+      "command": "HF_HUB_OFFLINE=1 PYTHONPATH=src python -m abstractvision.cli i2v \"Starting from the input image, the silver spaceship powers up and lifts off from the frozen ground. Blue engines brighten, snow blasts outward, vapor rolls under the hull, and the camera holds the same wide icy canyon framing while the ship rises smoothly.\" --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --store-dir <store> --image ./input.png --negative \"oversaturated colors, overexposed, static shot, blurry details, subtitles, text, watermark, painting, illustration, ugly, deformed, broken anatomy, extra limbs, cluttered background, frozen frame, low quality, jpeg artifacts\" --width 480 --height 240 --frames 41 --steps 4 --guidance-scale 1 --guidance-2 1 --flow-shift 5 --fps 20 --seed 8402 --lora lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors --lora lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors --lora-target-role high_noise_transformer --lora-target-role low_noise_transformer --lora-scale 1 --lora-scale 1 --progress",
+      "artifact_id": "28f7e3e7d0cdd66a3ba19032fff16090",
+      "doc_asset": "i2v_wan_a14b_lightning_480x240.mp4",
+      "doc_input": "i2v_wan_a14b_lightning_480x240_input.png",
+      "doc_meta": "i2v_wan_a14b_lightning_480x240.meta.json",
+      "doc_contact": "i2v_wan_a14b_lightning_480x240_contact_sheet.png",
+      "progress_log": "i2v_wan_a14b_lightning_480x240.progress.log",
+      "flow_shift": 5.0,
+      "requested_lora_adapters": [
+        {
+          "scale": 1.0,
+          "source": "lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+          "target_role": "high_noise_transformer"
+        },
+        {
+          "scale": 1.0,
+          "source": "lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors",
+          "target_role": "low_noise_transformer"
+        }
+      ]
+    }
+  ]
+}

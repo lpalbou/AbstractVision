@@ -1,0 +1,302 @@
+{
+  "text_to_image": [
+    {
+      "id": "AbstractFramework/ernie-image-turbo-4bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/ernie-image-turbo-8bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_ernie_turbo_q8_anime_style_t2i_2026_06_11"
+    },
+    {
+      "id": "AbstractFramework/flux.2-klein-4b-4bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/flux.2-klein-4b-8bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/flux.2-klein-9b-4bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/flux.2-klein-9b-8bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/qwen-image-2512-4bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/qwen-image-2512-8bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_qwen2512_q8_pixel_art_t2i_2026_06_11"
+    },
+    {
+      "id": "AbstractFramework/qwen-image-8bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/z-image-turbo-4bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/z-image-turbo-8bit",
+      "task": "text_to_image",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_zimage_q8_technically_color_t2i_2026_06_11"
+    }
+  ],
+  "image_to_image": [
+    {
+      "id": "AbstractFramework/qwen-image-edit-2511-4bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/qwen-image-edit-4bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/qwen-image-edit-2511-8bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_qwen2511_q8_single_edit_multi_angle_2026_06_08"
+    },
+    {
+      "id": "AbstractFramework/qwen-image-edit-8bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_qwen_edit_q8_ghibli_edit_2026_06_11"
+    },
+    {
+      "id": "AbstractFramework/qwen-image-edit-2509-4bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/qwen-image-edit-2509-8bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_qwen2509_q8_single_edit_multi_angle_2026_06_11"
+    },
+    {
+      "id": "AbstractFramework/ernie-image-turbo-4bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/ernie-image-turbo-8bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/flux.2-klein-4b-4bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/flux.2-klein-9b-4bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/flux.2-klein-4b-8bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    },
+    {
+      "id": "AbstractFramework/flux.2-klein-9b-8bit",
+      "task": "image_to_image",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_flux2_klein9b_q8_consistency_edit_2026_06_11"
+    }
+  ],
+  "text_to_video": [
+    {
+      "id": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+      "task": "text_to_video",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "high_noise_transformer",
+        "low_noise_transformer"
+      ],
+      "lora_validation_profile": "lora_wan_a14b_q8_followcam_t2v_2026_06_11"
+    },
+    {
+      "id": "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+      "task": "text_to_video",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_wan_ti2v5b_q8_hstoric_t2v_2026_06_11"
+    },
+    {
+      "id": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+      "task": "text_to_video",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    }
+  ],
+  "image_to_video": [
+    {
+      "id": "AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit",
+      "task": "image_to_video",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "high_noise_transformer",
+        "low_noise_transformer"
+      ],
+      "lora_validation_profile": "lora_wan_a14b_q8_orbit_i2v_2026_06_11"
+    },
+    {
+      "id": "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+      "task": "image_to_video",
+      "supports_lora": true,
+      "lora_status": "validated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": "lora_wan_ti2v5b_q8_crushit_i2v_2026_06_11"
+    },
+    {
+      "id": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+      "task": "image_to_video",
+      "supports_lora": true,
+      "lora_status": "mapped-unvalidated",
+      "lora_target_roles": [
+        "transformer"
+      ],
+      "lora_validation_profile": null
+    }
+  ]
+}

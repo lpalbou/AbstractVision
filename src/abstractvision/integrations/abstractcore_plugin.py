@@ -75,6 +75,16 @@ def _env_first(*keys: str, default: Optional[str] = None) -> Optional[str]:
     return default
 
 
+def _optional_positive_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except Exception:
+        return None
+    return parsed if parsed > 0 else None
+
+
 def _strip_openai_model_prefixes(value: Any) -> str:
     model = str(value or "").strip()
     while "/" in model:
@@ -91,6 +101,19 @@ def _env_bool(key: str, default: bool = False) -> bool:
     if v is None:
         return bool(default)
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _split_multi_value(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    if not text:
+        return []
+    for separator in (";", ","):
+        text = text.replace(separator, "\n")
+    return [part.strip() for part in text.splitlines() if part.strip()]
 
 
 def _owner_cfg(owner: Any, key: str) -> Optional[str]:
@@ -208,8 +231,6 @@ def _backend_catalog_enabled(owner: Any, provider_id: Optional[str], backend: An
 
 def _mflux_weights_present() -> bool:
     """Return True when MLX-Gen preset weights appear to be downloaded locally."""
-    if sys.platform != "darwin":
-        return False
     try:
         from ..model_cache import (
             default_hf_cache_root,
@@ -244,6 +265,10 @@ def _mflux_weights_present() -> bool:
     return False
 
 
+def _mlx_gen_runtime_supported_platform() -> bool:
+    return sys.platform in {"darwin", "linux"}
+
+
 def _runtime_installed(provider: str) -> bool | None:
     p = str(provider or "").strip().lower().replace("_", "-")
     if not p:
@@ -254,9 +279,12 @@ def _runtime_installed(provider: str) -> bool | None:
         # Diffusers backends require both diffusers and torch.
         return importlib.util.find_spec("diffusers") is not None and importlib.util.find_spec("torch") is not None
     if p in _MLX_GEN_BACKEND_ALIASES:
-        if sys.platform != "darwin":
+        if not _mlx_gen_runtime_supported_platform():
             return False
-        return importlib.util.find_spec("mlxgen") is not None and importlib.util.find_spec("mlx") is not None
+        return (
+            (importlib.util.find_spec("mflux") is not None or importlib.util.find_spec("mlxgen") is not None)
+            and importlib.util.find_spec("mlx") is not None
+        )
     if p in {"sdcpp", "stable-diffusion.cpp", "stable-diffusion-cpp", "stable_diffusion_cpp"}:
         return importlib.util.find_spec("stable_diffusion_cpp") is not None
     return None
@@ -423,7 +451,7 @@ def _normalize_residency_task(value: Any) -> Optional[str]:
 
 
 def _has_local_mflux_preset(model_id: str) -> bool:
-    if sys.platform != "darwin":
+    if not _mlx_gen_runtime_supported_platform():
         return False
     try:
         from ..model_cache import (
@@ -454,7 +482,7 @@ def _has_local_mflux_preset(model_id: str) -> bool:
 
 
 def _is_known_mflux_model_alias(model_id: str) -> bool:
-    if sys.platform != "darwin":
+    if not _mlx_gen_runtime_supported_platform():
         return False
     try:
         from ..model_downloads import find_model_preset
@@ -967,13 +995,9 @@ class _AbstractVisionCapability:
             resolved_model_id = _env_first("OPENAI_IMAGE_MODEL_ID", "OPENAI_IMAGE_MODEL")
         if not resolved_model_id and not explicit_openai_compatible:
             resolved_model_id = _DEFAULT_OPENAI_IMAGE_MODEL_ID
-        timeout_s_raw = _owner_cfg(self._owner, "vision_timeout_s") or _env(
-            "ABSTRACTVISION_TIMEOUT_S"
+        timeout_s = _optional_positive_float(
+            _owner_cfg(self._owner, "vision_timeout_s") or _env("ABSTRACTVISION_TIMEOUT_S")
         )
-        try:
-            timeout_s = float(timeout_s_raw) if timeout_s_raw else 300.0
-        except Exception:
-            timeout_s = 300.0
         if not base_url:
             raise AbstractVisionError(
                 "Missing vision_base_url / OPENAI_BASE_URL. "
@@ -1006,7 +1030,7 @@ class _AbstractVisionCapability:
             base_url=str(base_url),
             api_key=str(api_key) if api_key else None,
             model_id=str(resolved_model_id) if resolved_model_id else None,
-            timeout_s=float(timeout_s),
+            timeout_s=timeout_s if timeout_s is not None else 300.0,
             models_path=str(models_path or "/models"),
             text_to_video_path=str(t2v_path) if t2v_path else None,
             image_to_video_path=str(i2v_path) if i2v_path else None,
@@ -1049,6 +1073,27 @@ class _AbstractVisionCapability:
                 ),
             ),
         )
+        lora_paths = _split_multi_value(
+            _owner_cfg(self._owner, "vision_mlx_gen_lora_paths")
+            or _env("ABSTRACTVISION_MLX_GEN_LORA_PATHS")
+            or _owner_cfg(self._owner, "vision_mflux_lora_paths")
+            or _env("ABSTRACTVISION_MFLUX_LORA_PATHS")
+        )
+        lora_scales = [
+            float(value)
+            for value in _split_multi_value(
+                _owner_cfg(self._owner, "vision_mlx_gen_lora_scales")
+                or _env("ABSTRACTVISION_MLX_GEN_LORA_SCALES")
+                or _owner_cfg(self._owner, "vision_mflux_lora_scales")
+                or _env("ABSTRACTVISION_MFLUX_LORA_SCALES")
+            )
+        ]
+        lora_target_roles = _split_multi_value(
+            _owner_cfg(self._owner, "vision_mlx_gen_lora_target_roles")
+            or _env("ABSTRACTVISION_MLX_GEN_LORA_TARGET_ROLES")
+            or _owner_cfg(self._owner, "vision_mflux_lora_target_roles")
+            or _env("ABSTRACTVISION_MFLUX_LORA_TARGET_ROLES")
+        )
 
         from ..backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
@@ -1056,6 +1101,9 @@ class _AbstractVisionCapability:
             model=str(resolved_model) if resolved_model else None,
             base_model=str(base_model) if base_model else None,
             model_dir=str(model_dir) if model_dir else None,
+            lora_paths=tuple(lora_paths),
+            lora_scales=tuple(lora_scales),
+            lora_target_roles=tuple(lora_target_roles),
             allow_download=allow_download,
         )
         return MFluxVisionBackend(config=cfg)
@@ -1126,10 +1174,8 @@ class _AbstractVisionCapability:
             t5xxl=_owner_cfg(self._owner, "vision_sdcpp_t5xxl")
             or _env("ABSTRACTVISION_SDCPP_T5XXL"),
             extra_args=tuple(shlex.split(str(extra_args))) if extra_args else (),
-            timeout_s=float(
-                _owner_cfg(self._owner, "vision_timeout_s")
-                or _env("ABSTRACTVISION_TIMEOUT_S", "3600")
-                or "3600"
+            timeout_s=_optional_positive_float(
+                _owner_cfg(self._owner, "vision_timeout_s") or _env("ABSTRACTVISION_TIMEOUT_S")
             ),
         )
         return StableDiffusionCppVisionBackend(config=cfg)
@@ -1248,13 +1294,9 @@ class _AbstractVisionCapability:
             model_id = _env_first("OPENAI_IMAGE_MODEL_ID", "OPENAI_IMAGE_MODEL")
         if not model_id and not explicit_openai_compatible:
             model_id = _DEFAULT_OPENAI_IMAGE_MODEL_ID
-        timeout_s_raw = _owner_cfg(self._owner, "vision_timeout_s") or _env(
-            "ABSTRACTVISION_TIMEOUT_S"
+        timeout_s = _optional_positive_float(
+            _owner_cfg(self._owner, "vision_timeout_s") or _env("ABSTRACTVISION_TIMEOUT_S")
         )
-        try:
-            timeout_s = float(timeout_s_raw) if timeout_s_raw else 300.0
-        except Exception:
-            timeout_s = 300.0
 
         if not base_url:
             raise AbstractVisionError(
@@ -1292,7 +1334,7 @@ class _AbstractVisionCapability:
             base_url=str(base_url),
             api_key=str(api_key) if api_key else None,
             model_id=str(model_id) if model_id else None,
-            timeout_s=float(timeout_s),
+            timeout_s=timeout_s if timeout_s is not None else 300.0,
             models_path=str(models_path or "/models"),
             text_to_video_path=str(t2v_path) if t2v_path else None,
             image_to_video_path=str(i2v_path) if i2v_path else None,
@@ -1596,6 +1638,7 @@ class _AbstractVisionCapability:
             "steps",
             "guidance_scale",
             "guidance_2",
+            "lora_adapters",
             "extra",
         }
         extra = kwargs.get("extra")
@@ -1643,6 +1686,7 @@ class _AbstractVisionCapability:
             "steps",
             "guidance_scale",
             "guidance_2",
+            "lora_adapters",
             "extra",
         }
         extra = kwargs.get("extra")
@@ -1750,6 +1794,9 @@ class _AbstractVisionCapability:
             "seed",
             "steps",
             "guidance_scale",
+            "guidance_2",
+            "flow_shift",
+            "lora_adapters",
             "extra",
         }
         extra = kwargs.get("extra")
@@ -1797,6 +1844,9 @@ class _AbstractVisionCapability:
             "seed",
             "steps",
             "guidance_scale",
+            "guidance_2",
+            "flow_shift",
+            "lora_adapters",
             "extra",
         }
         extra = kwargs.get("extra")

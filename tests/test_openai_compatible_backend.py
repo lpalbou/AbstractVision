@@ -38,8 +38,10 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
 
         png = b"\x89PNG\r\n\x1a\n" + b"abc"
         resp = {"data": [{"b64_json": base64.b64encode(png).decode("ascii")}]}
+        seen_timeouts = []
 
         def fake_urlopen(req, timeout=0):
+            seen_timeouts.append(timeout)
             # Basic request shaping sanity.
             self.assertIn("/images/generations", req.full_url)
             self.assertEqual(req.headers.get("Authorization"), "Bearer k")
@@ -57,6 +59,7 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual(out.media_type, "image")
         self.assertEqual(out.mime_type, "image/png")
         self.assertEqual(out.data, png)
+        self.assertEqual(seen_timeouts, [None])
 
     def test_generate_image_uses_custom_path_and_downloads_url_response(self):
         from abstractvision.backends.openai_compatible import (
@@ -68,8 +71,10 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         png = b"\x89PNG\r\n\x1a\n" + b"from-url"
         resp = {"data": [{"url": "http://assets.local/out.png"}]}
         seen = {"posts": 0, "gets": 0}
+        seen_timeouts = []
 
         def fake_urlopen(req, timeout=0):
+            seen_timeouts.append(timeout)
             if req.full_url == "http://localhost:1234/v1/custom/images":
                 seen["posts"] += 1
                 return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
@@ -90,6 +95,43 @@ class TestOpenAICompatibleVisionBackend(unittest.TestCase):
         self.assertEqual(out.mime_type, "image/png")
         self.assertEqual(out.metadata.get("source"), "url")
         self.assertEqual(seen, {"posts": 1, "gets": 1})
+        self.assertEqual(seen_timeouts, [None, None])
+
+    def test_generate_image_drops_internal_progress_callback_from_extra(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest
+
+        png = b"\x89PNG\r\n\x1a\n" + b"abc"
+        resp = {"data": [{"b64_json": base64.b64encode(png).decode("ascii")}]}
+        seen = {}
+
+        def progress_callback(_event):
+            raise AssertionError("OpenAI-compatible image generation does not call local progress callbacks")
+
+        def fake_urlopen(req, timeout=0):
+            body = json.loads(req.data.decode("utf-8"))
+            seen.update(body)
+            return _FakeHTTPResponse(json.dumps(resp).encode("utf-8"))
+
+        cfg = OpenAICompatibleBackendConfig(
+            base_url="http://localhost:1234/v1", api_key="k", model_id="m"
+        )
+        backend = OpenAICompatibleVisionBackend(config=cfg)
+
+        with patch("abstractvision.backends.openai_compatible.urlopen", new=fake_urlopen):
+            out = backend.generate_image(
+                ImageGenerationRequest(
+                    prompt="hello",
+                    extra={"on_progress": progress_callback, "quality": "low"},
+                )
+            )
+
+        self.assertEqual(out.data, png)
+        self.assertEqual(seen.get("quality"), "low")
+        self.assertNotIn("on_progress", seen)
 
     def test_generate_image_shapes_real_openai_gpt_image_payload(self):
         from abstractvision.backends.openai_compatible import (

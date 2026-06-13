@@ -1,4 +1,4 @@
-# Planned: Model family, component, and overlay graph for catalog and curated local flows
+# Planned: Model family, component, overlay, and adapter inventory graph for catalog and curated local flows
 
 ## Metadata
 - Created: 2026-05-20
@@ -71,9 +71,23 @@ What is already implemented:
   - `_parse_loras()`
   - `_apply_loras()`
   - documented `loras_json` and `rapid_aio_repo` request-extra flows
-- MFLUX already has backend-level `lora_paths` / `lora_scales` config support.
-- `ImageGenerationRequest` and `ImageEditRequest` already include `extra`, so the package has a
-  low-level carrier for backend-owned overlay metadata.
+- MLX-Gen now also has a package-owned typed LoRA request contract through
+  `LoRAAdapterSpec` / `lora_adapters=[...]` across `text_to_image`,
+  `image_to_image`, `text_to_video`, and `image_to_video`.
+- `VisionManager` now exposes public batch orchestration methods:
+  - `generate_image_batch(...)`
+  - `edit_image_batch(...)`
+  - `generate_video_batch(...)`
+  - `image_to_video_batch(...)`
+- `VisionManager.list_provider_adapters(...)` and `abstractvision adapters ...`
+  now expose backend-owned MLX-Gen installed-adapter discovery by exact
+  model/task route.
+- Wan video requests now have typed `flow_shift`.
+- The bundled MLX-Gen proof page and proof assets now use a corrected TI2V-5B
+  visual validation at `832x480`.
+- `ImageGenerationRequest` and `ImageEditRequest` still include `extra`, so the
+  package retains a low-level carrier for backend-owned overlay metadata where a
+  typed surface is not appropriate yet.
 
 What is missing or brittle:
 
@@ -86,12 +100,15 @@ What is missing or brittle:
   shipped JSON does not yet exercise `base_model_id` as a real runtime contract.
 - `_PRESETS` and curated bundle logic still encode important catalog truth in code rather than in a
   clearer package data model.
-- AbstractCore tools expose fixed prompt/image/mask parameters only. They do not expose package-
-  owned overlay composition or typed `extra` inputs.
+- Installed-adapter discovery is currently MLX-Gen-specific. There is still no
+  cross-backend overlay inventory story for Diffusers or stable-diffusion.cpp.
 - The current docs show working Diffusers overlay examples, but the catalog cannot yet tell a user
   whether a repo is a standalone model, a required component, or an overlay attachment.
 - `multi_view_image` exists as a task key, but no shipped backend currently implements it, so LoRA
   repos that imply multi-view behavior must not be cataloged as if they were runnable tasks.
+- The catalog still lacks an explicit artifact-role taxonomy, so overlays,
+  required components, and runtime-ready variants are not yet modeled as a
+  first-class graph in package data.
 
 ## Problem
 The current registry and download surfaces are still too flat. They are good at listing model ids
@@ -116,8 +133,10 @@ Introduce an explicit package-owned artifact taxonomy and use it to improve:
 - curated local runtime resolution
 - overlay-aware generation surfaces where the backend already supports them
 
-The first goal is not “generic adapter orchestration.” The first goal is to stop confusing model
-families, required components, and optional overlays.
+The first goal is still not “generic adapter orchestration.” The first goal is to stop confusing
+model families, required components, and optional overlays. The second goal is to expose locally
+installed overlays honestly enough that users can discover, select, and apply them without leaving
+AbstractVision.
 
 ## Why
 Users are not asking for a raw list of Hugging Face repos. They want reliable answers to:
@@ -150,6 +169,17 @@ resolution for curated flows. That pattern should be extended deliberately, not 
 This task must not invent a fake generic cross-backend adapter runtime if Diffusers and MFLUX need
 different semantics. A shared package surface is acceptable only if it preserves backend truth.
 
+### 4a. Backend-owned installed-adapter compatibility is allowed
+The package may expose a typed adapter inventory surface, but exact compatibility classification
+must stay backend-owned. For MLX-Gen, that means using cached model-card metadata, file layout
+knowledge, and route truth from `mlxgen capabilities`, not duplicating adapter compatibility tables
+in a static AbstractVision asset unless a dynamic path proves insufficient.
+
+### 4b. Multi-output is orchestration, not a new single-request contract
+Generating N images or N videos is a useful public feature, but it should not distort the core
+single-request generation dataclasses. Batch generation belongs above exact single-run requests and
+can reuse the same backend truth with repeated seeds.
+
 ### 5. Tool exposure is conditional, not automatic
 AbstractCore tool surfaces should expose overlay-aware inputs only after the package has a clean,
 typed, package-owned contract for them. The current fixed-parameter tools are safer than exposing
@@ -160,6 +190,12 @@ aspirational generic adapter knobs.
 - Represent engine/format-specific runnable downloads as runtime variants, not as independent model
   families.
 - Represent required side artifacts explicitly and separately from optional overlays.
+- Expose installed adapter inventory for backends that can classify cached adapters honestly enough
+  for local discovery.
+- Preserve route-specific adapter facts such as target roles and validation status.
+- Preserve a simple public way to request multiple outputs without pretending every backend has a
+  native batched generation contract.
+- Keep TI2V-5B route constraints honest in both normalization and proof artifacts.
 - Preserve direct HF repo metadata where useful, but stop presenting overlays as if they were
   standalone runnable models.
 - Surface runtime state clearly:
@@ -203,15 +239,35 @@ aspirational generic adapter knobs.
   - decide whether to keep them as explicit `extra` conventions or introduce a typed package-owned
     overlay field
 - MFLUX:
-  - decide whether current config-only LoRA support should stay config-bound or also become
-    request-level when the runtime semantics are clear
+  - keep request-level typed LoRA adapters as the primary path;
+  - add installed-adapter discovery that resolves cached LoRAs into model/task-aware inventory rows
+    using backend-owned compatibility logic;
+  - surface exact route facts such as `supports_lora`, `lora_status`, `lora_target_roles`, and
+    `lora_validation_profile` alongside installed adapters.
 - Do not promise cross-backend overlay parity if the runtimes are materially different.
 
 ### Phase 4: evaluate higher-level surfaces
+- Add a package-owned adapter inventory DTO and manager/backend hooks such as
+  `list_provider_adapters(...)`.
+- Add a package-owned batch orchestration surface above single exact requests, for example:
+  - `generate_image_batch(...)`
+  - `edit_image_batch(...)`
+  - `generate_video_batch(...)`
+  - `image_to_video_batch(...)`
+- Keep seed planning explicit and reproducible. Batch mode should accept either explicit seed lists
+  or a count plus deterministic/random expansion policy.
 - Update CLI and catalog output so overlays are not mistaken for runnable models.
+- Add CLI discovery for locally installed adapters and simple batch generation entry points.
 - Only extend `integrations/abstractcore.py` after the package-owned overlay surface is explicit
   enough to expose safely.
 - Add early rejection paths when a user selects an overlay without a compatible parent/runtime.
+
+### Phase 5: codify Wan TI2V route policy
+- Add typed `flow_shift` request fields for video routes that support it.
+- Keep model-default `flow_shift` backend-owned, but document and normalize the current practical
+  TI2V-5B 480p-class policy (`832x480` / `480x832` with `flow_shift=3`) without hiding the native
+  720p-class defaults.
+- Replace stale undersized TI2V proof runs with real validation assets.
 
 ## Scope
 Included:
@@ -221,6 +277,9 @@ Included:
 - downloader and catalog alignment with that taxonomy;
 - curated local-flow improvement where the package can already own required-component resolution;
 - overlay-aware generation surface design for backends that already support overlays;
+- installed-adapter discovery for MLX-Gen when cached metadata is sufficient;
+- typed `flow_shift` surfacing for Wan routes;
+- multi-output orchestration above single exact generation calls;
 - clear rejection behavior for unsupported overlay/runtime combinations.
 
 ## Non-goals
@@ -230,6 +289,8 @@ Included:
 - Expose overlay parameters through AbstractCore tools before the package-facing contract is clean.
 - Reclassify every historical repo in one risky pass without a compatibility strategy.
 - Ship local video runtime work as part of this item.
+- Invent a static adapter-capabilities asset first if dynamic backend-owned discovery is already
+  sufficient.
 
 ## Dependencies and related tasks
 - Completed: [003_hf_model_landscape_and_capability_registry.md](../completed/003_hf_model_landscape_and_capability_registry.md)
@@ -248,6 +309,11 @@ Included:
   only, a required component, or an optional overlay.
 - Overlay-aware generation is either clearly supported end to end for a backend/model path or
   clearly rejected with an actionable error.
+- Locally cached LoRAs can be discovered and filtered by compatible model/task route through a
+  package-owned adapter inventory surface without pretending overlays are standalone models.
+- TI2V proof assets and docs no longer use undersized smoke-check runs as visual validation.
+- Users can request multiple outputs through a simple public surface while the core single-request
+  generation contract stays stable.
 - AbstractCore integration does not advertise overlay composition beyond what the package can
   really honor.
 
@@ -276,7 +342,7 @@ Included:
 - [ ] Decide whether the schema evolves directly or through a compatibility translation layer.
 - [ ] Move at least one existing component-based curated flow onto the clearer taxonomy.
 - [ ] Update catalog/download output so overlays are not shown as standalone runnable models.
-- [ ] Decide the package-owned overlay input contract for backends that already support overlays.
+- [x] Decide the package-owned overlay input contract for backends that already support overlays.
 - [ ] Add tests and docs for runnable versus download-only versus component versus overlay states.
 
 ## Guidance for the implementing agent

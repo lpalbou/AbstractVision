@@ -22,6 +22,7 @@ from .backends import (
     StableDiffusionCppBackendConfig,
     StableDiffusionCppVisionBackend,
 )
+from .lora_adapters import resolve_request_lora_adapters
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_downloads import (
     catalog_target_scope,
@@ -41,7 +42,13 @@ from .model_downloads import (
     resolve_sdcpp_model_selection,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
-from .types import ImageEditRequest, ImageGenerationRequest, ImageUpscaleRequest, VideoProgressEvent
+from .types import (
+    ImageEditRequest,
+    ImageGenerationRequest,
+    ImageUpscaleRequest,
+    ProviderAdapterInfo,
+    VideoProgressEvent,
+)
 from .vision_manager import VisionManager
 
 DEFAULT_REPL_BACKEND = ""
@@ -51,6 +58,20 @@ DEFAULT_T2I_WIDTH = 512
 DEFAULT_T2I_HEIGHT = 512
 DEFAULT_T2I_STEPS = 10
 DEFAULT_I2I_STEPS = 15
+_REPEATED_REPL_FLAGS = {
+    "lora",
+    "lora_path",
+    "lora_paths",
+    "lora_scale",
+    "lora_scales",
+    "lora_weight_name",
+    "lora_subfolder",
+    "lora_adapter_name",
+    "lora_target_role",
+    "lora_target_roles",
+    "reference_image",
+    "reference_images",
+}
 
 
 class _CliVideoProgress:
@@ -232,11 +253,12 @@ def _build_openai_backend_from_args(args: argparse.Namespace) -> OpenAICompatibl
     base_url = str(args.base_url or "").strip()
     if not base_url:
         raise SystemExit("Missing --base-url (or $OPENAI_BASE_URL).")
+    timeout_s = getattr(args, "timeout_s", None)
     cfg = OpenAICompatibleBackendConfig(
         base_url=base_url,
         api_key=str(args.api_key) if args.api_key else None,
         model_id=str(args.model_id) if args.model_id else None,
-        timeout_s=float(args.timeout_s),
+        timeout_s=float(timeout_s) if timeout_s is not None else 300.0,
         models_path=str(getattr(args, "models_path", None) or "/models"),
         image_generations_path=str(args.images_generations_path),
         image_edits_path=str(args.images_edits_path),
@@ -429,7 +451,11 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
                     if getattr(args, "sdcpp_extra_args", None)
                     else ()
                 ),
-                timeout_s=float(getattr(args, "timeout_s", 60.0 * 60.0)),
+                timeout_s=(
+                    float(getattr(args, "timeout_s"))
+                    if getattr(args, "timeout_s", None) is not None
+                    else None
+                ),
                 cwd=None,
             )
         )
@@ -477,6 +503,17 @@ def _cmd_tasks(_: argparse.Namespace) -> int:
 def _cmd_show_model(args: argparse.Namespace) -> int:
     reg = VisionModelCapabilitiesRegistry()
     spec = reg.get(str(args.model_id))
+    runtime_route_specs = _mlx_gen_runtime_task_specs(
+        [
+            str(args.model_id),
+            str(spec.model_id),
+            *[
+                str(dl.repo_id)
+                for dl in spec.downloads
+                if str(getattr(dl, "engine", "") or "").strip().lower() == "mlx-gen"
+            ],
+        ]
+    )
     print(spec.model_id)
     print(f"provider: {spec.provider}")
     print(f"license: {spec.license}")
@@ -516,6 +553,33 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
                 print(f"      required params: {', '.join(required)}")
             if optional:
                 print(f"      optional params: {', '.join(optional)}")
+            defaults = {
+                key: value.get("default")
+                for key, value in sorted(ts.params.items())
+                if isinstance(value, dict) and "default" in value
+            }
+            if defaults:
+                print(
+                    "      defaults: "
+                    + ", ".join(f"{key}={json.dumps(value)}" for key, value in defaults.items())
+                )
+    if runtime_route_specs:
+        print("runtime routes:")
+        for route_model_id in sorted(runtime_route_specs.keys()):
+            print(f"  - {route_model_id}")
+            for task_name, task_spec in sorted(runtime_route_specs[route_model_id].items()):
+                print(f"      task: {task_name}")
+                if "supports_lora" in task_spec:
+                    print(f"        supports_lora: {bool(task_spec.get('supports_lora'))}")
+                if task_spec.get("lora_status") is not None:
+                    print(f"        lora_status: {task_spec.get('lora_status')}")
+                roles = [str(value) for value in (task_spec.get("lora_target_roles") or []) if str(value).strip()]
+                if roles:
+                    print(f"        lora_target_roles: {', '.join(roles)}")
+                if task_spec.get("lora_validation_profile"):
+                    print(
+                        f"        lora_validation_profile: {task_spec.get('lora_validation_profile')}"
+                    )
     return 0
 
 
@@ -548,6 +612,64 @@ def _cmd_provider_models(args: argparse.Namespace) -> int:
     else:
         for m in models:
             print(m.id)
+    return 0
+
+
+def _cmd_provider_adapters(args: argparse.Namespace) -> int:
+    provider_kind = _normalize_cli_provider(
+        getattr(args, "provider", None)
+        or _env("ABSTRACTVISION_PROVIDER")
+        or _env("ABSTRACTVISION_BACKEND")
+        or "mlx-gen"
+    )
+    if provider_kind != "mlx-gen":
+        raise SystemExit("Adapter discovery is currently implemented for the mlx-gen backend.")
+    backend = MFluxVisionBackend(
+        config=MFluxBackendConfig(
+            model=str(getattr(args, "model", None) or "") or None,
+            base_model=str(getattr(args, "mflux_base_model", None) or "") or None,
+            model_dir=str(getattr(args, "mflux_model_dir", None) or "") or None,
+        )
+    )
+    adapters = backend.list_provider_adapters(
+        model=getattr(args, "model", None),
+        task=getattr(args, "task", None),
+    )
+    if bool(getattr(args, "json", False)):
+        _print_json([asdict(item) for item in adapters])
+        return 0
+
+    def _status_summary(item: ProviderAdapterInfo) -> str:
+        raw = item.raw if isinstance(item.raw, dict) else {}
+        routes = raw.get("compatible_routes") if isinstance(raw.get("compatible_routes"), list) else []
+        statuses: List[str] = []
+        for route in routes:
+            if not isinstance(route, dict):
+                continue
+            task = str(route.get("task") or "").strip()
+            status = str(route.get("lora_status") or "").strip()
+            if not task or not status:
+                continue
+            label = f"{task}:{status}"
+            if label not in statuses:
+                statuses.append(label)
+        return ",".join(statuses)
+
+    rows = [
+        [
+            item.id,
+            ",".join(item.compatible_models),
+            ",".join(item.compatible_tasks),
+            _status_summary(item),
+            ",".join(item.suggested_target_roles),
+        ]
+        for item in adapters
+    ]
+    for line in _format_table(
+        ("adapter", "models", "tasks", "status", "roles"),
+        rows,
+    ):
+        print(line)
     return 0
 
 
@@ -631,6 +753,61 @@ def _format_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> List
     return out
 
 
+_ROUTE_DISCOVERY_KEYS = (
+    "supports_lora",
+    "lora_status",
+    "lora_target_roles",
+    "lora_validation_profile",
+)
+
+
+def _route_discovery_payload(task_spec: Any) -> Dict[str, Any]:
+    if not isinstance(task_spec, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key in _ROUTE_DISCOVERY_KEYS:
+        if key in task_spec:
+            out[key] = task_spec.get(key)
+    return out
+
+
+def _mlx_gen_runtime_task_specs(model_ids: Sequence[str], task: Optional[str] = None) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    wanted = [str(value).strip() for value in model_ids if str(value).strip()]
+    if not wanted:
+        return {}
+    wanted_set = set(wanted)
+    try:
+        infos = MFluxVisionBackend(config=MFluxBackendConfig()).list_provider_models(task=task)
+    except Exception:
+        return {}
+    out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for info in infos:
+        raw = info.raw if isinstance(info.raw, dict) else {}
+        task_specs = raw.get("task_specs") if isinstance(raw.get("task_specs"), dict) else {}
+        if not task_specs:
+            continue
+        candidates = {
+            str(info.id or "").strip(),
+            str(raw.get("model") or "").strip(),
+            str(raw.get("repo_id") or "").strip(),
+            str(raw.get("upstream_repo_id") or "").strip(),
+        }
+        candidates.discard("")
+        matched = sorted(candidates & wanted_set)
+        if not matched:
+            continue
+        extracted = {
+            str(task_name): _route_discovery_payload(task_spec)
+            for task_name, task_spec in task_specs.items()
+            if _route_discovery_payload(task_spec)
+        }
+        if not extracted:
+            continue
+        for model_id in matched:
+            out[model_id] = extracted
+    return out
+
+
 def _cmd_model_catalog(args: argparse.Namespace) -> int:
     """List capability models that have curated download presets."""
 
@@ -686,6 +863,19 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         presets = sorted(filtered, key=lambda p: (p.key, p.source_priority, p.repo_id))
 
     rows: List[Sequence[Any]] = []
+    runtime_route_specs = _mlx_gen_runtime_task_specs(
+        [
+            (
+                str(p.repo_id)
+                if p.target == "mlx"
+                and p.engine == "mlx-gen"
+                and p.source == "abstractframework-mlx-gen"
+                else str(p.upstream_repo_id or p.repo_id)
+            )
+            for p in presets
+        ],
+        task=task or None,
+    )
     for preset in presets:
         registry_model_id = str(preset.upstream_repo_id or preset.repo_id)
         model_id = (
@@ -710,12 +900,35 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         if not supported_tasks:
             continue
         tasks = ",".join(supported_tasks)
+        route_specs = runtime_route_specs.get(model_id, {})
+        lora_statuses = [
+            str(route_specs.get(task_name, {}).get("lora_status") or "").strip()
+            for task_name in supported_tasks
+            if route_specs.get(task_name)
+        ]
+        lora_statuses = [value for value in lora_statuses if value]
+        lora_roles = sorted(
+            {
+                str(role).strip()
+                for task_name in supported_tasks
+                for role in (route_specs.get(task_name, {}).get("lora_target_roles") or [])
+                if str(role).strip()
+            }
+        )
+        if any(task_name in route_specs for task_name in supported_tasks):
+            lora_display = lora_statuses[0] if lora_statuses else (
+                "supported" if any(route_specs.get(task_name, {}).get("supports_lora") for task_name in supported_tasks) else "no"
+            )
+        else:
+            lora_display = ""
         rows.append(
             (
                 model_id,
                 preset.target,
                 preset.engine,
                 str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a",
+                lora_display,
+                ",".join(lora_roles),
                 preset.repo_id,
                 preset.source,
                 tasks,
@@ -784,14 +997,17 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                     "task_specs": (
                         {
                             task_name: {
-                                "inputs": list(task_spec.inputs),
-                                "outputs": list(task_spec.outputs),
-                                "params": dict(task_spec.params),
-                                "requires": (
-                                    dict(task_spec.requires)
-                                    if isinstance(task_spec.requires, dict)
-                                    else None
-                                ),
+                                **{
+                                    "inputs": list(task_spec.inputs),
+                                    "outputs": list(task_spec.outputs),
+                                    "params": dict(task_spec.params),
+                                    "requires": (
+                                        dict(task_spec.requires)
+                                        if isinstance(task_spec.requires, dict)
+                                        else None
+                                    ),
+                                },
+                                **runtime_route_specs.get(model_id, {}).get(task_name, {}),
                             }
                             for task_name, task_spec in sorted(spec.tasks.items())
                             if task_name in runtime_tasks
@@ -819,10 +1035,16 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     print(
         "policy: lists exact published model ids; MLX-Gen q4/q8 and vetted pre-packed low-bit artifacts are separate models; video fallbacks appear when no quantized artifact exists (pass --all for full list)"
     )
+    print(
+        "tip: use `abstractvision show-model <model_id>` for the exact route contract; `catalog` is the browsing view"
+    )
+    print(
+        "tip: MLX-Gen rows include route-level LoRA status and target roles when the local runtime exposes them"
+    )
     print("tip: `abstractvision model-presets --all-targets --all` shows the raw preset table")
     print()
     for line in _format_table(
-        ("model_id", "target", "engine", "bits", "repo", "source", "tasks"),
+        ("model_id", "target", "engine", "bits", "lora", "roles", "repo", "source", "tasks"),
         rows,
     ):
         print(line)
@@ -1072,6 +1294,8 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
     extra: Dict[str, Any] = {}
     if progress.enabled:
         extra["on_progress"] = progress
+    lora_adapters = _lora_adapters_from_mapping(vars(args))
+    count, seeds = _seed_values_from_args(args)
     request = _resolve_t2i_request(
         vm,
         prompt=args.prompt,
@@ -1081,28 +1305,43 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
         steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
+        lora_adapters=lora_adapters,
         extra=extra,
     )
     try:
-        out = vm.generate_image(
-            request.prompt,
-            negative_prompt=request.negative_prompt,
-            width=request.width,
-            height=request.height,
-            steps=request.steps,
-            guidance_scale=request.guidance_scale,
-            seed=request.seed,
-            extra=dict(request.extra or {}),
-        )
+        if count <= 1 and not seeds:
+            out = vm.generate_image(
+                request.prompt,
+                negative_prompt=request.negative_prompt,
+                width=request.width,
+                height=request.height,
+                steps=request.steps,
+                guidance_scale=request.guidance_scale,
+                seed=request.seed,
+                lora_adapters=request.lora_adapters,
+                extra=dict(request.extra or {}),
+            )
+        else:
+            out = vm.generate_image_batch(
+                request.prompt,
+                count=count,
+                seeds=seeds,
+                negative_prompt=request.negative_prompt,
+                width=request.width,
+                height=request.height,
+                steps=request.steps,
+                guidance_scale=request.guidance_scale,
+                seed=request.seed,
+                lora_adapters=request.lora_adapters,
+                extra=dict(request.extra or {}),
+            )
     finally:
         progress.close()
     _print_json(out)
-    if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
-        p = vm.store.get_content_path(out["$artifact"])
-        if p is not None:
-            print(str(p))
-            if args.open:
-                _open_file(p)
+    for path in _artifact_paths_from_output(vm, out):
+        print(str(path))
+        if args.open:
+            _open_file(path)
     return 0
 
 
@@ -1116,6 +1355,7 @@ def _resolve_t2i_request(
     steps: Optional[int],
     guidance_scale: Optional[float],
     seed: Optional[int],
+    lora_adapters: Sequence[Any] = (),
     extra: Optional[Dict[str, Any]] = None,
 ) -> ImageGenerationRequest:
     request = ImageGenerationRequest(
@@ -1126,6 +1366,7 @@ def _resolve_t2i_request(
         steps=steps,
         guidance_scale=guidance_scale,
         seed=seed,
+        lora_adapters=tuple(lora_adapters),
         extra=dict(extra or {}),
     )
     backend = getattr(vm, "backend", None)
@@ -1203,29 +1444,45 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
     ]
     if reference_images:
         extra["reference_images"] = reference_images
+    lora_adapters = _lora_adapters_from_mapping(vars(args))
+    count, seeds = _seed_values_from_args(args)
     progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", False)))
     if progress.enabled:
         extra["on_progress"] = progress
     try:
-        out = vm.edit_image(
-            args.prompt,
-            image=image_bytes,
-            mask=mask_bytes,
-            negative_prompt=args.negative_prompt,
-            steps=steps,
-            guidance_scale=args.guidance_scale,
-            seed=args.seed,
-            extra=extra,
-        )
+        if count <= 1 and not seeds:
+            out = vm.edit_image(
+                args.prompt,
+                image=image_bytes,
+                mask=mask_bytes,
+                negative_prompt=args.negative_prompt,
+                steps=steps,
+                guidance_scale=args.guidance_scale,
+                seed=args.seed,
+                lora_adapters=lora_adapters,
+                extra=extra,
+            )
+        else:
+            out = vm.edit_image_batch(
+                args.prompt,
+                image_bytes,
+                count=count,
+                seeds=seeds,
+                mask=mask_bytes,
+                negative_prompt=args.negative_prompt,
+                steps=steps,
+                guidance_scale=args.guidance_scale,
+                seed=args.seed,
+                lora_adapters=lora_adapters,
+                extra=extra,
+            )
     finally:
         progress.close()
     _print_json(out)
-    if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
-        p = vm.store.get_content_path(out["$artifact"])
-        if p is not None:
-            print(str(p))
-            if args.open:
-                _open_file(p)
+    for path in _artifact_paths_from_output(vm, out):
+        print(str(path))
+        if args.open:
+            _open_file(path)
     return 0
 
 
@@ -1252,12 +1509,19 @@ def _cmd_upscale(args: argparse.Namespace) -> int:
     extra: Dict[str, Any] = {}
     if progress.enabled:
         extra["on_progress"] = progress
+    resolution = getattr(args, "resolution", None)
+    scale = getattr(args, "scale", None)
+    if resolution is None and scale is None:
+        resolution = "2x"
+    softness = getattr(args, "softness", None)
+    if softness is None:
+        softness = 0.25
     request = ImageUpscaleRequest(
         image=image_bytes,
-        resolution=getattr(args, "resolution", None),
-        scale=getattr(args, "scale", None),
+        resolution=resolution,
+        scale=scale,
         seed=getattr(args, "seed", None),
-        softness=getattr(args, "softness", None),
+        softness=softness,
         quantize=getattr(args, "quantize", None),
         vae_tiling=getattr(args, "vae_tiling", None),
         extra=extra,
@@ -1297,32 +1561,53 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
     extra: Dict[str, Any] = {}
     if getattr(args, "max_sequence_length", None) is not None:
         extra["max_sequence_length"] = int(args.max_sequence_length)
+    lora_adapters = _lora_adapters_from_mapping(vars(args))
+    count, seeds = _seed_values_from_args(args)
     progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", True)))
     if progress.enabled:
         extra["on_progress"] = progress
     try:
-        out = vm.generate_video(
-            args.prompt,
-            negative_prompt=args.negative_prompt,
-            width=args.width,
-            height=args.height,
-            fps=args.fps,
-            num_frames=args.num_frames,
-            steps=args.steps,
-            guidance_scale=args.guidance_scale,
-            guidance_2=args.guidance_2,
-            seed=args.seed,
-            extra=extra or None,
-        )
+        if count <= 1 and not seeds:
+            out = vm.generate_video(
+                args.prompt,
+                negative_prompt=args.negative_prompt,
+                width=args.width,
+                height=args.height,
+                fps=args.fps,
+                num_frames=args.num_frames,
+                steps=args.steps,
+                guidance_scale=args.guidance_scale,
+                guidance_2=args.guidance_2,
+                flow_shift=getattr(args, "flow_shift", None),
+                seed=args.seed,
+                lora_adapters=lora_adapters,
+                extra=extra or None,
+            )
+        else:
+            out = vm.generate_video_batch(
+                args.prompt,
+                count=count,
+                seeds=seeds,
+                negative_prompt=args.negative_prompt,
+                width=args.width,
+                height=args.height,
+                fps=args.fps,
+                num_frames=args.num_frames,
+                steps=args.steps,
+                guidance_scale=args.guidance_scale,
+                guidance_2=args.guidance_2,
+                flow_shift=getattr(args, "flow_shift", None),
+                seed=args.seed,
+                lora_adapters=lora_adapters,
+                extra=extra or None,
+            )
     finally:
         progress.close()
     _print_json(out)
-    if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
-        p = vm.store.get_content_path(out["$artifact"])
-        if p is not None:
-            print(str(p))
-            if args.open:
-                _open_file(p)
+    for path in _artifact_paths_from_output(vm, out):
+        print(str(path))
+        if args.open:
+            _open_file(path)
     return 0
 
 
@@ -1332,33 +1617,55 @@ def _cmd_i2v(args: argparse.Namespace) -> int:
     extra: Dict[str, Any] = {}
     if getattr(args, "max_sequence_length", None) is not None:
         extra["max_sequence_length"] = int(args.max_sequence_length)
+    lora_adapters = _lora_adapters_from_mapping(vars(args))
+    count, seeds = _seed_values_from_args(args)
     progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", True)))
     if progress.enabled:
         extra["on_progress"] = progress
     try:
-        out = vm.image_to_video(
-            image_bytes,
-            prompt=args.prompt,
-            negative_prompt=args.negative_prompt,
-            width=args.width,
-            height=args.height,
-            fps=args.fps,
-            num_frames=args.num_frames,
-            steps=args.steps,
-            guidance_scale=args.guidance_scale,
-            guidance_2=args.guidance_2,
-            seed=args.seed,
-            extra=extra or None,
-        )
+        if count <= 1 and not seeds:
+            out = vm.image_to_video(
+                image_bytes,
+                prompt=args.prompt,
+                negative_prompt=args.negative_prompt,
+                width=args.width,
+                height=args.height,
+                fps=args.fps,
+                num_frames=args.num_frames,
+                steps=args.steps,
+                guidance_scale=args.guidance_scale,
+                guidance_2=args.guidance_2,
+                flow_shift=getattr(args, "flow_shift", None),
+                seed=args.seed,
+                lora_adapters=lora_adapters,
+                extra=extra or None,
+            )
+        else:
+            out = vm.image_to_video_batch(
+                image_bytes,
+                count=count,
+                seeds=seeds,
+                prompt=args.prompt,
+                negative_prompt=args.negative_prompt,
+                width=args.width,
+                height=args.height,
+                fps=args.fps,
+                num_frames=args.num_frames,
+                steps=args.steps,
+                guidance_scale=args.guidance_scale,
+                guidance_2=args.guidance_2,
+                flow_shift=getattr(args, "flow_shift", None),
+                seed=args.seed,
+                lora_adapters=lora_adapters,
+                extra=extra or None,
+            )
     finally:
         progress.close()
     _print_json(out)
-    if isinstance(vm.store, LocalAssetStore) and isinstance(out, dict) and is_artifact_ref(out):
-        p = vm.store.get_content_path(out["$artifact"])
-        if p is not None:
-            print(str(p))
-            if args.open:
-                _open_file(p)
+    for path in _artifact_paths_from_output(vm, out):
+        print(str(path))
+        if args.open:
+            _open_file(path)
     return 0
 
 
@@ -1593,7 +1900,16 @@ def _parse_flags_and_rest(tokens: List[str]) -> Tuple[Dict[str, Any], List[str]]
             flags[key] = True
             i += 1
             continue
-        flags[key] = val
+        if key in _REPEATED_REPL_FLAGS:
+            existing = flags.get(key)
+            if existing is None:
+                flags[key] = [val]
+            elif isinstance(existing, list):
+                existing.append(val)
+            else:
+                flags[key] = [existing, val]
+        else:
+            flags[key] = val
         i += 2
     return flags, rest
 
@@ -1652,6 +1968,179 @@ def _coerce_scalar(v: Any) -> Any:
         return float(s)
     except Exception:
         return s
+
+
+def _flatten_cli_values(values: Any) -> List[Any]:
+    if values is None:
+        return []
+    if isinstance(values, list):
+        out: List[Any] = []
+        for item in values:
+            if isinstance(item, list):
+                out.extend(item)
+            else:
+                out.append(item)
+        return out
+    return [values]
+
+
+def _seed_values_from_args(args: argparse.Namespace) -> Tuple[int, Optional[Tuple[int, ...]]]:
+    count = int(getattr(args, "count", 1) or 1)
+    raw_values = _flatten_cli_values(getattr(args, "seeds", None))
+    seeds: List[int] = []
+    for raw in raw_values:
+        for part in str(raw).replace(",", " ").split():
+            text = str(part).strip()
+            if text:
+                seeds.append(int(text))
+    if seeds:
+        if count == 1:
+            count = len(seeds)
+        elif count != len(seeds):
+            raise ValueError(
+                f"--count ({count}) must match the number of explicit --seeds values ({len(seeds)})."
+            )
+    return count, tuple(seeds) if seeds else None
+
+
+def _artifact_paths_from_output(vm: Any, output: Any) -> List[Path]:
+    if not isinstance(vm.store, LocalAssetStore):
+        return []
+    outputs = output if isinstance(output, list) else [output]
+    paths: List[Path] = []
+    for item in outputs:
+        if not isinstance(item, dict) or not is_artifact_ref(item):
+            continue
+        path = vm.store.get_content_path(item["$artifact"])
+        if path is not None:
+            paths.append(path)
+    return paths
+
+
+def _lora_adapters_from_mapping(mapping: Dict[str, Any]) -> Tuple[Any, ...]:
+    sources = _flatten_cli_values(
+        mapping.get("lora_paths")
+        or mapping.get("lora_path")
+        or mapping.get("lora")
+    )
+    if not sources:
+        return ()
+    scales = _flatten_cli_values(mapping.get("lora_scales") or mapping.get("lora_scale"))
+    weight_names = _flatten_cli_values(mapping.get("lora_weight_name"))
+    subfolders = _flatten_cli_values(mapping.get("lora_subfolder"))
+    adapter_names = _flatten_cli_values(mapping.get("lora_adapter_name"))
+    target_roles = _flatten_cli_values(
+        mapping.get("lora_target_roles") or mapping.get("lora_target_role")
+    )
+    counts = {
+        "lora scales": scales,
+        "lora weight names": weight_names,
+        "lora subfolders": subfolders,
+        "lora adapter names": adapter_names,
+        "lora target roles": target_roles,
+    }
+    for label, values in counts.items():
+        if values and len(values) != len(sources):
+            raise ValueError(
+                f"Number of {label} ({len(values)}) must match the number of LoRA adapters ({len(sources)})."
+            )
+    raw = []
+    for index, source in enumerate(sources):
+        raw.append(
+            {
+                "source": str(source).strip(),
+                "scale": float(scales[index]) if index < len(scales) and scales[index] not in (None, "") else None,
+                "weight_name": (
+                    str(weight_names[index]).strip()
+                    if index < len(weight_names) and str(weight_names[index]).strip()
+                    else None
+                ),
+                "subfolder": (
+                    str(subfolders[index]).strip()
+                    if index < len(subfolders) and str(subfolders[index]).strip()
+                    else None
+                ),
+                "adapter_name": (
+                    str(adapter_names[index]).strip()
+                    if index < len(adapter_names) and str(adapter_names[index]).strip()
+                    else None
+                ),
+                "target_role": (
+                    str(target_roles[index]).strip()
+                    if index < len(target_roles) and str(target_roles[index]).strip()
+                    else None
+                ),
+            }
+        )
+    return resolve_request_lora_adapters(raw)
+
+
+def _add_lora_cli_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--lora",
+        "--lora-path",
+        "--lora-paths",
+        dest="lora_paths",
+        action="append",
+        default=None,
+        help=(
+            "Attach one LoRA adapter. Repeat per adapter. Accepts a local .safetensors path, "
+            "a Hugging Face repo id, or repo:file.safetensors for MLX-Gen-compatible handles."
+        ),
+    )
+    parser.add_argument(
+        "--lora-scale",
+        "--lora-scales",
+        dest="lora_scales",
+        action="append",
+        type=float,
+        default=None,
+        help="Optional LoRA scale per adapter. Repeat in the same order as --lora.",
+    )
+    parser.add_argument(
+        "--lora-weight-name",
+        action="append",
+        default=None,
+        help="Optional adapter weight file name per --lora entry for backends that support repo + file resolution.",
+    )
+    parser.add_argument(
+        "--lora-subfolder",
+        action="append",
+        default=None,
+        help="Optional Hugging Face subfolder per --lora entry for backends that support it.",
+    )
+    parser.add_argument(
+        "--lora-adapter-name",
+        action="append",
+        default=None,
+        help="Optional stable adapter name per --lora entry.",
+    )
+    parser.add_argument(
+        "--lora-target-role",
+        "--lora-target-roles",
+        dest="lora_target_roles",
+        action="append",
+        default=None,
+        help=(
+            "Optional target role per --lora entry. Required for MLX-Gen Wan A14B when the route "
+            "expects explicit high/low-noise transformer assignment."
+        ),
+    )
+
+
+def _add_batch_cli_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        help="Generate N outputs in one command by repeating the same request with per-output seeds.",
+    )
+    parser.add_argument(
+        "--seeds",
+        action="append",
+        default=None,
+        help="Explicit output seeds. Repeat or pass a comma-separated list. Overrides random seed planning.",
+    )
 
 
 def _video_progress_enabled_from_flags(flags: Dict[str, Any]) -> bool:
@@ -2476,6 +2965,44 @@ def build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", help="Print full provider model entries as JSON."
     )
     pm.set_defaults(_fn=_cmd_provider_models)
+    pa = sub.add_parser(
+        "adapters",
+        aliases=["provider-adapters", "list-adapters"],
+        help="List locally discoverable adapters for the configured provider/backend.",
+    )
+    pa.add_argument(
+        "--provider",
+        "--backend",
+        dest="provider",
+        default="mlx-gen",
+        help="Provider/backend. Adapter discovery currently targets mlx-gen cache-backed LoRAs.",
+    )
+    pa.add_argument(
+        "--model",
+        "--model-id",
+        dest="model",
+        default=None,
+        help="Optional provider model id used to filter compatible adapters.",
+    )
+    pa.add_argument(
+        "--mflux-base-model",
+        default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"),
+        help="Optional MLX-Gen base family hint for custom repos.",
+    )
+    pa.add_argument(
+        "--mflux-model-dir",
+        "--model-dir",
+        dest="mflux_model_dir",
+        default=_env("ABSTRACTVISION_MODEL_DIR"),
+        help="Legacy MLX/MFLUX preset root imported into the Hugging Face cache when older installs are migrated.",
+    )
+    pa.add_argument(
+        "--task",
+        default="",
+        help="Optional task filter (for example text_to_image, image_to_image, text_to_video, image_to_video).",
+    )
+    pa.add_argument("--json", action="store_true", help="Print full JSON.")
+    pa.set_defaults(_fn=_cmd_provider_adapters)
     sub.add_parser("tasks", help="List known task keys (from capability registry).").set_defaults(
         _fn=_cmd_tasks
     )
@@ -2795,8 +3322,8 @@ def build_parser() -> argparse.ArgumentParser:
         ap.add_argument(
             "--timeout-s",
             type=float,
-            default=float(_env("ABSTRACTVISION_TIMEOUT_S", "3600") or "3600"),
-            help="Timeout seconds for HTTP calls and local runtimes (default: 3600).",
+            default=None,
+            help="Timeout seconds for OpenAI-compatible catalog/control calls. Local image/video generation has no default timeout.",
         )
         ap.add_argument(
             "--store-dir",
@@ -2854,6 +3381,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable image generation progress output.",
     )
+    _add_batch_cli_flags(t2i)
+    _add_lora_cli_flags(t2i)
     t2i.set_defaults(_fn=_cmd_t2i)
 
     i2i = sub.add_parser(
@@ -2894,6 +3423,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable image edit progress output.",
     )
+    _add_batch_cli_flags(i2i)
+    _add_lora_cli_flags(i2i)
     i2i.set_defaults(_fn=_cmd_i2i)
 
     upscale = sub.add_parser(
@@ -2915,7 +3446,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="SeedVR2 target shortest edge in pixels or scale factor such as 2x.",
     )
-    upscale.add_argument("--softness", type=float, default=None, help="SeedVR2 softness in [0.0, 1.0].")
+    upscale.add_argument("--softness", type=float, default=None, help="SeedVR2 softness in [0.0, 1.0]. Default: 0.25.")
     upscale.add_argument("--seed", type=int, default=None)
     upscale.add_argument(
         "--quantize",
@@ -2931,7 +3462,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--vae-tiling",
         action="store_true",
         default=None,
-        help="Enable SeedVR2 tiled VAE encode/decode for very large outputs.",
+        help="Force SeedVR2 tiled VAE encode/decode. Omit to use the MLX-Gen runtime policy.",
     )
     upscale.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     upscale.add_argument(
@@ -2969,6 +3500,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="guidance_2",
         help="Optional second-stage low-noise guidance scale for dual-transformer Wan A14B models.",
     )
+    t2v.add_argument(
+        "--flow-shift",
+        type=float,
+        default=None,
+        help="Optional Wan flow-matching shift. TI2V-5B practical 480p checks such as 832x480 typically use 3.0.",
+    )
     t2v.add_argument("--seed", type=int, default=None)
     t2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     t2v.add_argument(
@@ -2984,6 +3521,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable video generation progress output.",
     )
+    _add_batch_cli_flags(t2v)
+    _add_lora_cli_flags(t2v)
     t2v.set_defaults(_fn=_cmd_t2v)
 
     i2v = sub.add_parser(
@@ -3008,6 +3547,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="guidance_2",
         help="Optional second-stage low-noise guidance scale for dual-transformer Wan A14B models.",
     )
+    i2v.add_argument(
+        "--flow-shift",
+        type=float,
+        default=None,
+        help="Optional Wan flow-matching shift. TI2V-5B practical 480p checks such as 832x480 typically use 3.0.",
+    )
     i2v.add_argument("--seed", type=int, default=None)
     i2v.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     i2v.add_argument(
@@ -3023,6 +3568,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable video generation progress output.",
     )
+    _add_batch_cli_flags(i2v)
+    _add_lora_cli_flags(i2v)
     i2v.set_defaults(_fn=_cmd_i2v)
 
     return p

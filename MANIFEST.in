@@ -14,4 +14,4 @@ prune site
 prune dist
 prune build
 prune docs/backlog/proposed
-global-exclude __pycache__ *.py[cod]
+global-exclude __pycache__ *.py[cod] .DS_Store

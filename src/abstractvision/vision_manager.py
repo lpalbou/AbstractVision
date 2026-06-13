@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -14,6 +15,7 @@ from .types import (
     ImageToVideoRequest,
     ImageUpscaleRequest,
     MultiAngleRequest,
+    ProviderAdapterInfo,
     ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
@@ -99,6 +101,42 @@ class VisionManager:
         backend = self._require_backend()
         return backend.list_provider_models(task=task)
 
+    def list_provider_adapters(
+        self,
+        *,
+        model: Optional[str] = None,
+        task: Optional[str] = None,
+    ) -> Sequence[ProviderAdapterInfo]:
+        """List adapters advertised or discovered by the configured provider backend."""
+        backend = self._require_backend()
+        return backend.list_provider_adapters(model=model, task=task)
+
+    def _batch_seeds(
+        self,
+        *,
+        count: int,
+        seed: Optional[int] = None,
+        seeds: Optional[Sequence[int]] = None,
+    ) -> List[Optional[int]]:
+        if seeds is not None:
+            planned = [int(value) for value in seeds]
+            if not planned:
+                raise ValueError("Batch generation seeds cannot be empty.")
+            if count != len(planned):
+                raise ValueError(
+                    f"Batch generation count ({count}) must match the number of explicit seeds ({len(planned)})."
+                )
+            return planned
+        if count <= 0:
+            raise ValueError("Batch generation count must be >= 1.")
+        if count == 1:
+            return [int(seed)] if seed is not None else [None]
+        if seed is not None:
+            base_seed = int(seed)
+            return [base_seed + index for index in range(count)]
+        rng = random.SystemRandom()
+        return [int(rng.randrange(0, 1_000_000_000)) for _ in range(count)]
+
     def generate_image(self, prompt: str, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("text_to_image")
@@ -112,6 +150,22 @@ class VisionManager:
         return self._maybe_store(
             asset, tags={"kind": "generated_media", "modality": "image", "task": "text_to_image"}
         )
+
+    def generate_image_batch(
+        self,
+        prompt: str,
+        *,
+        count: int = 1,
+        seeds: Optional[Sequence[int]] = None,
+        **kwargs,
+    ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
+        planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
+        out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
+        for planned_seed in planned_seeds:
+            call_kwargs = dict(kwargs)
+            call_kwargs["seed"] = planned_seed
+            out.append(self.generate_image(prompt, **call_kwargs))
+        return out
 
     def edit_image(
         self, prompt: str, image: bytes, **kwargs
@@ -133,6 +187,23 @@ class VisionManager:
         return self._maybe_store(
             asset, tags={"kind": "generated_media", "modality": "image", "task": "image_to_image"}
         )
+
+    def edit_image_batch(
+        self,
+        prompt: str,
+        image: bytes,
+        *,
+        count: int = 1,
+        seeds: Optional[Sequence[int]] = None,
+        **kwargs,
+    ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
+        planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
+        out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
+        for planned_seed in planned_seeds:
+            call_kwargs = dict(kwargs)
+            call_kwargs["seed"] = planned_seed
+            out.append(self.edit_image(prompt, image=image, **call_kwargs))
+        return out
 
     def upscale_image(self, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
@@ -173,6 +244,22 @@ class VisionManager:
             asset, tags={"kind": "generated_media", "modality": "video", "task": "text_to_video"}
         )
 
+    def generate_video_batch(
+        self,
+        prompt: str,
+        *,
+        count: int = 1,
+        seeds: Optional[Sequence[int]] = None,
+        **kwargs,
+    ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
+        planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
+        out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
+        for planned_seed in planned_seeds:
+            call_kwargs = dict(kwargs)
+            call_kwargs["seed"] = planned_seed
+            out.append(self.generate_video(prompt, **call_kwargs))
+        return out
+
     def image_to_video(self, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("image_to_video")
@@ -186,3 +273,19 @@ class VisionManager:
         return self._maybe_store(
             asset, tags={"kind": "generated_media", "modality": "video", "task": "image_to_video"}
         )
+
+    def image_to_video_batch(
+        self,
+        image: bytes,
+        *,
+        count: int = 1,
+        seeds: Optional[Sequence[int]] = None,
+        **kwargs,
+    ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
+        planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
+        out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
+        for planned_seed in planned_seeds:
+            call_kwargs = dict(kwargs)
+            call_kwargs["seed"] = planned_seed
+            out.append(self.image_to_video(image, **call_kwargs))
+        return out

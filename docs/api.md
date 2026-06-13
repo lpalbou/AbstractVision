@@ -13,10 +13,12 @@ See also:
 The package exports the following symbols from `abstractvision` (see [`../src/abstractvision/__init__.py`](../src/abstractvision/__init__.py)):
 
 - `VisionManager`
+- `ProviderAdapterInfo`
 - `ProviderModelInfo`
 - `VisionModelCapabilitiesRegistry`
 - `LocalAssetStore`
 - `RuntimeArtifactStoreAdapter`
+- `LoRAAdapterSpec`
 - `is_artifact_ref`
 - `__version__`
 
@@ -27,10 +29,14 @@ The package exports the following symbols from `abstractvision` (see [`../src/ab
 `VisionManager` exposes one method per task (implementation: [`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py)):
 
 - `generate_image(...)` → `text_to_image`
+- `generate_image_batch(...)` → repeated `text_to_image` orchestration with explicit seed planning
 - `edit_image(...)` → `image_to_image`
+- `edit_image_batch(...)` → repeated `image_to_image` orchestration with explicit seed planning
 - `upscale_image(...)` → `image_upscale`
 - `generate_video(...)` → `text_to_video` (backend-dependent)
+- `generate_video_batch(...)` → repeated `text_to_video` orchestration with explicit seed planning
 - `image_to_video(...)` → `image_to_video` (backend-dependent)
+- `image_to_video_batch(...)` → repeated `image_to_video` orchestration with explicit seed planning
 - `generate_angles(...)` → `multi_view_image` (API exists; no built-in backend implements it yet)
 
 Task names are also used by the capability registry ([`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json)).
@@ -43,7 +49,7 @@ Built-in backends live in [`../src/abstractvision/backends/`](../src/abstractvis
 - `OpenAICompatibleVisionBackend` (HTTP)
 - `HuggingFaceDiffusersVisionBackend` (local Diffusers images; local Diffusers `text_to_video` groundwork is currently quarantined)
 - `StableDiffusionCppVisionBackend` (local stable-diffusion.cpp / GGUF)
-- `MLXGenVisionBackend` / compatibility alias `MFluxVisionBackend` (local Apple Silicon MLX-Gen bridge for curated AbstractFramework q4/q8 MLX presets, official FIBO snapshots, and Wan video)
+- `MLXGenVisionBackend` / compatibility alias `MFluxVisionBackend` (local Apple-first MLX-Gen bridge for curated AbstractFramework q4/q8 MLX presets, official FIBO snapshots, shared LoRA adapters, and Wan video)
 
 Backend config classes are re-exported from `abstractvision.backends` via lazy imports (see [`../src/abstractvision/backends/__init__.py`](../src/abstractvision/backends/__init__.py)).
 
@@ -64,6 +70,19 @@ For official OpenAI, use `base_url="https://api.openai.com/v1"` and an API key. 
 When AbstractVision is loaded as an AbstractCore capability plugin, the plugin shim exposes the
 same explicit catalog surface as `llm.vision.list_provider_models(task="text_to_image")`. It
 returns JSON-safe dictionaries so Core/Gateway route code can avoid private backend reach-throughs.
+
+Adapter inventory is exposed through the same explicit pattern:
+
+```python
+for adapter in backend.list_provider_adapters(
+    model="AbstractFramework/qwen-image-edit-2509-8bit",
+    task="image_to_image",
+):
+    print(adapter.id)
+```
+
+`ProviderAdapterInfo` rows are explicit discovery outputs. They do not mutate
+the configured generation route.
 
 ### Outputs: bytes vs artifact refs
 
@@ -112,7 +131,7 @@ png_bytes = store.load_bytes(ref["$artifact"])
 Install `abstractvision[diffusers]` before using this backend.
 
 ```python
-from abstractvision import VisionManager
+from abstractvision import LoRAAdapterSpec, VisionManager
 from abstractvision.backends import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
 
 backend = HuggingFaceDiffusersVisionBackend(
@@ -129,7 +148,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen 0.18.13+ supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.18.18+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
@@ -164,6 +183,12 @@ image_asset = image_vm.generate_image(
     height=512,
     steps=12,
     guidance_scale=1.0,
+    lora_adapters=[
+        LoRAAdapterSpec(
+            source="prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
+            scale=1.0,
+        )
+    ],
     on_progress=on_progress,
 )
 
@@ -172,6 +197,12 @@ edit_asset = image_vm.edit_image(
     image=Path("./subject.png").read_bytes(),
     steps=12,
     guidance_scale=1.0,
+    lora_adapters=[
+        LoRAAdapterSpec(
+            source="fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors",
+            scale=0.9,
+        )
+    ],
     on_progress=on_progress,
     extra={"reference_images": [Path("./style-reference.png").read_bytes()]},
 )
@@ -181,7 +212,8 @@ upscale_vm = VisionManager(backend=upscale_backend)
 
 upscaled_asset = upscale_vm.upscale_image(
     image=Path("./subject.png").read_bytes(),
-    scale="2x",
+    resolution="2x",
+    softness=0.25,
     seed=2405,
     on_progress=on_progress,
 )
@@ -200,6 +232,13 @@ asset = t2v_vm.generate_video(
     steps=20,
     guidance_scale=4.0,
     guidance_2=3.0,
+    lora_adapters=[
+        LoRAAdapterSpec(
+            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+            scale=0.9,
+            target_role="transformer",
+        )
+    ],
     on_progress=on_progress,
     extra={"max_sequence_length": 256},
 )
@@ -219,6 +258,13 @@ first_frame_asset = i2v_vm.image_to_video(
     steps=20,
     guidance_scale=3.5,
     guidance_2=3.5,
+    lora_adapters=[
+        LoRAAdapterSpec(
+            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+            scale=0.9,
+            target_role="transformer",
+        )
+    ],
     on_progress=on_progress,
     extra={"max_sequence_length": 256},
 )
@@ -229,6 +275,9 @@ primary/high-noise stage and `guidance_2` for the second/low-noise stage. The
 registry default is `guidance_2=3.0` for text-to-video A14B and `3.5` for
 image-to-video A14B. Other video models should omit `guidance_2` unless their
 registry task declares it.
+
+For TI2V-5B, use `flow_shift` directly when you need to override the route
+default. The bundled visual proof uses `832x480` with `flow_shift=3.0`.
 
 For MLX-Gen, `on_progress` receives an `abstractvision.VideoProgressEvent`.
 Image generation/editing/upscaling events carry `phase`, `step`, `total_steps`,
@@ -241,6 +290,26 @@ two-argument `(current, total)` callback for backend-agnostic progress bars.
 For MLX-Gen, that callback reports denoise step counts; use
 `on_progress(event)` when a UI also needs video frame context.
 
+## Shared LoRA adapters
+
+AbstractVision exposes a typed LoRA contract across Python, CLI, and the
+AbstractCore plugin through `LoRAAdapterSpec` plus the request field
+`lora_adapters=[...]`.
+
+Each adapter can carry:
+
+- `source`
+- `scale`
+- `weight_name`
+- `subfolder`
+- `adapter_name`
+- `target_role`
+
+Wan TI2V-5B uses one role, `transformer`. Wan A14B routes require explicit
+`high_noise_transformer` / `low_noise_transformer` assignment. Provider catalogs
+surface exact-route LoRA truth through `supports_lora`, `lora_status`,
+`lora_target_roles`, and `lora_validation_profile`.
+
 ## Passing advanced backend parameters (`extra`)
 
 Request dataclasses include an `extra: dict` field ([`../src/abstractvision/types.py`](../src/abstractvision/types.py)). Use it to pass backend-specific parameters in a controlled way:
@@ -251,14 +320,17 @@ asset_or_ref = vm.generate_image(
     steps=8,
     guidance_scale=1.0,
     extra={
-        # Example keys used by some Diffusers flows:
-        "loras_json": [{"source": "lightx2v/Qwen-Image-Edit-2511-Lightning", "scale": 1.0}],
+        # Compatibility-only keys used by older Diffusers flows:
         "rapid_aio_repo": "linoyts/Qwen-Image-Edit-Rapid-AIO",
     },
 )
 ```
 
-Backends may ignore unknown keys; consult the backend implementation and [docs/reference/backends.md](reference/backends.md).
+Backends may ignore unknown keys; consult the backend implementation and
+[docs/reference/backends.md](reference/backends.md). New callers should prefer
+the typed shared `lora_adapters` field instead of `extra["loras*"]`. Legacy
+Diffusers compatibility payloads such as `loras_json` still work, but they are
+no longer the preferred public contract.
 
 ## Capability registry (what models can do)
 

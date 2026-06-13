@@ -94,26 +94,47 @@ class _FakeModelConfig:
             raise AssertionError("Wan must use the explicit config factory, not short-name inference")
         configs = {
             "flux2-klein-4b": "flux2-4b-config",
+            "black-forest-labs/flux.2-klein-4b": "flux2-4b-config",
             "flux2-klein-9b": "flux2-9b-config",
+            "black-forest-labs/flux.2-klein-9b": "flux2-9b-config",
             "flux2-klein-base-4b": "flux2-base-4b-config",
+            "black-forest-labs/flux.2-klein-base-4b": "flux2-base-4b-config",
             "flux2-klein-base-9b": "flux2-base-9b-config",
+            "black-forest-labs/flux.2-klein-base-9b": "flux2-base-9b-config",
             "bonsai-image-ternary": "bonsai-image-ternary-config",
+            "prism-ml/bonsai-image-ternary-4b-mlx-2bit": "bonsai-image-ternary-config",
             "z-image": "z-image-config",
+            "tongyi-mai/z-image": "z-image-config",
             "z-image-turbo": "z-image-turbo-config",
+            "tongyi-mai/z-image-turbo": "z-image-turbo-config",
             "qwen-image": "qwen-image-config",
+            "qwen/qwen-image": "qwen-image-config",
+            "qwen/qwen-image-2512": "qwen-image-config",
             "qwen-image-edit": "qwen-image-edit-config",
-            "qwen-image-edit-2511": "qwen-image-edit-config",
-            "qwen-image-edit-2509": "qwen-image-edit-config",
+            "qwen-image-edit-2511": "qwen-image-edit-2511-config",
+            "qwen/qwen-image-edit-2511": "qwen-image-edit-2511-config",
+            "qwen-image-edit-2509": "qwen-image-edit-2509-config",
+            "qwen/qwen-image-edit-2509": "qwen-image-edit-2509-config",
             "ernie-image-turbo": "ernie-image-turbo-config",
+            "baidu/ernie-image-turbo": "ernie-image-turbo-config",
             "fibo": "fibo-config",
+            "briaai/fibo": "fibo-config",
             "fibo-lite": "fibo-lite-config",
+            "briaai/fibo-lite": "fibo-lite-config",
             "fibo-edit": "fibo-edit-config",
+            "briaai/fibo-edit": "fibo-edit-config",
             "fibo-edit-rmbg": "fibo-edit-rmbg-config",
+            "briaai/fibo-edit-rmbg": "fibo-edit-rmbg-config",
             "wan2.2-ti2v-5b": "wan-ti2v-config",
+            "wan-ai/wan2.2-ti2v-5b-diffusers": "wan-ti2v-config",
             "wan2.2-t2v-a14b": "wan-t2v-a14b-config",
+            "wan-ai/wan2.2-t2v-a14b-diffusers": "wan-t2v-a14b-config",
             "wan2.2-i2v-a14b": "wan-i2v-a14b-config",
+            "wan-ai/wan2.2-i2v-a14b-diffusers": "wan-i2v-a14b-config",
+            "bytedance-seed/seedvr2-3b": "seedvr2-3b-config",
+            "bytedance-seed/seedvr2-7b": "seedvr2-7b-config",
         }
-        return configs.get(model_name, str(model_name))
+        return configs.get(str(model_name).lower(), str(model_name))
 
     @staticmethod
     def flux2_klein_4b():
@@ -454,6 +475,33 @@ class TestMFluxVisionBackend(unittest.TestCase):
         (repo_dir / "refs" / "main").write_text(snapshot_name, encoding="utf-8")
         return snap
 
+    def _make_adapter_snapshot(
+        self,
+        root: Path,
+        repo_id: str,
+        relative_path: str,
+        *,
+        base_model: str | tuple[str, ...],
+        snapshot_name: str = "abc123",
+    ) -> Path:
+        repo_dir = root / f"models--{repo_id.replace('/', '--')}"
+        snap = repo_dir / "snapshots" / snapshot_name
+        adapter_path = snap / relative_path
+        adapter_path.parent.mkdir(parents=True, exist_ok=True)
+        adapter_path.write_bytes(b"adapter")
+        base_models = (base_model,) if isinstance(base_model, str) else tuple(base_model)
+        frontmatter = ["---"]
+        if len(base_models) == 1:
+            frontmatter.append(f"base_model: {base_models[0]}")
+        else:
+            frontmatter.append("base_model:")
+            frontmatter.extend([f"  - {value}" for value in base_models])
+        frontmatter.extend(["---", "", "# adapter"])
+        (snap / "README.md").write_text("\n".join(frontmatter), encoding="utf-8")
+        (repo_dir / "refs").mkdir(parents=True, exist_ok=True)
+        (repo_dir / "refs" / "main").write_text(snapshot_name, encoding="utf-8")
+        return snap
+
     def test_generate_image_uses_cached_mflux_preset(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest
@@ -625,6 +673,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             self.assertTrue(asset.data.startswith(b"\x89PNG"))
                             self.assertEqual(asset.metadata["base_model"], base_model)
                             self.assertEqual(asset.metadata["quantization_bits"], bits)
+                            self.assertEqual(asset.metadata["resolution"], "2x")
+                            self.assertEqual(asset.metadata["softness"], 0.25)
                             self.assertEqual(_FakeSeedVR2.last_init["model_config"], config_name)
                             self.assertEqual(_FakeSeedVR2.last_init["model_path"], str(snapshots[repo_id]))
                             self.assertIsNone(_FakeSeedVR2.last_init["quantize"])
@@ -716,7 +766,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
     def test_generate_image_uses_exact_qwen_2512_q8_repo_id(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
-        from abstractvision.types import ImageGenerationRequest
+        from abstractvision.types import ImageGenerationRequest, LoRAAdapterSpec
 
         with tempfile.TemporaryDirectory() as cache_td:
             self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-2512-4bit")
@@ -739,11 +789,29 @@ class TestMFluxVisionBackend(unittest.TestCase):
                         asset = backend.generate_image(
                             ImageGenerationRequest(prompt="q8", steps=2, seed=2)
                         )
+                        backend.generate_image(
+                            ImageGenerationRequest(
+                                prompt="q8-lora",
+                                steps=2,
+                                seed=3,
+                                lora_adapters=(
+                                    LoRAAdapterSpec(
+                                        source="owner/style-lora:adapter.safetensors",
+                                        scale=0.75,
+                                    ),
+                                ),
+                            )
+                        )
 
         self.assertTrue(asset.data.startswith(b"\x89PNG"))
         self.assertEqual(_FakeQwenImage.last_init["model_path"], str(q8_snapshot))
         self.assertNotIn("quantize", _FakeQwenImage.last_init)
         self.assertEqual(asset.metadata["quantization_bits"], 8)
+        self.assertEqual(
+            _FakeQwenImage.last_init["lora_paths"],
+            ["owner/style-lora:adapter.safetensors"],
+        )
+        self.assertEqual(_FakeQwenImage.last_init["lora_scales"], [0.75])
 
     def test_generic_qwen_2512_selector_is_rejected_when_q4_and_q8_exist(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1042,7 +1110,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
     def test_wan_routes_text_to_video(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
-        from abstractvision.types import VideoGenerationRequest
+        from abstractvision.types import LoRAAdapterSpec, VideoGenerationRequest
 
         with tempfile.TemporaryDirectory() as cache_td:
             snapshot = self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
@@ -1059,12 +1127,12 @@ class TestMFluxVisionBackend(unittest.TestCase):
                         "abstractvision.backends.mflux._lazy_import_mflux_wan",
                         return_value=_FakeWan,
                     ):
-                        asset = backend.generate_video(
+                        base_asset = backend.generate_video(
                             VideoGenerationRequest(
                                 prompt="fox",
                                 negative_prompt="blur",
-                                width=320,
-                                height=192,
+                                width=832,
+                                height=480,
                                 fps=12,
                                 num_frames=5,
                                 steps=2,
@@ -1073,24 +1141,150 @@ class TestMFluxVisionBackend(unittest.TestCase):
                                 extra={"max_sequence_length": 128},
                             )
                         )
+                        base_generate = dict(_FakeWan.last_generate)
+                        lora_asset = backend.generate_video(
+                            VideoGenerationRequest(
+                                prompt="fox",
+                                seed=43,
+                                lora_adapters=(
+                                    LoRAAdapterSpec(
+                                        source="owner/wan-lora:video.safetensors",
+                                        scale=0.9,
+                                        target_role="transformer",
+                                    ),
+                                ),
+                            )
+                        )
 
-        self.assertEqual(asset.media_type, "video")
-        self.assertEqual(asset.mime_type, "video/mp4")
-        self.assertEqual(asset.data, b"\x00\x00\x00\x18ftypmp42")
+        self.assertEqual(base_asset.media_type, "video")
+        self.assertEqual(base_asset.mime_type, "video/mp4")
+        self.assertEqual(base_asset.data, b"\x00\x00\x00\x18ftypmp42")
         self.assertEqual(_FakeWan.last_init["model_config"], "wan-ti2v-config")
         self.assertEqual(_FakeWan.last_init["model_path"], str(snapshot))
-        self.assertEqual(_FakeWan.last_generate["prompt"], "fox")
-        self.assertEqual(_FakeWan.last_generate["negative_prompt"], "blur")
-        self.assertEqual(_FakeWan.last_generate["width"], 320)
-        self.assertEqual(_FakeWan.last_generate["height"], 192)
-        self.assertEqual(_FakeWan.last_generate["fps"], 12)
-        self.assertEqual(_FakeWan.last_generate["num_frames"], 5)
-        self.assertEqual(_FakeWan.last_generate["num_inference_steps"], 2)
-        self.assertEqual(_FakeWan.last_generate["guidance"], 4.5)
-        self.assertEqual(_FakeWan.last_generate["max_sequence_length"], 128)
-        self.assertNotIn("image_path", _FakeWan.last_generate)
-        self.assertEqual(asset.metadata["base_model"], "wan2.2-ti2v-5b")
-        self.assertEqual(asset.metadata["task"], "text_to_video")
+        self.assertEqual(base_generate["prompt"], "fox")
+        self.assertEqual(base_generate["negative_prompt"], "blur")
+        self.assertEqual(base_generate["width"], 832)
+        self.assertEqual(base_generate["height"], 480)
+        self.assertEqual(base_generate["fps"], 12)
+        self.assertEqual(base_generate["num_frames"], 5)
+        self.assertEqual(base_generate["num_inference_steps"], 2)
+        self.assertEqual(base_generate["guidance"], 4.5)
+        self.assertEqual(base_generate["max_sequence_length"], 128)
+        self.assertNotIn("image_path", base_generate)
+        self.assertEqual(base_asset.metadata["base_model"], "wan2.2-ti2v-5b")
+        self.assertEqual(base_asset.metadata["task"], "text_to_video")
+        self.assertEqual(
+            _FakeWan.last_init["lora_paths"],
+            ["owner/wan-lora:video.safetensors"],
+        )
+        self.assertEqual(_FakeWan.last_init["lora_scales"], [0.9])
+        self.assertEqual(_FakeWan.last_init["lora_target_roles"], ["transformer"])
+        self.assertEqual(
+            lora_asset.metadata["requested_lora_adapters"][0]["target_role"],
+            "transformer",
+        )
+
+    def test_wan_ti2v_480p_defaults_flow_shift_to_three(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        backend.generate_video(
+                            VideoGenerationRequest(
+                                prompt="fox",
+                                width=832,
+                                height=480,
+                                num_frames=9,
+                                steps=4,
+                                seed=42,
+                            )
+                        )
+
+        self.assertEqual(_FakeWan.last_generate["width"], 832)
+        self.assertEqual(_FakeWan.last_generate["height"], 480)
+        self.assertEqual(_FakeWan.last_generate["flow_shift"], 3.0)
+
+    def test_wan_ti2v_rejects_undersized_video_requests(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        with self.assertRaises(CapabilityNotSupportedError) as ctx:
+                            backend.generate_video(
+                                VideoGenerationRequest(
+                                    prompt="fox",
+                                    width=448,
+                                    height=256,
+                                    num_frames=9,
+                                    steps=4,
+                                    seed=42,
+                                )
+                            )
+
+        self.assertIn("832x480", str(ctx.exception))
+
+    def test_wan_ti2v_explicit_flow_shift_is_preserved(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        asset = backend.generate_video(
+                            VideoGenerationRequest(
+                                prompt="fox",
+                                width=1280,
+                                height=704,
+                                num_frames=9,
+                                steps=4,
+                                seed=42,
+                                flow_shift=5.5,
+                            )
+                        )
+
+        self.assertEqual(_FakeWan.last_generate["flow_shift"], 5.5)
+        self.assertEqual(asset.metadata["flow_shift"], 5.5)
 
     def test_wan_a14b_routes_text_to_video_with_model_defaults(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1153,6 +1347,89 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(_FakeWan.last_generate["guidance_2"], 2.25)
         self.assertEqual(asset.metadata["guidance_2"], 2.25)
+
+    def test_wan_a14b_rejects_non_multiple_of_16_dimensions(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        with self.assertRaises(CapabilityNotSupportedError) as ctx:
+                            backend.generate_video(
+                                VideoGenerationRequest(
+                                    prompt="fox",
+                                    width=482,
+                                    height=240,
+                                    num_frames=9,
+                                    steps=4,
+                                    seed=42,
+                                )
+                            )
+
+        self.assertIn("multiples of 16", str(ctx.exception))
+
+    def test_wan_a14b_text_to_video_passes_lora_target_roles(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import LoRAAdapterSpec, VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                        return_value=_FakeWan,
+                    ):
+                        asset = backend.generate_video(
+                            VideoGenerationRequest(
+                                prompt="fox",
+                                seed=42,
+                                lora_adapters=(
+                                    LoRAAdapterSpec(
+                                        source="owner/wan-lora:hi.safetensors",
+                                        scale=0.8,
+                                        target_role="high_noise_transformer",
+                                    ),
+                                    LoRAAdapterSpec(
+                                        source="owner/wan-lora:lo.safetensors",
+                                        scale=0.6,
+                                        target_role="low_noise_transformer",
+                                    ),
+                                ),
+                            )
+                        )
+
+        self.assertEqual(
+            _FakeWan.last_init["lora_paths"],
+            ["owner/wan-lora:hi.safetensors", "owner/wan-lora:lo.safetensors"],
+        )
+        self.assertEqual(_FakeWan.last_init["lora_scales"], [0.8, 0.6])
+        self.assertEqual(
+            _FakeWan.last_init["lora_target_roles"],
+            ["high_noise_transformer", "low_noise_transformer"],
+        )
+        self.assertEqual(len(asset.metadata["requested_lora_adapters"]), 2)
 
     def test_wan_a14b_routes_image_to_video_with_model_defaults(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1314,8 +1591,10 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
     def test_wan_routes_image_to_video_with_letterboxed_temp_image(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import VideoProgressEvent
         from abstractvision.types import ImageToVideoRequest
 
+        seen = []
         with tempfile.TemporaryDirectory() as cache_td:
             self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
             backend = MFluxVisionBackend(
@@ -1335,33 +1614,42 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             ImageToVideoRequest(
                                 image=_solid_png(32, 32, (255, 0, 0)),
                                 prompt="slow push in",
-                                width=320,
-                                height=192,
+                                width=832,
+                                height=480,
                                 fps=8,
                                 num_frames=5,
                                 steps=1,
                                 seed=9,
+                                extra={"on_progress": seen.append},
                             )
                         )
 
         self.assertEqual(asset.media_type, "video")
         self.assertEqual(_FakeWan.last_generate["prompt"], "slow push in")
-        self.assertEqual(_FakeWan.last_generate["width"], 320)
-        self.assertEqual(_FakeWan.last_generate["height"], 192)
+        self.assertEqual(_FakeWan.last_generate["width"], 832)
+        self.assertEqual(_FakeWan.last_generate["height"], 480)
         self.assertEqual(_FakeWan.last_generate["fps"], 8)
         self.assertEqual(_FakeWan.last_generate["num_frames"], 5)
         self.assertEqual(_FakeWan.last_generate["num_inference_steps"], 1)
         self.assertIsNotNone(_FakeWan.last_generate.get("image_path"))
         self.assertTrue(_FakeWan.last_image_path_existed)
-        self.assertEqual(_FakeWan.last_image_size, (320, 192))
+        self.assertEqual(_FakeWan.last_image_size, (832, 480))
         self.assertEqual(_FakeWan.last_image_corner_pixel, (0, 0, 0))
         self.assertEqual(_FakeWan.last_image_center_pixel, (255, 0, 0))
         self.assertEqual(asset.metadata["task"], "image_to_video")
         self.assertEqual(asset.metadata["conditioning_image"]["mode"], "letterbox")
-        self.assertEqual(asset.metadata["conditioning_image"]["fit_width"], 192)
-        self.assertEqual(asset.metadata["conditioning_image"]["fit_height"], 192)
-        self.assertEqual(asset.metadata["conditioning_image"]["pad_left"], 64)
-        self.assertEqual(asset.metadata["conditioning_image"]["pad_right"], 64)
+        self.assertEqual(asset.metadata["conditioning_image"]["fit_width"], 480)
+        self.assertEqual(asset.metadata["conditioning_image"]["fit_height"], 480)
+        self.assertEqual(asset.metadata["conditioning_image"]["pad_left"], 176)
+        self.assertEqual(asset.metadata["conditioning_image"]["pad_right"], 176)
+        self.assertEqual([event.phase for event in seen], ["start", "denoise", "complete"])
+        self.assertTrue(all(isinstance(event, VideoProgressEvent) for event in seen))
+        self.assertEqual(seen[1].task, "image_to_video")
+        self.assertEqual(seen[1].step, 1)
+        self.assertEqual(seen[1].total_steps, 2)
+        self.assertEqual(seen[1].progress, 0.5)
+        self.assertEqual(seen[1].step_progress, 0.5)
+        self.assertEqual(seen[1].frame_progress, 0.6)
 
     def test_wan_config_fallback_uses_registry_id_without_model_def_attribute(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1430,7 +1718,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.18\.10",
+                        r"mlx-gen>=0\.18\.18",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(
@@ -1692,6 +1980,34 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(len(i2v_models), 1)
         self.assertEqual(i2v_models[0].id, "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
 
+    def test_wan_ti2v_provider_catalog_advertises_prepared_abstractframework_variant(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(
+                Path(cache_td), "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"
+            )
+            backend = MFluxVisionBackend(config=MFluxBackendConfig())
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                t2v_models = list(backend.list_provider_models(task="text_to_video"))
+                i2v_models = list(backend.list_provider_models(task="image_to_video"))
+
+        self.assertEqual(
+            [m.id for m in t2v_models],
+            ["AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"],
+        )
+        self.assertEqual(tuple(t2v_models[0].capabilities), ("image_to_video", "text_to_video"))
+        self.assertEqual(t2v_models[0].raw["base_model"], "wan2.2-ti2v-5b")
+        self.assertEqual(t2v_models[0].raw["quantization_bits"], 8)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["fps"], 24)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["num_frames"], 121)
+        self.assertEqual(
+            [m.id for m in i2v_models],
+            ["AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"],
+        )
+        self.assertEqual(tuple(i2v_models[0].capabilities), ("image_to_video", "text_to_video"))
+
     def test_wan_a14b_provider_catalog_advertises_task_specific_models(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
@@ -1744,6 +2060,214 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(tuple(i2v_models[0].capabilities), ("image_to_video",))
         self.assertEqual(i2v_models[0].raw["base_model"], "wan2.2-i2v-a14b")
         self.assertEqual(i2v_models[0].raw["parameter_defaults"]["guidance_2"], 3.5)
+
+    def test_provider_catalog_surfaces_route_level_lora_metadata(self):
+        from types import SimpleNamespace
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(
+                    public_task="text-to-video",
+                    default_for_task=True,
+                    supports_lora=True,
+                    lora_status="validated",
+                    lora_target_roles=("high_noise_transformer", "low_noise_transformer"),
+                    lora_validation_profile="wan_a14b_lora_profile",
+                ),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(
+                Path(cache_td), "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+            )
+            backend = MFluxVisionBackend(config=MFluxBackendConfig())
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(lambda **kwargs: fake_capabilities, None),
+                ):
+                    models = list(backend.list_provider_models(task="text_to_video"))
+
+        self.assertEqual(len(models), 1)
+        task_spec = models[0].raw["task_specs"]["text_to_video"]
+        self.assertTrue(task_spec["supports_lora"])
+        self.assertEqual(task_spec["lora_status"], "validated")
+        self.assertEqual(
+            task_spec["lora_target_roles"],
+            ["high_noise_transformer", "low_noise_transformer"],
+        )
+        self.assertEqual(task_spec["lora_validation_profile"], "wan_a14b_lora_profile")
+
+    def test_provider_adapter_inventory_discovers_ti2v_and_a14b_cached_adapters(self):
+        from types import SimpleNamespace
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        def fake_capabilities(*, model=None, **kwargs):
+            model_s = str(model or "").lower()
+            if "ti2v" in model_s:
+                roles = ("transformer",)
+                profile = "wan_ti2v5b_q8_hstoric_t2v"
+            else:
+                roles = ("high_noise_transformer", "low_noise_transformer")
+                profile = "wan_a14b_q8_lightning_t2v"
+            return SimpleNamespace(
+                capabilities=(
+                    SimpleNamespace(
+                        public_task="text-to-video",
+                        default_for_task=True,
+                        supports_lora=True,
+                        lora_status="validated",
+                        lora_target_roles=roles,
+                        lora_validation_profile=profile,
+                    ),
+                )
+            )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            self._make_cache_snapshot(
+                cache_root, "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"
+            )
+            self._make_cache_snapshot(
+                cache_root, "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+            )
+            self._make_adapter_snapshot(
+                cache_root,
+                "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets",
+                "HSToric_color_Wan22_5b_LoRA.safetensors",
+                base_model="Wan-AI/Wan2.2-TI2V-5B",
+            )
+            self._make_adapter_snapshot(
+                cache_root,
+                "lightx2v/Wan2.2-Lightning",
+                "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+                base_model=(
+                    "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+                    "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+                ),
+            )
+            self._make_adapter_snapshot(
+                cache_root,
+                "lightx2v/Wan2.2-Lightning",
+                "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+                base_model=(
+                    "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+                    "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+                ),
+            )
+
+            backend = MFluxVisionBackend(config=MFluxBackendConfig())
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(fake_capabilities, None),
+                ):
+                    ti2v_adapters = list(
+                        backend.list_provider_adapters(
+                            model="AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+                            task="text_to_video",
+                        )
+                    )
+                    a14b_adapters = list(
+                        backend.list_provider_adapters(
+                            model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+                            task="text_to_video",
+                        )
+                    )
+
+        self.assertEqual(len(ti2v_adapters), 1)
+        self.assertEqual(
+            ti2v_adapters[0].id,
+            "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+        )
+        self.assertEqual(
+            list(ti2v_adapters[0].compatible_models),
+            ["AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"],
+        )
+        self.assertEqual(list(ti2v_adapters[0].suggested_target_roles), ["transformer"])
+
+        self.assertEqual(len(a14b_adapters), 2)
+        roles = {item.id: tuple(item.suggested_target_roles) for item in a14b_adapters}
+        self.assertEqual(
+            roles[
+                "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors"
+            ],
+            ("high_noise_transformer",),
+        )
+        self.assertEqual(
+            roles[
+                "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"
+            ],
+            ("low_noise_transformer",),
+        )
+        route_details = a14b_adapters[0].raw["compatible_routes"]
+        self.assertEqual(route_details[0]["lora_status"], "validated")
+        self.assertEqual(route_details[0]["task"], "text_to_video")
+
+    def test_provider_adapter_inventory_skips_full_model_components(self):
+        from types import SimpleNamespace
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(
+                    public_task="text-to-image",
+                    default_for_task=True,
+                    supports_lora=True,
+                    lora_status="validated",
+                    lora_target_roles=("transformer",),
+                    lora_validation_profile="ernie_q8_profile",
+                ),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            model_snap = self._make_cache_snapshot(
+                cache_root, "AbstractFramework/ernie-image-turbo-8bit"
+            )
+            (model_snap / "README.md").write_text(
+                "---\nbase_model: baidu/ERNIE-Image-Turbo\n---\n",
+                encoding="utf-8",
+            )
+            (model_snap / "text_encoder").mkdir(exist_ok=True)
+            (model_snap / "text_encoder" / "0.safetensors").write_bytes(b"x")
+            (model_snap / "vae").mkdir(exist_ok=True)
+            (model_snap / "vae" / "0.safetensors").write_bytes(b"x")
+            self._make_adapter_snapshot(
+                cache_root,
+                "reverentelusarca/ernie-image-elusarca-anime-style-lora",
+                "ernie-anime-v1.safetensors",
+                base_model="baidu/ERNIE-Image-Turbo",
+            )
+
+            backend = MFluxVisionBackend(config=MFluxBackendConfig())
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(lambda **kwargs: fake_capabilities, None),
+                ):
+                    adapters = list(
+                        backend.list_provider_adapters(
+                            model="AbstractFramework/ernie-image-turbo-8bit",
+                            task="text_to_image",
+                        )
+                    )
+
+        self.assertEqual(
+            [item.id for item in adapters],
+            [
+                "reverentelusarca/ernie-image-elusarca-anime-style-lora:ernie-anime-v1.safetensors"
+            ],
+        )
 
     def test_provider_catalog_exposes_cached_mlx_gen_q4_and_q8_variants(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1823,11 +2347,40 @@ class TestMFluxVisionBackend(unittest.TestCase):
                         )
 
         self.assertTrue(asset.data.startswith(b"\x89PNG"))
-        self.assertEqual(_FakeQwenImageEdit.last_init["model_config"], "qwen-image-edit-config")
+        self.assertEqual(_FakeQwenImageEdit.last_init["model_config"], "qwen-image-edit-2511-config")
         self.assertEqual(_FakeQwenImageEdit.last_init["model_path"], str(snapshot))
         self.assertEqual(_FakeQwenImageEdit.last_generate["prompt"], "watercolor")
         self.assertEqual(len(_FakeQwenImageEdit.last_generate["image_paths"]), 1)
         self.assertTrue(_FakeQwenImageEdit.last_generate["image_paths"][0])
+
+    def test_qwen_edit_2509_prefers_exact_model_config_from_name(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            snapshot = self._make_cache_snapshot(
+                Path(cache_td), "AbstractFramework/qwen-image-edit-2509-8bit"
+            )
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-edit-2509-8bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_qwen",
+                        return_value=(_FakeQwenImage, _FakeQwenImageEdit),
+                    ):
+                        asset = backend.edit_image(
+                            ImageEditRequest(prompt="rotate", image=PNG_1X1, seed=123)
+                        )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(_FakeQwenImageEdit.last_init["model_config"], "qwen-image-edit-2509-config")
+        self.assertEqual(_FakeQwenImageEdit.last_init["model_path"], str(snapshot))
 
     def test_qwen_edit_accepts_additional_reference_images(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend

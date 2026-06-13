@@ -17,18 +17,20 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision models` — list known registry model ids
 - `abstractvision tasks` — list known tasks
 - `abstractvision show-model <id>` — print a model’s tasks + params
+- `abstractvision adapters --provider mlx-gen --model <id> --task <task>` — list backend-discovered cached adapters for one exact route
 - `abstractvision provider-models --openai --task text_to_image` — explicitly query the official OpenAI `/models` catalog
 - `abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image` — explicitly query an OpenAI-compatible provider catalog
 - `abstractvision cli` — interactive testing (supports `openai`, `diffusers`, `mlx-gen`, `sdcpp`; legacy alias: `abstractvision repl`; `mflux` is accepted as a compatibility alias)
 - `abstractvision playground [--host 127.0.0.1] [--port 8091]` — self-contained local web UI and `/v1/vision/*` API
 - `abstractvision serve [--host 127.0.0.1] [--port 8091]` — alias for `abstractvision playground`
-- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` / `abstractvision i2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mlx-gen`, and `sdcpp`; MLX-Gen 0.18.13+ provides image progress, multi-reference edits, SeedVR2 upscaling, and Wan `t2v`/`i2v`, including A14B task-specific checkpoints)
-- `abstractvision upscale ...` — one-shot SeedVR2 image upscaling; defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit` and supports `--scale`, `--resolution`, `--softness`, `--seed`, optional source-weight `--quantize`, and `--vae-tiling`
+- `abstractvision t2i ...` / `abstractvision i2i ...` / `abstractvision t2v ...` / `abstractvision i2v ...` — one-shot commands using the configured provider/backend (`openai`/`openai-compatible` by default; also supports local `diffusers`, `mlx-gen`, and `sdcpp`; MLX-Gen provides image progress, shared LoRA adapters, multi-reference edits, SeedVR2 upscaling, and Wan `t2v`/`i2v`, including A14B task-specific checkpoints)
+- `abstractvision upscale ...` — one-shot SeedVR2 image upscaling; defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --resolution 2x --softness 0.25` and supports `--scale`, `--resolution`, `--softness`, `--seed`, optional source-weight `--quantize`, and `--vae-tiling`
 
 Note:
 - `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mlx-gen|sdcpp` (legacy alias: `--backend`; `mflux` remains accepted).
 - Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 - One-shot image commands write to `ABSTRACTVISION_STORE_DIR` or `--store-dir` and print JSON artifact metadata followed by the local content path. They do not take an `--output` path flag.
+- One-shot generation/edit/video commands support `--count` plus optional `--seeds` for reproducible batch orchestration above the exact single-run request surface.
 - `width`/`height` are optional request overrides, not global defaults. Leave
   them unset to let the selected provider/model choose its default or `auto`
   size. Some models accept quick-test sizes such as `512x512`; others only
@@ -43,7 +45,7 @@ abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-
 abstractvision t2i --provider mlx-gen --model briaai/FIBO "a studio product photo of a white ceramic mug" --steps 50 --guidance-scale 4.0 --open
 abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.png "remove the background and keep the object edges clean" --steps 20 --guidance-scale 4.0 --open
-abstractvision upscale --provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --image ./input.png --scale 2x --open
+abstractvision upscale --provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --image ./input.png --resolution 2x --softness 0.25 --open
 abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
 abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
 ```
@@ -102,7 +104,7 @@ The interactive CLI state object (`_ReplState` in [`../../src/abstractvision/cli
   - if unset and `OPENAI_BASE_URL` is set, the interactive CLI/playground default to `openai`
   - if unset and no base URL is configured, no backend is selected until you use `/backend ...` or load a model explicitly
 - `ABSTRACTVISION_STORE_DIR` — local artifact output directory (default: `~/.abstractvision/assets`)
-- `ABSTRACTVISION_TIMEOUT_S` — HTTP timeout for OpenAI-compatible backend (default: `300`)
+- `ABSTRACTVISION_TIMEOUT_S` — optional timeout for OpenAI-compatible catalog/control calls. Image and video generation calls do not have a default timeout.
 - `ABSTRACTVISION_MODEL` — preferred model selector for the current backend/provider (alias: `ABSTRACTVISION_MODEL_ID`)
 - `ABSTRACTVISION_MODEL_ID` — model id for the current backend in the interactive CLI (legacy):
   - `openai`: sent as `model` in HTTP requests (optional; server-dependent)
@@ -140,13 +142,25 @@ Playground-only Diffusers vars:
 - `ABSTRACTVISION_DIFFUSERS_REVISION` — optional model revision
 - `ABSTRACTVISION_DIFFUSERS_VARIANT` — optional model variant
 
-### MLX-Gen backend (Apple Silicon)
+### MLX-Gen backend (Apple-first)
 
 - `ABSTRACTVISION_MFLUX_MODEL` — exact published MLX-Gen repo id, local model path, or custom repo id (examples: `AbstractFramework/flux.2-klein-4b-4bit`, `AbstractFramework/ernie-image-turbo-8bit`, `briaai/FIBO`, `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, `briaai/Fibo-Edit`, `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit`, `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`, `/path/to/preset-dir`)
 - `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional base family for local paths or custom repos (`flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`, `flux2-klein-base-9b`, `bonsai-image-ternary`, `z-image`, `z-image-turbo`, `qwen-image`, `qwen-image-edit-2511`, `ernie-image-turbo`, `fibo`, `fibo-lite`, `fibo-edit`, `fibo-edit-rmbg`, `wan2.2-ti2v-5b`, `wan2.2-t2v-a14b`, `wan2.2-i2v-a14b`)
 - `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root only; curated downloads now land in the Hugging Face cache
+- `ABSTRACTVISION_MLX_GEN_LORA_PATHS` / `ABSTRACTVISION_MFLUX_LORA_PATHS` — optional default LoRA adapters applied by the MLX-Gen backend when a request does not carry its own `lora_adapters`
+- `ABSTRACTVISION_MLX_GEN_LORA_SCALES` / `ABSTRACTVISION_MFLUX_LORA_SCALES` — optional default LoRA scales aligned with the configured default paths
+- `ABSTRACTVISION_MLX_GEN_LORA_TARGET_ROLES` / `ABSTRACTVISION_MFLUX_LORA_TARGET_ROLES` — optional default target roles aligned with the configured default paths; primarily useful for Wan routes
 - Canonical provider/model routing is `mlx-gen` / `mlx-gen/<exact-huggingface-repo>`, for example `mlx-gen/AbstractFramework/flux.2-klein-4b-4bit`. Legacy `mflux` provider values, routed ids, and env var names are accepted for compatibility, but the model id itself should be the exact published repo id.
+
+MLX-Gen LoRA notes:
+
+- CLI callers should prefer repeated `--lora`, `--lora-scale`, and
+  `--lora-target-role` flags.
+- Python and AbstractCore callers should prefer the shared typed
+  `lora_adapters` request field.
+- Catalog discovery surfaces exact-route LoRA truth through `supports_lora`,
+  `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 
 ### stable-diffusion.cpp backend
 

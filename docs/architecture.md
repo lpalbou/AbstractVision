@@ -91,7 +91,7 @@ The public API includes `text_to_video`, `image_to_video`, and `multi_view_image
   - OpenAI-compatible HTTP backend ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
   - Diffusers backend ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
   - stable-diffusion.cpp backend ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
-  - MLX-Gen backend for curated Apple Silicon MLX presets ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py))
+  - MLX-Gen backend for curated Apple-first local MLX presets ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py))
 - Local MLX-Gen supports `text_to_image` for curated q4/q8 FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, and official FIBO snapshots; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for `text_to_video` and first-frame `image_to_video`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local surfaces.
 - OpenAI-compatible HTTP can also support `text_to_video` / `image_to_video` when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).

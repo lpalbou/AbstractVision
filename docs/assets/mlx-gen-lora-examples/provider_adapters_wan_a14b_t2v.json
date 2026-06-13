@@ -1,0 +1,202 @@
+[
+  {
+    "base_models": [
+      "Wan-AI/Wan2.2-T2V-A14B"
+    ],
+    "compatible_models": [
+      "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_video"
+    ],
+    "id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B:[WAN2.2]Followcam_Redmond_high_noise.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "wan2.2-t2v-a14b",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "high_noise_transformer",
+            "low_noise_transformer"
+          ],
+          "lora_validation_profile": "lora_wan_a14b_q8_lightx2v_4step_t2v_2026_06_12",
+          "model": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+          "supports_lora": true,
+          "task": "text_to_video"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "[WAN2.2]Followcam_Redmond_high_noise.safetensors",
+      "repo_id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--artificialguybr--FollowCam-Redmond-WAN2-T2V-14B/snapshots/20415b092632128b1dd1b52bf46cc9cbac89a72b"
+    },
+    "repo_id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B",
+    "suggested_target_roles": [
+      "high_noise_transformer"
+    ]
+  },
+  {
+    "base_models": [
+      "Wan-AI/Wan2.2-T2V-A14B"
+    ],
+    "compatible_models": [
+      "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_video"
+    ],
+    "id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B:[WAN2.2]Followcam_Redmond_low_noise.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "wan2.2-t2v-a14b",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "high_noise_transformer",
+            "low_noise_transformer"
+          ],
+          "lora_validation_profile": "lora_wan_a14b_q8_lightx2v_4step_t2v_2026_06_12",
+          "model": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+          "supports_lora": true,
+          "task": "text_to_video"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "[WAN2.2]Followcam_Redmond_low_noise.safetensors",
+      "repo_id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--artificialguybr--FollowCam-Redmond-WAN2-T2V-14B/snapshots/20415b092632128b1dd1b52bf46cc9cbac89a72b"
+    },
+    "repo_id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B",
+    "suggested_target_roles": [
+      "low_noise_transformer"
+    ]
+  },
+  {
+    "base_models": [
+      "Wan-AI/Wan2.2-T2V-A14B"
+    ],
+    "compatible_models": [
+      "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_video"
+    ],
+    "id": "artificialguybr/Vintage-Cinematic-Redmond-Wan22:Vintage-Cinematic-Redmond-WAN22.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "wan2.2-t2v-a14b",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "high_noise_transformer",
+            "low_noise_transformer"
+          ],
+          "lora_validation_profile": "lora_wan_a14b_q8_lightx2v_4step_t2v_2026_06_12",
+          "model": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+          "supports_lora": true,
+          "task": "text_to_video"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "Vintage-Cinematic-Redmond-WAN22.safetensors",
+      "repo_id": "artificialguybr/Vintage-Cinematic-Redmond-Wan22",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--artificialguybr--Vintage-Cinematic-Redmond-Wan22/snapshots/57c97f96621e6139756e089aefac7560e9c01aa6"
+    },
+    "repo_id": "artificialguybr/Vintage-Cinematic-Redmond-Wan22",
+    "suggested_target_roles": [
+      "high_noise_transformer",
+      "low_noise_transformer"
+    ]
+  },
+  {
+    "base_models": [
+      "Wan-AI/Wan2.2-T2V-A14B",
+      "Wan-AI/Wan2.2-I2V-A14B",
+      "Wan-AI/Wan2.2-TI2V-5B"
+    ],
+    "compatible_models": [
+      "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_video"
+    ],
+    "id": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "wan2.2-t2v-a14b",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "high_noise_transformer",
+            "low_noise_transformer"
+          ],
+          "lora_validation_profile": "lora_wan_a14b_q8_lightx2v_4step_t2v_2026_06_12",
+          "model": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+          "supports_lora": true,
+          "task": "text_to_video"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+      "repo_id": "lightx2v/Wan2.2-Lightning",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--lightx2v--Wan2.2-Lightning/snapshots/18bccf8884ec0a078eed79785eb4ef13ea16ce1e"
+    },
+    "repo_id": "lightx2v/Wan2.2-Lightning",
+    "suggested_target_roles": [
+      "high_noise_transformer"
+    ]
+  },
+  {
+    "base_models": [
+      "Wan-AI/Wan2.2-T2V-A14B",
+      "Wan-AI/Wan2.2-I2V-A14B",
+      "Wan-AI/Wan2.2-TI2V-5B"
+    ],
+    "compatible_models": [
+      "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+    ],
+    "compatible_tasks": [
+      "text_to_video"
+    ],
+    "id": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+    "raw": {
+      "cache_source": "default HF cache",
+      "compatible_base_model": "wan2.2-t2v-a14b",
+      "compatible_routes": [
+        {
+          "lora_status": "validated",
+          "lora_target_roles": [
+            "high_noise_transformer",
+            "low_noise_transformer"
+          ],
+          "lora_validation_profile": "lora_wan_a14b_q8_lightx2v_4step_t2v_2026_06_12",
+          "model": "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+          "supports_lora": true,
+          "task": "text_to_video"
+        }
+      ],
+      "engine": "mlx-gen",
+      "provider": "mlx-gen",
+      "relative_path": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+      "repo_id": "lightx2v/Wan2.2-Lightning",
+      "runtime_package": "mlx-gen",
+      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--lightx2v--Wan2.2-Lightning/snapshots/18bccf8884ec0a078eed79785eb4ef13ea16ce1e"
+    },
+    "repo_id": "lightx2v/Wan2.2-Lightning",
+    "suggested_target_roles": [
+      "low_noise_transformer"
+    ]
+  }
+]

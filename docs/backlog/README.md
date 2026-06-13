@@ -33,7 +33,7 @@ Treat `pyproject.toml` and the latest planned/completed packaging task as the so
 
 - Planned: 3 items
 - Proposed: 0 items
-- Completed: 21 items
+- Completed: 23 items
 - Deprecated: 2 items
 
 ### Current planned items

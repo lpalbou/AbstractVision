@@ -1,0 +1,107 @@
+{
+  "artifact_id": "307df9cf35024c10d20c6c2d2d86609a",
+  "content_file": "307df9cf35024c10d20c6c2d2d86609a.png",
+  "content_type": "image/png",
+  "created_at": "2026-06-11T22:55:36.380252+00:00",
+  "metadata": {
+    "base_model": "qwen-image-edit-2511",
+    "edit_mode": "edit_reference",
+    "engine": "mlx-gen",
+    "height": 432,
+    "legacy_engine": "mflux",
+    "lora_application_reports": [
+      {
+        "applied_target_count": 840,
+        "matched_key_count": 1680,
+        "requested_path": "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors",
+        "role": null,
+        "scale": 0.9,
+        "total_key_count": 1680,
+        "unmatched_key_count": 0
+      }
+    ],
+    "lora_applied_file_count": 1,
+    "lora_applied_target_count": 840,
+    "lora_paths": [
+      "/Users/albou/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors"
+    ],
+    "lora_scales": [
+      0.9
+    ],
+    "mlx_gen": {
+      "base_model": "None",
+      "canvas_policy": "source-aspect",
+      "controlnet_image_path": null,
+      "controlnet_strength": null,
+      "created_at": "2026-06-12T00:55:36.285055",
+      "depth_image_path": null,
+      "generation_time_seconds": 137.41,
+      "guidance": 4.0,
+      "height": 432,
+      "image_path": "/var/folders/2n/0v7_ckq916q9s57rj5kymkj40000gn/T/tmpl5_p_hh7.png",
+      "image_paths": [
+        "/var/folders/2n/0v7_ckq916q9s57rj5kymkj40000gn/T/tmpl5_p_hh7.png"
+      ],
+      "image_strength": null,
+      "lora_application_reports": [
+        {
+          "applied_target_count": 840,
+          "matched_key_count": 1680,
+          "requested_path": "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors",
+          "role": null,
+          "scale": 0.9,
+          "total_key_count": 1680,
+          "unmatched_key_count": 0
+        }
+      ],
+      "lora_applied_file_count": 1,
+      "lora_applied_target_count": 840,
+      "lora_paths": [
+        "/Users/albou/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors"
+      ],
+      "lora_scales": [
+        0.9
+      ],
+      "masked_image_path": null,
+      "mflux_version": "0.18.16",
+      "model": "Qwen/Qwen-Image-Edit-2511",
+      "negative_prompt": " ",
+      "precision": "mlx.core.bfloat16",
+      "prompt": "Use the source spaceship as the same object. <sks> back view low-angle shot wide shot. Re-render the scene from behind the spaceship at a low camera angle, keeping the icy canyon and the same vehicle design. No text, no watermark, no blur.",
+      "quantize": 8,
+      "redux_image_paths": null,
+      "redux_image_strengths": null,
+      "requested_height": 432,
+      "requested_width": 768,
+      "seed": 9701,
+      "source_image_height": 432,
+      "source_image_width": 768,
+      "steps": 6,
+      "width": 768
+    },
+    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--qwen-image-edit-2511-8bit/snapshots/5f35885dfe4061e57c87df2c03123e5e8124edfa",
+    "quantization_bits": 8,
+    "reference_image_count": 1,
+    "requested_lora_adapters": [
+      {
+        "scale": 0.9,
+        "source": "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors"
+      }
+    ],
+    "runtime_package": "mlx-gen",
+    "seed": 9701,
+    "source": "mlx-gen",
+    "steps": 6,
+    "width": 768
+  },
+  "schema": "abstractvision.asset.v1",
+  "sha256": "307df9cf35024c10d20c6c2d2d86609af42114ccb6818892e787d5f97091a9c4",
+  "size_bytes": 365649,
+  "tags": {
+    "kind": "generated_media",
+    "modality": "image",
+    "task": "image_to_image"
+  }
+}

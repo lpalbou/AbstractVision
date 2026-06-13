@@ -1,0 +1,159 @@
+{
+  "artifact_id": "28f7e3e7d0cdd66a3ba19032fff16090",
+  "content_file": "28f7e3e7d0cdd66a3ba19032fff16090.mp4",
+  "content_type": "video/mp4",
+  "created_at": "2026-06-13T05:18:28.535789+00:00",
+  "metadata": {
+    "base_model": "wan2.2-i2v-a14b",
+    "conditioning_image": {
+      "background": "black",
+      "conditioning_height": 240,
+      "conditioning_width": 480,
+      "fit_height": 240,
+      "fit_width": 427,
+      "mode": "letterbox",
+      "pad_bottom": 0,
+      "pad_left": 26,
+      "pad_right": 27,
+      "pad_top": 0,
+      "source_height": 432,
+      "source_width": 768
+    },
+    "engine": "mlx-gen",
+    "flow_shift": 5.0,
+    "fps": 20,
+    "guidance_2": 1.0,
+    "guidance_scale": 1.0,
+    "height": 240,
+    "legacy_engine": "mflux",
+    "lora_application_reports": [
+      {
+        "applied_target_count": 400,
+        "matched_key_count": 1200,
+        "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+        "role": "high_noise_transformer",
+        "scale": 1.0,
+        "total_key_count": 1200,
+        "unmatched_key_count": 0
+      },
+      {
+        "applied_target_count": 400,
+        "matched_key_count": 1200,
+        "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors",
+        "role": "low_noise_transformer",
+        "scale": 1.0,
+        "total_key_count": 1200,
+        "unmatched_key_count": 0
+      }
+    ],
+    "lora_applied_file_count": 2,
+    "lora_applied_target_count": 800,
+    "lora_paths": [
+      "/Users/albou/Library/Caches/mflux/loras/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+      "/Users/albou/Library/Caches/mflux/loras/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors"
+    ],
+    "lora_scales": [
+      1.0,
+      1.0
+    ],
+    "lora_target_roles": [
+      "high_noise_transformer",
+      "low_noise_transformer"
+    ],
+    "mlx_gen": {
+      "base_model": "None",
+      "created_at": "2026-06-13T07:18:28.529798",
+      "duration_seconds": 2.05,
+      "flow_shift": 5.0,
+      "fps": 20,
+      "frames": 41,
+      "generation_time_seconds": 306.28,
+      "guidance": 1.0,
+      "guidance_2": 1.0,
+      "height": 240,
+      "image_path": "/var/folders/2n/0v7_ckq916q9s57rj5kymkj40000gn/T/tmpstxh7f_z.png",
+      "lora_application_reports": [
+        {
+          "applied_target_count": 400,
+          "matched_key_count": 1200,
+          "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+          "role": "high_noise_transformer",
+          "scale": 1.0,
+          "total_key_count": 1200,
+          "unmatched_key_count": 0
+        },
+        {
+          "applied_target_count": 400,
+          "matched_key_count": 1200,
+          "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors",
+          "role": "low_noise_transformer",
+          "scale": 1.0,
+          "total_key_count": 1200,
+          "unmatched_key_count": 0
+        }
+      ],
+      "lora_applied_file_count": 2,
+      "lora_applied_target_count": 800,
+      "lora_paths": [
+        "/Users/albou/Library/Caches/mflux/loras/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+        "/Users/albou/Library/Caches/mflux/loras/Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors"
+      ],
+      "lora_scales": [
+        1.0,
+        1.0
+      ],
+      "lora_target_roles": [
+        "high_noise_transformer",
+        "low_noise_transformer"
+      ],
+      "mflux_version": "0.18.18",
+      "model": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+      "negative_prompt": "oversaturated colors, overexposed, static shot, blurry details, subtitles, text, watermark, painting, illustration, ugly, deformed, broken anatomy, extra limbs, cluttered background, frozen frame, low quality, jpeg artifacts",
+      "precision": "mlx.core.bfloat16",
+      "prompt": "Starting from the input image, the silver spaceship powers up and lifts off from the frozen ground. Blue engines brighten, snow blasts outward, vapor rolls under the hull, and the camera holds the same wide icy canyon framing while the ship rises smoothly.",
+      "quantize": 8,
+      "requested_height": 240,
+      "requested_width": 480,
+      "seed": 8402,
+      "solver": "unipc",
+      "source_image_height": 240,
+      "source_image_width": 480,
+      "steps": 4,
+      "task": "image-to-video",
+      "width": 480
+    },
+    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--wan2.2-i2v-a14b-diffusers-8bit/snapshots/1a17fbea2649c576de844e08e79fe56296751efa",
+    "num_frames": 41,
+    "quantization_bits": 8,
+    "requested_lora_adapters": [
+      {
+        "scale": 1.0,
+        "source": "lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+        "target_role": "high_noise_transformer"
+      },
+      {
+        "scale": 1.0,
+        "source": "lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors",
+        "target_role": "low_noise_transformer"
+      }
+    ],
+    "runtime_package": "mlx-gen",
+    "seed": 8402,
+    "source": "mlx-gen",
+    "steps": 4,
+    "task": "image_to_video",
+    "width": 480
+  },
+  "schema": "abstractvision.asset.v1",
+  "sha256": "28f7e3e7d0cdd66a3ba19032fff16090d9cc6fcdc4421684f96d8c55bedc6371",
+  "size_bytes": 217000,
+  "tags": {
+    "kind": "generated_media",
+    "modality": "video",
+    "task": "image_to_video"
+  }
+}

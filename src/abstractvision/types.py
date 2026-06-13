@@ -22,6 +22,19 @@ class ProviderModelInfo:
 
 
 @dataclass(frozen=True)
+class ProviderAdapterInfo:
+    """A locally discoverable adapter entry returned by a backend inventory."""
+
+    id: str
+    repo_id: Optional[str] = None
+    base_models: Sequence[str] = field(default_factory=tuple)
+    compatible_models: Sequence[str] = field(default_factory=tuple)
+    compatible_tasks: Sequence[str] = field(default_factory=tuple)
+    suggested_target_roles: Sequence[str] = field(default_factory=tuple)
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class VisionBackendCapabilities:
     """Backend-level capability constraints (optional; additive).
 
@@ -62,6 +75,18 @@ class VideoProgressEvent:
 
 
 @dataclass(frozen=True)
+class LoRAAdapterSpec:
+    """Package-owned request shape for one LoRA adapter attachment."""
+
+    source: str
+    scale: Optional[float] = None
+    weight_name: Optional[str] = None
+    subfolder: Optional[str] = None
+    adapter_name: Optional[str] = None
+    target_role: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class ImageGenerationRequest:
     prompt: str
     negative_prompt: Optional[str] = None
@@ -70,6 +95,7 @@ class ImageGenerationRequest:
     seed: Optional[int] = None
     steps: Optional[int] = None
     guidance_scale: Optional[float] = None
+    lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -82,6 +108,7 @@ class ImageEditRequest:
     seed: Optional[int] = None
     steps: Optional[int] = None
     guidance_scale: Optional[float] = None
+    lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -121,6 +148,8 @@ class VideoGenerationRequest:
     steps: Optional[int] = None
     guidance_scale: Optional[float] = None
     guidance_2: Optional[float] = None
+    flow_shift: Optional[float] = None
+    lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -137,6 +166,8 @@ class ImageToVideoRequest:
     steps: Optional[int] = None
     guidance_scale: Optional[float] = None
     guidance_2: Optional[float] = None
+    flow_shift: Optional[float] = None
+    lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
 
 

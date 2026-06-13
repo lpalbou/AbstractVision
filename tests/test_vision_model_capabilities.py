@@ -28,6 +28,45 @@ ALL_MODELS = [
     "ByteDance-Seed/SeedVR2-7B",
 ]
 
+ABSTRACTFRAMEWORK_HF_REPOS = [
+    "AbstractFramework/ernie-image-turbo-4bit",
+    "AbstractFramework/ernie-image-turbo-8bit",
+    "AbstractFramework/fibo-4bit",
+    "AbstractFramework/fibo-8bit",
+    "AbstractFramework/flux.2-klein-4b-4bit",
+    "AbstractFramework/flux.2-klein-4b-8bit",
+    "AbstractFramework/flux.2-klein-9b-4bit",
+    "AbstractFramework/flux.2-klein-9b-8bit",
+    "AbstractFramework/flux.2-klein-base-4b-4bit",
+    "AbstractFramework/flux.2-klein-base-4b-8bit",
+    "AbstractFramework/flux.2-klein-base-9b-4bit",
+    "AbstractFramework/flux.2-klein-base-9b-8bit",
+    "AbstractFramework/qwen-image-2512-4bit",
+    "AbstractFramework/qwen-image-2512-8bit",
+    "AbstractFramework/qwen-image-4bit",
+    "AbstractFramework/qwen-image-8bit",
+    "AbstractFramework/qwen-image-edit-2509-4bit",
+    "AbstractFramework/qwen-image-edit-2509-8bit",
+    "AbstractFramework/qwen-image-edit-2511-4bit",
+    "AbstractFramework/qwen-image-edit-2511-8bit",
+    "AbstractFramework/qwen-image-edit-4bit",
+    "AbstractFramework/qwen-image-edit-8bit",
+    "AbstractFramework/seedvr2-3b-4bit",
+    "AbstractFramework/seedvr2-3b-8bit",
+    "AbstractFramework/seedvr2-7b-4bit",
+    "AbstractFramework/seedvr2-7b-8bit",
+    "AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit",
+    "AbstractFramework/wan2.2-i2v-a14b-diffusers-bf16",
+    "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+    "AbstractFramework/wan2.2-t2v-a14b-diffusers-bf16",
+    "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+    "AbstractFramework/wan2.2-ti2v-5b-diffusers-bf16",
+    "AbstractFramework/z-image-4bit",
+    "AbstractFramework/z-image-8bit",
+    "AbstractFramework/z-image-turbo-4bit",
+    "AbstractFramework/z-image-turbo-8bit",
+]
+
 
 class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
     def test_registry_contains_all_models(self):
@@ -37,6 +76,22 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         models = set(reg.list_models())
         for mid in ALL_MODELS:
             self.assertIn(mid, models)
+
+    def test_registry_downloads_cover_abstractframework_hf_repos(self):
+        from abstractvision import VisionModelCapabilitiesRegistry
+
+        reg = VisionModelCapabilitiesRegistry()
+        registered_repos = {
+            download.repo_id
+            for model_id in reg.list_models()
+            for download in reg.get(model_id).downloads
+            if download.repo_id.startswith("AbstractFramework/")
+        }
+
+        self.assertEqual(
+            sorted(set(ABSTRACTFRAMEWORK_HF_REPOS) - registered_repos),
+            [],
+        )
 
     def test_expected_tasks(self):
         from abstractvision import VisionModelCapabilitiesRegistry
@@ -60,6 +115,8 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         self.assertTrue(reg.supports("Wan-AI/Wan2.2-T2V-A14B", "text_to_video"))
         self.assertTrue(reg.supports("Wan-AI/Wan2.2-TI2V-5B-Diffusers", "text_to_video"))
         self.assertTrue(reg.supports("Wan-AI/Wan2.2-TI2V-5B-Diffusers", "image_to_video"))
+        self.assertTrue(reg.supports("AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit", "text_to_video"))
+        self.assertTrue(reg.supports("AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit", "image_to_video"))
         self.assertTrue(reg.supports("tencent/HunyuanVideo-1.5", "text_to_video"))
         self.assertTrue(reg.supports("genmo/mochi-1-preview", "text_to_video"))
         self.assertTrue(reg.supports("zai-org/CogVideoX-2b", "text_to_video"))
@@ -85,6 +142,7 @@ class TestVisionModelCapabilitiesRegistry(unittest.TestCase):
         self.assertEqual(list(task.outputs), ["image"])
         self.assertEqual(task.params["resolution"]["default"], "2x")
         self.assertEqual(task.params["scale"]["default"], 2)
+        self.assertEqual(task.params["softness"]["default"], 0.25)
         self.assertIsNone(task.params["quantize"]["default"])
         self.assertEqual(task.params["quantize"]["enum"], [3, 4, 5, 6, 8, None])
         self.assertEqual(task.requires["backend"], "mlx-gen")

@@ -120,6 +120,112 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         self.assertEqual([m.id for m in models], ["provider/image-model"])
         self.assertEqual(backend.task, "text_to_image")
 
+    def test_provider_adapter_listing_delegates_to_backend(self):
+        from abstractvision import VisionManager
+        from abstractvision.backends import VisionBackend
+        from abstractvision.types import GeneratedAsset, ProviderAdapterInfo
+
+        class CatalogBackend(VisionBackend):
+            def list_provider_adapters(self, *, model=None, task=None):
+                self.model = model
+                self.task = task
+                return [
+                    ProviderAdapterInfo(
+                        id="owner/example:adapter.safetensors",
+                        compatible_models=("AbstractFramework/qwen-image-2512-8bit",),
+                        compatible_tasks=("text_to_image",),
+                    )
+                ]
+
+            def generate_image(self, request):  # pragma: no cover
+                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png")
+
+            def edit_image(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_angles(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def image_to_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+        backend = CatalogBackend()
+        vm = VisionManager(backend=backend)
+
+        adapters = vm.list_provider_adapters(
+            model="AbstractFramework/qwen-image-2512-8bit",
+            task="text_to_image",
+        )
+
+        self.assertEqual([item.id for item in adapters], ["owner/example:adapter.safetensors"])
+        self.assertEqual(backend.model, "AbstractFramework/qwen-image-2512-8bit")
+        self.assertEqual(backend.task, "text_to_image")
+
+    def test_generate_image_batch_expands_seed_plan(self):
+        from abstractvision import VisionManager
+        from abstractvision.backends import VisionBackend
+        from abstractvision.types import GeneratedAsset
+
+        seen = []
+
+        class BatchBackend(VisionBackend):
+            def generate_image(self, request):
+                seen.append(request.seed)
+                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png")
+
+            def edit_image(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_angles(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def image_to_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+        vm = VisionManager(backend=BatchBackend())
+
+        outputs = vm.generate_image_batch("hello", count=3, seed=41)
+
+        self.assertEqual(len(outputs), 3)
+        self.assertEqual(seen, [41, 42, 43])
+
+    def test_generate_video_batch_accepts_explicit_seed_list(self):
+        from abstractvision import VisionManager
+        from abstractvision.backends import VisionBackend
+        from abstractvision.types import GeneratedAsset
+
+        seen = []
+
+        class BatchBackend(VisionBackend):
+            def generate_image(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def edit_image(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_angles(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_video(self, request):
+                seen.append(request.seed)
+                return GeneratedAsset(media_type="video", data=b"v", mime_type="video/mp4")
+
+            def image_to_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+        vm = VisionManager(backend=BatchBackend())
+
+        outputs = vm.generate_video_batch("hello", count=2, seeds=(101, 202))
+
+        self.assertEqual(len(outputs), 2)
+        self.assertEqual(seen, [101, 202])
+
     def test_manager_applies_backend_request_normalization(self):
         from abstractvision import VisionManager
         from abstractvision.backends import VisionBackend
@@ -202,7 +308,7 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
                     seed=request.seed,
                     softness=0.25,
                     quantize=8,
-                    vae_tiling=False,
+                    vae_tiling=None,
                     extra=dict(request.extra or {}),
                 )
 
@@ -306,7 +412,7 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         self.assertEqual(seen["upscale"].scale, 2)
         self.assertEqual(seen["upscale"].softness, 0.25)
         self.assertEqual(seen["upscale"].quantize, 8)
-        self.assertFalse(seen["upscale"].vae_tiling)
+        self.assertIsNone(seen["upscale"].vae_tiling)
         self.assertIs(seen["upscale"].extra.get("on_progress"), progress_callback)
 
 

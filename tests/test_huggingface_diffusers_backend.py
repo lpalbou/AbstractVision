@@ -1080,6 +1080,64 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(len(fake_pipe.lora_loads), 2)
         self.assertEqual(fake_pipe.fused, 1)
 
+    def test_generate_image_applies_typed_lora_adapters(self):
+        from abstractvision.backends.huggingface_diffusers import (
+            HuggingFaceDiffusersBackendConfig,
+            HuggingFaceDiffusersVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest, LoRAAdapterSpec
+
+        out_img_bytes = _png_bytes()
+        from PIL import Image
+
+        fake_image = Image.open(io.BytesIO(out_img_bytes))
+        fake_pipe = _FakePipeline(fake_image)
+
+        fake_diffusion_pipeline_cls = MagicMock()
+        fake_t2i_cls = MagicMock()
+        fake_t2i_cls.from_pretrained.return_value = fake_pipe
+        fake_i2i_cls = MagicMock()
+        fake_inpaint_cls = MagicMock()
+
+        with patch(
+            "abstractvision.backends.huggingface_diffusers._lazy_import_diffusers",
+            return_value=(fake_diffusion_pipeline_cls, fake_t2i_cls, fake_i2i_cls, fake_inpaint_cls, "0.0.0"),
+        ):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
+            )
+            asset = backend.generate_image(
+                ImageGenerationRequest(
+                    prompt="hello",
+                    lora_adapters=(
+                        LoRAAdapterSpec(
+                            source="org/lora",
+                            scale=0.5,
+                            weight_name="adapter.safetensors",
+                            adapter_name="style",
+                        ),
+                    ),
+                )
+            )
+
+        self.assertEqual(asset.mime_type, "image/png")
+        self.assertEqual(fake_pipe.lora_loads[0]["source"], "org/lora")
+        self.assertEqual(fake_pipe.lora_loads[0]["adapter_name"], "style")
+        self.assertEqual(
+            fake_pipe.lora_loads[0]["kwargs"]["weight_name"],
+            "adapter.safetensors",
+        )
+        self.assertEqual(fake_pipe.adapters["names"], ["style"])
+        self.assertEqual(fake_pipe.adapters["weights"], [0.5])
+        self.assertEqual(
+            asset.metadata["requested_lora_adapters"][0]["weight_name"],
+            "adapter.safetensors",
+        )
+        self.assertEqual(
+            asset.metadata["applied_lora_adapters"][0]["adapter_name"],
+            "style",
+        )
+
     def test_generate_image_applies_rapid_aio_transformer_override(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
         from abstractvision.types import ImageGenerationRequest

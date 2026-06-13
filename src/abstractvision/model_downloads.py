@@ -1521,6 +1521,8 @@ def _default_source_priority(*, source: str, target: str, engine: str, bits: Opt
         return 20
     if source_s == "abstractframework-mlx-gen" and target == "mlx" and bits == 8:
         return 25
+    if source_s == "abstractframework-mlx-gen" and target == "mlx" and bits == 16:
+        return 28
     if target == "mlx" and bits == 4:
         return 30
     if target == "mlx" and bits == 8:
@@ -1891,6 +1893,20 @@ def find_model_preset(
     presets = _all_presets()
 
     if "mlx" in selected_targets and (selected_engine is None or selected_engine in {"mlx-gen", "mflux"}):
+        exact_non_abstractframework_matches = [
+            p
+            for p in presets
+            if not _is_abstractframework_mlx_gen_preset(p)
+            and p.target in selected_targets
+            and (selected_engine is None or p.engine == selected_engine)
+            and "/" in requested
+            and requested == str(p.repo_id or "").strip().lower()
+        ]
+        if exact_non_abstractframework_matches and not require_8bit:
+            return sorted(
+                exact_non_abstractframework_matches,
+                key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
+            )[0]
         mlx_gen_matches = [
             p
             for p in presets

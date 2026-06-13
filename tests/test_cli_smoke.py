@@ -49,12 +49,27 @@ class TestCliSmoke(unittest.TestCase):
         from abstractvision.cli import main
 
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = main(["show-model", "zai-org/GLM-Image"])
+        runtime_specs = {
+            "zai-org/GLM-Image": {
+                "text_to_image": {
+                    "supports_lora": True,
+                    "lora_status": "validated",
+                    "lora_target_roles": ["transformer"],
+                    "lora_validation_profile": "glm_lora_validation",
+                }
+            }
+        }
+        with patch("abstractvision.cli._mlx_gen_runtime_task_specs", return_value=runtime_specs):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["show-model", "zai-org/GLM-Image"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertIn("zai-org/GLM-Image", out)
         self.assertIn("tasks:", out)
+        self.assertIn("runtime routes:", out)
+        self.assertIn("supports_lora: True", out)
+        self.assertIn("lora_status: validated", out)
+        self.assertIn("lora_target_roles: transformer", out)
 
     def test_provider_models_lists_openai_compatible_catalog(self):
         from abstractvision.cli import main
@@ -216,8 +231,9 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(seen["provider"], "mlx-gen")
         self.assertEqual(seen["model"], "AbstractFramework/seedvr2-3b-8bit")
         self.assertEqual(seen["image"], b"\x89PNG\r\n\x1a\n")
-        self.assertEqual(seen["kwargs"]["resolution"], None)
+        self.assertEqual(seen["kwargs"]["resolution"], "2x")
         self.assertEqual(seen["kwargs"]["scale"], None)
+        self.assertEqual(seen["kwargs"]["softness"], 0.25)
 
     def test_model_presets_accepts_legacy_mflux_engine_alias(self):
         from abstractvision.cli import main
@@ -307,23 +323,53 @@ class TestCliSmoke(unittest.TestCase):
         from abstractvision.cli import main
 
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = main(["catalog", "--task", "image_to_image", "--provider", "mlx-gen"])
+        with patch(
+            "abstractvision.cli._mlx_gen_runtime_task_specs",
+            return_value={
+                "AbstractFramework/flux.2-klein-4b-4bit": {
+                    "image_to_image": {
+                        "supports_lora": True,
+                        "lora_status": "mapped-unvalidated",
+                        "lora_target_roles": ["transformer"],
+                    }
+                }
+            },
+        ):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["catalog", "--task", "image_to_image", "--provider", "mlx-gen"])
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertIn("AbstractFramework/flux.2-klein-4b-4bit", out)
         self.assertIn("AbstractFramework/flux.2-klein-9b-4bit", out)
+        self.assertIn("mapped-unvalidated", out)
+        self.assertIn("transformer", out)
 
     def test_model_catalog_json_is_parseable(self):
         from abstractvision.cli import main
 
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = main(["model-catalog", "--all-targets", "--json"])
+        with patch(
+            "abstractvision.cli._mlx_gen_runtime_task_specs",
+            return_value={
+                "Qwen/Qwen-Image-2512": {
+                    "text_to_image": {
+                        "supports_lora": True,
+                        "lora_status": "validated",
+                        "lora_target_roles": ["transformer"],
+                        "lora_validation_profile": "qwen2512_pixel_art",
+                    }
+                }
+            },
+        ):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["model-catalog", "--all-targets", "--json"])
         self.assertEqual(rc, 0)
         payload = json.loads(buf.getvalue())
         self.assertIsInstance(payload, list)
-        self.assertTrue(any(entry.get("model_id") == "Qwen/Qwen-Image-2512" for entry in payload))
+        qwen = next(entry for entry in payload if entry.get("model_id") == "Qwen/Qwen-Image-2512")
+        self.assertIn("text_to_image", qwen.get("task_specs", {}))
+        self.assertTrue(qwen["task_specs"]["text_to_image"]["supports_lora"])
+        self.assertEqual(qwen["task_specs"]["text_to_image"]["lora_status"], "validated")
 
     def test_download_model_refuses_non_8bit_fallback_by_default(self):
         from abstractvision.cli import main
@@ -1165,6 +1211,47 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIsNone(args.steps)
         self.assertFalse(args.progress)
 
+    def test_cli_t2i_parser_accepts_lora_flags(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "t2i",
+                "--lora",
+                "owner/style-lora:style.safetensors",
+                "--lora-scale",
+                "0.75",
+                "--lora-adapter-name",
+                "style",
+                "hello",
+            ]
+        )
+
+        self.assertEqual(args.lora_paths, ["owner/style-lora:style.safetensors"])
+        self.assertEqual(args.lora_scales, [0.75])
+        self.assertEqual(args.lora_adapter_name, ["style"])
+
+    def test_cli_t2i_parser_accepts_batch_seed_flags(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "t2i",
+                "--count",
+                "3",
+                "--seeds",
+                "11,12",
+                "--seeds",
+                "13",
+                "hello",
+            ]
+        )
+
+        self.assertEqual(args.count, 3)
+        self.assertEqual(args.seeds, ["11,12", "13"])
+
     def test_t2i_provider_mflux_alias_routes_to_mlx_gen_backend(self):
         from abstractvision.backends.mflux import MFluxVisionBackend
         from abstractvision.cli import _build_manager_from_args, build_parser
@@ -1272,6 +1359,91 @@ class TestCliSmoke(unittest.TestCase):
 
         self.assertIsInstance(vm.backend, MFluxVisionBackend)
         self.assertEqual(getattr(vm.backend, "_cfg").model, "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+
+    def test_cli_t2v_parser_accepts_lora_target_roles(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "t2v",
+                "--lora",
+                "owner/wan-lora:video.safetensors",
+                "--lora-scale",
+                "0.9",
+                "--lora-target-role",
+                "high_noise_transformer",
+                "hello",
+            ]
+        )
+
+        self.assertEqual(args.lora_paths, ["owner/wan-lora:video.safetensors"])
+        self.assertEqual(args.lora_scales, [0.9])
+        self.assertEqual(args.lora_target_roles, ["high_noise_transformer"])
+
+    def test_cli_t2v_parser_accepts_flow_shift_and_batch_seed_flags(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "t2v",
+                "--flow-shift",
+                "3",
+                "--count",
+                "2",
+                "--seeds",
+                "91",
+                "--seeds",
+                "92",
+                "hello",
+            ]
+        )
+
+        self.assertEqual(args.flow_shift, 3.0)
+        self.assertEqual(args.count, 2)
+        self.assertEqual(args.seeds, ["91", "92"])
+
+    def test_provider_adapters_command_prints_json_inventory(self):
+        from abstractvision.cli import main
+
+        class FakeBackend:
+            def list_provider_adapters(self, *, model=None, task=None):
+                self.model = model
+                self.task = task
+                from abstractvision.types import ProviderAdapterInfo
+
+                return [
+                    ProviderAdapterInfo(
+                        id="owner/example:adapter.safetensors",
+                        repo_id="owner/example",
+                        compatible_models=("AbstractFramework/qwen-image-2512-8bit",),
+                        compatible_tasks=("text_to_image",),
+                        suggested_target_roles=("transformer",),
+                    )
+                ]
+
+        buf = io.StringIO()
+        with patch("abstractvision.cli.MFluxVisionBackend", return_value=FakeBackend()):
+            with contextlib.redirect_stdout(buf):
+                rc = main(
+                    [
+                        "adapters",
+                        "--model",
+                        "AbstractFramework/qwen-image-2512-8bit",
+                        "--task",
+                        "text_to_image",
+                        "--json",
+                    ]
+                )
+
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload[0]["id"], "owner/example:adapter.safetensors")
+        self.assertEqual(
+            payload[0]["compatible_models"],
+            ["AbstractFramework/qwen-image-2512-8bit"],
+        )
 
     def test_resolve_i2i_steps_prefers_backend_recommended_default(self):
         from dataclasses import replace

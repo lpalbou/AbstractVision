@@ -1,0 +1,145 @@
+{
+  "artifact_id": "e239a8e98b647f9581a07c8f29e178b5",
+  "content_file": "e239a8e98b647f9581a07c8f29e178b5.mp4",
+  "content_type": "video/mp4",
+  "created_at": "2026-06-13T05:12:35.749648+00:00",
+  "metadata": {
+    "base_model": "wan2.2-t2v-a14b",
+    "engine": "mlx-gen",
+    "flow_shift": 5.0,
+    "fps": 20,
+    "guidance_2": 1.0,
+    "guidance_scale": 1.0,
+    "height": 240,
+    "legacy_engine": "mflux",
+    "lora_application_reports": [
+      {
+        "applied_target_count": 400,
+        "matched_key_count": 1200,
+        "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+        "role": "high_noise_transformer",
+        "scale": 1.0,
+        "total_key_count": 1200,
+        "unmatched_key_count": 0
+      },
+      {
+        "applied_target_count": 400,
+        "matched_key_count": 1200,
+        "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+        "role": "low_noise_transformer",
+        "scale": 1.0,
+        "total_key_count": 1200,
+        "unmatched_key_count": 0
+      }
+    ],
+    "lora_applied_file_count": 2,
+    "lora_applied_target_count": 800,
+    "lora_paths": [
+      "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+      "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"
+    ],
+    "lora_scales": [
+      1.0,
+      1.0
+    ],
+    "lora_target_roles": [
+      "high_noise_transformer",
+      "low_noise_transformer"
+    ],
+    "mlx_gen": {
+      "base_model": "None",
+      "created_at": "2026-06-13T07:12:35.746557",
+      "duration_seconds": 2.05,
+      "flow_shift": 5.0,
+      "fps": 20,
+      "frames": 41,
+      "generation_time_seconds": 335.97,
+      "guidance": 1.0,
+      "guidance_2": 1.0,
+      "height": 240,
+      "image_path": null,
+      "lora_application_reports": [
+        {
+          "applied_target_count": 400,
+          "matched_key_count": 1200,
+          "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+          "role": "high_noise_transformer",
+          "scale": 1.0,
+          "total_key_count": 1200,
+          "unmatched_key_count": 0
+        },
+        {
+          "applied_target_count": 400,
+          "matched_key_count": 1200,
+          "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+          "role": "low_noise_transformer",
+          "scale": 1.0,
+          "total_key_count": 1200,
+          "unmatched_key_count": 0
+        }
+      ],
+      "lora_applied_file_count": 2,
+      "lora_applied_target_count": 800,
+      "lora_paths": [
+        "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+        "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"
+      ],
+      "lora_scales": [
+        1.0,
+        1.0
+      ],
+      "lora_target_roles": [
+        "high_noise_transformer",
+        "low_noise_transformer"
+      ],
+      "mflux_version": "0.18.18",
+      "model": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+      "negative_prompt": "oversaturated colors, overexposed, static shot, blurry details, subtitles, text, watermark, painting, illustration, ugly, deformed, broken anatomy, extra limbs, cluttered background, frozen frame, low quality, jpeg artifacts",
+      "precision": "mlx.core.bfloat16",
+      "prompt": "A cinematic wide-angle movie shot of a massive futuristic starship taking off from a frozen tundra. The ship features sleek dark metallic armor. Two massive warp nacelles pulse with bright blue plasma. Violent snow squalls whip around the hull. The camera slowly tilts up as the thrusters ignite and massive clouds of snow blast away from the launch pad. Photorealistic, highly detailed, dramatic lighting.",
+      "quantize": 8,
+      "requested_height": null,
+      "requested_width": null,
+      "seed": 8401,
+      "solver": "unipc",
+      "source_image_height": null,
+      "source_image_width": null,
+      "steps": 4,
+      "task": "text-to-video",
+      "width": 480
+    },
+    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--wan2.2-t2v-a14b-diffusers-8bit/snapshots/39ee5f1f630789956f29f40b5c2c6d48c6e9a798",
+    "num_frames": 41,
+    "quantization_bits": 8,
+    "requested_lora_adapters": [
+      {
+        "scale": 1.0,
+        "source": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+        "target_role": "high_noise_transformer"
+      },
+      {
+        "scale": 1.0,
+        "source": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+        "target_role": "low_noise_transformer"
+      }
+    ],
+    "runtime_package": "mlx-gen",
+    "seed": 8401,
+    "source": "mlx-gen",
+    "steps": 4,
+    "task": "text_to_video",
+    "width": 480
+  },
+  "schema": "abstractvision.asset.v1",
+  "sha256": "e239a8e98b647f9581a07c8f29e178b51203740897d32e3d070ac88165737ac2",
+  "size_bytes": 310852,
+  "tags": {
+    "kind": "generated_media",
+    "modality": "video",
+    "task": "text_to_video"
+  }
+}

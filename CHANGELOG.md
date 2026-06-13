@@ -2,9 +2,21 @@
 
 ## Unreleased
 
+## 0.3.23 - 2026-06-13
+
+- Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.18,<0.19.0` and expose the same upstream install surface that now includes Linux/CUDA markers in addition to Apple Silicon.
+- Shared LoRA contract: add `LoRAAdapterSpec` plus typed `lora_adapters` request fields across `ImageGenerationRequest`, `ImageEditRequest`, `VideoGenerationRequest`, and `ImageToVideoRequest`.
+- MLX-Gen integration: route typed LoRA adapters through local `t2i`, `i2i`, `t2v`, and `i2v`, keep backend-default adapters as a separate config path, and preserve adapter provenance in generated metadata.
+- CLI/Core integration: add first-class repeated `--lora*` flags for one-shot MLX-Gen image/video commands and forward `lora_adapters` plus typed `guidance_2` through the AbstractCore plugin surface.
+- Provider discovery: surface MLX-Gen route-level LoRA truth (`supports_lora`, `lora_status`, `lora_target_roles`, `lora_validation_profile`) through catalog/provider-model discovery instead of duplicating compatibility truth in the packaged registry.
+- Batch generation: add and document first-class batch orchestration through `VisionManager.generate_image_batch(...)`, `edit_image_batch(...)`, `generate_video_batch(...)`, `image_to_video_batch(...)`, plus CLI `--count` / `--seeds`.
+- Adapter inventory hygiene: add route-aware installed-adapter discovery through `abstractvision adapters ...` / `VisionManager.list_provider_adapters(...)` and filter full-model component snapshots out of that inventory so only optional overlays are surfaced as adapters.
+- Wan video validation: reject undersized TI2V-5B requests below `832x480` / `480x832` in the MLX-Gen backend boundary and publish only validated `832x480` TI2V and `480x240` task-specific Wan A14B proof assets.
+- Docs/tests: add a bundled MLX-Gen proof page with current batch image/video runs, stacked-adapter image-edit evidence, validated TI2V-5B and Wan A14B visual proofs, progress logs, provider-adapter discovery evidence, and expanded regression coverage for exact Qwen edit routing, CLI propagation, plugin propagation, Diffusers compatibility bridging, adapter inventory filtering, and packaging markers.
+
 ## 0.3.22 - 2026-06-07
 
-- Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.13,<0.19.0` so Apple Silicon installs pick up the current SeedVR2 upscaler, official base-model support, canonical q8/q4 packages, and the latest image-edit fixes.
+- Runtime dependency: raise the MLX-Gen optional runtime floor to `mlx-gen>=0.18.14,<0.19.0` so Apple Silicon installs pick up SeedVR2 large-output VAE decode stability, official base-model support, canonical q8/q4 packages, and the latest image-edit fixes.
 - Image upscaling: add first-class `ImageUpscaleRequest`, `VisionManager.upscale_image(...)`, backend `upscale_image_with_progress(...)`, and canonical `image_upscale` capability metadata.
 - MLX-Gen SeedVR2: surface official `ByteDance-Seed/SeedVR2-3B` and `ByteDance-Seed/SeedVR2-7B` base models plus canonical `AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}` packages. Short selectors such as `seedvr2-3b` resolve to the recommended 8-bit package, while exact q4/q8 model ids remain exact.
 - CLI/Core integration: add one-shot `abstractvision upscale` with default `mlx-gen/AbstractFramework/seedvr2-3b-8bit`, AbstractCore plugin tool support, and residency/catalog support for upscaler-only models.

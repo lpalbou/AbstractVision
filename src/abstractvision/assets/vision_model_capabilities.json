@@ -54,10 +54,12 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 1280
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 704
             },
             "steps": {
               "required": false
@@ -125,10 +127,12 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 1280
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 704
             },
             "steps": {
               "required": false,
@@ -166,10 +170,12 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 1280
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 704
             },
             "steps": {
               "required": false
@@ -224,10 +230,12 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 1280
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 704
             },
             "steps": {
               "required": false
@@ -273,10 +281,12 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 1280
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 704
             },
             "steps": {
               "required": false,
@@ -3491,6 +3501,10 @@
               "required": false,
               "default": 3.0
             },
+            "flow_shift": {
+              "required": false,
+              "default": 3.0
+            },
             "seed": {
               "required": false
             }
@@ -3590,6 +3604,10 @@
             "guidance_2": {
               "required": false,
               "default": 3.5
+            },
+            "flow_shift": {
+              "required": false,
+              "default": 3.0
             },
             "seed": {
               "required": false
@@ -3796,6 +3814,10 @@
               "required": false,
               "default": 5.0
             },
+            "flow_shift": {
+              "required": false,
+              "default": 5.0
+            },
             "seed": {
               "required": false
             }
@@ -3824,6 +3846,10 @@
               "default": 15
             },
             "guidance_scale": {
+              "required": false,
+              "default": 5.0
+            },
+            "flow_shift": {
               "required": false,
               "default": 5.0
             },
@@ -3974,10 +4000,12 @@
               "required": true
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 1280
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 704
             },
             "steps": {
               "required": false
@@ -4268,7 +4296,7 @@
             },
             "softness": {
               "required": false,
-              "default": 0.0,
+              "default": 0.25,
               "minimum": 0.0,
               "maximum": 1.0
             },
@@ -4289,7 +4317,8 @@
             },
             "vae_tiling": {
               "required": false,
-              "default": false
+              "default": null,
+              "description": "Force tiled VAE encode/decode when true, explicitly disable it when false, or leave unset to use the MLX-Gen SeedVR2 runtime policy."
             }
           },
           "requires": {
@@ -4369,7 +4398,7 @@
             },
             "softness": {
               "required": false,
-              "default": 0.0,
+              "default": 0.25,
               "minimum": 0.0,
               "maximum": 1.0
             },
@@ -4390,7 +4419,8 @@
             },
             "vae_tiling": {
               "required": false,
-              "default": false
+              "default": null,
+              "description": "Force tiled VAE encode/decode when true, explicitly disable it when false, or leave unset to use the MLX-Gen SeedVR2 runtime policy."
             }
           },
           "requires": {
@@ -4405,6 +4435,24 @@
       "license": "apache-2.0",
       "notes": "Unified Wan 2.2 TI2V 5B Diffusers checkpoint. Supports both text-to-video and image-to-video at 720p/24fps. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
       "downloads": [
+        {
+          "key": "wan2.2-ti2v-5b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared 8-bit folder for the unified Wan 2.2 TI2V 5B checkpoint. Supports both text-to-video and image-to-video."
+        },
+        {
+          "key": "wan2.2-ti2v-5b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "AbstractFramework/wan2.2-ti2v-5b-diffusers-bf16",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared BF16 folder for the unified Wan 2.2 TI2V 5B checkpoint. Supports both text-to-video and image-to-video."
+        },
         {
           "key": "wan2.2-ti2v-5b",
           "engine": "mlx-gen",
@@ -4461,6 +4509,10 @@
               "required": false,
               "default": 5.0
             },
+            "flow_shift": {
+              "required": false,
+              "default": 5.0
+            },
             "seed": {
               "required": false
             }
@@ -4507,6 +4559,10 @@
               "default": 50
             },
             "guidance_scale": {
+              "required": false,
+              "default": 5.0
+            },
+            "flow_shift": {
               "required": false,
               "default": 5.0
             },
@@ -4823,6 +4879,24 @@
       "license": "bria-ai-open-rail-m",
       "notes": "FIBO text-to-image model. MLX-Gen 0.18.7+ can run the official snapshot locally and can optionally condition on one image through image_strength.",
       "downloads": [
+        {
+          "key": "fibo",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/fibo-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared 4-bit folder for FIBO."
+        },
+        {
+          "key": "fibo",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/fibo-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen prepared 8-bit folder for FIBO."
+        },
         {
           "key": "fibo",
           "engine": "mlx-gen",

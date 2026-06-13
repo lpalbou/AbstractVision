@@ -66,7 +66,7 @@ def _local_runtime_available(backend: Optional[str]) -> bool:
     if kind in {"huggingface", "hf", "diffusers", "hf-diffusers"}:
         return importlib.util.find_spec("diffusers") is not None and importlib.util.find_spec("torch") is not None
     if kind in {"mflux", "m-flux", "mlx-gen", "mlxgen", "mlx"}:
-        return sys.platform == "darwin" and importlib.util.find_spec("mflux") is not None and importlib.util.find_spec("mlx") is not None
+        return importlib.util.find_spec("mflux") is not None and importlib.util.find_spec("mlx") is not None
     if kind in {"sdcpp", "stable-diffusion.cpp", "stable_diffusion_cpp", "stable-diffusion-cpp"}:
         return importlib.util.find_spec("stable_diffusion_cpp") is not None
     return True

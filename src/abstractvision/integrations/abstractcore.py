@@ -281,6 +281,7 @@ def make_vision_tools(
         steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         guidance_2: Optional[float] = None,
+        flow_shift: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
         reg.require_support(model_id, "text_to_video")
@@ -303,6 +304,11 @@ def make_vision_tools(
                 guidance_2
                 if guidance_2 is not None
                 else _task_param_value("text_to_video", "guidance_2", None)
+            ),
+            flow_shift=(
+                flow_shift
+                if flow_shift is not None
+                else _task_param_value("text_to_video", "flow_shift", None)
             ),
             seed=seed,
         )
@@ -328,6 +334,7 @@ def make_vision_tools(
         steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         guidance_2: Optional[float] = None,
+        flow_shift: Optional[float] = None,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
         reg.require_support(model_id, "image_to_video")
@@ -352,6 +359,11 @@ def make_vision_tools(
                 guidance_2
                 if guidance_2 is not None
                 else _task_param_value("image_to_video", "guidance_2", None)
+            ),
+            flow_shift=(
+                flow_shift
+                if flow_shift is not None
+                else _task_param_value("image_to_video", "flow_shift", None)
             ),
             seed=seed,
         )

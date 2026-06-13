@@ -106,14 +106,14 @@ class TestPackagingMetadata(unittest.TestCase):
         self.assertIn("mlx-gen", apple_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(gpu_names))
         self.assertNotIn("stable-diffusion-cpp-python", gpu_names)
-        self.assertNotIn("mlx-gen", gpu_names)
+        self.assertIn("mlx-gen", gpu_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(all_names))
         self.assertIn("stable-diffusion-cpp-python", all_names)
         self.assertIn("mlx-gen", all_names)
         self.assertEqual(apple_names, all_apple_names)
         self.assertIn("mlx-gen", all_apple_names)
-        self.assertEqual(local_names, all_gpu_names)
-        self.assertNotIn("mlx-gen", all_gpu_names)
+        self.assertEqual(local_names | {"mlx-gen"}, all_gpu_names)
+        self.assertIn("mlx-gen", all_gpu_names)
 
     def test_runtime_aliases_and_bundles_do_not_drift(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -134,10 +134,10 @@ class TestPackagingMetadata(unittest.TestCase):
         self.assertEqual(diffusers, huggingface)
         self.assertEqual(diffusers | sdcpp, local)
         self.assertEqual(local | mflux, apple)
-        self.assertEqual(diffusers, gpu)
+        self.assertEqual(diffusers | mflux, gpu)
         self.assertEqual(local | mflux, all_runtime)
         self.assertEqual(apple, all_apple)
-        self.assertEqual(local, all_gpu)
+        self.assertEqual(local | mflux, all_gpu)
         self.assertEqual(diffusers_dev, huggingface_dev)
 
         contributor_only = {
@@ -154,9 +154,12 @@ class TestPackagingMetadata(unittest.TestCase):
 
     def test_mlx_gen_extra_uses_current_runtime_floor(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        expected = "mlx-gen>=0.18.13,<0.19.0; platform_system == 'Darwin' and python_version >= '3.10'"
+        expected = (
+            "mlx-gen>=0.18.18,<0.19.0; "
+            "(platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'"
+        )
 
-        for extra in ("mlx-gen", "mflux", "apple", "all", "all-apple"):
+        for extra in ("mlx-gen", "mflux", "apple", "gpu", "all", "all-apple", "all-gpu"):
             self.assertIn(expected, _optional_dependency_requirements(pyproject, extra))
 
     def test_sdcpp_binding_extras_avoid_known_broken_sdist(self):
