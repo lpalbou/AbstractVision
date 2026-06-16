@@ -1956,6 +1956,19 @@ class MFluxVisionBackend(VisionBackend):
             if package_support is None:
                 return bool(runtime_support)
             return bool(package_support and runtime_support)
+        resolved_base = str(
+            self._resolved_base_model
+            or _infer_base_model(self._cfg.base_model, self._cfg.model)
+            or ""
+        ).strip()
+        if parameter == "mask":
+            if package_support is False:
+                return False
+            return resolved_base in {"qwen-image-edit-2511", "fibo-edit", "fibo-edit-rmbg"}
+        if parameter == "control_image":
+            if package_support is False:
+                return False
+            return resolved_base == "qwen-image"
         return package_support
 
     def _require_route_option_support_if_known(
