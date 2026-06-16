@@ -575,10 +575,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" class="md-nav__link">
+  <a href="#what-do-the-capability-registries-mean-and-what-do-they-not-mean" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What does the capability registry mean (and what does it not mean)?
+        What do the capability registries mean (and what do they not mean)?
       
     </span>
   </a>
@@ -1001,10 +1001,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" class="md-nav__link">
+  <a href="#what-do-the-capability-registries-mean-and-what-do-they-not-mean" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What does the capability registry mean (and what does it not mean)?
+        What do the capability registries mean (and what do they not mean)?
       
     </span>
   </a>
@@ -1075,7 +1075,7 @@
 <p>AbstractVision is a small, model-agnostic API for <strong>generative vision outputs</strong> (images, optional video) with:
 - a small orchestrator (<a href="../src/abstractvision/vision_manager.py"><code>VisionManager</code></a>)
 - pluggable execution engines (“backends”) in <a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>
-- a packaged capability registry (<a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>vision_model_capabilities.json</code></a>)
+- packaged capability registries (<a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>vision_model_capabilities.json</code></a>, <a href="../src/abstractvision/assets/vision_adapter_capabilities.json"><code>vision_adapter_capabilities.json</code></a>)
 - optional artifact-ref outputs via stores (<a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>)</p>
 <h2 id="how-does-abstractvision-fit-into-abstractframework">How does AbstractVision fit into AbstractFramework?<a class="headerlink" href="#how-does-abstractvision-fit-into-abstractframework" title="Permanent link">&para;</a></h2>
 <p>AbstractVision is part of the <strong>AbstractFramework</strong> ecosystem:</p>
@@ -1091,7 +1091,7 @@
 <h2 id="what-does-abstractvision-support-today">What does AbstractVision support today?<a class="headerlink" href="#what-does-abstractvision-support-today" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Built-in backends implement <strong>images</strong>: <code>text_to_image</code> and <code>image_to_image</code>.</li>
-<li>Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code>. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream <code>mlx-gen</code> / <code>mlx</code> markers are available.</li>
+<li>Local MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B <code>text_to_video</code> / first-frame <code>image_to_video</code>. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream <code>mlx-gen</code> / <code>mlx</code> markers are available.</li>
 <li>Local Diffusers <code>text_to_video</code> remains experimental and is temporarily disabled from the normal local runtime surfaces.</li>
 <li>OpenAI-compatible HTTP can also provide <code>text_to_video</code> / <code>image_to_video</code> <strong>when</strong> video endpoints are configured.</li>
 <li><code>multi_view_image</code> exists in the public API (<code>VisionManager.generate_angles</code>) but no built-in backend implements it yet (they raise <code>CapabilityNotSupportedError</code>).</li>
@@ -1101,7 +1101,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong> (<a href="../src/abstractvision/backends/openai_compatible.py"><code>../src/abstractvision/backends/openai_compatible.py</code></a>): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).</li>
 <li><strong>Diffusers (local)</strong> (<a href="../src/abstractvision/backends/huggingface_diffusers.py"><code>../src/abstractvision/backends/huggingface_diffusers.py</code></a>): run Diffusers pipelines locally (heavy deps). Local <code>text_to_video</code> groundwork exists but is currently quarantined from the normal local surfaces.</li>
-<li><strong>MLX-Gen (local, Apple-first)</strong> (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>): run MLX-optimized image models, FIBO snapshots, shared LoRA adapters, and Wan 2.2 video locally.</li>
+<li><strong>MLX-Gen (local, Apple-first)</strong> (<a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>): run MLX-optimized image models, validated Qwen structured-control and masked-edit routes, FIBO snapshots, shared LoRA adapters, SeedVR2 upscaling, and Wan 2.2 video locally.</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong> (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>): run GGUF diffusion models via <code>sd-cli</code> or <code>stable-diffusion-cpp-python</code>.</li>
 </ul>
 <h2 id="what-model-should-i-start-with-local">What model should I start with (local)?<a class="headerlink" href="#what-model-should-i-start-with-local" title="Permanent link">&para;</a></h2>
@@ -1192,13 +1192,18 @@ abstractvision<span class="w"> </span>cli
 </ul>
 <p>Wan TI2V-5B uses one target role, <code>transformer</code>. Wan A14B routes require
 explicit <code>high_noise_transformer</code> / <code>low_noise_transformer</code> assignment.</p>
-<h2 id="what-does-the-capability-registry-mean-and-what-does-it-not-mean">What does the capability registry mean (and what does it not mean)?<a class="headerlink" href="#what-does-the-capability-registry-mean-and-what-does-it-not-mean" title="Permanent link">&para;</a></h2>
-<p>The registry answers “what a model <em>claims</em> to support” (task keys/params) and can be used for <strong>optional gating</strong>:</p>
+<h2 id="what-do-the-capability-registries-mean-and-what-do-they-not-mean">What do the capability registries mean (and what do they not mean)?<a class="headerlink" href="#what-do-the-capability-registries-mean-and-what-do-they-not-mean" title="Permanent link">&para;</a></h2>
+<p>The model registry answers “what a model <em>claims</em> to support” (task keys/params) and can be used for <strong>optional gating</strong>:</p>
 <ul>
 <li><code>VisionModelCapabilitiesRegistry.supports(...)</code> / <code>.require_support(...)</code> (<a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>)</li>
 <li><code>VisionManager(model_id=...)</code> uses it to fail fast before calling a backend (<a href="../src/abstractvision/vision_manager.py"><code>../src/abstractvision/vision_manager.py</code></a>)</li>
 </ul>
-<p>It does <strong>not</strong> guarantee your configured backend can execute the task; backend support is a separate constraint (<a href="../reference/backends/">docs/reference/backends.md</a>).</p>
+<p>The adapter registry answers “what package-owned adapter defaults and compatibility hints are curated for one adapter family?”:</p>
+<ul>
+<li><code>VisionAdapterCapabilitiesRegistry.match_profile(...)</code> (<a href="../src/abstractvision/adapter_capabilities.py"><code>../src/abstractvision/adapter_capabilities.py</code></a>)</li>
+<li><code>abstractvision adapters --provider mlx-gen --model &lt;model-id&gt; --task &lt;task&gt; --json</code> to inspect recommended parameters, docs links, and compatibility notes for locally cached overlays</li>
+</ul>
+<p>Neither registry guarantees that one exact configured backend route can execute the request. Runtime route support is a separate backend-owned constraint (<a href="../reference/backends/">docs/reference/backends.md</a>).</p>
 <h2 id="i-only-need-the-http-backend-do-i-have-to-install-torchdiffusers">I only need the HTTP backend. Do I have to install Torch/Diffusers?<a class="headerlink" href="#i-only-need-the-http-backend-do-i-have-to-install-torchdiffusers" title="Permanent link">&para;</a></h2>
 <p>No. The base install is lightweight and includes the stdlib OpenAI-compatible HTTP backend without Torch/Diffusers (see <a href="../pyproject.toml"><code>../pyproject.toml</code></a>). Heavy local backend modules are still imported lazily (<a href="../src/abstractvision/backends/__init__.py"><code>../src/abstractvision/backends/__init__.py</code></a>).</p>
 <p>Install <code>abstractvision[diffusers]</code> only when you want local Diffusers generation. Use <code>abstractvision[sdcpp]</code> or an external <code>sd-cli</code> only when you need stable-diffusion.cpp.</p>

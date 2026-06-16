@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/completed/028_mlx_gen_qwen_control_and_adapter_registry_sync/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>Planned: Quarantine unreliable local runtime capabilities until they are re-validated - AbstractVision</title>
+        <title>028 mlx gen qwen control and adapter registry sync - AbstractVision</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated" class="md-skip">
+        <a href="#task-028-mlx-gen-qwen-maskcontrol-sync-and-packaged-adapter-capability-registry" class="md-skip">
           Skip to content
         </a>
       
@@ -102,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Planned: Quarantine unreliable local runtime capabilities until they are re-validated
+              028 mlx gen qwen control and adapter registry sync
             
           </span>
         </div>
@@ -588,8 +588,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -598,10 +596,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#metadata" class="md-nav__link">
+  <a href="#task-028-mlx-gen-qwen-maskcontrol-sync-and-packaged-adapter-capability-registry" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Metadata
+        Task 028: MLX-Gen Qwen mask/control sync and packaged adapter capability registry
       
     </span>
   </a>
@@ -609,10 +607,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#adr-status" class="md-nav__link">
+  <a href="#main-goals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ADR status
+        Main goals
       
     </span>
   </a>
@@ -620,10 +618,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
+  <a href="#secondary-goals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Context
+        Secondary goals
       
     </span>
   </a>
@@ -631,10 +629,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#current-code-reality" class="md-nav__link">
+  <a href="#context-problem" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current code reality
+        Context / problem
       
     </span>
   </a>
@@ -642,22 +640,77 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#operator-evidence-to-preserve" class="md-nav__link">
+  <a href="#constraints" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Operator evidence to preserve
+        Constraints
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Operator evidence to preserve">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#success-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Success criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Report
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Report">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-glm-image-local-diffusers-is-not-shippable-yet" class="md-nav__link">
+  <a href="#summary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1) GLM-Image local Diffusers is not shippable yet
+        Summary
       
     </span>
   </a>
@@ -665,149 +718,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-mflux-image_to_image-fails-structural-fidelity" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2) MFLUX image_to_image fails structural fidelity
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-local-text_to_video-is-wired-but-not-honest-enough-yet" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3) Local text_to_video is wired but not honest enough yet
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#problem" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Problem
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#why" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#scope" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Scope
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#re-enable-criteria" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Re-enable criteria
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Re-enable criteria">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#glm-local-diffusers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        GLM local Diffusers
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#mflux-image_to_image" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MFLUX image_to_image
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#local-text_to_video" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Local text_to_video
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dependencies-and-related-tasks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dependencies and related tasks
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#expected-outcomes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Expected outcomes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#validation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -817,26 +727,20 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#progress-checklist" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#user-visible-outcomes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Progress checklist
+        User-visible outcomes
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#guidance-for-the-implementing-agent" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Guidance for the implementing agent
-      
-    </span>
-  </a>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -860,155 +764,137 @@
   
 
 
-<h1 id="planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated">Planned: Quarantine unreliable local runtime capabilities until they are re-validated<a class="headerlink" href="#planned-quarantine-unreliable-local-runtime-capabilities-until-they-are-re-validated" title="Permanent link">&para;</a></h1>
-<h2 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">&para;</a></h2>
+  <h1>028 mlx gen qwen control and adapter registry sync</h1>
+
+<h2 id="task-028-mlx-gen-qwen-maskcontrol-sync-and-packaged-adapter-capability-registry">Task 028: MLX-Gen Qwen mask/control sync and packaged adapter capability registry<a class="headerlink" href="#task-028-mlx-gen-qwen-maskcontrol-sync-and-packaged-adapter-capability-registry" title="Permanent link">&para;</a></h2>
+<p><strong>Date</strong>: 2026-06-15<br />
+<strong>Status</strong>: Completed<br />
+<strong>Priority</strong>: P0</p>
+<hr />
+<h2 id="main-goals">Main goals<a class="headerlink" href="#main-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Created: 2026-05-22</li>
-<li>Status: In Progress</li>
-<li>Priority: P1</li>
-<li>Completed: N/A</li>
+<li>Upgrade the optional MLX-Gen runtime floor to the latest published release.</li>
+<li>Surface the current MLX-Gen Qwen masked-edit and structured-control slices
+  through stable AbstractVision request fields.</li>
+<li>Move package-owned adapter compatibility/default metadata out of Python
+  branches and into a packaged JSON asset.</li>
 </ul>
-<h2 id="adr-status">ADR status<a class="headerlink" href="#adr-status" title="Permanent link">&para;</a></h2>
+<h2 id="secondary-goals">Secondary goals<a class="headerlink" href="#secondary-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Governing ADRs:</li>
-<li><a href="../../../adr/0004_thin_orchestrator_and_backend_owned_model_semantics/">ADR 0004: Keep the orchestrator thin and make model semantics backend-owned</a></li>
-<li><a href="../../../adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005: Own a curated capability registry and cache-backed model catalog</a></li>
-<li><a href="../../../adr/0006_operator_control_configuration_precedence_and_explicit_network_use/">ADR 0006: Keep runtime selection explicit and operator-controlled</a></li>
-<li><a href="../../../adr/0007_explicit_fallback_and_degraded_mode_disclosure/">ADR 0007: Disclose fallbacks and degraded modes explicitly</a></li>
-<li><a href="../../../adr/0008_validation_and_evidence_based_change_reporting/">ADR 0008: Require validation and evidence-based change reporting</a></li>
-<li><a href="../../../adr/0009_code_first_docs_backlog_and_adr_discipline/">ADR 0009: Keep docs, backlog, and ADRs code-first</a></li>
-<li>ADR impact: None if we keep the quarantine backend-owned and continue to treat the packaged registry as model-family metadata rather than unconditional local-runtime truth.</li>
+<li>Keep backend/runtime route truth explicit and fail closed on mismatches.</li>
+<li>Preserve the shared LoRA contract while making adapter defaults data-driven.</li>
+<li>Document the new authority boundary clearly in the core docs and backlog.</li>
 </ul>
-<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>AbstractVision currently has a clean packaged capability registry and backend-owned runtime gating, but recent operator testing showed that some local model/task combinations are not yet honest enough to expose as working local capabilities.</p>
-<p>Three cases were quarantined until they could be re-validated:</p>
+<hr />
+<h2 id="context-problem">Context / problem<a class="headerlink" href="#context-problem" title="Permanent link">&para;</a></h2>
+<p>Upstream <code>mlx-gen</code> moved ahead of the AbstractVision consumer boundary:</p>
 <ul>
-<li>local Diffusers <code>zai-org/GLM-Image</code> / <code>GLM-Image</code> for both <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX <code>image_to_image</code> for the current curated FLUX klein families (re-enabled for FLUX.2 klein on 2026-05-23; quality follow-up remains);</li>
-<li>local Diffusers <code>text_to_video</code> for the current CogVideoX path.</li>
+<li><code>AbstractFramework/qwen-image-edit-2511-8bit</code> now exposes route-aware masked
+  edit/inpaint.</li>
+<li><code>AbstractFramework/qwen-image-8bit</code> now exposes route-aware structured
+  control.</li>
+<li>AbstractVision still hard-coded MLX-Gen mask support to FIBO Edit families
+  and had no first-class <code>control_image</code> request field.</li>
+<li>Adapter compatibility/defaults for Lightning families were also embedded in
+  <code>lora_adapters.py</code>, which made routine catalog/default updates require Python
+  code edits.</li>
 </ul>
-<p>Update (2026-05-23):
-- MFLUX <code>image_to_image</code> for the curated FLUX.2 klein presets (<code>flux2-klein-4b</code>, <code>flux2-klein-9b</code>) has been re-enabled so it can be used from the playground/CLI/plugin surfaces.
-- Route-aware masked edits are now surfaced for validated Qwen Image Edit 2511 and FIBO Edit MLX-Gen routes; FLUX.2 edit remains unmasked.
-- The operator-quality acceptance criteria below are still relevant: re-enabled means “wired + runnable”, not “quality bar fully met”.</p>
-<h2 id="current-code-reality">Current code reality<a class="headerlink" href="#current-code-reality" title="Permanent link">&para;</a></h2>
-<p>Files re-checked on 2026-05-22:</p>
+<p>That combination left the runtime truth under-surfaced and the packaged policy
+too entangled with execution code.</p>
+<hr />
+<h2 id="constraints">Constraints<a class="headerlink" href="#constraints" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>src/abstractvision/backends/huggingface_diffusers.py</code></li>
-<li><code>src/abstractvision/backends/mflux.py</code></li>
-<li><code>src/abstractvision/playground_server.py</code></li>
-<li><code>src/abstractvision/cli.py</code></li>
-<li><code>src/abstractvision/integrations/abstractcore_plugin.py</code></li>
-<li><code>src/abstractvision/assets/vision_model_capabilities.json</code></li>
+<li>Keep the orchestrator thin and backend/runtime semantics backend-owned.</li>
+<li>Do not silently reinterpret structured control as image edit or vice versa.</li>
+<li>Keep the shared request/dataclass surface additive rather than introducing
+  new top-level task families.</li>
+<li>Keep adapter compatibility/default hints package-owned, but keep exact route
+  execution truth backend-owned.</li>
 </ul>
-<p>The current runtime policy after the quarantine change is:</p>
+<hr />
+<h2 id="dependencies">Dependencies<a class="headerlink" href="#dependencies" title="Permanent link">&para;</a></h2>
 <ul>
-<li>local Diffusers <code>GLM-Image</code> is hidden from runtime-backed local surfaces and rejected by the backend for <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX advertises <code>text_to_image</code> and also implements <code>image_to_image</code> for FLUX.2 klein presets (no masks);</li>
-<li>local Diffusers CogVideoX <code>text_to_video</code> is marked experimental and disabled from normal local surfaces.</li>
+<li>ADR 0004: <a href="../../../adr/0004_thin_orchestrator_and_backend_owned_model_semantics/">thin orchestrator and backend-owned model semantics</a></li>
+<li>ADR 0005: <a href="../../../adr/0005_curated_capability_registry_and_download_catalog/">curated capability registry and download catalog</a></li>
+<li>ADR 0007: <a href="../../../adr/0007_explicit_fallback_and_degraded_mode_disclosure/">explicit fallback and degraded mode disclosure</a></li>
+<li>Planned follow-up still open:
+  <a href="../../planned/020_adapter_aware_model_graph_and_catalog/">020_adapter_aware_model_graph_and_catalog.md</a></li>
+<li>Related runtime-quality quarantine:
+  <a href="../../planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v/">0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md</a></li>
 </ul>
-<p>The packaged registry still records the broader model-family tasks. That is intentional: the registry says what the family can do in principle, while the backend says what AbstractVision can currently run honestly.</p>
-<h2 id="operator-evidence-to-preserve">Operator evidence to preserve<a class="headerlink" href="#operator-evidence-to-preserve" title="Permanent link">&para;</a></h2>
-<h3 id="1-glm-image-local-diffusers-is-not-shippable-yet">1) <code>GLM-Image</code> local Diffusers is not shippable yet<a class="headerlink" href="#1-glm-image-local-diffusers-is-not-shippable-yet" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="implementation-plan">Implementation plan<a class="headerlink" href="#implementation-plan" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Operator ran local <code>GLM-Image</code> from the playground and rejected the output quality even for <code>text_to_image</code>.</li>
-<li>Earlier runtime investigation also found <code>image_to_image</code> path-specific issues on Apple Silicon:</li>
-<li>pipeline input shape differences (<code>image=[pil_image]</code> expectation);</li>
-<li>PyTorch MPS failure in the GLM vision embedding path (<code>grid_sample(..., padding_mode="border")</code>);</li>
-<li>instability on the image-conditioning path with <code>float16</code>.</li>
-<li>A narrow workaround path could make some Apple Silicon <code>i2i</code> runs execute, but that is not sufficient. The operator explicitly does not want a CPU-heavy fallback story except as a last resort, and the current local quality bar is not met.</li>
+<li>Raise the MLX-Gen optional dependency floor to <code>0.18.19</code>.</li>
+<li>Add typed <code>control_image</code> / <code>control_strength</code> to
+  <code>ImageGenerationRequest</code>, plus <code>supports_control_image</code> to
+  <code>VisionBackendCapabilities</code>.</li>
+<li>Rework MLX-Gen capability surfacing to use route-aware metadata for mask and
+  structured-control support instead of family-only gates.</li>
+<li>Add packaged <code>vision_adapter_capabilities.json</code> plus a loader/validator and
+  refactor <code>lora_adapters.py</code> into a matcher/serializer layer over that asset.</li>
+<li>Add filesystem override paths for both the model and adapter capability
+  assets.</li>
+<li>Repair the stale operator docs/backlog notes in the same pass.</li>
 </ul>
-<h3 id="2-mflux-image_to_image-fails-structural-fidelity">2) MFLUX <code>image_to_image</code> fails structural fidelity<a class="headerlink" href="#2-mflux-image_to_image-fails-structural-fidelity" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="success-criteria">Success criteria<a class="headerlink" href="#success-criteria" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Source image: snowy grounded spacecraft; prompt: watercolor.</li>
-<li>Diffusers FLUX klein produced a recognizable watercolor transform of the same scene.</li>
-<li>MFLUX FLUX klein produced a semantically wrong result with severe structure drift.</li>
-<li>Second source image: indoor room / living-room scene; prompt: watercolor.</li>
-<li>MFLUX preserved some coarse layout but still failed scene fidelity enough that the operator does not consider current local <code>i2i</code> acceptable.</li>
-<li>Conclusion: MFLUX is acceptable for <code>text_to_image</code> iteration today, but not for <code>image_to_image</code>.</li>
+<li>Qwen 2511 masked edit no longer fails at the old FIBO-only gate.</li>
+<li>Base-Qwen structured control is available through typed public request
+  fields, CLI flags, and route-aware backend gating.</li>
+<li>Known Lightning adapter defaults/compatibility notes are driven by packaged
+  JSON instead of hard-coded Python branches.</li>
+<li>Unsupported backends and unsupported MLX routes fail closed instead of
+  silently ignoring <code>control_image</code> or <code>mask</code>.</li>
 </ul>
-<h3 id="3-local-text_to_video-is-wired-but-not-honest-enough-yet">3) Local <code>text_to_video</code> is wired but not honest enough yet<a class="headerlink" href="#3-local-text_to_video-is-wired-but-not-honest-enough-yet" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="test-plan">Test plan<a class="headerlink" href="#test-plan" title="Permanent link">&para;</a></h2>
 <ul>
-<li>CogVideoX local path can produce technically valid MP4 outputs.</li>
-<li>The operator observed outputs that “make no sense” semantically and does not want the package to present this as a working local capability today.</li>
-<li>Conclusion: keep the code and tests as internal groundwork if useful, but do not surface local <code>text_to_video</code> as working until there is a real quality acceptance pass.</li>
+<li><code>pytest -q tests/test_capabilities_schema_validation.py tests/test_manager_capability_checks.py tests/test_cli_smoke.py tests/test_huggingface_diffusers_backend.py tests/test_mflux_backend.py tests/test_packaging_metadata.py</code></li>
+<li><code>pytest -q tests/test_openai_compatible_backend.py tests/test_stable_diffusion_cpp_backend.py</code></li>
+<li><code>python -m compileall src/abstractvision</code></li>
 </ul>
-<h2 id="problem">Problem<a class="headerlink" href="#problem" title="Permanent link">&para;</a></h2>
-<p>If the playground, CLI catalog, or plugin surfaces advertise these tasks as usable local capabilities, they overstate current product truth.</p>
-<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p>Quarantine the unreliable local task paths now and only re-enable them after a targeted validation task produces evidence that the outputs are acceptable.</p>
-<p>Current quarantine policy:</p>
+<hr />
+<h2 id="report">Report<a class="headerlink" href="#report" title="Permanent link">&para;</a></h2>
+<h3 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h3>
+<p>AbstractVision now targets <code>mlx-gen&gt;=0.18.19,&lt;0.19.0</code>, exposes typed
+<code>control_image</code> / <code>control_strength</code> for validated MLX-Gen Qwen structured
+control, and exposes route-aware masked edit for validated Qwen 2511 and FIBO
+Edit rows.</p>
+<p>The package now also ships a second curated capability asset,
+<code>vision_adapter_capabilities.json</code>, alongside the existing model registry.
+That asset owns adapter-family compatibility/default hints such as model
+aliases, recommended <code>steps</code>, recommended <code>guidance_scale</code>, documentation
+links, and local quantization notes. <code>lora_adapters.py</code> now loads and matches
+those profiles instead of encoding the current Lightning families directly in
+Python.</p>
+<p>Both capability registries can now be redirected to external JSON files through
+<code>asset_path=...</code> or environment overrides:</p>
 <ul>
-<li>local Diffusers <code>GLM-Image</code>: disable <code>text_to_image</code> and <code>image_to_image</code>;</li>
-<li>local MFLUX: enable <code>image_to_image</code> for FLUX.2 klein presets (no masks), keep <code>text_to_image</code>, and keep route-aware mask/control truth backend-owned for validated Qwen/FIBO rows;</li>
-<li>local Diffusers CogVideoX: disable <code>text_to_video</code> from normal local surfaces and describe it as experimental / not working.</li>
+<li><code>ABSTRACTVISION_MODEL_CAPABILITIES_PATH</code></li>
+<li><code>ABSTRACTVISION_ADAPTER_CAPABILITIES_PATH</code></li>
 </ul>
-<h2 id="why">Why<a class="headerlink" href="#why" title="Permanent link">&para;</a></h2>
+<p>That keeps the code/package boundary stable while allowing curated metadata
+updates without changing Python code.</p>
+<h3 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h3>
 <ul>
-<li>This keeps the package honest.</li>
-<li>It preserves the clean abstraction boundary: runtime truth stays backend-owned.</li>
-<li>It avoids forcing low-confidence features through the playground, CLI, and AbstractCore plugin just because the model family metadata exists.</li>
+<li>Focused validation passed:</li>
+<li><code>pytest -q tests/test_capabilities_schema_validation.py tests/test_manager_capability_checks.py tests/test_cli_smoke.py tests/test_huggingface_diffusers_backend.py tests/test_mflux_backend.py tests/test_packaging_metadata.py</code></li>
+<li><code>205 passed, 4 subtests passed</code></li>
+<li><code>pytest -q tests/test_openai_compatible_backend.py tests/test_stable_diffusion_cpp_backend.py</code></li>
+<li><code>25 passed, 1 skipped</code></li>
+<li>Compile check passed:</li>
+<li><code>python -m compileall src/abstractvision</code></li>
 </ul>
-<h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
-<p>Included:</p>
+<h3 id="user-visible-outcomes">User-visible outcomes<a class="headerlink" href="#user-visible-outcomes" title="Permanent link">&para;</a></h3>
 <ul>
-<li>keep the runtime blacklist in backend capability surfacing;</li>
-<li>keep playground/CLI/plugin discovery aligned with that backend truth;</li>
-<li>preserve the investigation notes and operator examples;</li>
-<li>define what evidence is required before re-enabling these tasks.</li>
+<li><code>abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ... --control-strength ...</code></li>
+<li><code>abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --mask ...</code></li>
+<li><code>abstractvision adapters --provider mlx-gen ... --json</code> now surfaces adapter
+  defaults/documentation/quantization guidance from the packaged adapter
+  registry rather than Python-only tables.</li>
 </ul>
-<p>Not included:</p>
-<ul>
-<li>solving GLM local quality/runtime issues in this task;</li>
-<li>solving MFLUX structural <code>i2i</code> fidelity in this task;</li>
-<li>solving local CogVideoX quality in this task;</li>
-<li>widening local video support.</li>
-</ul>
-<h2 id="re-enable-criteria">Re-enable criteria<a class="headerlink" href="#re-enable-criteria" title="Permanent link">&para;</a></h2>
-<h3 id="glm-local-diffusers">GLM local Diffusers<a class="headerlink" href="#glm-local-diffusers" title="Permanent link">&para;</a></h3>
-<ul>
-<li>reproducible <code>t2i</code> outputs that meet operator quality expectations;</li>
-<li>reproducible <code>i2i</code> outputs on Apple Silicon without unacceptable fallback behavior;</li>
-<li>no special-case runtime path that silently pushes most work to CPU.</li>
-</ul>
-<h3 id="mflux-image_to_image">MFLUX <code>image_to_image</code><a class="headerlink" href="#mflux-image_to_image" title="Permanent link">&para;</a></h3>
-<ul>
-<li>side-by-side evidence on at least two representative edit cases showing acceptable scene preservation compared with the current Diffusers baseline;</li>
-<li>clear task-specific constraints documented if MFLUX <code>i2i</code> needs narrower prompts/settings than <code>t2i</code>.</li>
-</ul>
-<h3 id="local-text_to_video">Local <code>text_to_video</code><a class="headerlink" href="#local-text_to_video" title="Permanent link">&para;</a></h3>
-<ul>
-<li>at least one local model/path that produces semantically acceptable short clips under documented settings;</li>
-<li>explicit hardware/settings guidance and representative validation clips;</li>
-<li>no claim of “working local video” before that quality bar is met.</li>
-</ul>
-<h2 id="dependencies-and-related-tasks">Dependencies and related tasks<a class="headerlink" href="#dependencies-and-related-tasks" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Deprecated: <a href="../../deprecated/017_mlx_mflux_backend_strategy/">017_mlx_mflux_backend_strategy.md</a></li>
-<li>Planned: <a href="../020_adapter_aware_model_graph_and_catalog/">020_adapter_aware_model_graph_and_catalog.md</a></li>
-<li>Planned: <a href="../0022_local_diffusers_image_to_video_backend/">0022_local_diffusers_image_to_video_backend.md</a></li>
-</ul>
-<h2 id="expected-outcomes">Expected outcomes<a class="headerlink" href="#expected-outcomes" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Runtime-backed local surfaces only expose local tasks we are willing to stand behind.</li>
-<li>The registry remains curated model metadata, while backend gating remains the source of local execution truth.</li>
-<li>Future re-enablement work has preserved evidence and explicit acceptance criteria instead of oral history.</li>
-</ul>
-<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Verify local provider-model listings exclude quarantined tasks.</li>
-<li>Verify playground task selectors do not surface quarantined local models/tasks.</li>
-<li>Verify backend direct calls raise clear capability errors for quarantined paths.</li>
-<li>Verify docs and release notes state the quarantine explicitly.</li>
-</ul>
-<h2 id="progress-checklist">Progress checklist<a class="headerlink" href="#progress-checklist" title="Permanent link">&para;</a></h2>
-<ul>
-<li>[x] Preserve all current operator/runtime findings in this backlog item.</li>
-<li>[ ] Keep runtime-backed local surfacing aligned with the quarantine policy.</li>
-<li>[ ] Revisit each quarantined path with explicit acceptance criteria before re-enabling it.</li>
-</ul>
-<h2 id="guidance-for-the-implementing-agent">Guidance for the implementing agent<a class="headerlink" href="#guidance-for-the-implementing-agent" title="Permanent link">&para;</a></h2>
-<p>Do not widen claims while this item is open. Treat the quarantine as intentional product truth, not as a temporary testing hack. If you later improve one of these paths, re-open the evidence, compare against the operator examples preserved here, and only then remove the corresponding backend blacklist.</p>
 
 
 

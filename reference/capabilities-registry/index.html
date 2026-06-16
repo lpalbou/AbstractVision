@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#capability-registry-vision_model_capabilitiesjson" class="md-skip">
+        <a href="#capability-registries-vision_model_capabilitiesjson-vision_adapter_capabilitiesjson" class="md-skip">
           Skip to content
         </a>
       
@@ -603,6 +603,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#override-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Override paths
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#curation-rules" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -745,6 +756,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#override-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Override paths
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#curation-rules" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -814,22 +836,23 @@
   
 
 
-<h1 id="capability-registry-vision_model_capabilitiesjson">Capability registry (<code>vision_model_capabilities.json</code>)<a class="headerlink" href="#capability-registry-vision_model_capabilitiesjson" title="Permanent link">&para;</a></h1>
-<p>AbstractVision keeps a single packaged “source of truth” for what model families can do and how
-AbstractVision understands their downloadable runtime variants:</p>
+<h1 id="capability-registries-vision_model_capabilitiesjson-vision_adapter_capabilitiesjson">Capability registries (<code>vision_model_capabilities.json</code>, <code>vision_adapter_capabilities.json</code>)<a class="headerlink" href="#capability-registries-vision_model_capabilitiesjson-vision_adapter_capabilitiesjson" title="Permanent link">&para;</a></h1>
+<p>AbstractVision keeps two packaged capability assets:</p>
 <ul>
 <li>Asset: <a href="../../src/abstractvision/assets/vision_model_capabilities.json"><code>../../src/abstractvision/assets/vision_model_capabilities.json</code></a></li>
 <li>Loader + validator: <code>VisionModelCapabilitiesRegistry</code> / <code>validate_capabilities_json()</code> in <a href="../../src/abstractvision/model_capabilities.py"><code>../../src/abstractvision/model_capabilities.py</code></a></li>
+<li>Asset: <a href="../../src/abstractvision/assets/vision_adapter_capabilities.json"><code>../../src/abstractvision/assets/vision_adapter_capabilities.json</code></a></li>
+<li>Loader + validator: <code>VisionAdapterCapabilitiesRegistry</code> / <code>validate_adapter_capabilities_json()</code> in <a href="../../src/abstractvision/adapter_capabilities.py"><code>../../src/abstractvision/adapter_capabilities.py</code></a></li>
 </ul>
 <p>See also:
 - CLI/REPL inspection commands: <a href="../configuration/">docs/reference/configuration.md</a>
 - Backends (execution reality): <a href="../backends/">docs/reference/backends.md</a>
 - ADR policy: <a href="../../adr/0005_curated_capability_registry_and_download_catalog/">docs/adr/0005_curated_capability_registry_and_download_catalog.md</a></p>
 <h2 id="policy-boundary">Policy boundary<a class="headerlink" href="#policy-boundary" title="Permanent link">&para;</a></h2>
-<p>The registry is not just descriptive metadata. In this repo it is the authoritative compatibility
-inventory that feeds:</p>
+<p>The packaged assets are not just descriptive metadata. In this repo they feed:</p>
 <ul>
 <li>model discovery;</li>
+<li>adapter discovery hints and default parameter recommendations;</li>
 <li>task and parameter introspection;</li>
 <li>curated download surfacing;</li>
 <li>backend request normalization.</li>
@@ -842,6 +865,12 @@ inventory that feeds:</p>
   runtime-native choice for a target engine;</li>
 <li>explicit about download-only or backend-not-supported states.</li>
 </ul>
+<p>Important boundary:</p>
+<ul>
+<li><code>vision_model_capabilities.json</code> is the curated package view of model-family tasks, downloadable variants, and model-level defaults.</li>
+<li><code>vision_adapter_capabilities.json</code> is the curated package view of adapter families, compatible base-model aliases, and adapter default/recommended parameters.</li>
+<li>Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports <code>mask</code>, <code>control_image</code>, or LoRA target roles at runtime.</li>
+</ul>
 <h2 id="what-the-registry-is-used-for">What the registry is used for<a class="headerlink" href="#what-the-registry-is-used-for" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Discovery</strong>: list known task keys and model ids.</li>
@@ -853,10 +882,30 @@ inventory that feeds:</p>
 <li>The playground API surfaces that structured metadata as <code>task_specs</code> so local tooling can enable edit-only flows without re-encoding model rules elsewhere.</li>
 <li><strong>Request normalization hints</strong>:</li>
 <li>additive parameter metadata such as <code>default</code>, <code>const</code>, <code>min</code>, <code>multiple_of</code>, <code>supported</code>, and <code>auto_derived_from_input</code> can be consumed by backends to keep model-specific defaults and constraints in one packaged source of truth.</li>
+<li><strong>Adapter-aware request normalization hints</strong>:</li>
+<li>adapter profiles carry package-owned defaults such as recommended <code>steps</code>, <code>guidance_scale</code>, documentation links, and quantization notes.</li>
 </ul>
 <p>Important:
 - The registry describes <strong>model capability intent</strong>.
 - Your configured backend still needs to implement the task at runtime (see backend support matrix in <a href="../backends/">docs/reference/backends.md</a>).</p>
+<h2 id="override-paths">Override paths<a class="headerlink" href="#override-paths" title="Permanent link">&para;</a></h2>
+<p>Both registries can be redirected to local JSON files without changing Python code:</p>
+<ul>
+<li><code>ABSTRACTVISION_MODEL_CAPABILITIES_PATH</code></li>
+<li><code>ABSTRACTVISION_ADAPTER_CAPABILITIES_PATH</code></li>
+</ul>
+<p>You can also pass <code>asset_path=...</code> directly when constructing either registry.
+That keeps the code/package boundary stable while letting operators update
+curated model/adapter metadata independently.</p>
+<p>Practical workflow:</p>
+<ol>
+<li>Copy the packaged JSON you want to override.</li>
+<li>Edit the local copy.</li>
+<li>Point the matching env var at that file.</li>
+<li>Verify the effective metadata with:</li>
+<li><code>abstractvision show-model &lt;model-id&gt;</code></li>
+<li><code>abstractvision adapters --provider mlx-gen --model &lt;model-id&gt; --task &lt;task&gt; --json</code></li>
+</ol>
 <h2 id="curation-rules">Curation rules<a class="headerlink" href="#curation-rules" title="Permanent link">&para;</a></h2>
 <p>When editing the registry:</p>
 <ul>
@@ -872,6 +921,7 @@ inventory that feeds:</p>
 </ul>
 <h2 id="minimal-python-usage">Minimal Python usage<a class="headerlink" href="#minimal-python-usage" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">VisionModelCapabilitiesRegistry</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.adapter_capabilities</span><span class="w"> </span><span class="kn">import</span> <span class="n">VisionAdapterCapabilitiesRegistry</span>
 
 <span class="n">reg</span> <span class="o">=</span> <span class="n">VisionModelCapabilitiesRegistry</span><span class="p">()</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">schema_version</span><span class="p">())</span>
@@ -879,6 +929,13 @@ inventory that feeds:</p>
 
 <span class="k">assert</span> <span class="n">reg</span><span class="o">.</span><span class="n">supports</span><span class="p">(</span><span class="s2">&quot;runwayml/stable-diffusion-v1-5&quot;</span><span class="p">,</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">models_for_task</span><span class="p">(</span><span class="s2">&quot;text_to_image&quot;</span><span class="p">))</span>
+
+<span class="n">adapter_reg</span> <span class="o">=</span> <span class="n">VisionAdapterCapabilitiesRegistry</span><span class="p">()</span>
+<span class="n">profile</span> <span class="o">=</span> <span class="n">adapter_reg</span><span class="o">.</span><span class="n">match_profile</span><span class="p">(</span>
+    <span class="n">repo_id</span><span class="o">=</span><span class="s2">&quot;lightx2v/Qwen-Image-2512-Lightning&quot;</span><span class="p">,</span>
+    <span class="n">relative_path</span><span class="o">=</span><span class="s2">&quot;Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">profile</span><span class="o">.</span><span class="n">to_profile_dict</span><span class="p">()[</span><span class="s2">&quot;recommended_parameters&quot;</span><span class="p">])</span>
 </code></pre></div>
 <h2 id="json-shape-high-level">JSON shape (high level)<a class="headerlink" href="#json-shape-high-level" title="Permanent link">&para;</a></h2>
 <p>The validator enforces a “soft schema”:</p>

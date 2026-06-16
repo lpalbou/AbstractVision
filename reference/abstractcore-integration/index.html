@@ -952,8 +952,9 @@ repo id; there is no separate quantization parameter.</p>
 artifact ref dict when an <code>artifact_store</code> is supplied. Without an artifact
 store the plugin returns bytes; with <code>artifact_store=...</code> it returns the stored
 artifact ref, matching the runtime/gateway artifact path.
-Typed per-call keyword arguments such as <code>lora_adapters</code>, <code>guidance_2</code>, and
-<code>on_progress</code> survive the plugin boundary. Unknown per-call keyword arguments
+Typed per-call keyword arguments such as <code>control_image</code>, <code>control_strength</code>,
+<code>lora_adapters</code>, <code>guidance_2</code>, and <code>on_progress</code> survive the plugin boundary.
+Unknown per-call keyword arguments
 such as <code>reference_images</code> and <code>max_sequence_length</code> are preserved in the
 AbstractVision request <code>extra</code> dict for local backends.
 <code>llm.vision.t2i(...)</code>, <code>llm.vision.i2i(...)</code>, <code>llm.vision.t2v(...)</code>, and
@@ -963,6 +964,9 @@ include diffusion-step progress; Wan video events use diffusion-step
 <p>For task-specific Wan A14B video models, <code>guidance_2</code> is a typed request
 parameter for the second-stage/low-noise guidance path. Pass it directly to
 <code>t2v(...)</code> / <code>i2v(...)</code>; do not wrap it in <code>extra</code>.</p>
+<p>For MLX-Gen base-Qwen structured control, pass <code>control_image=&lt;bytes&gt;</code> and
+optional <code>control_strength=&lt;float&gt;</code> directly to <code>t2i(...)</code>. Unsupported
+backends reject those fields explicitly instead of silently ignoring them.</p>
 <p>The same applies to LoRA adapters. Prefer the shared typed contract:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">LoRAAdapterSpec</span>
 
@@ -1018,7 +1022,7 @@ that support LoRAs:</p>
 <code>ProviderAdapterInfo</code> into JSON-safe dictionaries, but it does not invent
 compatibility metadata on its own.</p>
 <h3 id="batch-generation-through-core">Batch generation through Core<a class="headerlink" href="#batch-generation-through-core" title="Permanent link">&para;</a></h3>
-<p>The plugin now exposes explicit batch helpers in addition to the singular task
+<p>The plugin exposes explicit batch helpers in addition to the singular task
 methods:</p>
 <ul>
 <li><code>llm.vision.t2i_batch(...)</code></li>

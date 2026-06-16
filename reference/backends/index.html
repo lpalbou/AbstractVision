@@ -908,10 +908,10 @@ config/env in <a href="../configuration/">docs/reference/configuration.md</a>).<
 <p><strong>When to use</strong>
 - You want local quantized MLX generation through the optional MLX-Gen runtime. This release is validated on Apple Silicon first, and the install extra also exposes the upstream Linux/CUDA path when <code>mlx[cuda13]</code> markers apply.
 - You want the AbstractFramework-published q4/q8 prepared folders from the <a href="https://huggingface.co/collections/AbstractFramework/mlx-gen/">AbstractFramework/mlx-gen Hugging Face collection</a>.
-- You want the official MLX-Gen <code>0.18.18+</code> FIBO snapshots (<code>briaai/FIBO</code>, <code>briaai/Fibo-lite</code>, <code>briaai/Fibo-Edit</code>, <code>briaai/Fibo-Edit-RMBG</code>).
+- You want the official MLX-Gen <code>0.18.19+</code> FIBO snapshots (<code>briaai/FIBO</code>, <code>briaai/Fibo-lite</code>, <code>briaai/Fibo-Edit</code>, <code>briaai/Fibo-Edit-RMBG</code>).
 - You want the official Prism ML Bonsai ternary 2-bit checkpoint (<code>prism-ml/bonsai-image-ternary-4B-mlx-2bit</code>) for very small local <code>text_to_image</code>.
 - You want SeedVR2 single-image upscaling through canonical <code>AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}</code> packages or the official <code>ByteDance-Seed/SeedVR2-*</code> bases.
-- You want local Wan 2.2 video generation through MLX-Gen <code>0.18.18+</code>, including the prepared TI2V package and the task-specific A14B <code>text_to_video</code> / first-frame <code>image_to_video</code> packages.</p>
+- You want local Wan 2.2 video generation through MLX-Gen <code>0.18.19+</code>, including the prepared TI2V package and the task-specific A14B <code>text_to_video</code> / first-frame <code>image_to_video</code> packages.</p>
 <p>Install:
 - <code>pip install "abstractvision[mlx-gen]"</code> (or <code>pip install "abstractvision[all-apple]"</code>)
 - <code>pip install "abstractvision[mflux]"</code> remains a compatibility alias for older install instructions.</p>
@@ -976,7 +976,7 @@ interactive CLI render denoise-step progress with frame context by default.
 Python and AbstractCore callers can pass <code>on_progress(event)</code> to receive the
 same events. Image events carry denoise-step <code>progress</code>; video events also carry
 <code>frame</code>, <code>total_frames</code>, and <code>frame_progress</code>.</p>
-<p>MLX-Gen LoRA support now uses the shared AbstractVision <code>lora_adapters</code>
+<p>MLX-Gen LoRA support uses the shared AbstractVision <code>lora_adapters</code>
 contract across Python, CLI, and AbstractCore. Catalog rows surface backend
 truth for each exact route through:</p>
 <ul>
@@ -988,6 +988,20 @@ truth for each exact route through:</p>
 <p>Wan LoRA callers must respect route-specific target roles. TI2V-5B uses
 <code>transformer</code>. A14B routes require explicit
 <code>high_noise_transformer</code> / <code>low_noise_transformer</code> assignment.</p>
+<p>Quantization guidance:</p>
+<ul>
+<li>The upstream LightX2V Qwen Lightning docs warn against mixing a BF16-trained
+  Lightning LoRA with the raw unscaled FP8 Qwen base
+  (<code>qwen_image_fp8_e4m3fn.safetensors</code>); that pairing can produce grid
+  artifacts. Use the fp8-trained Lightning LoRA variant on that raw FP8 base,
+  or use a scaled FP8/BF16-compatible base with the BF16-trained Lightning
+  LoRA instead. Reference:
+  <a href="https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models">https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models</a></li>
+<li>AbstractVision's normal local MLX-Gen routes are curated q4/q8 prepared
+  folders rather than that raw upstream FP8 base. For local LoRA-heavy Qwen and
+  Wan runs, prefer the curated <code>...-8bit</code> routes when memory allows; q4 remains
+  the lighter fallback.</li>
+</ul>
 <p>Use <code>abstractvision show-model &lt;model-id&gt;</code> for one route's defaults and
 <code>abstractvision adapters --provider mlx-gen --model &lt;model-id&gt; --task &lt;task&gt;</code>
 for the locally cached overlay inventory on that route.</p>
@@ -1016,7 +1030,9 @@ for the locally cached overlay inventory on that route.</p>
   - Set <code>ABSTRACTVISION_MFLUX_MODEL</code> to that repo id or local path (base model usually auto-infers; override with <code>ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image</code> if needed).</p>
 <p>Runtime behavior notes:
 - MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
-- Local MLX-Gen <code>image_to_image</code> is supported for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models. Edit strength is passed as <code>strength</code> and normalized to MLX-Gen's <code>image_strength</code> parameter where the runtime supports it.
+- Local MLX-Gen <code>image_to_image</code> is supported for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models. Route-aware masked edit is available on <code>AbstractFramework/qwen-image-edit-2511-8bit</code>, <code>briaai/Fibo-Edit</code>, and <code>briaai/Fibo-Edit-RMBG</code>; unsupported routes fail closed instead of silently dropping the mask.
+- Local MLX-Gen <code>text_to_image</code> exposes route-aware structured control on <code>AbstractFramework/qwen-image-8bit</code> through typed <code>control_image</code> / <code>control_strength</code> (CLI: <code>--control-image</code> / <code>--control-strength</code>). Structured control is not silently reinterpreted as image edit.
+- Edit strength is passed as <code>strength</code> and normalized to MLX-Gen's <code>image_strength</code> parameter where the runtime supports it.
 - Local MLX-Gen video is implemented for <code>Wan-AI/Wan2.2-TI2V-5B-Diffusers</code>, <code>AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit</code>, and the task-specific Wan A14B packages <code>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit</code> / <code>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit</code>. TI2V-5B should be run at <code>832x480</code> / <code>480x832</code> or above in practice. Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at <code>480x240</code>.
 - Task-specific Wan A14B uses two guidance controls. <code>guidance_scale</code> controls the primary/high-noise stage and <code>guidance_2</code> controls the second-stage/low-noise stage. <code>guidance_2</code> is a typed video request field, CLI/REPL flag <code>--guidance-2</code>, and registry parameter default; it is not passed through <code>extra</code>.
 - Wan requests can pass <code>max_sequence_length</code> through Python <code>extra={...}</code> or CLI/REPL <code>--max-sequence-length</code>.

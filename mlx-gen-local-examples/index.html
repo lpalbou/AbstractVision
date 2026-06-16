@@ -362,6 +362,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#route-aware-qwen-extras" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Route-aware Qwen extras
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#shared-adapter-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -809,6 +820,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#route-aware-qwen-extras" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Route-aware Qwen extras
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#shared-adapter-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -948,7 +970,7 @@
 <p>This page records the current bundled proof runs for the MLX-Gen backend in
 AbstractVision.</p>
 <p>All assets referenced here were generated through AbstractVision with
-<code>mlx-gen 0.18.18</code> and copied into
+<code>mlx-gen 0.18.19</code> and copied into
 <a href="assets/mlx-gen-lora-examples/"><code>docs/assets/mlx-gen-lora-examples/</code></a>.</p>
 <h2 id="what-this-page-validates">What this page validates<a class="headerlink" href="#what-this-page-validates" title="Permanent link">&para;</a></h2>
 <ul>
@@ -966,10 +988,16 @@ AbstractVision.</p>
   <code>lora_status</code>, <code>lora_target_roles</code>, and <code>lora_validation_profile</code>.</li>
 <li>Installed adapter discovery is backend-owned and lists optional overlays only;
   full-model component files are excluded from the adapter inventory.</li>
+<li>The MLX-Gen surface exposes route-aware Qwen masked edit and
+  structured control through typed request fields instead of <code>extra</code>-only
+  escape hatches.</li>
 <li>The public TI2V-5B visual proofs in this bundle use <code>832x480</code>.</li>
 <li>The public task-specific Wan A14B proofs in this bundle use <code>480x240</code>.</li>
+<li>The LoRA-heavy proof runs on this page use curated 8-bit MLX-Gen routes. For
+  local Qwen and Wan Lightning work, q8 is the preferred prepared route when
+  memory allows; q4 remains available for tighter memory budgets.</li>
 <li>The current AbstractVision MLX runtime floor is
-  <code>mlx-gen&gt;=0.18.18,&lt;0.19.0</code>.</li>
+  <code>mlx-gen&gt;=0.18.19,&lt;0.19.0</code>.</li>
 </ul>
 <p>This package release is validated on Apple Silicon first. The MLX-Gen install
 extra also exposes the upstream Linux/CUDA path when <code>mlx[cuda13]</code> markers
@@ -991,6 +1019,12 @@ abstractvision<span class="w"> </span>adapters<span class="w"> </span>--provider
 the exact runtime route contract, including default parameters such as
 <code>flow_shift</code>. Use <code>adapters</code> when you need locally cached overlays that match
 one route.</p>
+<p>If you manually experiment outside the curated AbstractVision routes, note the
+upstream LightX2V Qwen Lightning guidance: do not pair a BF16-trained Qwen
+Lightning LoRA with the raw unscaled FP8 Qwen base
+(<code>qwen_image_fp8_e4m3fn.safetensors</code>). That upstream mix can produce grid
+artifacts. Reference:
+<a href="https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models">https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models</a></p>
 <p>Bundled discovery artifacts:</p>
 <ul>
 <li><a href="../assets/mlx-gen-lora-examples/provider_adapters_qwen2512_t2i.json">provider_adapters_qwen2512_t2i.json</a></li>
@@ -1002,6 +1036,19 @@ one route.</p>
 <li><a href="../assets/mlx-gen-lora-examples/show_model_wan_a14b_t2v.txt">show_model_wan_a14b_t2v.txt</a></li>
 <li><a href="../assets/mlx-gen-lora-examples/summary.json">summary.json</a></li>
 </ul>
+<h2 id="route-aware-qwen-extras">Route-aware Qwen extras<a class="headerlink" href="#route-aware-qwen-extras" title="Permanent link">&para;</a></h2>
+<p>The public request surface exposes the validated Qwen MLX-Gen
+extras directly:</p>
+<ul>
+<li>masked edit:
+  <code>abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --image ./input.png --mask ./mask.png "repair the marked area"</code></li>
+<li>structured control:
+  <code>abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ./edges.png --control-strength 0.9 "pagoda at sunrise"</code></li>
+</ul>
+<p>Those inputs fail closed when the selected route does not advertise the matching
+runtime capability. <code>0.85</code> is the packaged default when
+<code>--control-strength</code> is omitted; <code>0.9</code> above matches the current upstream proof
+setting rather than the default.</p>
 <h2 id="shared-adapter-contract">Shared adapter contract<a class="headerlink" href="#shared-adapter-contract" title="Permanent link">&para;</a></h2>
 <p>In Python, use the typed request surface:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">LoRAAdapterSpec</span><span class="p">,</span> <span class="n">VisionManager</span>
@@ -1103,7 +1150,7 @@ them in order.</p>
 </tr>
 </tbody>
 </table>
-<p>The public first-frame <code>image_to_video</code> proof in this bundle now uses the
+<p>The public first-frame <code>image_to_video</code> proof in this bundle uses the
 task-specific Wan A14B route. TI2V-5B <code>image_to_video</code> remains supported
 through the same runtime surface, but the bundle keeps only the validated
 public proofs that held up visually at the supported sizes.</p>

@@ -1239,7 +1239,7 @@
 - Architecture: <a href="../architecture/">docs/architecture.md</a>
 - Backends: <a href="../reference/backends/">docs/reference/backends.md</a>
 - Configuration (CLI/REPL env vars): <a href="../reference/configuration/">docs/reference/configuration.md</a>
-- Capability registry: <a href="../reference/capabilities-registry/">docs/reference/capabilities-registry.md</a>
+- Capability registries: <a href="../reference/capabilities-registry/">docs/reference/capabilities-registry.md</a>
 - Artifacts: <a href="../reference/artifacts/">docs/reference/artifacts.md</a>
 - AbstractCore integration: <a href="../reference/abstractcore-integration/">docs/reference/abstractcore-integration.md</a></p>
 <hr />
@@ -1247,7 +1247,7 @@
 <p>From PyPI:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>abstractvision
 </code></pre></div>
-<p>AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, <code>abstractvision[mlx-gen]</code> for MLX-Gen, or <code>abstractvision[all-apple]</code> for the full native macOS stack. <code>abstractvision[mflux]</code> remains available as a compatibility alias for older install instructions.</p>
+<p>AbstractVision’s base install is lightweight. It includes the shared API, packaged capability registries, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, <code>abstractvision[mlx-gen]</code> for MLX-Gen, or <code>abstractvision[all-apple]</code> for the full native macOS stack. <code>abstractvision[mflux]</code> remains available as a compatibility alias for older install instructions.</p>
 <p>If you see “missing pipeline class” errors for newer model families, install the <code>diffusers-dev</code> extra (or compatibility alias <code>huggingface-dev</code>) to get compatible dependencies, then install Diffusers from source (<code>main</code>).</p>
 <p>For that newer-pipeline workflow from a <strong>repo checkout</strong>, install the <code>diffusers-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[diffusers-dev]&quot;</span>
@@ -1591,9 +1591,15 @@ after generation, or <code>--store-dir &lt;dir&gt;</code> to select the store di
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
 abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>prism-ml/bonsai-image-ternary-4B-mlx-2bit<span class="w"> </span><span class="s2">&quot;a bonsai tree in a quiet ceramic studio&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">4</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
 </code></pre></div>
+<p>Structured control from the shell:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-8bit<span class="w"> </span>--control-image<span class="w"> </span>./pose.png<span class="w"> </span>--control-strength<span class="w"> </span><span class="m">0</span>.85<span class="w"> </span><span class="s2">&quot;fashion editorial portrait, same pose, soft daylight, neutral studio backdrop&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+</code></pre></div>
 <p>Image-to-image/edit from the shell:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
 abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+</code></pre></div>
+<p>Masked edit from the shell:</p>
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-8bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span>--mask<span class="w"> </span>./mask.png<span class="w"> </span><span class="s2">&quot;replace only the masked region with a brushed steel panel&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
 <p>Image upscaling from the shell:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>upscale<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/seedvr2-3b-8bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span>--resolution<span class="w"> </span>2x<span class="w"> </span>--softness<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span>--open
@@ -1603,7 +1609,12 @@ abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span
 abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--open
 </code></pre></div>
 <p>Wan 2.2 A14B uses 16px width/height multiples; <code>480x240</code> is valid for low-cost
-local checks, while larger native sizes are more appropriate for quality review.</p>
+local checks, while larger native sizes are more appropriate for quality review.
+For MLX-Gen Qwen structured control, use the validated base route
+<code>AbstractFramework/qwen-image-8bit</code> and pass <code>--control-image</code> plus optional
+<code>--control-strength</code>. For masked edits, use the validated Qwen edit route
+<code>AbstractFramework/qwen-image-edit-2511-8bit</code> (or FIBO Edit) and pass
+<code>--mask</code>.</p>
 <p>Shared LoRA adapters:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>

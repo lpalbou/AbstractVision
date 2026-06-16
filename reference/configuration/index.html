@@ -1001,7 +1001,21 @@ and accept <code>--no-progress</code>.</p>
   <code>lora_adapters</code> request field.</li>
 <li>Catalog discovery surfaces exact-route LoRA truth through <code>supports_lora</code>,
   <code>lora_status</code>, <code>lora_target_roles</code>, and <code>lora_validation_profile</code>.</li>
+<li>For LightX2V Qwen Lightning adapters, do not manually pair a BF16-trained
+  Lightning LoRA with the raw unscaled FP8 Qwen base
+  (<code>qwen_image_fp8_e4m3fn.safetensors</code>); upstream documents grid artifacts for
+  that mix. See:
+  <a href="https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models">https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models</a></li>
+<li>For local LoRA-heavy Qwen and Wan runs through MLX-Gen, prefer curated
+  <code>...-8bit</code> model ids when memory allows. q4 remains the lighter fallback.</li>
 </ul>
+<p>Capability asset overrides:</p>
+<ul>
+<li><code>ABSTRACTVISION_MODEL_CAPABILITIES_PATH</code> — optional filesystem path to a replacement <code>vision_model_capabilities.json</code></li>
+<li><code>ABSTRACTVISION_ADAPTER_CAPABILITIES_PATH</code> — optional filesystem path to a replacement <code>vision_adapter_capabilities.json</code></li>
+</ul>
+<p>These let operators update curated model/adapter metadata and default
+parameters without changing Python code.</p>
 <h3 id="stable-diffusioncpp-backend">stable-diffusion.cpp backend<a class="headerlink" href="#stable-diffusioncpp-backend" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>ABSTRACTVISION_SDCPP_BIN</code> — <code>sd-cli</code> path/name (default: <code>sd-cli</code>)</li>
