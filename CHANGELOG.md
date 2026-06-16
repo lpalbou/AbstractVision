@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.3.27 - 2026-06-16
+
+- Runtime dependency: raise the optional MLX-Gen runtime floor to `mlx-gen>=0.18.19,<0.19.0`.
+- MLX-Gen Qwen routes: expose validated base-Qwen structured control through typed `control_image` / `control_strength` and validated Qwen 2511 masked edit through `mask`, with explicit fail-closed backend gating instead of older family-only assumptions.
+- Adapter capability registry: add packaged `vision_adapter_capabilities.json` plus `VisionAdapterCapabilitiesRegistry` so package-owned adapter defaults, compatibilities, docs links, and quantization guidance are data-driven instead of hard-coded in Python branches.
+- CLI, provider catalog, and docs: surface structured-control parameters, adapter recommendations, registry override paths, and the updated MLX-Gen Qwen route guidance consistently across the CLI, REPL, AbstractCore integration, troubleshooting docs, and AI-readable indexes.
+
 ## 0.3.26 - 2026-06-13
 
 - AbstractCore plugin surface: expose `list_provider_adapters(...)` plus first-class batch methods for `t2i`, `i2i`, `t2v`, and `i2v`, keeping stacked LoRA adapters, explicit seed planning, and route-specific video controls on the same typed boundary used by direct `VisionManager` callers.

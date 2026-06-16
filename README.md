@@ -11,8 +11,12 @@ Model-agnostic generative vision API (images, optional video) for Python and the
 ## What you get
 
 - A small orchestration API: [`VisionManager`](src/abstractvision/vision_manager.py)
-- A packaged capability registry (“what models can do”): [`VisionModelCapabilitiesRegistry`](src/abstractvision/model_capabilities.py) backed by [`vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json)
-- Shared model metadata that now also drives local catalog surfacing and backend request normalization across the CLI, playground, and AbstractCore paths
+- Packaged capability registries for model families and adapter defaults:
+  [`VisionModelCapabilitiesRegistry`](src/abstractvision/model_capabilities.py)
+  backed by [`vision_model_capabilities.json`](src/abstractvision/assets/vision_model_capabilities.json),
+  plus [`VisionAdapterCapabilitiesRegistry`](src/abstractvision/adapter_capabilities.py)
+  backed by [`vision_adapter_capabilities.json`](src/abstractvision/assets/vision_adapter_capabilities.json)
+- Shared model and adapter metadata that drives local catalog surfacing and backend request normalization across the CLI, playground, and AbstractCore paths
 - Optional artifact-ref outputs (small JSON refs): [`LocalAssetStore`](src/abstractvision/artifacts.py) and [`RuntimeArtifactStoreAdapter`](src/abstractvision/artifacts.py)
 - Built-in backends (execution engines): [`src/abstractvision/backends/`](src/abstractvision/backends/)
   - OpenAI-compatible HTTP: [`openai_compatible.py`](src/abstractvision/backends/openai_compatible.py)
@@ -39,7 +43,8 @@ flowchart LR
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
 - Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`.
-- Local MLX-Gen now also exposes a shared `lora_adapters` contract across `text_to_image`, `image_to_image`, `text_to_video`, and `image_to_video`. Route-level LoRA truth stays backend-owned and is surfaced through provider catalogs as `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
+- Local MLX-Gen `0.18.19+` exposes route-aware Qwen structured control on validated base-Qwen routes through `control_image` / `control_strength`, and route-aware masked edit on validated Qwen 2511 edit routes through `mask`.
+- Local MLX-Gen exposes a shared `lora_adapters` contract across `text_to_image`, `image_to_image`, `text_to_video`, and `image_to_video`. Route-level LoRA truth stays backend-owned and is surfaced through provider catalogs as `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
 - `multi_view_image` is part of the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet.
@@ -182,7 +187,7 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen `0.18.18+` also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen `0.18.19+` also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, the prepared TI2V package
@@ -205,8 +210,14 @@ klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models.
 FLUX.2 and Qwen Image Edit can accept additional references with
 `--reference-image` (or Python `extra={"reference_images": [...]}`) for
 multi-reference edits. FIBO Edit snapshots support mask inputs where the runtime
-supports them. Edit strength is passed as `strength` and normalized to
-MLX-Gen's `image_strength` parameter where the runtime supports it. For video,
+supports them, and `AbstractFramework/qwen-image-edit-2511-8bit` supports
+route-aware masked edits. `AbstractFramework/qwen-image-8bit` supports
+route-aware structured control through `abstractvision t2i
+--control-image ... --control-strength ...` (or Python `control_image=` /
+`control_strength=`). Edit/control inputs fail closed when the selected route
+does not advertise the matching runtime capability. Edit strength is passed as
+`strength` and normalized to MLX-Gen's `image_strength` parameter where the
+runtime supports it. For video,
 prefer the prepared TI2V-5B or task-specific Wan 2.2 A14B packages when memory
 allows. TI2V-5B should be run at `832x480` / `480x832` or above in practice;
 the bundled proof page validates the route at `832x480` with `flow_shift=3.0`.
@@ -218,7 +229,7 @@ Registry defaults are `4.0` + `3.0` for T2V and `3.5` + `3.5` for I2V; omit
 
 ### Shared LoRA adapters
 
-AbstractVision now exposes one shared LoRA adapter request shape across Python,
+AbstractVision exposes one shared LoRA adapter request shape across Python,
 CLI, and the AbstractCore plugin:
 
 - Python: `lora_adapters=[LoRAAdapterSpec(...)]`
@@ -275,6 +286,20 @@ Wan LoRA routes may require explicit target roles. TI2V-5B uses one role,
 `high_noise_transformer` and `low_noise_transformer`. AbstractVision passes the
 roles through unchanged instead of guessing.
 
+Quantization guidance for Lightning LoRAs:
+
+- The upstream LightX2V Qwen Lightning docs warn against pairing a BF16-trained
+  Lightning LoRA with the raw unscaled FP8 Qwen base
+  (`qwen_image_fp8_e4m3fn.safetensors`); that mix can produce grid artifacts.
+  Use the fp8-trained Lightning LoRA variant on that raw FP8 base, or use a
+  scaled FP8/BF16-compatible base with the BF16-trained Lightning LoRA instead.
+  See:
+  <https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models>
+- AbstractVision does not currently surface that raw unscaled Qwen FP8 base as
+  a first-class local route. For local LoRA-heavy Qwen and Wan runs through the
+  MLX-Gen backend, prefer the curated `...-8bit` prepared model routes when
+  memory allows. q4 routes remain available for tighter memory budgets.
+
 Diffusers still accepts legacy `extra["loras"]`, `extra["loras_json"]`,
 `extra["lora"]`, and `extra["lora_json"]` payloads for compatibility, but new
 callers should use the typed shared contract.
@@ -283,7 +308,7 @@ Inspect one exact route before long LoRA runs:
 
 ```bash
 abstractvision show-model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit
-abstractvision adapters --provider mlx-gen --model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit --task text_to_video
+abstractvision adapters --provider mlx-gen --model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit --task text_to_video --json
 ```
 
 ### Batch generation

@@ -1,10 +1,11 @@
-# Capability registry (`vision_model_capabilities.json`)
+# Capability registries (`vision_model_capabilities.json`, `vision_adapter_capabilities.json`)
 
-AbstractVision keeps a single packaged “source of truth” for what model families can do and how
-AbstractVision understands their downloadable runtime variants:
+AbstractVision keeps two packaged capability assets:
 
 - Asset: [`../../src/abstractvision/assets/vision_model_capabilities.json`](../../src/abstractvision/assets/vision_model_capabilities.json)
 - Loader + validator: `VisionModelCapabilitiesRegistry` / `validate_capabilities_json()` in [`../../src/abstractvision/model_capabilities.py`](../../src/abstractvision/model_capabilities.py)
+- Asset: [`../../src/abstractvision/assets/vision_adapter_capabilities.json`](../../src/abstractvision/assets/vision_adapter_capabilities.json)
+- Loader + validator: `VisionAdapterCapabilitiesRegistry` / `validate_adapter_capabilities_json()` in [`../../src/abstractvision/adapter_capabilities.py`](../../src/abstractvision/adapter_capabilities.py)
 
 See also:
 - CLI/REPL inspection commands: [docs/reference/configuration.md](configuration.md)
@@ -13,10 +14,10 @@ See also:
 
 ## Policy boundary
 
-The registry is not just descriptive metadata. In this repo it is the authoritative compatibility
-inventory that feeds:
+The packaged assets are not just descriptive metadata. In this repo they feed:
 
 - model discovery;
+- adapter discovery hints and default parameter recommendations;
 - task and parameter introspection;
 - curated download surfacing;
 - backend request normalization.
@@ -29,6 +30,12 @@ Under [ADR 0005](../adr/0005_curated_capability_registry_and_download_catalog.md
   runtime-native choice for a target engine;
 - explicit about download-only or backend-not-supported states.
 
+Important boundary:
+
+- `vision_model_capabilities.json` is the curated package view of model-family tasks, downloadable variants, and model-level defaults.
+- `vision_adapter_capabilities.json` is the curated package view of adapter families, compatible base-model aliases, and adapter default/recommended parameters.
+- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask`, `control_image`, or LoRA target roles at runtime.
+
 ## What the registry is used for
 
 - **Discovery**: list known task keys and model ids.
@@ -40,10 +47,32 @@ Under [ADR 0005](../adr/0005_curated_capability_registry_and_download_catalog.md
   - The playground API surfaces that structured metadata as `task_specs` so local tooling can enable edit-only flows without re-encoding model rules elsewhere.
 - **Request normalization hints**:
   - additive parameter metadata such as `default`, `const`, `min`, `multiple_of`, `supported`, and `auto_derived_from_input` can be consumed by backends to keep model-specific defaults and constraints in one packaged source of truth.
+- **Adapter-aware request normalization hints**:
+  - adapter profiles carry package-owned defaults such as recommended `steps`, `guidance_scale`, documentation links, and quantization notes.
 
 Important:
 - The registry describes **model capability intent**.
 - Your configured backend still needs to implement the task at runtime (see backend support matrix in [docs/reference/backends.md](backends.md)).
+
+## Override paths
+
+Both registries can be redirected to local JSON files without changing Python code:
+
+- `ABSTRACTVISION_MODEL_CAPABILITIES_PATH`
+- `ABSTRACTVISION_ADAPTER_CAPABILITIES_PATH`
+
+You can also pass `asset_path=...` directly when constructing either registry.
+That keeps the code/package boundary stable while letting operators update
+curated model/adapter metadata independently.
+
+Practical workflow:
+
+1. Copy the packaged JSON you want to override.
+2. Edit the local copy.
+3. Point the matching env var at that file.
+4. Verify the effective metadata with:
+   - `abstractvision show-model <model-id>`
+   - `abstractvision adapters --provider mlx-gen --model <model-id> --task <task> --json`
 
 ## Curation rules
 
@@ -63,6 +92,7 @@ When editing the registry:
 
 ```python
 from abstractvision import VisionModelCapabilitiesRegistry
+from abstractvision.adapter_capabilities import VisionAdapterCapabilitiesRegistry
 
 reg = VisionModelCapabilitiesRegistry()
 print(reg.schema_version())
@@ -70,6 +100,13 @@ print(reg.list_tasks())
 
 assert reg.supports("runwayml/stable-diffusion-v1-5", "text_to_image")
 print(reg.models_for_task("text_to_image"))
+
+adapter_reg = VisionAdapterCapabilitiesRegistry()
+profile = adapter_reg.match_profile(
+    repo_id="lightx2v/Qwen-Image-2512-Lightning",
+    relative_path="Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors",
+)
+print(profile.to_profile_dict()["recommended_parameters"])
 ```
 
 ## JSON shape (high level)

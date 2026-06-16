@@ -17,7 +17,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 - [Backends](reference/backends.md)
 - [MLX-Gen local examples](mlx-gen-local-examples.md) (current LoRA route proofs, progress logs, and generated assets)
 - [Configuration (CLI/REPL env vars + flags)](reference/configuration.md)
-- [Capability registry (`vision_model_capabilities.json`)](reference/capabilities-registry.md)
+- [Capability registries (models + adapters)](reference/capabilities-registry.md)
 - [Artifacts (artifact refs + stores)](reference/artifacts.md)
 - [AbstractCore integration (capability plugin + tools)](reference/abstractcore-integration.md)
 - Agent-oriented docs: [`../llms.txt`](../llms.txt) and [`../llms-full.txt`](../llms-full.txt)
@@ -41,14 +41,16 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
   - MLX-Gen for Wan 2.2 local `text_to_video` and first-frame `image_to_video`
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
 
-If you’re looking for “what can model X do?”, the single source of truth is the packaged registry:
-[`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) (loaded by `VisionModelCapabilitiesRegistry` in [`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)).
-The curation and cross-platform support policy for that registry is governed by
+If you’re looking for “what can model X do?” or “which adapter defaults/compatibilities are packaged?”, the packaged registries are the source of truth:
+[`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) (loaded by `VisionModelCapabilitiesRegistry` in [`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py)) and
+[`../src/abstractvision/assets/vision_adapter_capabilities.json`](../src/abstractvision/assets/vision_adapter_capabilities.json) (loaded by `VisionAdapterCapabilitiesRegistry` in [`../src/abstractvision/adapter_capabilities.py`](../src/abstractvision/adapter_capabilities.py)).
+Exact runtime route truth still comes from the selected backend.
+The curation and cross-platform support policy for those registries is governed by
 [ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
 
 ## Internal engineering notes

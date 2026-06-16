@@ -16,7 +16,7 @@ See also:
 - Architecture: [docs/architecture.md](architecture.md)
 - Backends: [docs/reference/backends.md](reference/backends.md)
 - Configuration (CLI/REPL env vars): [docs/reference/configuration.md](reference/configuration.md)
-- Capability registry: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
+- Capability registries: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
 - Artifacts: [docs/reference/artifacts.md](reference/artifacts.md)
 - AbstractCore integration: [docs/reference/abstractcore-integration.md](reference/abstractcore-integration.md)
 
@@ -30,7 +30,7 @@ From PyPI:
 pip install abstractvision
 ```
 
-AbstractVision’s base install is lightweight. It includes the shared API, capability registry, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, `abstractvision[mlx-gen]` for MLX-Gen, or `abstractvision[all-apple]` for the full native macOS stack. `abstractvision[mflux]` remains available as a compatibility alias for older install instructions.
+AbstractVision’s base install is lightweight. It includes the shared API, packaged capability registries, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install `abstractvision[diffusers]` for Torch/Diffusers, `abstractvision[sdcpp]` for the stable-diffusion.cpp python binding fallback, `abstractvision[mlx-gen]` for MLX-Gen, or `abstractvision[all-apple]` for the full native macOS stack. `abstractvision[mflux]` remains available as a compatibility alias for older install instructions.
 
 If you see “missing pipeline class” errors for newer model families, install the `diffusers-dev` extra (or compatibility alias `huggingface-dev`) to get compatible dependencies, then install Diffusers from source (`main`).
 
@@ -367,11 +367,23 @@ abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-2512-
 abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 ```
 
+Structured control from the shell:
+
+```bash
+abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ./pose.png --control-strength 0.85 "fashion editorial portrait, same pose, soft daylight, neutral studio backdrop" --steps 20 --guidance-scale 4.0 --open
+```
+
 Image-to-image/edit from the shell:
 
 ```bash
 abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-4bit --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75 --open
 abstractvision i2i --provider mlx-gen --model briaai/Fibo-Edit --image ./input.png "remove the background and keep the object edges clean" --steps 20 --guidance-scale 4.0 --open
+```
+
+Masked edit from the shell:
+
+```bash
+abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --image ./input.png --mask ./mask.png "replace only the masked region with a brushed steel panel" --steps 20 --guidance-scale 4.0 --open
 ```
 
 Image upscaling from the shell:
@@ -389,6 +401,11 @@ abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-
 
 Wan 2.2 A14B uses 16px width/height multiples; `480x240` is valid for low-cost
 local checks, while larger native sizes are more appropriate for quality review.
+For MLX-Gen Qwen structured control, use the validated base route
+`AbstractFramework/qwen-image-8bit` and pass `--control-image` plus optional
+`--control-strength`. For masked edits, use the validated Qwen edit route
+`AbstractFramework/qwen-image-edit-2511-8bit` (or FIBO Edit) and pass
+`--mask`.
 
 Shared LoRA adapters:
 

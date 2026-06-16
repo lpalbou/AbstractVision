@@ -15,6 +15,7 @@ The package exports the following symbols from `abstractvision` (see [`../src/ab
 - `VisionManager`
 - `ProviderAdapterInfo`
 - `ProviderModelInfo`
+- `VisionAdapterCapabilitiesRegistry`
 - `VisionModelCapabilitiesRegistry`
 - `LocalAssetStore`
 - `RuntimeArtifactStoreAdapter`
@@ -148,12 +149,18 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen `0.18.18+` supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.18.19+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
 executable on `PATH` whenever a backend returns frame sequences for local
 packaging.
+
+For MLX-Gen text-to-image, `ImageGenerationRequest` includes typed
+`control_image` and `control_strength` fields for the validated structured-control
+route `AbstractFramework/qwen-image-8bit`. The control image is a structure guide
+such as edges, sketch, or pose, not a source-image edit input. These are not
+generic cross-backend hints: unsupported backends reject them explicitly.
 
 ### Local example (MLX-Gen backend)
 

@@ -140,7 +140,13 @@ class VisionManager:
     def generate_image(self, prompt: str, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("text_to_image")
-        self._require_backend_support(backend, "text_to_image")
+        caps = self._require_backend_support(backend, "text_to_image")
+        control_image = kwargs.get("control_image")
+        if control_image is not None and caps is not None and caps.supports_control_image is False:
+            raise CapabilityNotSupportedError(
+                "Backend does not support structured control images for text-to-image. "
+                "Inspect the selected route with `abstractvision show-model <model-id>`."
+            )
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageGenerationRequest(prompt=prompt, **kwargs)
         normalize = getattr(backend, "normalize_image_generation_request", None)
@@ -176,7 +182,8 @@ class VisionManager:
         mask = kwargs.get("mask")
         if mask is not None and caps is not None and caps.supports_mask is False:
             raise CapabilityNotSupportedError(
-                "Backend does not support masked image edits (mask parameter)."
+                "Backend does not support masked image edits (mask parameter). "
+                "Inspect the selected route with `abstractvision show-model <model-id>`."
             )
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageEditRequest(prompt=prompt, image=image, **kwargs)

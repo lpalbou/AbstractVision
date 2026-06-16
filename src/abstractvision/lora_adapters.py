@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Iterable, List, Optional, Sequence, Tuple
+import re
+from functools import lru_cache
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from .adapter_capabilities import VisionAdapterCapabilitiesRegistry
 from .types import LoRAAdapterSpec
 
 LORA_EXTRA_KEYS = ("loras", "loras_json", "lora", "lora_json")
@@ -32,6 +35,131 @@ def _looks_like_probably_file_path(value: str) -> bool:
     return text.startswith(("./", "../", "/", "~")) or text.endswith(
         (".safetensors", ".bin", ".pt", ".ckpt")
     )
+
+
+def _norm_token(value: Any) -> str:
+    return str(value or "").strip().lower().replace("_", "-")
+
+
+@lru_cache(maxsize=1)
+def _adapter_capability_registry() -> Optional[VisionAdapterCapabilitiesRegistry]:
+    try:
+        return VisionAdapterCapabilitiesRegistry()
+    except Exception:
+        return None
+
+
+def _adapter_source_parts(spec: LoRAAdapterSpec) -> Tuple[str, str]:
+    source = str(spec.source or "").strip()
+    if source.startswith("hf:"):
+        source = source[3:].strip()
+    relative_path = ""
+    if source and ":" in source:
+        repo_id, rel = source.split(":", 1)
+        if "/" in repo_id and not repo_id.startswith(("./", "../", "/", "~")):
+            source = str(repo_id).strip()
+            relative_path = str(rel).strip()
+    if not relative_path:
+        suffix_parts = [
+            str(part).strip()
+            for part in (spec.subfolder, spec.weight_name)
+            if str(part or "").strip()
+        ]
+        if suffix_parts and source and not _looks_like_probably_file_path(source):
+            relative_path = "/".join(suffix_parts)
+    return source, relative_path
+
+
+def _detect_step_count(*values: Any) -> Optional[int]:
+    text = " ".join(_norm_token(value) for value in values if _norm_token(value))
+    if not text:
+        return None
+    for pattern in (
+        r"(?:^|[^0-9])([48])\s*steps?(?:$|[^0-9])",
+        r"(?:^|[^0-9])nfe[- ]?([48])(?:$|[^0-9])",
+    ):
+        match = re.search(pattern, text)
+        if match:
+            try:
+                return int(match.group(1))
+            except Exception:
+                return None
+    return None
+
+
+def _matches_model_aliases(profile: Dict[str, Any], model: Any) -> bool:
+    model_s = _norm_token(model)
+    if not model_s:
+        return True
+    aliases = tuple(profile.get("model_aliases") or ())
+    if aliases and model_s in aliases:
+        return True
+    compatible_base = _norm_token(profile.get("compatible_base_model"))
+    if compatible_base and model_s == compatible_base:
+        return True
+    return False
+
+
+def known_lora_adapter_profile(value: Any) -> Optional[Dict[str, Any]]:
+    spec = _coerce_one_adapter(value)
+    if spec is None:
+        return None
+    repo_id, relative_path = _adapter_source_parts(spec)
+    steps = _detect_step_count(repo_id, relative_path)
+    registry = _adapter_capability_registry()
+    if registry is None:
+        return None
+    profile = registry.match_profile(repo_id=repo_id, relative_path=relative_path)
+    if profile is None:
+        return None
+    return profile.to_profile_dict(detected_value=steps)
+
+
+def recommended_lora_request_overrides(
+    lora_adapters: Any = None,
+    *,
+    extra: Any = None,
+    task: Optional[str] = None,
+    model: Any = None,
+) -> Dict[str, Any]:
+    adapters = resolve_request_lora_adapters(lora_adapters, extra=extra)
+    recommendations: List[Dict[str, Any]] = []
+    task_s = str(task or "").strip()
+    for spec in adapters:
+        profile = known_lora_adapter_profile(spec)
+        if not isinstance(profile, dict):
+            continue
+        if str(profile.get("artifact_role") or "adapter") != "adapter":
+            continue
+        tasks = tuple(str(item).strip() for item in profile.get("compatible_tasks") or ())
+        if task_s and tasks and task_s not in tasks:
+            continue
+        if model is not None and not _matches_model_aliases(profile, model):
+            continue
+        recommended = profile.get("recommended_parameters")
+        if isinstance(recommended, dict) and recommended:
+            recommendations.append(recommended)
+    if not recommendations:
+        return {}
+
+    merged: Dict[str, Any] = {}
+    keys = {
+        str(key).strip()
+        for item in recommendations
+        for key in item.keys()
+        if str(key).strip()
+    }
+    for key in sorted(keys):
+        values = []
+        for item in recommendations:
+            if key not in item:
+                continue
+            value = item.get(key)
+            if value not in values:
+                values.append(value)
+        if len(values) == 1:
+            merged[key] = values[0]
+    return merged
 
 
 def _coerce_one_adapter(value: Any) -> Optional[LoRAAdapterSpec]:

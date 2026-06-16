@@ -1209,7 +1209,71 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIsNone(args.width)
         self.assertIsNone(args.height)
         self.assertIsNone(args.steps)
+        self.assertIsNone(args.control_image)
+        self.assertIsNone(args.control_strength)
         self.assertFalse(args.progress)
+
+    def test_cli_t2i_parser_accepts_control_flags(self):
+        from abstractvision.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "t2i",
+                "--control-image",
+                "edges.png",
+                "--control-strength",
+                "0.9",
+                "hello",
+            ]
+        )
+
+        self.assertEqual(args.control_image, "edges.png")
+        self.assertEqual(args.control_strength, 0.9)
+
+    def test_cli_t2i_command_passes_control_image_and_strength(self):
+        from abstractvision.cli import _cmd_t2i, build_parser
+
+        seen = {}
+
+        class FakeVisionManager:
+            backend = None
+            store = None
+
+            def generate_image(self, prompt, **kwargs):
+                seen["prompt"] = prompt
+                seen["kwargs"] = kwargs
+                return {"ok": True}
+
+        with tempfile.TemporaryDirectory() as td:
+            control_path = Path(td) / "control.png"
+            control_path.write_bytes(b"control-image")
+
+            parser = build_parser()
+            args = parser.parse_args(
+                [
+                    "t2i",
+                    "--control-image",
+                    str(control_path),
+                    "--control-strength",
+                    "0.9",
+                    "--progress",
+                    "hello",
+                ]
+            )
+
+            with patch(
+                "abstractvision.cli._build_manager_from_args",
+                return_value=FakeVisionManager(),
+            ):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    rc = _cmd_t2i(args)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(seen["prompt"], "hello")
+        self.assertEqual(seen["kwargs"]["control_image"], b"control-image")
+        self.assertEqual(seen["kwargs"]["control_strength"], 0.9)
+        self.assertIn("on_progress", seen["kwargs"]["extra"])
 
     def test_cli_t2i_parser_accepts_lora_flags(self):
         from abstractvision.cli import build_parser

@@ -6,6 +6,7 @@ import threading
 import unittest
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 PNG_1X1 = base64.b64decode(
@@ -814,6 +815,137 @@ class TestMFluxVisionBackend(unittest.TestCase):
             ["owner/style-lora:adapter.safetensors"],
         )
         self.assertEqual(_FakeQwenImage.last_init["lora_scales"], [0.75])
+
+    def test_generate_image_resolves_cached_bare_hf_lora_repo_to_local_file(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest, LoRAAdapterSpec
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            snapshot = self._make_cache_snapshot(
+                cache_root, "AbstractFramework/flux.2-klein-9b-8bit"
+            )
+            adapter_snapshot = self._make_adapter_snapshot(
+                cache_root,
+                "diroverflo/FLux_Klein_9B_NSFW",
+                "Flux Klein - NSFW v2.safetensors",
+                base_model="black-forest-labs/FLUX.2-klein-base-9B",
+            )
+            expected_adapter = adapter_snapshot / "Flux Klein - NSFW v2.safetensors"
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    backend.generate_image(
+                        ImageGenerationRequest(
+                            prompt="with-lora",
+                            steps=2,
+                            seed=3,
+                            lora_adapters=(
+                                LoRAAdapterSpec(
+                                    source="diroverflo/FLux_Klein_9B_NSFW",
+                                    scale=0.75,
+                                ),
+                            ),
+                        )
+                    )
+
+        self.assertEqual(_FakeFlux2.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeFlux2.last_init["lora_paths"], [str(expected_adapter)])
+        self.assertEqual(_FakeFlux2.last_init["lora_scales"], [0.75])
+
+    def test_generate_image_resolves_cached_hf_lora_handle_to_local_file(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest, LoRAAdapterSpec
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            snapshot = self._make_cache_snapshot(
+                cache_root, "AbstractFramework/flux.2-klein-9b-8bit"
+            )
+            adapter_snapshot = self._make_adapter_snapshot(
+                cache_root,
+                "diroverflo/FLux_Klein_9B_NSFW",
+                "Flux Klein - NSFW v2.safetensors",
+                base_model="black-forest-labs/FLUX.2-klein-base-9B",
+            )
+            expected_adapter = adapter_snapshot / "Flux Klein - NSFW v2.safetensors"
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    backend.generate_image(
+                        ImageGenerationRequest(
+                            prompt="with-lora-handle",
+                            steps=2,
+                            seed=4,
+                            lora_adapters=(
+                                LoRAAdapterSpec(
+                                    source="diroverflo/FLux_Klein_9B_NSFW:Flux Klein - NSFW v2.safetensors",
+                                    scale=0.5,
+                                ),
+                            ),
+                        )
+                    )
+
+        self.assertEqual(_FakeFlux2.last_init["model_path"], str(snapshot))
+        self.assertEqual(_FakeFlux2.last_init["lora_paths"], [str(expected_adapter)])
+        self.assertEqual(_FakeFlux2.last_init["lora_scales"], [0.5])
+
+    def test_generate_image_rejects_ambiguous_bare_hf_lora_repo(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.types import ImageGenerationRequest, LoRAAdapterSpec
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            self._make_cache_snapshot(cache_root, "AbstractFramework/flux.2-klein-9b-8bit")
+            self._make_adapter_snapshot(
+                cache_root,
+                "owner/multi-lora",
+                "style-a.safetensors",
+                base_model="black-forest-labs/FLUX.2-klein-base-9B",
+            )
+            self._make_adapter_snapshot(
+                cache_root,
+                "owner/multi-lora",
+                "nested/style-b.safetensors",
+                base_model="black-forest-labs/FLUX.2-klein-base-9B",
+                snapshot_name="abc123",
+            )
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with self.assertRaisesRegex(
+                        OptionalDependencyMissingError, "Select one explicit adapter handle"
+                    ) as ctx:
+                        backend.generate_image(
+                            ImageGenerationRequest(
+                                prompt="ambiguous-lora",
+                                steps=2,
+                                seed=5,
+                                lora_adapters=(LoRAAdapterSpec(source="owner/multi-lora"),),
+                            )
+                        )
+
+        self.assertIn("owner/multi-lora:style-a.safetensors", str(ctx.exception))
+        self.assertIn("owner/multi-lora:nested/style-b.safetensors", str(ctx.exception))
 
     def test_generic_qwen_2512_selector_is_rejected_when_q4_and_q8_exist(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1720,7 +1852,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.18\.18",
+                        r"mlx-gen>=0\.18\.19",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(
@@ -1860,6 +1992,220 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(_FakeFlux2.last_generate["num_inference_steps"], 2)
         self.assertEqual(_FakeFlux2.last_generate["guidance"], 1.0)
 
+    def test_qwen_lightning_defaults_apply_to_text_to_image_requests(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest, LoRAAdapterSpec
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-2512-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-2512-8bit")
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                normalized = backend.normalize_image_generation_request(
+                    ImageGenerationRequest(
+                        prompt="hello",
+                        lora_adapters=(
+                            LoRAAdapterSpec(source="lightx2v/Qwen-Image-2512-Lightning"),
+                        ),
+                    )
+                )
+
+        self.assertEqual(normalized.steps, 4)
+        self.assertEqual(normalized.guidance_scale, 1.0)
+
+    def test_qwen_lightning_defaults_apply_to_image_edit_requests(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageEditRequest, LoRAAdapterSpec
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-edit-2511-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-edit-2511-8bit")
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                normalized = backend.normalize_image_edit_request(
+                    ImageEditRequest(
+                        prompt="hello",
+                        image=PNG_1X1,
+                        lora_adapters=(
+                            LoRAAdapterSpec(source="lightx2v/Qwen-Image-Edit-2511-Lightning"),
+                        ),
+                    )
+                )
+
+        self.assertEqual(normalized.steps, 4)
+        self.assertEqual(normalized.guidance_scale, 1.0)
+
+    def test_qwen_base_control_image_maps_to_mlx_gen_controlnet_args(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        _FakeQwenImage.last_generate = None
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(public_task="text-to-image", default_for_task=True),
+                SimpleNamespace(public_task="text-to-image", supports_control_image=True),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit")
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_qwen",
+                        return_value=(_FakeQwenImage, _FakeQwenImageEdit),
+                    ):
+                        with patch(
+                            "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                            return_value=(lambda **kwargs: fake_capabilities, None),
+                        ):
+                            asset = backend.generate_image(
+                                ImageGenerationRequest(
+                                    prompt="hello",
+                                    control_image=PNG_1X1,
+                                    control_strength=0.9,
+                                    seed=1,
+                                    steps=4,
+                                )
+                            )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertIn("controlnet_image_path", _FakeQwenImage.last_generate)
+        self.assertEqual(_FakeQwenImage.last_generate["controlnet_strength"], 0.9)
+        self.assertTrue(asset.metadata["control_image"])
+        self.assertEqual(asset.metadata["control_strength"], 0.9)
+
+    def test_qwen_base_control_uses_default_strength_when_omitted(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        _FakeQwenImage.last_generate = None
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(public_task="text-to-image", default_for_task=True),
+                SimpleNamespace(public_task="text-to-image", supports_control_image=True),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit")
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_qwen",
+                        return_value=(_FakeQwenImage, _FakeQwenImageEdit),
+                    ):
+                        with patch(
+                            "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                            return_value=(lambda **kwargs: fake_capabilities, None),
+                        ):
+                            asset = backend.generate_image(
+                                ImageGenerationRequest(
+                                    prompt="hello",
+                                    control_image=PNG_1X1,
+                                    seed=1,
+                                    steps=4,
+                                )
+                            )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(_FakeQwenImage.last_generate["controlnet_strength"], 0.85)
+        self.assertEqual(asset.metadata["control_strength"], 0.85)
+
+    def test_qwen_edit_2511_masked_edit_maps_to_mask_path(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        _FakeQwenImageEdit.last_generate = None
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(public_task="image-to-image", default_for_task=True),
+                SimpleNamespace(public_task="image-to-image", supports_mask=True),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-edit-2511-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-edit-2511-8bit")
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ):
+                    with patch(
+                        "abstractvision.backends.mflux._lazy_import_mflux_qwen",
+                        return_value=(_FakeQwenImage, _FakeQwenImageEdit),
+                    ):
+                        with patch(
+                            "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                            return_value=(lambda **kwargs: fake_capabilities, None),
+                        ):
+                            asset = backend.edit_image(
+                                ImageEditRequest(
+                                    prompt="repair",
+                                    image=PNG_1X1,
+                                    mask=PNG_1X1,
+                                    seed=7,
+                                    steps=4,
+                                )
+                            )
+
+        self.assertTrue(asset.data.startswith(b"\x89PNG"))
+        self.assertEqual(len(_FakeQwenImageEdit.last_generate["image_paths"]), 1)
+        self.assertIn("mask_path", _FakeQwenImageEdit.last_generate)
+        self.assertTrue(asset.metadata["mask"])
+
+    def test_wan_lightning_defaults_apply_to_video_requests(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import LoRAAdapterSpec, VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(
+                Path(cache_td), "AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"
+            )
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit")
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                normalized = backend.normalize_video_generation_request(
+                    VideoGenerationRequest(
+                        prompt="hello",
+                        lora_adapters=(
+                            LoRAAdapterSpec(
+                                source=(
+                                    "lightx2v/Wan2.2-Lightning:"
+                                    "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors"
+                                )
+                            ),
+                            LoRAAdapterSpec(
+                                source=(
+                                    "lightx2v/Wan2.2-Lightning:"
+                                    "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"
+                                )
+                            ),
+                        ),
+                    )
+                )
+
+        self.assertEqual(normalized.steps, 4)
+        self.assertEqual(normalized.guidance_scale, 4.0)
+
     def test_missing_local_model_has_download_hint(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.errors import OptionalDependencyMissingError
@@ -1944,6 +2290,38 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(caps.supported_tasks, ["text_to_image"])
         self.assertFalse(caps.supports_mask)
 
+    def test_qwen_base_control_capabilities_follow_route_truth(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(
+                    public_task="text-to-image",
+                    default_for_task=True,
+                    supports_lora=True,
+                ),
+                SimpleNamespace(
+                    public_task="text-to-image",
+                    supports_control_image=True,
+                    supports_lora=True,
+                ),
+            )
+        )
+
+        backend = MFluxVisionBackend(
+            config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit")
+        )
+
+        with patch(
+            "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+            return_value=(lambda **kwargs: fake_capabilities, None),
+        ):
+            caps = backend.get_capabilities()
+
+        self.assertEqual(caps.supported_tasks, ["text_to_image"])
+        self.assertFalse(caps.supports_mask)
+        self.assertTrue(caps.supports_control_image)
+
     def test_qwen_image_provider_catalog_does_not_advertise_image_to_image(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
@@ -1961,6 +2339,42 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(models[0].id, "AbstractFramework/qwen-image-2512-4bit")
         self.assertEqual(tuple(models[0].capabilities), ("text_to_image",))
         self.assertEqual(image_edit_models, [])
+
+    def test_qwen_base_provider_catalog_surfaces_structured_control_params(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(
+                    public_task="text-to-image",
+                    default_for_task=True,
+                    supports_lora=True,
+                ),
+                SimpleNamespace(
+                    public_task="text-to-image",
+                    supports_control_image=True,
+                    supports_lora=True,
+                ),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(lambda **kwargs: fake_capabilities, None),
+                ):
+                    models = list(backend.list_provider_models(task="text_to_image"))
+
+        self.assertEqual(len(models), 1)
+        params = models[0].raw["task_specs"]["text_to_image"]["params"]
+        self.assertIn("control_image", params)
+        self.assertIn("control_strength", params)
 
     def test_wan_provider_catalog_advertises_video_tasks(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -2211,6 +2625,130 @@ class TestMFluxVisionBackend(unittest.TestCase):
         route_details = a14b_adapters[0].raw["compatible_routes"]
         self.assertEqual(route_details[0]["lora_status"], "validated")
         self.assertEqual(route_details[0]["task"], "text_to_video")
+
+    def test_provider_adapter_inventory_uses_known_lightning_defaults_and_skips_fused_models(self):
+        from types import SimpleNamespace
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(
+                    public_task="image-to-image",
+                    default_for_task=True,
+                    supports_lora=True,
+                    lora_status="validated",
+                    lora_target_roles=("transformer",),
+                    lora_validation_profile="qwen2511_lightning_profile",
+                ),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            self._make_cache_snapshot(
+                cache_root, "AbstractFramework/qwen-image-edit-2511-8bit"
+            )
+            self._make_adapter_snapshot(
+                cache_root,
+                "lightx2v/Qwen-Image-Edit-2511-Lightning",
+                "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+                base_model="Qwen/Qwen-Image-Edit-2511",
+            )
+            self._make_adapter_snapshot(
+                cache_root,
+                "lightx2v/Qwen-Image-Edit-2511-Lightning",
+                "qwen_image_edit_2511_fp8_e4m3fn_scaled_lightning.safetensors",
+                base_model="Qwen/Qwen-Image-Edit-2511",
+            )
+
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-edit-2511-8bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(lambda **kwargs: fake_capabilities, None),
+                ):
+                    adapters = list(
+                        backend.list_provider_adapters(
+                            model="AbstractFramework/qwen-image-edit-2511-8bit",
+                            task="image_to_image",
+                        )
+                    )
+
+        self.assertEqual(
+            [item.id for item in adapters],
+            [
+                "lightx2v/Qwen-Image-Edit-2511-Lightning:Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+            ],
+        )
+        self.assertEqual(
+            adapters[0].raw["recommended_parameters"],
+            {"steps": 4, "guidance_scale": 1.0},
+        )
+        self.assertEqual(adapters[0].raw["recommended_local_quantization_bits"], [8])
+        self.assertIn(
+            "https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models",
+            adapters[0].raw["documentation_urls"],
+        )
+        self.assertTrue(adapters[0].raw["compatibility_notes"])
+
+    def test_provider_adapter_inventory_classifies_legacy_qwen_edit_lightning_by_path(self):
+        from types import SimpleNamespace
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(
+                    public_task="image-to-image",
+                    default_for_task=True,
+                    supports_lora=True,
+                    lora_status="validated",
+                    lora_target_roles=("transformer",),
+                    lora_validation_profile="qwen_edit_legacy_lightning_profile",
+                ),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            self._make_cache_snapshot(cache_root, "AbstractFramework/qwen-image-edit-8bit")
+            self._make_adapter_snapshot(
+                cache_root,
+                "lightx2v/Qwen-Image-Lightning",
+                "Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors",
+                base_model="Qwen/Qwen-Image",
+            )
+
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-edit-8bit")
+            )
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(lambda **kwargs: fake_capabilities, None),
+                ):
+                    adapters = list(
+                        backend.list_provider_adapters(
+                            model="AbstractFramework/qwen-image-edit-8bit",
+                            task="image_to_image",
+                        )
+                    )
+
+        self.assertEqual(len(adapters), 1)
+        self.assertEqual(
+            adapters[0].raw["compatible_base_model"],
+            "qwen-image-edit",
+        )
+        self.assertEqual(
+            adapters[0].raw["recommended_parameters"],
+            {"steps": 8, "guidance_scale": 1.0},
+        )
+        self.assertEqual(adapters[0].raw["recommended_local_quantization_bits"], [8])
 
     def test_provider_adapter_inventory_skips_full_model_components(self):
         from types import SimpleNamespace

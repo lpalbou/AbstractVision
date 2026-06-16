@@ -161,6 +161,21 @@ MLX-Gen LoRA notes:
   `lora_adapters` request field.
 - Catalog discovery surfaces exact-route LoRA truth through `supports_lora`,
   `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
+- For LightX2V Qwen Lightning adapters, do not manually pair a BF16-trained
+  Lightning LoRA with the raw unscaled FP8 Qwen base
+  (`qwen_image_fp8_e4m3fn.safetensors`); upstream documents grid artifacts for
+  that mix. See:
+  <https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models>
+- For local LoRA-heavy Qwen and Wan runs through MLX-Gen, prefer curated
+  `...-8bit` model ids when memory allows. q4 remains the lighter fallback.
+
+Capability asset overrides:
+
+- `ABSTRACTVISION_MODEL_CAPABILITIES_PATH` — optional filesystem path to a replacement `vision_model_capabilities.json`
+- `ABSTRACTVISION_ADAPTER_CAPABILITIES_PATH` — optional filesystem path to a replacement `vision_adapter_capabilities.json`
+
+These let operators update curated model/adapter metadata and default
+parameters without changing Python code.
 
 ### stable-diffusion.cpp backend
 

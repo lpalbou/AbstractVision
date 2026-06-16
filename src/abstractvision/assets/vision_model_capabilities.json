@@ -1620,6 +1620,15 @@
             "guidance_scale": {
               "required": false
             },
+            "control_image": {
+              "required": false,
+              "description": "Structured control image for validated MLX-Gen Qwen base routes."
+            },
+            "control_strength": {
+              "required": false,
+              "default": 0.85,
+              "description": "Structured control strength for validated MLX-Gen Qwen base routes."
+            },
             "seed": {
               "required": false
             }

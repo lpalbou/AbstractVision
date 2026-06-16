@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..lora_adapters import (
     lora_adapter_signature,
+    recommended_lora_request_overrides,
     resolve_request_lora_adapters,
     resolved_adapter_name,
     serialize_lora_adapters,
@@ -1513,6 +1514,10 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self,
         request: ImageGenerationRequest,
     ) -> ImageGenerationRequest:
+        if request.control_image is not None:
+            raise CapabilityNotSupportedError(
+                "Diffusers backend does not support structured control images for text-to-image."
+            )
         spec = self._task_spec("text_to_image")
         if spec is None:
             return request
@@ -1526,14 +1531,28 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             height_value=request.height,
             params=params,
         )
+        adapter_defaults = recommended_lora_request_overrides(
+            request.lora_adapters,
+            extra=request.extra,
+            task="text_to_image",
+            model=self._cfg.model_id,
+        )
         return replace(
             request,
             negative_prompt=negative_prompt,
             width=width,
             height=height,
-            steps=self._normalize_int_param(request.steps, params.get("steps")),
+            steps=self._normalize_int_param(
+                request.steps if request.steps is not None else adapter_defaults.get("steps"),
+                params.get("steps"),
+            ),
             guidance_scale=self._normalize_float_param(
-                request.guidance_scale, params.get("guidance_scale")
+                (
+                    request.guidance_scale
+                    if request.guidance_scale is not None
+                    else adapter_defaults.get("guidance_scale")
+                ),
+                params.get("guidance_scale"),
             ),
         )
 
@@ -1570,12 +1589,26 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             extra["width"] = width
         if height is not None:
             extra["height"] = height
+        adapter_defaults = recommended_lora_request_overrides(
+            request.lora_adapters,
+            extra=request.extra,
+            task="image_to_image",
+            model=self._cfg.model_id,
+        )
         return replace(
             request,
             negative_prompt=negative_prompt,
-            steps=self._normalize_int_param(request.steps, params.get("steps")),
+            steps=self._normalize_int_param(
+                request.steps if request.steps is not None else adapter_defaults.get("steps"),
+                params.get("steps"),
+            ),
             guidance_scale=self._normalize_float_param(
-                request.guidance_scale, params.get("guidance_scale")
+                (
+                    request.guidance_scale
+                    if request.guidance_scale is not None
+                    else adapter_defaults.get("guidance_scale")
+                ),
+                params.get("guidance_scale"),
             ),
             extra=extra,
         )
@@ -1592,6 +1625,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         negative_spec = params.get("negative_prompt")
         if isinstance(negative_spec, dict) and negative_spec.get("supported") is False:
             negative_prompt = None
+        adapter_defaults = recommended_lora_request_overrides(
+            request.lora_adapters,
+            extra=request.extra,
+            task="text_to_video",
+            model=self._cfg.model_id,
+        )
         return replace(
             request,
             negative_prompt=negative_prompt,
@@ -1599,9 +1638,17 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             height=self._normalize_int_param(request.height, params.get("height")),
             fps=self._normalize_int_param(request.fps, params.get("fps")),
             num_frames=self._normalize_int_param(request.num_frames, params.get("num_frames")),
-            steps=self._normalize_int_param(request.steps, params.get("steps")),
+            steps=self._normalize_int_param(
+                request.steps if request.steps is not None else adapter_defaults.get("steps"),
+                params.get("steps"),
+            ),
             guidance_scale=self._normalize_float_param(
-                request.guidance_scale, params.get("guidance_scale")
+                (
+                    request.guidance_scale
+                    if request.guidance_scale is not None
+                    else adapter_defaults.get("guidance_scale")
+                ),
+                params.get("guidance_scale"),
             ),
         )
 
@@ -1617,6 +1664,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         negative_spec = params.get("negative_prompt")
         if isinstance(negative_spec, dict) and negative_spec.get("supported") is False:
             negative_prompt = None
+        adapter_defaults = recommended_lora_request_overrides(
+            request.lora_adapters,
+            extra=request.extra,
+            task="image_to_video",
+            model=self._cfg.model_id,
+        )
         return replace(
             request,
             negative_prompt=negative_prompt,
@@ -1624,9 +1677,17 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             height=self._normalize_int_param(request.height, params.get("height")),
             fps=self._normalize_int_param(request.fps, params.get("fps")),
             num_frames=self._normalize_int_param(request.num_frames, params.get("num_frames")),
-            steps=self._normalize_int_param(request.steps, params.get("steps")),
+            steps=self._normalize_int_param(
+                request.steps if request.steps is not None else adapter_defaults.get("steps"),
+                params.get("steps"),
+            ),
             guidance_scale=self._normalize_float_param(
-                request.guidance_scale, params.get("guidance_scale")
+                (
+                    request.guidance_scale
+                    if request.guidance_scale is not None
+                    else adapter_defaults.get("guidance_scale")
+                ),
+                params.get("guidance_scale"),
             ),
         )
 
@@ -1792,6 +1853,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return VisionBackendCapabilities(
             supported_tasks=supported_tasks,
             supports_mask=supports_mask,
+            supports_control_image=False,
         )
 
     def _is_hf_model_cached(self, model_id: str) -> bool:

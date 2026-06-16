@@ -1,5 +1,6 @@
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,6 +17,13 @@ class TestCapabilitiesSchemaValidation(unittest.TestCase):
         p = REPO_ROOT / "src" / "abstractvision" / "assets" / "vision_model_capabilities.json"
         data = json.loads(p.read_text(encoding="utf-8"))
         validate_capabilities_json(data)
+
+    def test_valid_adapter_asset_passes_validation(self):
+        from abstractvision.adapter_capabilities import validate_adapter_capabilities_json
+
+        p = REPO_ROOT / "src" / "abstractvision" / "assets" / "vision_adapter_capabilities.json"
+        data = json.loads(p.read_text(encoding="utf-8"))
+        validate_adapter_capabilities_json(data)
 
     def test_missing_schema_version(self):
         from abstractvision.model_capabilities import validate_capabilities_json
@@ -99,7 +107,51 @@ class TestCapabilitiesSchemaValidation(unittest.TestCase):
             validate_capabilities_json(data)
         self.assertIn("base_model_id", str(ctx.exception))
 
+    def test_adapter_profile_repo_id_must_be_present(self):
+        from abstractvision.adapter_capabilities import validate_adapter_capabilities_json
+
+        data = {
+            "schema_version": "1.0",
+            "profiles": [
+                {
+                    "id": "broken",
+                    "repo_id": "",
+                    "kind": "lightning",
+                    "family": "broken",
+                }
+            ],
+        }
+
+        with self.assertRaises(ValueError) as ctx:
+            validate_adapter_capabilities_json(data)
+        self.assertIn("repo_id", str(ctx.exception))
+
+    def test_adapter_registry_accepts_external_asset_path(self):
+        from abstractvision.adapter_capabilities import VisionAdapterCapabilitiesRegistry
+
+        data = {
+            "schema_version": "1.0",
+            "profiles": [
+                {
+                    "id": "example",
+                    "repo_id": "owner/example",
+                    "kind": "lightning",
+                    "family": "example",
+                    "artifact_role": "adapter",
+                    "recommended_parameters": {"steps": 4},
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as td:
+            asset_path = Path(td) / "vision_adapter_capabilities.json"
+            asset_path.write_text(json.dumps(data), encoding="utf-8")
+            registry = VisionAdapterCapabilitiesRegistry(asset_path=str(asset_path))
+
+        profile = registry.match_profile(repo_id="owner/example", relative_path="")
+        self.assertIsNotNone(profile)
+        self.assertEqual(profile.to_profile_dict()["recommended_parameters"]["steps"], 4)
+
 
 if __name__ == "__main__":
     unittest.main()
-

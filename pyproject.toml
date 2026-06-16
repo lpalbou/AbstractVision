@@ -80,13 +80,13 @@ sdcpp = [
 # Native Apple image generation via MLX-Gen. Kept optional because it pulls
 # Apple-specific local runtime dependencies.
 mlx-gen = [
-  "mlx-gen>=0.18.18,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.18.19,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
 ]
 
 # Compatibility extra for callers that still install the historical MFLUX extra.
 # It intentionally installs MLX-Gen, not the retired standalone mflux package.
 mflux = [
-  "mlx-gen>=0.18.18,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.18.19,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
 ]
 
 # Native Apple Python install profile. Docker cannot expose Apple's Metal stack,
@@ -105,7 +105,7 @@ apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.18.18,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.18.19,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -122,7 +122,7 @@ gpu = [
   "einops>=0.7.0",
   "peft>=0.10.0",
   "gguf>=0.10.0",
-  "mlx-gen>=0.18.18,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.18.19,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -176,7 +176,7 @@ all = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.18.18,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.18.19,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -196,7 +196,7 @@ all-apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.18.18,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.18.19,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -214,7 +214,7 @@ all-gpu = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.18.18,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.18.19,<0.19.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 

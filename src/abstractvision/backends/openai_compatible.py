@@ -335,6 +335,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         return VisionBackendCapabilities(
             supported_tasks=sorted(tasks),
             supports_mask=True,
+            supports_control_image=False,
         )
 
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
@@ -476,6 +477,10 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         raise ValueError("Invalid response: missing data[0].b64_json or data[0].url")
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+        if request.control_image is not None:
+            raise CapabilityNotSupportedError(
+                "OpenAI-compatible backend does not support structured control images for text-to-image."
+            )
         family = _model_family(self._cfg.model_id)
         openai_api = _looks_like_openai_api(self._cfg.base_url) or family is not None
         payload: Dict[str, Any] = {

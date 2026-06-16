@@ -665,6 +665,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         return VisionBackendCapabilities(
             supported_tasks=supported_tasks,
             supports_mask="image_to_image" in set(supported_tasks),
+            supports_control_image=False,
         )
 
     def _supported_task_names(self, model_id: str) -> List[str]:
@@ -947,6 +948,10 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             ) from e
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+        if request.control_image is not None:
+            raise CapabilityNotSupportedError(
+                "stable-diffusion.cpp backend does not support structured control images for text-to-image."
+            )
         return self.generate_image_with_progress(request, progress_callback=None)
 
     def _generate_image_python(

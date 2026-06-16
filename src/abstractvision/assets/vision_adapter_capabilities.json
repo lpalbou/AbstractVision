@@ -1,0 +1,313 @@
+{
+  "schema_version": "1.0",
+  "profiles": [
+    {
+      "id": "lightx2v-qwen-image-2512-lightning",
+      "repo_id": "lightx2v/Qwen-Image-2512-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-lightning",
+      "artifact_role": "adapter",
+      "compatible_base_model": "qwen-image",
+      "base_models": ["Qwen/Qwen-Image-2512"],
+      "compatible_tasks": ["text_to_image"],
+      "model_aliases": [
+        "qwen-image",
+        "qwen-image-2512",
+        "qwen/qwen-image-2512",
+        "abstractframework/qwen-image-2512-4bit",
+        "abstractframework/qwen-image-2512-8bit"
+      ],
+      "recommended_parameters": {
+        "guidance_scale": 1.0
+      },
+      "detected_parameter": {
+        "name": "steps",
+        "default": 4
+      },
+      "compatibility_notes": [
+        "Do not pair BF16-trained Qwen Lightning LoRAs with the raw unscaled Qwen FP8 base (`qwen_image_fp8_e4m3fn.safetensors`); upstream documents grid artifacts for that mix.",
+        "For AbstractVision local LoRA-heavy Qwen runs, prefer the curated 8-bit prepared routes when memory allows."
+      ],
+      "documentation_urls": [
+        "https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models"
+      ],
+      "recommended_local_quantization_bits": [8]
+    },
+    {
+      "id": "lightx2v-qwen-image-2512-lightning-scaled-fp8-model",
+      "repo_id": "lightx2v/Qwen-Image-2512-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-lightning",
+      "artifact_role": "full_model",
+      "relative_path_match": {
+        "contains_all": ["fp8", "scaled"],
+        "contains_none": ["steps"]
+      },
+      "notes": "Scaled FP8 base checkpoint from the Lightning repo; not a LoRA adapter."
+    },
+    {
+      "id": "lightx2v-qwen-image-edit-2511-lightning",
+      "repo_id": "lightx2v/Qwen-Image-Edit-2511-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-edit-lightning",
+      "artifact_role": "adapter",
+      "compatible_base_model": "qwen-image-edit-2511",
+      "base_models": ["Qwen/Qwen-Image-Edit-2511"],
+      "compatible_tasks": ["image_to_image"],
+      "model_aliases": [
+        "qwen-image-edit-2511",
+        "qwen/qwen-image-edit-2511",
+        "abstractframework/qwen-image-edit-2511-4bit",
+        "abstractframework/qwen-image-edit-2511-8bit"
+      ],
+      "recommended_parameters": {
+        "guidance_scale": 1.0
+      },
+      "detected_parameter": {
+        "name": "steps",
+        "default": 4
+      },
+      "compatibility_notes": [
+        "Do not pair BF16-trained Qwen Lightning LoRAs with the raw unscaled Qwen FP8 base (`qwen_image_fp8_e4m3fn.safetensors`); upstream documents grid artifacts for that mix.",
+        "For AbstractVision local LoRA-heavy Qwen runs, prefer the curated 8-bit prepared routes when memory allows."
+      ],
+      "documentation_urls": [
+        "https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models"
+      ],
+      "recommended_local_quantization_bits": [8]
+    },
+    {
+      "id": "lightx2v-qwen-image-edit-2511-lightning-fused-fp8-model",
+      "repo_id": "lightx2v/Qwen-Image-Edit-2511-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-edit-lightning",
+      "artifact_role": "full_model",
+      "relative_path_match": {
+        "contains_all": ["fp8", "scaled"],
+        "contains_none": ["steps"]
+      },
+      "notes": "Fused FP8 Lightning checkpoint; not a standalone LoRA adapter."
+    },
+    {
+      "id": "lightx2v-qwen-image-lightning-repo",
+      "repo_id": "lightx2v/Qwen-Image-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-lightning",
+      "artifact_role": "adapter_repo",
+      "notes": "Repo contains multiple Qwen Lightning adapters. Select one explicit weight for exact defaults."
+    },
+    {
+      "id": "lightx2v-qwen-image-lightning-scaled-fp8-model",
+      "repo_id": "lightx2v/Qwen-Image-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-lightning",
+      "artifact_role": "full_model",
+      "relative_path_match": {
+        "starts_with": "qwen-image/",
+        "contains_all": ["fp8", "scaled"],
+        "contains_none": ["steps"]
+      },
+      "notes": "Scaled FP8 base checkpoint from the Lightning repo; not a LoRA adapter."
+    },
+    {
+      "id": "lightx2v-qwen-image-lightning-legacy-edit-2509",
+      "repo_id": "lightx2v/Qwen-Image-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-edit-lightning",
+      "artifact_role": "adapter",
+      "relative_path_match": {
+        "contains_all": ["qwen-image-edit-2509"]
+      },
+      "compatible_base_model": "qwen-image-edit-2509",
+      "base_models": ["Qwen/Qwen-Image-Edit-2509"],
+      "compatible_tasks": ["image_to_image"],
+      "model_aliases": [
+        "qwen-image-edit-2509",
+        "qwen/qwen-image-edit-2509",
+        "abstractframework/qwen-image-edit-2509-4bit",
+        "abstractframework/qwen-image-edit-2509-8bit"
+      ],
+      "recommended_parameters": {
+        "guidance_scale": 1.0
+      },
+      "detected_parameter": {
+        "name": "steps"
+      },
+      "compatibility_notes": [
+        "Do not pair BF16-trained Qwen Lightning LoRAs with the raw unscaled Qwen FP8 base (`qwen_image_fp8_e4m3fn.safetensors`); upstream documents grid artifacts for that mix.",
+        "For AbstractVision local LoRA-heavy Qwen runs, prefer the curated 8-bit prepared routes when memory allows."
+      ],
+      "documentation_urls": [
+        "https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models"
+      ],
+      "recommended_local_quantization_bits": [8]
+    },
+    {
+      "id": "lightx2v-qwen-image-lightning-legacy-edit",
+      "repo_id": "lightx2v/Qwen-Image-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-edit-lightning",
+      "artifact_role": "adapter",
+      "relative_path_match": {
+        "contains_all": ["qwen-image-edit-lightning"]
+      },
+      "compatible_base_model": "qwen-image-edit",
+      "base_models": ["Qwen/Qwen-Image-Edit"],
+      "compatible_tasks": ["image_to_image"],
+      "model_aliases": [
+        "qwen-image-edit",
+        "qwen/qwen-image-edit",
+        "abstractframework/qwen-image-edit-4bit",
+        "abstractframework/qwen-image-edit-8bit"
+      ],
+      "recommended_parameters": {
+        "guidance_scale": 1.0
+      },
+      "detected_parameter": {
+        "name": "steps"
+      },
+      "compatibility_notes": [
+        "Do not pair BF16-trained Qwen Lightning LoRAs with the raw unscaled Qwen FP8 base (`qwen_image_fp8_e4m3fn.safetensors`); upstream documents grid artifacts for that mix.",
+        "For AbstractVision local LoRA-heavy Qwen runs, prefer the curated 8-bit prepared routes when memory allows."
+      ],
+      "documentation_urls": [
+        "https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models"
+      ],
+      "recommended_local_quantization_bits": [8]
+    },
+    {
+      "id": "lightx2v-qwen-image-lightning-legacy-base",
+      "repo_id": "lightx2v/Qwen-Image-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-qwen-image-lightning",
+      "artifact_role": "adapter",
+      "relative_path_match": {
+        "contains_all": ["qwen-image", "lightning"],
+        "contains_none": ["edit"]
+      },
+      "compatible_base_model": "qwen-image",
+      "base_models": ["Qwen/Qwen-Image"],
+      "compatible_tasks": ["text_to_image"],
+      "model_aliases": [
+        "qwen-image",
+        "qwen/qwen-image",
+        "qwen-image-2512",
+        "qwen/qwen-image-2512",
+        "abstractframework/qwen-image-4bit",
+        "abstractframework/qwen-image-8bit",
+        "abstractframework/qwen-image-2512-4bit",
+        "abstractframework/qwen-image-2512-8bit"
+      ],
+      "recommended_parameters": {
+        "guidance_scale": 1.0
+      },
+      "detected_parameter": {
+        "name": "steps"
+      },
+      "compatibility_notes": [
+        "Do not pair BF16-trained Qwen Lightning LoRAs with the raw unscaled Qwen FP8 base (`qwen_image_fp8_e4m3fn.safetensors`); upstream documents grid artifacts for that mix.",
+        "For AbstractVision local LoRA-heavy Qwen runs, prefer the curated 8-bit prepared routes when memory allows."
+      ],
+      "documentation_urls": [
+        "https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models"
+      ],
+      "recommended_local_quantization_bits": [8]
+    },
+    {
+      "id": "lightx2v-wan-lightning-ti2v",
+      "repo_id": "lightx2v/Wan2.2-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-wan-lightning",
+      "artifact_role": "adapter",
+      "relative_path_match": {
+        "contains_all": ["wan2.2-ti2v-5b"]
+      },
+      "compatible_base_model": "wan2.2-ti2v-5b",
+      "base_models": ["Wan-AI/Wan2.2-TI2V-5B"],
+      "compatible_tasks": ["text_to_video", "image_to_video"],
+      "model_aliases": [
+        "wan2.2-ti2v-5b",
+        "wan-ai/wan2.2-ti2v-5b-diffusers",
+        "abstractframework/wan2.2-ti2v-5b-diffusers-8bit",
+        "abstractframework/wan2.2-ti2v-5b-diffusers-bf16"
+      ],
+      "detected_parameter": {
+        "name": "steps",
+        "default": 4
+      },
+      "compatibility_notes": [
+        "For AbstractVision local Wan Lightning runs, prefer the curated 8-bit prepared video routes when memory allows."
+      ],
+      "recommended_local_quantization_bits": [8]
+    },
+    {
+      "id": "lightx2v-wan-lightning-t2v-a14b",
+      "repo_id": "lightx2v/Wan2.2-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-wan-lightning",
+      "artifact_role": "adapter",
+      "relative_path_match": {
+        "contains_all": ["wan2.2-t2v-a14b"]
+      },
+      "compatible_base_model": "wan2.2-t2v-a14b",
+      "base_models": ["Wan-AI/Wan2.2-T2V-A14B"],
+      "compatible_tasks": ["text_to_video"],
+      "model_aliases": [
+        "wan2.2-t2v-a14b",
+        "wan-ai/wan2.2-t2v-a14b-diffusers",
+        "abstractframework/wan2.2-t2v-a14b-diffusers-8bit",
+        "abstractframework/wan2.2-t2v-a14b-diffusers-bf16"
+      ],
+      "detected_parameter": {
+        "name": "steps",
+        "default": 4
+      },
+      "compatibility_notes": [
+        "For AbstractVision local Wan Lightning runs, prefer the curated 8-bit prepared video routes when memory allows."
+      ],
+      "recommended_local_quantization_bits": [8]
+    },
+    {
+      "id": "lightx2v-wan-lightning-i2v-a14b",
+      "repo_id": "lightx2v/Wan2.2-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-wan-lightning",
+      "artifact_role": "adapter",
+      "relative_path_match": {
+        "contains_all": ["wan2.2-i2v-a14b"]
+      },
+      "compatible_base_model": "wan2.2-i2v-a14b",
+      "base_models": ["Wan-AI/Wan2.2-I2V-A14B"],
+      "compatible_tasks": ["image_to_video"],
+      "model_aliases": [
+        "wan2.2-i2v-a14b",
+        "wan-ai/wan2.2-i2v-a14b-diffusers",
+        "abstractframework/wan2.2-i2v-a14b-diffusers-8bit",
+        "abstractframework/wan2.2-i2v-a14b-diffusers-bf16"
+      ],
+      "detected_parameter": {
+        "name": "steps",
+        "default": 4
+      },
+      "compatibility_notes": [
+        "For AbstractVision local Wan Lightning runs, prefer the curated 8-bit prepared video routes when memory allows."
+      ],
+      "recommended_local_quantization_bits": [8]
+    },
+    {
+      "id": "lightx2v-wan-lightning-repo",
+      "repo_id": "lightx2v/Wan2.2-Lightning",
+      "kind": "lightning",
+      "family": "lightx2v-wan-lightning",
+      "artifact_role": "adapter_repo",
+      "recommended_parameters": {
+        "steps": 4
+      },
+      "compatibility_notes": [
+        "For AbstractVision local Wan Lightning runs, prefer the curated 8-bit prepared video routes when memory allows."
+      ],
+      "recommended_local_quantization_bits": [8],
+      "notes": "Repo contains multiple Wan Lightning adapters. Select one explicit handle for exact model matching."
+    }
+  ]
+}

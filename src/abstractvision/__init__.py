@@ -6,6 +6,7 @@ Local Diffusers, stable-diffusion.cpp, and MLX-Gen runtimes are explicit extras.
 """
 
 from .artifacts import LocalAssetStore, RuntimeArtifactStoreAdapter, is_artifact_ref
+from .adapter_capabilities import VisionAdapterCapabilitiesRegistry
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .types import (
     ImageUpscaleRequest,
@@ -16,12 +17,13 @@ from .types import (
 )
 from .vision_manager import VisionManager
 
-__version__ = "0.3.26"
+__version__ = "0.3.27"
 __author__ = "Laurent-Philippe Albou"
 __email__ = "contact@abstractcore.ai"
 
 __all__ = [
     "VisionManager",
+    "VisionAdapterCapabilitiesRegistry",
     "ProviderAdapterInfo",
     "ProviderModelInfo",
     "VideoProgressEvent",

@@ -44,6 +44,7 @@ class VisionBackendCapabilities:
 
     supported_tasks: Optional[Sequence[str]] = None
     supports_mask: Optional[bool] = None
+    supports_control_image: Optional[bool] = None
     max_width: Optional[int] = None
     max_height: Optional[int] = None
     max_fps: Optional[int] = None
@@ -95,6 +96,8 @@ class ImageGenerationRequest:
     seed: Optional[int] = None
     steps: Optional[int] = None
     guidance_scale: Optional[float] = None
+    control_image: Optional[bytes] = None
+    control_strength: Optional[float] = None
     lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
 

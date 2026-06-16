@@ -124,14 +124,16 @@ The follow-up investigation is tracked in:
 - You are on an older AbstractVision version where the Apple-local edit surface was narrower.
 - The optional MLX-Gen extra is not installed (`abstractvision[mlx-gen]`).
 - The q4/q8 prepared model is not present in the Hugging Face cache yet.
-- You are attempting a mask/inpaint edit (not supported by MLX-Gen yet).
+- You are attempting a mask or structured-control request on a route that does not advertise that capability.
 
 ### Fix
 
 - Upgrade AbstractVision to a version that supports MLX-Gen q4/q8 presets.
 - Install the backend extra: `pip install "abstractvision[mlx-gen]"`
 - Download the prepared model first, for example `abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen`.
-- For MLX-Gen mask edits, select a model that supports masks, such as `briaai/Fibo-Edit` or `briaai/Fibo-Edit-RMBG`; otherwise use local Diffusers or `stable-diffusion.cpp` for inpainting.
+- For MLX-Gen mask edits, use a validated masked-edit route such as `AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, or `briaai/Fibo-Edit-RMBG`.
+- For MLX-Gen structured control, use the validated base-Qwen route `AbstractFramework/qwen-image-8bit` and pass `--control-image` / `--control-strength` (or Python `control_image=` / `control_strength=`).
+- If you need mask/control on another local route, use local Diffusers or `stable-diffusion.cpp` instead of expecting AbstractVision to silently fall back.
 
 Notes:
 - MLX-Gen edit strength is passed as `strength` and normalized to the runtime `image_strength` parameter where the model supports it.

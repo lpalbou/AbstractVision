@@ -4,7 +4,7 @@ This page records the current bundled proof runs for the MLX-Gen backend in
 AbstractVision.
 
 All assets referenced here were generated through AbstractVision with
-`mlx-gen 0.18.18` and copied into
+`mlx-gen 0.18.19` and copied into
 [`docs/assets/mlx-gen-lora-examples/`](assets/mlx-gen-lora-examples/).
 
 ## What this page validates
@@ -23,10 +23,16 @@ All assets referenced here were generated through AbstractVision with
   `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Installed adapter discovery is backend-owned and lists optional overlays only;
   full-model component files are excluded from the adapter inventory.
+- The MLX-Gen surface exposes route-aware Qwen masked edit and
+  structured control through typed request fields instead of `extra`-only
+  escape hatches.
 - The public TI2V-5B visual proofs in this bundle use `832x480`.
 - The public task-specific Wan A14B proofs in this bundle use `480x240`.
+- The LoRA-heavy proof runs on this page use curated 8-bit MLX-Gen routes. For
+  local Qwen and Wan Lightning work, q8 is the preferred prepared route when
+  memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.18.18,<0.19.0`.
+  `mlx-gen>=0.18.19,<0.19.0`.
 
 This package release is validated on Apple Silicon first. The MLX-Gen install
 extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers
@@ -57,6 +63,13 @@ the exact runtime route contract, including default parameters such as
 `flow_shift`. Use `adapters` when you need locally cached overlays that match
 one route.
 
+If you manually experiment outside the curated AbstractVision routes, note the
+upstream LightX2V Qwen Lightning guidance: do not pair a BF16-trained Qwen
+Lightning LoRA with the raw unscaled FP8 Qwen base
+(`qwen_image_fp8_e4m3fn.safetensors`). That upstream mix can produce grid
+artifacts. Reference:
+<https://github.com/ModelTC/LightX2V-Qwen-Image-Lightning#-using-lightning-loras-with-fp8-models>
+
 Bundled discovery artifacts:
 
 - [provider_adapters_qwen2512_t2i.json](assets/mlx-gen-lora-examples/provider_adapters_qwen2512_t2i.json)
@@ -67,6 +80,21 @@ Bundled discovery artifacts:
 - [show_model_wan_ti2v_5b.txt](assets/mlx-gen-lora-examples/show_model_wan_ti2v_5b.txt)
 - [show_model_wan_a14b_t2v.txt](assets/mlx-gen-lora-examples/show_model_wan_a14b_t2v.txt)
 - [summary.json](assets/mlx-gen-lora-examples/summary.json)
+
+## Route-aware Qwen extras
+
+The public request surface exposes the validated Qwen MLX-Gen
+extras directly:
+
+- masked edit:
+  `abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --image ./input.png --mask ./mask.png "repair the marked area"`
+- structured control:
+  `abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ./edges.png --control-strength 0.9 "pagoda at sunrise"`
+
+Those inputs fail closed when the selected route does not advertise the matching
+runtime capability. `0.85` is the packaged default when
+`--control-strength` is omitted; `0.9` above matches the current upstream proof
+setting rather than the default.
 
 ## Shared adapter contract
 
@@ -138,7 +166,7 @@ The proof manifest for the runs below is
 | A14B T2V | `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` | task-specific route, paired Lightning LoRAs | [MP4](assets/mlx-gen-lora-examples/t2v_wan_a14b_lightning_480x240.mp4) / [contact sheet](assets/mlx-gen-lora-examples/t2v_wan_a14b_lightning_480x240_contact_sheet.png) |
 | A14B I2V | `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit` | task-specific route, paired Lightning LoRAs | [input](assets/mlx-gen-lora-examples/i2v_wan_a14b_lightning_480x240_input.png) / [MP4](assets/mlx-gen-lora-examples/i2v_wan_a14b_lightning_480x240.mp4) |
 
-The public first-frame `image_to_video` proof in this bundle now uses the
+The public first-frame `image_to_video` proof in this bundle uses the
 task-specific Wan A14B route. TI2V-5B `image_to_video` remains supported
 through the same runtime surface, but the bundle keeps only the validated
 public proofs that held up visually at the supported sizes.

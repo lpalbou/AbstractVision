@@ -15,8 +15,10 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..lora_adapters import (
     adapter_source_for_mlx_gen,
+    known_lora_adapter_profile,
     lora_scales_for_backend,
     lora_target_roles_for_backend,
+    recommended_lora_request_overrides,
     resolve_request_lora_adapters,
     serialize_lora_adapters,
 )
@@ -54,7 +56,7 @@ from .base_backend import VisionBackend
 
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
-MLX_GEN_VERSION_FLOOR = "0.18.18"
+MLX_GEN_VERSION_FLOOR = "0.18.19"
 WAN_TI2V_MODEL_KEY = "wan2.2-ti2v-5b"
 WAN_T2V_A14B_MODEL_KEY = "wan2.2-t2v-a14b"
 WAN_I2V_A14B_MODEL_KEY = "wan2.2-i2v-a14b"
@@ -1158,7 +1160,7 @@ def _skip_adapter_snapshot(snapshot_dir: Path) -> bool:
     return _snapshot_looks_like_full_model(snapshot_dir)
 
 
-def _adapter_candidate_files(snapshot_dir: Path) -> List[Path]:
+def _adapter_candidate_files(snapshot_dir: Path, *, repo_id: Optional[str] = None) -> List[Path]:
     out: List[Path] = []
     try:
         for path in snapshot_dir.rglob("*.safetensors"):
@@ -1172,6 +1174,10 @@ def _adapter_candidate_files(snapshot_dir: Path) -> List[Path]:
                 continue
             if rel.parent.name == "transformer" and path.stem.isdigit():
                 continue
+            if repo_id:
+                profile = known_lora_adapter_profile(f"{repo_id}:{rel.as_posix()}")
+                if isinstance(profile, dict) and str(profile.get("artifact_role") or "adapter") != "adapter":
+                    continue
             out.append(path)
     except Exception:
         return []
@@ -1195,6 +1201,86 @@ def _adapter_suggested_target_roles(
         if "low_noise_transformer" in roles:
             return ("low_noise_transformer",)
     return tuple(roles)
+
+
+def _parse_hf_adapter_source(source: str) -> Tuple[Optional[str], Optional[str]]:
+    text = str(source or "").strip()
+    if not text or _looks_like_path(text):
+        return None, None
+    if text.startswith("hf:"):
+        text = text[3:].strip()
+    if ":" in text:
+        repo_id, relative_path = text.split(":", 1)
+        repo_id = str(repo_id or "").strip()
+        relative_path = str(relative_path or "").strip()
+        if looks_like_hf_repo_id(repo_id):
+            return repo_id, relative_path or None
+        return None, None
+    if looks_like_hf_repo_id(text):
+        return text, None
+    return None, None
+
+
+def _resolve_cached_adapter_file(
+    repo_id: str,
+    *,
+    relative_path: Optional[str],
+    cache_dir: Optional[str],
+) -> Optional[Path]:
+    for _label, root in _configured_hf_cache_roots(cache_dir):
+        snapshot_dir = _resolve_snapshot_in_cache_root(repo_id, root)
+        if snapshot_dir is None:
+            continue
+        if relative_path:
+            candidate = snapshot_dir / relative_path
+            if candidate.is_file():
+                return candidate
+            candidate_name = Path(relative_path).name
+            fallback_matches = [
+                path
+                for path in _adapter_candidate_files(snapshot_dir, repo_id=repo_id)
+                if path.relative_to(snapshot_dir).as_posix() == relative_path or path.name == candidate_name
+            ]
+            if len(fallback_matches) == 1:
+                return fallback_matches[0]
+            if fallback_matches:
+                break
+            continue
+        candidates = _adapter_candidate_files(snapshot_dir, repo_id=repo_id)
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) > 1:
+            break
+    if relative_path:
+        target_name = Path(relative_path).name
+        for cache_label, root in _configured_adapter_cache_roots(cache_dir):
+            if "lora cache" not in _norm(cache_label):
+                continue
+            candidate = root / relative_path
+            if candidate.is_file():
+                return candidate
+            if target_name and target_name != relative_path:
+                by_name = root / target_name
+                if by_name.is_file():
+                    return by_name
+    return None
+
+
+def _cached_adapter_handles(repo_id: str, *, cache_dir: Optional[str]) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for _label, root in _configured_hf_cache_roots(cache_dir):
+        snapshot_dir = _resolve_snapshot_in_cache_root(repo_id, root)
+        if snapshot_dir is None:
+            continue
+        for path in _adapter_candidate_files(snapshot_dir, repo_id=repo_id):
+            handle = f"{repo_id}:{path.relative_to(snapshot_dir).as_posix()}"
+            key = handle.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(handle)
+    return out
 
 
 def _resolve_snapshot_in_cache_root(repo_id: str, root: Path) -> Optional[Path]:
@@ -1781,15 +1867,121 @@ class MFluxVisionBackend(VisionBackend):
         fallback = _MFLUX_BASE_MODEL_FALLBACK_TASKS.get(resolved_base, ("text_to_image",))
         return sorted(str(task_name) for task_name in fallback if str(task_name) in allowed)
 
-    def get_capabilities(self) -> VisionBackendCapabilities:
+    def _route_capability_selectors(self) -> Tuple[str, ...]:
+        selectors: List[str] = []
+        configured_model = str(self._cfg.model or "").strip()
+        if configured_model:
+            selectors.append(configured_model)
+            preset = _preset_for(configured_model)
+            if preset is not None:
+                selectors.append(_preset_variant_model_id(preset))
+        if self._resolved_model_path:
+            selectors.append(str(self._resolved_model_path))
+        deduped: List[str] = []
+        seen: set[str] = set()
+        for selector in selectors:
+            selector_s = str(selector or "").strip()
+            if not selector_s or selector_s in seen:
+                continue
+            seen.add(selector_s)
+            deduped.append(selector_s)
+        return tuple(deduped)
+
+    def _current_route_capabilities(self) -> Dict[str, List[Dict[str, Any]]]:
+        for selector in self._route_capability_selectors():
+            capabilities = self._route_capabilities_for_model(selector)
+            if capabilities:
+                return capabilities
+        return {}
+
+    def _task_spec(
+        self,
+        task: str,
+        *,
+        model_id: Optional[str] = None,
+        base_model: Optional[str] = None,
+    ) -> Optional[Any]:
         resolved_base = str(
-            self._resolved_base_model
+            base_model
+            or self._resolved_base_model
             or _infer_base_model(self._cfg.base_model, self._cfg.model)
             or ""
         ).strip()
+        capability_model_id = self._capability_model_id(model_id=model_id, base_model=resolved_base)
+        reg = _mflux_capability_registry()
+        if reg is None or not capability_model_id:
+            return None
+        try:
+            return reg.get(capability_model_id).tasks.get(str(task))
+        except Exception:
+            return None
+
+    def _task_parameter_supported(
+        self,
+        task: str,
+        parameter: str,
+        *,
+        model_id: Optional[str] = None,
+        base_model: Optional[str] = None,
+    ) -> Optional[bool]:
+        task_spec = self._task_spec(task, model_id=model_id, base_model=base_model)
+        if task_spec is None:
+            return None
+        params = task_spec.params if isinstance(task_spec.params, dict) else {}
+        if parameter not in params:
+            return False
+        value = params.get(parameter)
+        if isinstance(value, dict):
+            return False if value.get("supported") is False else True
+        return True
+
+    def _route_option_support(self, task: str, route_field: str) -> Optional[bool]:
+        rows = self._current_route_capabilities().get(str(task), [])
+        if not rows:
+            return None
+        return any(bool(row.get(route_field)) for row in rows)
+
+    def _effective_option_support(
+        self,
+        task: str,
+        *,
+        parameter: str,
+        route_field: str,
+    ) -> Optional[bool]:
+        package_support = self._task_parameter_supported(task, parameter)
+        runtime_support = self._route_option_support(task, route_field)
+        if runtime_support is not None:
+            if package_support is False:
+                return False
+            if package_support is None:
+                return bool(runtime_support)
+            return bool(package_support and runtime_support)
+        return package_support
+
+    def _require_route_option_support_if_known(
+        self,
+        task: str,
+        *,
+        route_field: str,
+        error_message: str,
+    ) -> None:
+        runtime_support = self._route_option_support(task, route_field)
+        if runtime_support is False:
+            raise CapabilityNotSupportedError(error_message)
+
+    def get_capabilities(self) -> VisionBackendCapabilities:
         return VisionBackendCapabilities(
             supported_tasks=self._supported_task_names(),
-            supports_mask=resolved_base in {"fibo-edit", "fibo-edit-rmbg"},
+            supports_mask=self._effective_option_support(
+                "image_to_image",
+                parameter="mask",
+                route_field="supports_mask",
+            ),
+            supports_control_image=self._effective_option_support(
+                "text_to_image",
+                parameter="control_image",
+                route_field="supports_control_image",
+            ),
         )
 
     def _config_lora_adapters(self) -> Tuple[Any, ...]:
@@ -1819,10 +2011,39 @@ class MFluxVisionBackend(VisionBackend):
             return effective
         return self._config_lora_adapters()
 
+    def _resolve_mlx_gen_lora_source(self, spec: Any) -> str:
+        source = adapter_source_for_mlx_gen(spec)
+        repo_id, relative_path = _parse_hf_adapter_source(source)
+        if not repo_id:
+            return source
+        resolved_file = _resolve_cached_adapter_file(
+            repo_id,
+            relative_path=relative_path,
+            cache_dir=self._cfg.cache_dir,
+        )
+        if resolved_file is not None:
+            return str(resolved_file)
+        if relative_path:
+            return source
+        handles = _cached_adapter_handles(repo_id, cache_dir=self._cfg.cache_dir)
+        if not handles:
+            handles = [
+                info.id
+                for info in self.list_provider_adapters(model=self._cfg.model or None)
+                if str(info.repo_id or "").strip() == repo_id
+            ]
+        if handles:
+            raise OptionalDependencyMissingError(
+                f"LoRA repo {repo_id!r} contains multiple adapter files. "
+                "Select one explicit adapter handle instead of the bare repo id:\n  - "
+                + "\n  - ".join(handles)
+            )
+        return source
+
     def _mlx_gen_lora_init_kwargs(self, adapters: Sequence[Any]) -> Dict[str, Any]:
         if not adapters:
             return {}
-        lora_paths = [adapter_source_for_mlx_gen(spec) for spec in adapters]
+        lora_paths = [self._resolve_mlx_gen_lora_source(spec) for spec in adapters]
         out: Dict[str, Any] = {"lora_paths": lora_paths}
         lora_scales = lora_scales_for_backend(adapters)
         if lora_scales is not None:
@@ -1895,7 +2116,7 @@ class MFluxVisionBackend(VisionBackend):
                         discovered_model = local_candidate
             if discovered_model is None:
                 continue
-            base_model = _infer_base_model(preset.key, preset.repo_id, preset.upstream_repo_id)
+            base_model = _infer_base_model(preset.repo_id, preset.upstream_repo_id, preset.key)
             tasks = self._supported_task_names(
                 model_id=str(preset.upstream_repo_id or preset.repo_id),
                 base_model=base_model,
@@ -1940,6 +2161,29 @@ class MFluxVisionBackend(VisionBackend):
                         (row for row in route_rows if bool(row.get("default_for_task"))),
                         route_rows[0],
                     )
+                    params = dict(task_spec.get("params") or {})
+                    if any(bool(row.get("supports_control_image")) for row in route_rows):
+                        params.setdefault(
+                            "control_image",
+                            {
+                                "required": False,
+                                "description": (
+                                    "Structured control image for validated MLX-Gen routes."
+                                ),
+                            },
+                        )
+                        params.setdefault(
+                            "control_strength",
+                            {
+                                "required": False,
+                                "default": 0.85,
+                                "description": (
+                                    "Structured control strength for validated MLX-Gen routes."
+                                ),
+                            },
+                        )
+                    if params:
+                        task_spec["params"] = params
                     lora_states = {
                         str(row.get("lora_status") or "unsupported")
                         for row in route_rows
@@ -2083,7 +2327,7 @@ class MFluxVisionBackend(VisionBackend):
         def _fallback_models_for_base(base_model: str) -> List[str]:
             out: List[str] = []
             for preset in model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True):
-                preset_base = _infer_base_model(preset.key, preset.repo_id, preset.upstream_repo_id)
+                preset_base = _infer_base_model(preset.repo_id, preset.upstream_repo_id, preset.key)
                 if preset_base != base_model:
                     continue
                 model_id = _preset_variant_model_id(preset)
@@ -2106,13 +2350,24 @@ class MFluxVisionBackend(VisionBackend):
                     if _skip_adapter_snapshot(snapshot_dir):
                         continue
                     base_models = _adapter_base_models_from_card(snapshot_dir)
-                    adapter_files = _adapter_candidate_files(snapshot_dir)
+                    adapter_files = _adapter_candidate_files(snapshot_dir, repo_id=repo_id)
                     if not adapter_files:
                         continue
                     for file_path in adapter_files:
                         relative_path = file_path.relative_to(snapshot_dir).as_posix()
                         handle = f"{repo_id}:{relative_path}"
-                        compatible_base = _infer_base_model(handle, repo_id, *base_models)
+                        profile = known_lora_adapter_profile(handle)
+                        if isinstance(profile, dict) and str(profile.get("artifact_role") or "adapter") != "adapter":
+                            continue
+                        profile_base_models = tuple(
+                            str(item).strip()
+                            for item in (profile or {}).get("base_models") or ()
+                            if str(item).strip()
+                        )
+                        effective_base_models = profile_base_models or base_models
+                        compatible_base = str(
+                            (profile or {}).get("compatible_base_model") or ""
+                        ).strip() or _infer_base_model(handle, repo_id, *effective_base_models)
                         if compatible_base is None:
                             continue
                         if selected_base and compatible_base != selected_base:
@@ -2183,7 +2438,7 @@ class MFluxVisionBackend(VisionBackend):
                             ProviderAdapterInfo(
                                 id=handle,
                                 repo_id=repo_id,
-                                base_models=base_models,
+                                base_models=effective_base_models,
                                 compatible_models=tuple(compatible_models),
                                 compatible_tasks=tuple(compatible_tasks),
                                 suggested_target_roles=suggested_roles,
@@ -2197,6 +2452,30 @@ class MFluxVisionBackend(VisionBackend):
                                     "relative_path": relative_path,
                                     "compatible_base_model": compatible_base,
                                     "compatible_routes": compatible_routes,
+                                    **(
+                                        {
+                                            "adapter_kind": str(profile.get("kind") or ""),
+                                            "adapter_family": str(profile.get("family") or ""),
+                                            "recommended_parameters": dict(
+                                                profile.get("recommended_parameters") or {}
+                                            ),
+                                            "compatibility_notes": list(
+                                                profile.get("compatibility_notes") or ()
+                                            ),
+                                            "documentation_urls": list(
+                                                profile.get("documentation_urls") or ()
+                                            ),
+                                            "recommended_local_quantization_bits": list(
+                                                profile.get("recommended_local_quantization_bits")
+                                                or ()
+                                            ),
+                                            "model_aliases": list(
+                                                profile.get("model_aliases") or ()
+                                            ),
+                                        }
+                                        if isinstance(profile, dict)
+                                        else {}
+                                    ),
                                 },
                             )
                         )
@@ -2556,13 +2835,23 @@ class MFluxVisionBackend(VisionBackend):
         request: ImageGenerationRequest,
     ) -> ImageGenerationRequest:
         model_def = self._resolved_model_def()
-        steps = int(request.steps) if request.steps is not None else int(model_def.default_steps)
+        adapter_defaults = recommended_lora_request_overrides(
+            request.lora_adapters,
+            extra=request.extra,
+            task="text_to_image",
+            model=model_def.key,
+        )
+        steps = (
+            int(request.steps)
+            if request.steps is not None
+            else int(adapter_defaults.get("steps") or model_def.default_steps)
+        )
         if model_def.family == "flux2" and steps < 2:
             steps = 2
         guidance = (
             float(request.guidance_scale)
             if request.guidance_scale is not None
-            else model_def.default_guidance
+            else adapter_defaults.get("guidance_scale", model_def.default_guidance)
         )
         if (
             not model_def.supports_guidance_override
@@ -2572,11 +2861,26 @@ class MFluxVisionBackend(VisionBackend):
         negative_prompt = request.negative_prompt
         if negative_prompt and not model_def.supports_negative_prompt:
             negative_prompt = None
+        extra = dict(request.extra or {})
+        control_image = request.control_image
+        if control_image is None and extra.get("control_image") is not None:
+            raw_control_image = extra.pop("control_image")
+            if isinstance(raw_control_image, (bytes, bytearray)):
+                control_image = bytes(raw_control_image)
+        control_strength = request.control_strength
+        if control_strength is None and extra.get("control_strength") is not None:
+            try:
+                control_strength = float(extra.get("control_strength"))
+            except Exception:
+                control_strength = None
         return replace(
             request,
             steps=steps,
             guidance_scale=guidance,
             negative_prompt=negative_prompt,
+            control_image=control_image,
+            control_strength=control_strength,
+            extra=extra,
         )
 
     def normalize_image_edit_request(
@@ -2584,13 +2888,23 @@ class MFluxVisionBackend(VisionBackend):
         request: ImageEditRequest,
     ) -> ImageEditRequest:
         model_def = self._resolved_model_def()
-        steps = int(request.steps) if request.steps is not None else int(model_def.default_steps)
+        adapter_defaults = recommended_lora_request_overrides(
+            request.lora_adapters,
+            extra=request.extra,
+            task="image_to_image",
+            model=model_def.key,
+        )
+        steps = (
+            int(request.steps)
+            if request.steps is not None
+            else int(adapter_defaults.get("steps") or model_def.default_steps)
+        )
         if model_def.family == "flux2" and steps < 2:
             steps = 2
         guidance = (
             float(request.guidance_scale)
             if request.guidance_scale is not None
-            else model_def.default_guidance
+            else adapter_defaults.get("guidance_scale", model_def.default_guidance)
         )
         if (
             not model_def.supports_guidance_override
@@ -2640,7 +2954,18 @@ class MFluxVisionBackend(VisionBackend):
                 f"MLX-Gen video generation is only implemented for Wan video models today (got {model_def.family!r})."
             )
         extra = dict(request.extra or {})
-        steps = int(request.steps) if request.steps is not None else int(model_def.default_steps)
+        task_name = "image_to_video" if isinstance(request, ImageToVideoRequest) else "text_to_video"
+        adapter_defaults = recommended_lora_request_overrides(
+            request.lora_adapters,
+            extra=request.extra,
+            task=task_name,
+            model=model_def.key,
+        )
+        steps = (
+            int(request.steps)
+            if request.steps is not None
+            else int(adapter_defaults.get("steps") or model_def.default_steps)
+        )
         if steps < 1:
             steps = 1
         guidance = (
@@ -3088,6 +3413,10 @@ class MFluxVisionBackend(VisionBackend):
         effective_loras = self._effective_request_lora_adapters(request)
         model, model_def = self._ensure_model_impl(lora_adapters=effective_loras)
         extra = dict(request.extra or {})
+        if image_path is not None and request.control_image is not None:
+            raise CapabilityNotSupportedError(
+                "MLX-Gen structured control images are only available for text-to-image requests."
+            )
         seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
         steps = int(request.steps) if request.steps is not None else model_def.default_steps
         width = int(request.width) if request.width is not None else int(self._cfg.default_width)
@@ -3119,6 +3448,29 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["image_strength"] = float(
                 image_strength if image_strength is not None else extra.pop("image_strength", 0.4)
             )
+        control_image = request.control_image if image_path is None else None
+        control_strength = request.control_strength
+        tmp_control_path: Optional[Path] = None
+        if control_image is not None:
+            self._require_route_option_support_if_known(
+                "text_to_image",
+                route_field="supports_control_image",
+                error_message=(
+                    "MLX-Gen structured control is not available for the selected model route. "
+                    "Inspect `abstractvision show-model <model-id>`; the current validated route "
+                    "is `AbstractFramework/qwen-image-8bit`."
+                ),
+            )
+            control_suffix = self._sniff_image_suffix(control_image)
+            with tempfile.NamedTemporaryFile(
+                mode="wb", suffix=control_suffix, delete=False
+            ) as control_fp:
+                tmp_control_path = Path(control_fp.name)
+                control_fp.write(control_image)
+            kwargs["controlnet_image_path"] = str(tmp_control_path)
+            kwargs["controlnet_strength"] = float(
+                control_strength if control_strength is not None else 0.85
+            )
         progress_callbacks, step_progress_callback = _pop_progress_callbacks(extra)
 
         progress_task = "image-to-image" if image_path is not None else "text-to-image"
@@ -3141,48 +3493,63 @@ class MFluxVisionBackend(VisionBackend):
         )
 
         try:
-            generated = model.generate_image(**kwargs)
-        except Exception as e:
-            if _is_mlx_gen_download_required(e):
-                raise _wrap_mlx_gen_download_required(e) from e
-            raise
+            try:
+                generated = model.generate_image(**kwargs)
+            except Exception as e:
+                if _is_mlx_gen_download_required(e):
+                    raise _wrap_mlx_gen_download_required(e) from e
+                raise
+            if self._model_key is not None:
+                self._warmed_model_key = self._model_key
+            pil_image = getattr(generated, "image", generated)
+            mlx_metadata = self._generated_image_metadata(generated)
+            buf = BytesIO()
+            pil_image.save(buf, format="PNG")
+            data = buf.getvalue()
+            image_strength_used = kwargs.get("image_strength") if image_path is not None else None
+            control_strength_used = (
+                kwargs.get("controlnet_strength") if tmp_control_path is not None else None
+            )
+            requested_loras = serialize_lora_adapters(effective_loras)
+            return GeneratedAsset(
+                media_type="image",
+                data=data,
+                mime_type="image/png",
+                metadata={
+                    "source": MLX_GEN_RUNTIME,
+                    "engine": MLX_GEN_RUNTIME,
+                    "legacy_engine": MFLUX_PROVIDER,
+                    "runtime_package": MLX_GEN_RUNTIME,
+                    "model": self._resolved_model_path,
+                    "base_model": self._resolved_base_model,
+                    "quantization_bits": self._resolved_quantization_bits,
+                    "seed": seed,
+                    "steps": steps,
+                    "width": width,
+                    "height": height,
+                    **({"requested_lora_adapters": requested_loras} if requested_loras else {}),
+                    **(_extract_lora_metadata(mlx_metadata) if mlx_metadata else {}),
+                    **({"mlx_gen": mlx_metadata} if mlx_metadata else {}),
+                    **(
+                        {"image_strength": image_strength_used}
+                        if image_strength_used is not None
+                        else {}
+                    ),
+                    **({"control_image": True} if tmp_control_path is not None else {}),
+                    **(
+                        {"control_strength": control_strength_used}
+                        if control_strength_used is not None
+                        else {}
+                    ),
+                },
+            )
         finally:
             unsubscribe()
-        if self._model_key is not None:
-            self._warmed_model_key = self._model_key
-        pil_image = getattr(generated, "image", generated)
-        mlx_metadata = self._generated_image_metadata(generated)
-        buf = BytesIO()
-        pil_image.save(buf, format="PNG")
-        data = buf.getvalue()
-        image_strength_used = kwargs.get("image_strength") if image_path is not None else None
-        requested_loras = serialize_lora_adapters(effective_loras)
-        return GeneratedAsset(
-            media_type="image",
-            data=data,
-            mime_type="image/png",
-            metadata={
-                "source": MLX_GEN_RUNTIME,
-                "engine": MLX_GEN_RUNTIME,
-                "legacy_engine": MFLUX_PROVIDER,
-                "runtime_package": MLX_GEN_RUNTIME,
-                "model": self._resolved_model_path,
-                "base_model": self._resolved_base_model,
-                "quantization_bits": self._resolved_quantization_bits,
-                "seed": seed,
-                "steps": steps,
-                "width": width,
-                "height": height,
-                **({"requested_lora_adapters": requested_loras} if requested_loras else {}),
-                **(_extract_lora_metadata(mlx_metadata) if mlx_metadata else {}),
-                **({"mlx_gen": mlx_metadata} if mlx_metadata else {}),
-                **(
-                    {"image_strength": image_strength_used}
-                    if image_strength_used is not None
-                    else {}
-                ),
-            },
-        )
+            if tmp_control_path is not None:
+                try:
+                    tmp_control_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
         return self._run_on_runtime_thread(self._generate_impl, request)
@@ -3206,10 +3573,22 @@ class MFluxVisionBackend(VisionBackend):
             edit_variant=True,
             lora_adapters=effective_loras,
         )
-        if request.mask is not None and model_def.family != "fibo-edit":
-            raise CapabilityNotSupportedError(
-                "MLX-Gen mask edits are currently implemented only for FIBO Edit models."
+        if request.mask is not None:
+            self._require_route_option_support_if_known(
+                "image_to_image",
+                route_field="supports_mask",
+                error_message=(
+                    "MLX-Gen masked image edits are not available for the selected model route. "
+                    "Inspect `abstractvision show-model <model-id>`; current validated routes are "
+                    "`AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, and "
+                    "`briaai/Fibo-Edit-RMBG`."
+                ),
             )
+            if model_def.family not in {"qwen-edit", "fibo-edit"}:
+                raise CapabilityNotSupportedError(
+                    "MLX-Gen masked image edits are currently implemented for Qwen Image Edit "
+                    f"and FIBO Edit routes, not {model_def.family!r}."
+                )
         if model_def.family not in {"flux2", "qwen-edit", "ernie-image", "fibo", "fibo-edit"}:
             raise CapabilityNotSupportedError(
                 "MLX-Gen image_to_image is implemented for FLUX.2, Qwen Image Edit, "
@@ -3279,6 +3658,10 @@ class MFluxVisionBackend(VisionBackend):
                         "MLX-Gen multi-reference image edits are supported for FLUX.2 and "
                         f"Qwen Image Edit models, not {model_def.family!r}."
                     )
+                if tmp_mask_path is not None and len(image_paths) != 1:
+                    raise CapabilityNotSupportedError(
+                        "MLX-Gen masked Qwen edits require exactly one source image."
+                    )
                 kwargs: Dict[str, Any] = {
                     "seed": seed,
                     "prompt": str(request.prompt),
@@ -3286,6 +3669,8 @@ class MFluxVisionBackend(VisionBackend):
                 }
                 if model_def.family in {"flux2", "qwen-edit"}:
                     kwargs["image_paths"] = image_paths
+                    if model_def.family == "qwen-edit" and tmp_mask_path is not None:
+                        kwargs["mask_path"] = str(tmp_mask_path)
                 else:
                     kwargs["image_path"] = str(tmp_path)
                     if tmp_mask_path is not None:

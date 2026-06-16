@@ -27,7 +27,7 @@ Three cases were quarantined until they could be re-validated:
 
 Update (2026-05-23):
 - MFLUX `image_to_image` for the curated FLUX.2 klein presets (`flux2-klein-4b`, `flux2-klein-9b`) has been re-enabled so it can be used from the playground/CLI/plugin surfaces.
-- Mask edits remain unsupported for MFLUX.
+- Route-aware masked edits are now surfaced for validated Qwen Image Edit 2511 and FIBO Edit MLX-Gen routes; FLUX.2 edit remains unmasked.
 - The operator-quality acceptance criteria below are still relevant: re-enabled means “wired + runnable”, not “quality bar fully met”.
 
 ## Current code reality
@@ -80,7 +80,7 @@ Quarantine the unreliable local task paths now and only re-enable them after a t
 Current quarantine policy:
 
 - local Diffusers `GLM-Image`: disable `text_to_image` and `image_to_image`;
-- local MFLUX: enable `image_to_image` for FLUX.2 klein presets (no masks), keep `text_to_image`;
+- local MFLUX: enable `image_to_image` for FLUX.2 klein presets (no masks), keep `text_to_image`, and keep route-aware mask/control truth backend-owned for validated Qwen/FIBO rows;
 - local Diffusers CogVideoX: disable `text_to_video` from normal local surfaces and describe it as experimental / not working.
 
 ## Why

@@ -155,8 +155,9 @@ first_frame_mp4 = llm.vision.i2v(
 artifact ref dict when an `artifact_store` is supplied. Without an artifact
 store the plugin returns bytes; with `artifact_store=...` it returns the stored
 artifact ref, matching the runtime/gateway artifact path.
-Typed per-call keyword arguments such as `lora_adapters`, `guidance_2`, and
-`on_progress` survive the plugin boundary. Unknown per-call keyword arguments
+Typed per-call keyword arguments such as `control_image`, `control_strength`,
+`lora_adapters`, `guidance_2`, and `on_progress` survive the plugin boundary.
+Unknown per-call keyword arguments
 such as `reference_images` and `max_sequence_length` are preserved in the
 AbstractVision request `extra` dict for local backends.
 `llm.vision.t2i(...)`, `llm.vision.i2i(...)`, `llm.vision.t2v(...)`, and
@@ -167,6 +168,10 @@ include diffusion-step progress; Wan video events use diffusion-step
 For task-specific Wan A14B video models, `guidance_2` is a typed request
 parameter for the second-stage/low-noise guidance path. Pass it directly to
 `t2v(...)` / `i2v(...)`; do not wrap it in `extra`.
+
+For MLX-Gen base-Qwen structured control, pass `control_image=<bytes>` and
+optional `control_strength=<float>` directly to `t2i(...)`. Unsupported
+backends reject those fields explicitly instead of silently ignoring them.
 
 The same applies to LoRA adapters. Prefer the shared typed contract:
 
@@ -242,7 +247,7 @@ compatibility metadata on its own.
 
 ### Batch generation through Core
 
-The plugin now exposes explicit batch helpers in addition to the singular task
+The plugin exposes explicit batch helpers in addition to the singular task
 methods:
 
 - `llm.vision.t2i_batch(...)`

@@ -12,7 +12,7 @@ See also:
 - FAQ: [docs/faq.md](faq.md)
 - ADR index: [docs/adr/README.md](adr/README.md)
 - Backends: [docs/reference/backends.md](reference/backends.md)
-- Capability registry: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
+- Capability registries: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
 - Artifacts: [docs/reference/artifacts.md](reference/artifacts.md)
 - AbstractCore integration: [docs/reference/abstractcore-integration.md](reference/abstractcore-integration.md)
 
@@ -43,10 +43,10 @@ It is not the owner of “LLM image/video input attachments” (multimodal input
   - Optionally stores outputs and returns artifact refs when `store` is set.
 - **Backend contract**: [`VisionBackend`](../src/abstractvision/backends/base_backend.py)
   - Implementations live in [`../src/abstractvision/backends/`](../src/abstractvision/backends/).
-- **Capability registry**: [`VisionModelCapabilitiesRegistry`](../src/abstractvision/model_capabilities.py)
-  - Loads packaged data: [`vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json).
-  - Governs the model catalog, task metadata, and curated download surfaces as a product surface,
-    not just as incidental documentation metadata. See [ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
+- **Capability registries**:
+  - [`VisionModelCapabilitiesRegistry`](../src/abstractvision/model_capabilities.py) loads [`vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) and governs the model catalog, task metadata, and curated download surfaces.
+  - [`VisionAdapterCapabilitiesRegistry`](../src/abstractvision/adapter_capabilities.py) loads [`vision_adapter_capabilities.json`](../src/abstractvision/assets/vision_adapter_capabilities.json) and governs package-owned adapter defaults, compatibility hints, and adapter discovery metadata.
+  - See [ADR 0005](adr/0005_curated_capability_registry_and_download_catalog.md).
 - **Artifact outputs**: [`MediaStore`](../src/abstractvision/artifacts.py), [`LocalAssetStore`](../src/abstractvision/artifacts.py), [`RuntimeArtifactStoreAdapter`](../src/abstractvision/artifacts.py)
   - Artifact ref helper: `is_artifact_ref()` (see [`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py)).
 - **CLI/REPL**: `abstractvision` entrypoint ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py))
@@ -79,7 +79,7 @@ AbstractVision separates two kinds of “can I do this?” checks:
    - Implemented by `VisionModelCapabilitiesRegistry.require_support(...)` ([`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py))
    - Used by `VisionManager._require_model_support(...)` when `VisionManager.model_id` is set ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py))
 
-2) **Backend-level gating** (best-effort): “Does this configured backend support task Y / mask edits?”
+2) **Backend-level gating** (best-effort): “Does this configured backend support task Y / mask edits / control images?”
    - Backends may implement `get_capabilities()` returning `VisionBackendCapabilities` ([`../src/abstractvision/types.py`](../src/abstractvision/types.py))
    - Enforced by `VisionManager._require_backend_support(...)` and mask checks in `VisionManager.edit_image(...)` ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py))
 
@@ -92,7 +92,7 @@ The public API includes `text_to_video`, `image_to_video`, and `multi_view_image
   - Diffusers backend ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
   - stable-diffusion.cpp backend ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
   - MLX-Gen backend for curated Apple-first local MLX presets ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py))
-- Local MLX-Gen supports `text_to_image` for curated q4/q8 FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, and official FIBO snapshots; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for `text_to_video` and first-frame `image_to_video`.
+- Local MLX-Gen supports `text_to_image` for curated q4/q8 FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, and official FIBO snapshots; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports validated Qwen structured control and Qwen/FIBO masked edits through route-aware runtime checks; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for `text_to_video` and first-frame `image_to_video`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local surfaces.
 - OpenAI-compatible HTTP can also support `text_to_video` / `image_to_video` when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).
 - No built-in backend implements `multi_view_image` yet (they raise `CapabilityNotSupportedError` in `generate_angles(...)`).
@@ -140,7 +140,7 @@ Current plugin behavior (evidence in [`../src/abstractvision/integrations/abstra
   1) Implement `VisionBackend` ([`../src/abstractvision/backends/base_backend.py`](../src/abstractvision/backends/base_backend.py))
   2) Add capability reporting via `get_capabilities()` when you can (optional)
   3) Add tests under [`../tests/`](../tests/)
-- Update the registry:
-  1) Edit [`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json)
-  2) Validate by running the test suite (validator is wired into the registry loader)
-  3) Use `abstractvision show-model <id>` to sanity-check task/param printing ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py))
+- Update the registries:
+  1) Edit [`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json) for model/task/download metadata or [`../src/abstractvision/assets/vision_adapter_capabilities.json`](../src/abstractvision/assets/vision_adapter_capabilities.json) for adapter defaults/compatibility hints
+  2) Validate by running the test suite (validators are wired into both registry loaders)
+  3) Use `abstractvision show-model <id>` and `abstractvision adapters --provider mlx-gen --model <id> --task <task> --json` to sanity-check the effective packaged metadata ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py))

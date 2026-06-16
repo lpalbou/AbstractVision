@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
-import pkgutil
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
+from .capability_assets import load_json_asset
 from .errors import CapabilityNotSupportedError, UnknownModelError
+
+MODEL_CAPABILITIES_ENV_VAR = "ABSTRACTVISION_MODEL_CAPABILITIES_PATH"
 
 
 @dataclass(frozen=True)
@@ -57,10 +59,13 @@ class VisionModelCapabilitiesRegistry:
         self._load()
 
     def _load(self) -> None:
-        raw = pkgutil.get_data("abstractvision", self._asset_path)
-        if raw is None:
-            raise RuntimeError(f"Capability asset not found: abstractvision/{self._asset_path}")
-        data = json.loads(raw.decode("utf-8"))
+        data = load_json_asset(
+            package="abstractvision",
+            default_asset_path=self.DEFAULT_ASSET_PATH,
+            asset_path=self._asset_path,
+            env_var=MODEL_CAPABILITIES_ENV_VAR,
+            label="Capability asset",
+        )
         validate_capabilities_json(data)
 
         self._schema_version = str(data.get("schema_version") or "")

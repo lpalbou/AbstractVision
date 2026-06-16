@@ -87,6 +87,42 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
         out = vm.edit_image("edit", image=b"img")
         self.assertIsNotNone(out)
 
+    def test_backend_capabilities_block_control_images(self):
+        from abstractvision import VisionManager, VisionModelCapabilitiesRegistry
+        from abstractvision.backends import VisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import GeneratedAsset, VisionBackendCapabilities
+
+        class NoControlBackend(VisionBackend):
+            def get_capabilities(self) -> VisionBackendCapabilities:
+                return VisionBackendCapabilities(
+                    supported_tasks=["text_to_image"],
+                    supports_control_image=False,
+                )
+
+            def generate_image(self, request):
+                return GeneratedAsset(
+                    media_type="image", data=b"ok", mime_type="image/png", metadata={}
+                )
+
+            def edit_image(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_angles(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def image_to_video(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+        reg = VisionModelCapabilitiesRegistry()
+        vm = VisionManager(backend=NoControlBackend(), model_id="Qwen/Qwen-Image", registry=reg)
+
+        with self.assertRaises(CapabilityNotSupportedError):
+            vm.generate_image("prompt", control_image=b"mask")
+
     def test_provider_model_listing_delegates_to_backend(self):
         from abstractvision import VisionManager
         from abstractvision.backends import VisionBackend

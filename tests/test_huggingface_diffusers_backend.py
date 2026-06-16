@@ -309,6 +309,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         self.assertEqual(set(caps.supported_tasks or []), {"text_to_image"})
         self.assertFalse(caps.supports_mask)
+        self.assertFalse(caps.supports_control_image)
 
     def test_get_capabilities_for_cogvideox_2b_is_temporarily_disabled(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -320,6 +321,7 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         self.assertEqual(list(caps.supported_tasks or []), [])
         self.assertIsNone(caps.supports_mask)
+        self.assertFalse(caps.supports_control_image)
 
     def test_get_capabilities_for_glm_image_is_temporarily_disabled(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -331,6 +333,24 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
 
         self.assertEqual(list(caps.supported_tasks or []), [])
         self.assertIsNone(caps.supports_mask)
+        self.assertFalse(caps.supports_control_image)
+
+    def test_normalize_generation_rejects_control_images(self):
+        from abstractvision.backends.huggingface_diffusers import (
+            HuggingFaceDiffusersBackendConfig,
+            HuggingFaceDiffusersVisionBackend,
+        )
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageGenerationRequest
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="zai-org/GLM-Image", device="cpu")
+        )
+
+        with self.assertRaises(CapabilityNotSupportedError):
+            backend.normalize_image_generation_request(
+                ImageGenerationRequest(prompt="fox", control_image=b"control")
+            )
 
     def test_normalize_glm_generation_request_uses_registry_defaults(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
@@ -378,6 +398,49 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         )
 
         self.assertIsNone(normalized.negative_prompt)
+        self.assertEqual(normalized.guidance_scale, 1.0)
+
+    def test_normalize_qwen2512_generation_request_uses_lightning_lora_defaults(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest, LoRAAdapterSpec
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="Qwen/Qwen-Image-2512", device="cpu")
+        )
+        normalized = backend.normalize_image_generation_request(
+            ImageGenerationRequest(
+                prompt="fox",
+                lora_adapters=(
+                    LoRAAdapterSpec(source="lightx2v/Qwen-Image-2512-Lightning"),
+                ),
+            )
+        )
+
+        self.assertEqual(normalized.steps, 4)
+        self.assertEqual(normalized.guidance_scale, 1.0)
+
+    def test_normalize_qwen2512_generation_request_prefers_explicit_lightning_step_count(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageGenerationRequest, LoRAAdapterSpec
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="Qwen/Qwen-Image-2512", device="cpu")
+        )
+        normalized = backend.normalize_image_generation_request(
+            ImageGenerationRequest(
+                prompt="fox",
+                lora_adapters=(
+                    LoRAAdapterSpec(
+                        source=(
+                            "lightx2v/Qwen-Image-2512-Lightning:"
+                            "Qwen-Image-2512-Lightning-8steps-V1.0.safetensors"
+                        )
+                    ),
+                ),
+            )
+        )
+
+        self.assertEqual(normalized.steps, 8)
         self.assertEqual(normalized.guidance_scale, 1.0)
 
     def test_normalize_cogvideox_video_request_uses_registry_defaults(self):
@@ -441,6 +504,26 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         self.assertEqual(normalized.guidance_scale, 1.5)
         self.assertEqual(normalized.extra.get("width"), 544)
         self.assertEqual(normalized.extra.get("height"), 512)
+
+    def test_normalize_qwen2511_edit_request_uses_lightning_lora_defaults(self):
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend
+        from abstractvision.types import ImageEditRequest, LoRAAdapterSpec
+
+        backend = HuggingFaceDiffusersVisionBackend(
+            config=HuggingFaceDiffusersBackendConfig(model_id="Qwen/Qwen-Image-Edit-2511", device="cpu")
+        )
+        normalized = backend.normalize_image_edit_request(
+            ImageEditRequest(
+                prompt="watercolor",
+                image=_png_bytes(),
+                lora_adapters=(
+                    LoRAAdapterSpec(source="lightx2v/Qwen-Image-Edit-2511-Lightning"),
+                ),
+            )
+        )
+
+        self.assertEqual(normalized.steps, 4)
+        self.assertEqual(normalized.guidance_scale, 1.0)
 
     def test_generate_image_rejects_temporarily_disabled_glm_model(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend

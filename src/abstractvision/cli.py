@@ -670,6 +670,11 @@ def _cmd_provider_adapters(args: argparse.Namespace) -> int:
         rows,
     ):
         print(line)
+    if adapters:
+        print(
+            "\nTip: use `--json` to inspect adapter defaults, quantization guidance, "
+            "compatibility notes, and documentation links."
+        )
     return 0
 
 
@@ -1294,6 +1299,11 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
     extra: Dict[str, Any] = {}
     if progress.enabled:
         extra["on_progress"] = progress
+    control_image = (
+        Path(args.control_image).expanduser().read_bytes()
+        if getattr(args, "control_image", None)
+        else None
+    )
     lora_adapters = _lora_adapters_from_mapping(vars(args))
     count, seeds = _seed_values_from_args(args)
     request = _resolve_t2i_request(
@@ -1305,6 +1315,8 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
         steps=args.steps,
         guidance_scale=args.guidance_scale,
         seed=args.seed,
+        control_image=control_image,
+        control_strength=args.control_strength,
         lora_adapters=lora_adapters,
         extra=extra,
     )
@@ -1318,6 +1330,8 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
                 steps=request.steps,
                 guidance_scale=request.guidance_scale,
                 seed=request.seed,
+                control_image=request.control_image,
+                control_strength=request.control_strength,
                 lora_adapters=request.lora_adapters,
                 extra=dict(request.extra or {}),
             )
@@ -1332,6 +1346,8 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
                 steps=request.steps,
                 guidance_scale=request.guidance_scale,
                 seed=request.seed,
+                control_image=request.control_image,
+                control_strength=request.control_strength,
                 lora_adapters=request.lora_adapters,
                 extra=dict(request.extra or {}),
             )
@@ -1355,6 +1371,8 @@ def _resolve_t2i_request(
     steps: Optional[int],
     guidance_scale: Optional[float],
     seed: Optional[int],
+    control_image: Optional[bytes] = None,
+    control_strength: Optional[float] = None,
     lora_adapters: Sequence[Any] = (),
     extra: Optional[Dict[str, Any]] = None,
 ) -> ImageGenerationRequest:
@@ -1366,6 +1384,8 @@ def _resolve_t2i_request(
         steps=steps,
         guidance_scale=guidance_scale,
         seed=seed,
+        control_image=control_image,
+        control_strength=control_strength,
         lora_adapters=tuple(lora_adapters),
         extra=dict(extra or {}),
     )
@@ -1836,8 +1856,8 @@ def _repl_help() -> str:
         "  /open <artifact_id>         Open a locally stored artifact (LocalAssetStore only)\n"
         "\n"
         "Generation:\n"
-        "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
-        "  /i2i --image path <prompt...> [--mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
+        "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ... --control-image path --control-strength F] [--open]\n"
+        "  /i2i --image path <prompt...> [--reference-image path ... --mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
         "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
         "  /i2v --image path [prompt...] [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
         "      extra flags are forwarded through request.extra\n"
@@ -2644,7 +2664,9 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 continue
             if cmd == "t2i":
                 if not args:
-                    print("Usage: /t2i <prompt...> [--width ...]")
+                    print(
+                        "Usage: /t2i <prompt...> [--width ... --control-image path --control-strength F]"
+                    )
                     continue
                 flags, rest = _parse_flags_and_rest(args)
                 prompt = " ".join(rest).strip()
@@ -2655,6 +2677,12 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 vm = _build_manager_from_state(state)
                 d = dict(state.defaults.get("t2i", {}))
                 d.update(flags)
+                control_image_path = str(d.get("control_image") or "").strip()
+                control_image = (
+                    Path(control_image_path).expanduser().read_bytes()
+                    if control_image_path
+                    else None
+                )
                 extra = {
                     k: _coerce_scalar(v)
                     for k, v in d.items()
@@ -2665,6 +2693,8 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                         "steps",
                         "guidance_scale",
                         "seed",
+                        "control_image",
+                        "control_strength",
                         "negative_prompt",
                         "open",
                     }
@@ -2679,6 +2709,8 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     steps=_coerce_int(d.get("steps")),
                     guidance_scale=_coerce_float(d.get("guidance_scale")),
                     seed=_coerce_int(d.get("seed")),
+                    control_image=control_image,
+                    control_strength=_coerce_float(d.get("control_strength")),
                     extra=extra,
                 )
                 out = vm.generate_image(
@@ -2689,6 +2721,8 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                     steps=request.steps,
                     guidance_scale=request.guidance_scale,
                     seed=request.seed,
+                    control_image=request.control_image,
+                    control_strength=request.control_strength,
                     extra=extra,
                 )
                 _print_json(out)
@@ -2705,7 +2739,9 @@ def _cmd_repl(_: argparse.Namespace) -> int:
                 continue
             if cmd == "i2i":
                 if not args:
-                    print("Usage: /i2i --image path <prompt...> [--mask path ...]")
+                    print(
+                        "Usage: /i2i --image path <prompt...> [--reference-image path ... --mask path ...]"
+                    )
                     continue
                 flags, rest = _parse_flags_and_rest(args)
                 image_path = flags.get("image")
@@ -3367,6 +3403,17 @@ def build_parser() -> argparse.ArgumentParser:
     t2i.add_argument("--steps", type=int, default=None)
     t2i.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale")
     t2i.add_argument("--seed", type=int, default=None)
+    t2i.add_argument(
+        "--control-image",
+        default=None,
+        help="Optional structured control image path for MLX-Gen base-Qwen route `AbstractFramework/qwen-image-8bit`.",
+    )
+    t2i.add_argument(
+        "--control-strength",
+        type=float,
+        default=None,
+        help="Optional structured control strength for `--control-image`. Default is 0.85 when omitted.",
+    )
     t2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     t2i.add_argument(
         "--progress",

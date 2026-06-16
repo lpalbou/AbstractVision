@@ -12,7 +12,7 @@ See also:
 AbstractVision is a small, model-agnostic API for **generative vision outputs** (images, optional video) with:
 - a small orchestrator ([`VisionManager`](../src/abstractvision/vision_manager.py))
 - pluggable execution engines (“backends”) in [`../src/abstractvision/backends/`](../src/abstractvision/backends/)
-- a packaged capability registry ([`vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json))
+- packaged capability registries ([`vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json), [`vision_adapter_capabilities.json`](../src/abstractvision/assets/vision_adapter_capabilities.json))
 - optional artifact-ref outputs via stores ([`../src/abstractvision/artifacts.py`](../src/abstractvision/artifacts.py))
 
 ## How does AbstractVision fit into AbstractFramework?
@@ -31,7 +31,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available.
+- Local MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - OpenAI-compatible HTTP can also provide `text_to_video` / `image_to_video` **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
@@ -42,7 +42,7 @@ Details: [docs/reference/backends.md](reference/backends.md).
 
 - **OpenAI-compatible HTTP** ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)): call a server that exposes OpenAI-shaped image endpoints (and optional video endpoints).
 - **Diffusers (local)** ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py)): run Diffusers pipelines locally (heavy deps). Local `text_to_video` groundwork exists but is currently quarantined from the normal local surfaces.
-- **MLX-Gen (local, Apple-first)** ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py)): run MLX-optimized image models, FIBO snapshots, shared LoRA adapters, and Wan 2.2 video locally.
+- **MLX-Gen (local, Apple-first)** ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py)): run MLX-optimized image models, validated Qwen structured-control and masked-edit routes, FIBO snapshots, shared LoRA adapters, SeedVR2 upscaling, and Wan 2.2 video locally.
 - **stable-diffusion.cpp (local GGUF)** ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py)): run GGUF diffusion models via `sd-cli` or `stable-diffusion-cpp-python`.
 
 ## What model should I start with (local)?
@@ -165,14 +165,19 @@ MLX-Gen route rows surface:
 Wan TI2V-5B uses one target role, `transformer`. Wan A14B routes require
 explicit `high_noise_transformer` / `low_noise_transformer` assignment.
 
-## What does the capability registry mean (and what does it not mean)?
+## What do the capability registries mean (and what do they not mean)?
 
-The registry answers “what a model *claims* to support” (task keys/params) and can be used for **optional gating**:
+The model registry answers “what a model *claims* to support” (task keys/params) and can be used for **optional gating**:
 
 - `VisionModelCapabilitiesRegistry.supports(...)` / `.require_support(...)` ([`../src/abstractvision/model_capabilities.py`](../src/abstractvision/model_capabilities.py))
 - `VisionManager(model_id=...)` uses it to fail fast before calling a backend ([`../src/abstractvision/vision_manager.py`](../src/abstractvision/vision_manager.py))
 
-It does **not** guarantee your configured backend can execute the task; backend support is a separate constraint ([docs/reference/backends.md](reference/backends.md)).
+The adapter registry answers “what package-owned adapter defaults and compatibility hints are curated for one adapter family?”:
+
+- `VisionAdapterCapabilitiesRegistry.match_profile(...)` ([`../src/abstractvision/adapter_capabilities.py`](../src/abstractvision/adapter_capabilities.py))
+- `abstractvision adapters --provider mlx-gen --model <model-id> --task <task> --json` to inspect recommended parameters, docs links, and compatibility notes for locally cached overlays
+
+Neither registry guarantees that one exact configured backend route can execute the request. Runtime route support is a separate backend-owned constraint ([docs/reference/backends.md](reference/backends.md)).
 
 ## I only need the HTTP backend. Do I have to install Torch/Diffusers?
 
