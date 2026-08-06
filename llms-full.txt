@@ -3993,7 +3993,9 @@ provider metadata is retained in a bounded `raw` field for diagnostics. This met
 inspection only: it does not mutate the configured backend or select a generation model.
 
 Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
-of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
+of returning a misleading empty catalog. When multiple backends are enabled, the plugin probes
+their catalogs concurrently so discovery waits for the slowest backend instead of the sum of
+serial scans. Local Diffusers and stable-diffusion.cpp model discovery
 remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate `~/models` download tree.
 
@@ -4016,7 +4018,7 @@ compatibility metadata on its own.
 
 ### Batch generation through Core
 
-The plugin now exposes explicit batch helpers in addition to the singular task
+The plugin exposes explicit batch helpers in addition to the singular task
 methods:
 
 - `llm.vision.t2i_batch(...)`
@@ -4414,6 +4416,11 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 ## Unreleased
 
+## 0.3.28 - 2026-06-16
+
+- MLX-Gen capabilities: align advertised `supports_mask` with the backend family gate so FLUX.2 models do not report mask support from inpaint-only route metadata when masked edits are implemented only for Qwen Image Edit and FIBO Edit families.
+- AbstractCore plugin: probe provider catalogs concurrently so `list_provider_models` waits for the slowest backend instead of the sum of serial scans.
+
 ## 0.3.27 - 2026-06-16
 
 - Runtime dependency: raise the optional MLX-Gen runtime floor to `mlx-gen>=0.18.19,<0.19.0`.
@@ -4682,6 +4689,20 @@ build-backend = "setuptools.build_meta"
 name = "abstractvision"
 dynamic = ["version"]
 description = "Model-agnostic generative vision abstractions (image/video) for the Abstract ecosystem"
+keywords = [
+  "vision",
+  "image-generation",
+  "text-to-image",
+  "image-to-video",
+  "text-to-video",
+  "mlx-gen",
+  "mlx",
+  "diffusers",
+  "stable-diffusion",
+  "abstractcore",
+  "generative-ai",
+  "openai-compatible",
+]
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

@@ -6,6 +6,20 @@ build-backend = "setuptools.build_meta"
 name = "abstractvision"
 dynamic = ["version"]
 description = "Model-agnostic generative vision abstractions (image/video) for the Abstract ecosystem"
+keywords = [
+  "vision",
+  "image-generation",
+  "text-to-image",
+  "image-to-video",
+  "text-to-video",
+  "mlx-gen",
+  "mlx",
+  "diffusers",
+  "stable-diffusion",
+  "abstractcore",
+  "generative-ai",
+  "openai-compatible",
+]
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

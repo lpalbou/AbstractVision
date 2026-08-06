@@ -409,6 +409,65 @@ def _backend_supports_provider_catalog(backend: Any) -> bool:
     return True
 
 
+# THE VISION BACKENDS ARE CATALOGUED TOGETHER, NOT ONE AFTER ANOTHER.
+#
+# A vision catalog fans out over backends that share nothing: one HTTP GET to a
+# remote /models, one scan of the local MLX weight cache, one diffusers probe.
+# Serially they add up -- measured on a cold process, the mlx-gen filesystem
+# scan alone was 5.22s of wall (cProfile, cumulative) sitting behind a remote
+# probe worth several seconds more. Together the catalog costs the SLOWEST
+# backend instead of the sum.
+#
+# Safe to thread: every backend here is a DISTINCT object, and each is either
+# freshly constructed by `_make_*_backend` for this call or the owner's single
+# cached backend, which the catalog only reads. The remote path is a stateless
+# urlopen; the mflux path reads constant module-level lookup tables and the
+# filesystem, its one cache being an `lru_cache` (internally locked, and the
+# builder is idempotent).
+#
+# Order is preserved: outcomes come back positionally, so the merged catalog is
+# byte-identical to the serial one -- including which backend wins a duplicate
+# (provider, model) key, and which error becomes `last_error`.
+_VISION_CATALOG_MAX_WORKERS = 6
+
+
+def _probe_backends_concurrently(
+    owner: Any,
+    backends: list[tuple[Any, Optional[str]]],
+    injected_backend: bool,
+    *,
+    task: Optional[str],
+) -> List[Dict[str, Any]]:
+    """Catalog every backend at once; return one outcome per backend, in order.
+
+    Each outcome is ``{}`` (backend has no catalog), ``{"skipped": True}``
+    (remote catalog disabled), ``{"attempted": True, "models": [...]}`` or
+    ``{"attempted": True, "error": exc}`` -- the same four cases the serial
+    loop distinguished.
+    """
+
+    def _catalog_one(index: int) -> Dict[str, Any]:
+        backend, provider = backends[index]
+        if not (injected_backend and index == 0) and not _backend_catalog_enabled(owner, provider, backend):
+            return {"skipped": True}
+        if not _backend_supports_provider_catalog(backend):
+            return {}
+        try:
+            return {"attempted": True, "models": list(backend.list_provider_models(task=task) or [])}
+        except Exception as exc:  # noqa: BLE001 - mirrors the serial except branch
+            return {"attempted": True, "error": exc}
+
+    if not backends:
+        return []
+    if len(backends) == 1:
+        return [_catalog_one(0)]
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=min(len(backends), _VISION_CATALOG_MAX_WORKERS)) as pool:
+        return list(pool.map(_catalog_one, range(len(backends))))
+
+
 def _provider_id_for_backend(backend: Any) -> Optional[str]:
     name = type(backend).__name__.lower()
     if "mflux" in name:
@@ -1443,20 +1502,20 @@ class _AbstractVisionCapability:
 
         out: List[Dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
-        for idx, (backend, provider) in enumerate(backends):
-            if not (injected_backend and idx == 0) and not _backend_catalog_enabled(
-                self._owner, provider, backend
-            ):
+        for (backend, provider), outcome in zip(
+            backends, _probe_backends_concurrently(self._owner, backends, injected_backend, task=task)
+        ):
+            if outcome.get("skipped"):
                 skipped_remote_catalog = True
                 continue
-            if not _backend_supports_provider_catalog(backend):
+            if not outcome.get("attempted"):
                 continue
             attempted_catalog = True
-            try:
-                models = list(backend.list_provider_models(task=task) or [])
-            except Exception as exc:
-                last_error = exc
+            error = outcome.get("error")
+            if error is not None:
+                last_error = error
                 continue
+            models = outcome.get("models") or []
             for model in models:
                 item = _provider_model_to_dict(model)
                 if provider and not item.get("provider"):
@@ -1555,6 +1614,13 @@ class _AbstractVisionCapability:
         out: List[Dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
         attempted = False
+        # DELIBERATELY SERIAL, and measured that way. Unlike the model catalog
+        # above, adapter listing never leaves the machine: `list_provider_adapters`
+        # is implemented by exactly one backend (mflux, a local weight-cache
+        # scan) and by nobody remote, so the fan-out has one real worker and
+        # nothing to overlap. Threading it measured 1.13 / 1.95 / 1.79s against
+        # 1.12 / 1.24 / 1.79s serial across three paired runs -- no win, so the
+        # thread pool does not belong here.
         for idx, (backend, backend_provider) in enumerate(backends):
             if not (injected_backend and idx == 0) and not _backend_catalog_enabled(
                 self._owner, backend_provider, backend

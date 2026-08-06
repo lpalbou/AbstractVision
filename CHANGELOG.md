@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.3.28 - 2026-06-16
+
+- MLX-Gen capabilities: align advertised `supports_mask` with the backend family gate so FLUX.2 models do not report mask support from inpaint-only route metadata when masked edits are implemented only for Qwen Image Edit and FIBO Edit families.
+- AbstractCore plugin: probe provider catalogs concurrently so `list_provider_models` waits for the slowest backend instead of the sum of serial scans.
+
 ## 0.3.27 - 2026-06-16
 
 - Runtime dependency: raise the optional MLX-Gen runtime floor to `mlx-gen>=0.18.19,<0.19.0`.

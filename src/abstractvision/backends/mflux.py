@@ -1952,24 +1952,46 @@ class MFluxVisionBackend(VisionBackend):
         runtime_support = self._route_option_support(task, route_field)
         if runtime_support is not None:
             if package_support is False:
+                result: Optional[bool] = False
+            elif package_support is None:
+                result = bool(runtime_support)
+            else:
+                result = bool(package_support and runtime_support)
+        else:
+            resolved_base = str(
+                self._resolved_base_model
+                or _infer_base_model(self._cfg.base_model, self._cfg.model)
+                or ""
+            ).strip()
+            if parameter == "mask":
+                if package_support is False:
+                    result = False
+                else:
+                    result = resolved_base in {
+                        "qwen-image-edit-2511",
+                        "fibo-edit",
+                        "fibo-edit-rmbg",
+                    }
+            elif parameter == "control_image":
+                if package_support is False:
+                    result = False
+                else:
+                    result = resolved_base == "qwen-image"
+            else:
+                result = package_support
+
+        # Route tables can advertise inpaint-only mask support that the backend
+        # still rejects for non-edit families in ``_edit_image_impl``.
+        if parameter == "mask" and result:
+            model_key = str(
+                self._resolved_base_model
+                or _infer_base_model(self._cfg.base_model, self._cfg.model)
+                or ""
+            ).strip()
+            model_def = _MFLUX_MODELS.get(model_key)
+            if model_def is not None and model_def.family not in {"qwen-edit", "fibo-edit"}:
                 return False
-            if package_support is None:
-                return bool(runtime_support)
-            return bool(package_support and runtime_support)
-        resolved_base = str(
-            self._resolved_base_model
-            or _infer_base_model(self._cfg.base_model, self._cfg.model)
-            or ""
-        ).strip()
-        if parameter == "mask":
-            if package_support is False:
-                return False
-            return resolved_base in {"qwen-image-edit-2511", "fibo-edit", "fibo-edit-rmbg"}
-        if parameter == "control_image":
-            if package_support is False:
-                return False
-            return resolved_base == "qwen-image"
-        return package_support
+        return result
 
     def _require_route_option_support_if_known(
         self,

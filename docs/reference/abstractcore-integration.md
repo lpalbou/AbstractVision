@@ -224,7 +224,9 @@ provider metadata is retained in a bounded `raw` field for diagnostics. This met
 inspection only: it does not mutate the configured backend or select a generation model.
 
 Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
-of returning a misleading empty catalog. Local Diffusers and stable-diffusion.cpp model discovery
+of returning a misleading empty catalog. When multiple backends are enabled, the plugin probes
+their catalogs concurrently so discovery waits for the slowest backend instead of the sum of
+serial scans. Local Diffusers and stable-diffusion.cpp model discovery
 remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate `~/models` download tree.
 
