@@ -66,14 +66,25 @@ def _dependency_names(requirements: set[str]) -> set[str]:
     return names
 
 
+def _extract_base_dependencies_block(text: str) -> str:
+    base_section = text.split("[project.optional-dependencies]", 1)[0]
+    match = re.search(r"^dependencies\s*=\s*(\[[^\]]*\])", base_section, re.MULTILINE)
+    if not match:
+        raise AssertionError("Missing [project] dependencies block")
+    return match.group(1)
+
+
 class TestPackagingMetadata(unittest.TestCase):
     def test_base_dependencies_are_lightweight(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        base_deps = pyproject.split("[project.optional-dependencies]", 1)[0]
+        base_section = pyproject.split("[project.optional-dependencies]", 1)[0]
 
-        self.assertIn("dependencies = []", base_deps)
+        self.assertIn("dependencies = []", base_section)
+        base_dep_names = _dependency_names(
+            _dependency_requirements(_extract_base_dependencies_block(pyproject))
+        )
         for package in sorted(LOCAL_RUNTIME_PACKAGES):
-            self.assertNotIn(package, base_deps)
+            self.assertNotIn(package, base_dep_names)
 
     def test_runtime_extras_are_complete(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
