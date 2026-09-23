@@ -867,11 +867,11 @@ docs over-interpret it.</p>
 <li>backends may optionally accept a very small bounded request shape in v1, for example:</li>
 </ul>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-9b&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;warmup_request&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;width&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;height&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
+<span class="w">  </span><span class="nt">"provider"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mflux"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"flux2-klein-9b"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"warmup_request"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"width"</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"height"</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
@@ -899,17 +899,17 @@ rules.</p>
 <p>Do not replace the current loaded-model record.</p>
 <p>Add a nested <code>warmup</code> object only:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;warmup&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;support&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;unsupported|signature_exact&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cold|ready|failed&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;signature&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;width&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;height&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
+<span class="w">  </span><span class="nt">"warmup"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"support"</span><span class="p">:</span><span class="w"> </span><span class="s2">"unsupported|signature_exact"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"state"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cold|ready|failed"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"signature"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text_to_image"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"width"</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"height"</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;explicit|request&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;attempted_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">    </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"explicit|request"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"attempted_at"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>

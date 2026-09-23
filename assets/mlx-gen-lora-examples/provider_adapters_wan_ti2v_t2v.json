@@ -30,7 +30,7 @@
       "relative_path": "HSToric_color_Wan22_5b_LoRA.safetensors",
       "repo_id": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--AlekseyCalvin--HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets/snapshots/fb47fbdfb7fa391ed6d29f1d1b06f78bc815d7c0"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--AlekseyCalvin--HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets/snapshots/fb47fbdfb7fa391ed6d29f1d1b06f78bc815d7c0"
     },
     "repo_id": "AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets",
     "suggested_target_roles": [
@@ -68,7 +68,7 @@
       "relative_path": "wan22_5b_i2v_crush_it_lora.safetensors",
       "repo_id": "ostris/wan22_5b_i2v_crush_it_lora",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--ostris--wan22_5b_i2v_crush_it_lora/snapshots/e4b85be20d75c2ca2ee1b901ba2cf49d9416e233"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--ostris--wan22_5b_i2v_crush_it_lora/snapshots/e4b85be20d75c2ca2ee1b901ba2cf49d9416e233"
     },
     "repo_id": "ostris/wan22_5b_i2v_crush_it_lora",
     "suggested_target_roles": [
@@ -106,7 +106,7 @@
       "relative_path": "wan_2_2_5B_woven_fabric_02.safetensors",
       "repo_id": "wouterverweirder/wan_2_2_5B_woven_fabric_02-lora",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--wouterverweirder--wan_2_2_5B_woven_fabric_02-lora/snapshots/17ee8a366a74b3abca25a22e4f88bd00673adb4f"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--wouterverweirder--wan_2_2_5B_woven_fabric_02-lora/snapshots/17ee8a366a74b3abca25a22e4f88bd00673adb4f"
     },
     "repo_id": "wouterverweirder/wan_2_2_5B_woven_fabric_02-lora",
     "suggested_target_roles": [

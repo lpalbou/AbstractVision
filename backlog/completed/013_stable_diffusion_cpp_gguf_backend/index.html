@@ -965,7 +965,7 @@
 <span class="w">  </span>--diffusion-model<span class="w"> </span>/path/to/qwen-image-2512-Q4_K_M.gguf<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--vae<span class="w"> </span>/path/to/qwen_image_vae.safetensors<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--llm<span class="w"> </span>/path/to/Qwen2.5-VL-7B-Instruct-*.gguf<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-p<span class="w"> </span><span class="s2">&quot;a cinematic photo of a red fox in snow&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-p<span class="w"> </span><span class="s2">"a cinematic photo of a red fox in snow"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--cfg-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--sampling-method<span class="w"> </span>euler<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--offload-to-cpu<span class="w"> </span><span class="se">\</span>
@@ -981,7 +981,7 @@
 <div class="highlight"><pre><span></span><code>/backend sdcpp /path/to/qwen-image-2512-Q4_K_M.gguf /path/to/qwen_image_vae.safetensors /path/to/Qwen2.5-VL-7B-Instruct-*.gguf sd-cli
 /set width 1024
 /set height 1024
-/t2i &quot;a cinematic photo of a red fox in snow&quot; --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
+/t2i "a cinematic photo of a red fox in snow" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
 </code></pre></div>
 <h4 id="3-abstractcore-server-web-playground-recommended">3) AbstractCore Server + Web Playground (recommended)<a class="headerlink" href="#3-abstractcore-server-web-playground-recommended" title="Permanent link">&para;</a></h4>
 <p>Start AbstractCore with <code>sdcpp</code> backend:</p>
@@ -990,7 +990,7 @@
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTCORE_VISION_SDCPP_DIFFUSION_MODEL</span><span class="o">=</span>/path/to/qwen-image-2512-Q4_K_M.gguf
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTCORE_VISION_SDCPP_VAE</span><span class="o">=</span>/path/to/qwen_image_vae.safetensors
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTCORE_VISION_SDCPP_LLM</span><span class="o">=</span>/path/to/Qwen2.5-VL-7B-Instruct-*.gguf
-<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTCORE_VISION_SDCPP_EXTRA_ARGS</span><span class="o">=</span><span class="s2">&quot;--offload-to-cpu --diffusion-fa --sampling-method euler --flow-shift 3&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTCORE_VISION_SDCPP_EXTRA_ARGS</span><span class="o">=</span><span class="s2">"--offload-to-cpu --diffusion-fa --sampling-method euler --flow-shift 3"</span>
 uvicorn<span class="w"> </span>abstractcore.server.app:app<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
 </code></pre></div>
 <p>Serve the playground:</p>

@@ -927,15 +927,15 @@ curated model/adapter metadata independently.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">schema_version</span><span class="p">())</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">list_tasks</span><span class="p">())</span>
 
-<span class="k">assert</span> <span class="n">reg</span><span class="o">.</span><span class="n">supports</span><span class="p">(</span><span class="s2">&quot;runwayml/stable-diffusion-v1-5&quot;</span><span class="p">,</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">models_for_task</span><span class="p">(</span><span class="s2">&quot;text_to_image&quot;</span><span class="p">))</span>
+<span class="k">assert</span> <span class="n">reg</span><span class="o">.</span><span class="n">supports</span><span class="p">(</span><span class="s2">"runwayml/stable-diffusion-v1-5"</span><span class="p">,</span> <span class="s2">"text_to_image"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">models_for_task</span><span class="p">(</span><span class="s2">"text_to_image"</span><span class="p">))</span>
 
 <span class="n">adapter_reg</span> <span class="o">=</span> <span class="n">VisionAdapterCapabilitiesRegistry</span><span class="p">()</span>
 <span class="n">profile</span> <span class="o">=</span> <span class="n">adapter_reg</span><span class="o">.</span><span class="n">match_profile</span><span class="p">(</span>
-    <span class="n">repo_id</span><span class="o">=</span><span class="s2">&quot;lightx2v/Qwen-Image-2512-Lightning&quot;</span><span class="p">,</span>
-    <span class="n">relative_path</span><span class="o">=</span><span class="s2">&quot;Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors&quot;</span><span class="p">,</span>
+    <span class="n">repo_id</span><span class="o">=</span><span class="s2">"lightx2v/Qwen-Image-2512-Lightning"</span><span class="p">,</span>
+    <span class="n">relative_path</span><span class="o">=</span><span class="s2">"Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors"</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">profile</span><span class="o">.</span><span class="n">to_profile_dict</span><span class="p">()[</span><span class="s2">&quot;recommended_parameters&quot;</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">profile</span><span class="o">.</span><span class="n">to_profile_dict</span><span class="p">()[</span><span class="s2">"recommended_parameters"</span><span class="p">])</span>
 </code></pre></div>
 <h2 id="json-shape-high-level">JSON shape (high level)<a class="headerlink" href="#json-shape-high-level" title="Permanent link">&para;</a></h2>
 <p>The validator enforces a “soft schema”:</p>

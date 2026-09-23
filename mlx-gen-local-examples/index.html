@@ -997,14 +997,14 @@ AbstractVision.</p>
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.</li>
 <li>The current AbstractVision MLX runtime floor is
-  <code>mlx-gen&gt;=0.18.19,&lt;0.19.0</code>.</li>
+  <code>mlx-gen&gt;=0.38.0,&lt;0.39.0</code>.</li>
 </ul>
 <p>This package release is validated on Apple Silicon first. The MLX-Gen install
 extra also exposes the upstream Linux/CUDA path when <code>mlx[cuda13]</code> markers
 apply, but the proof assets on this page are Apple validations.</p>
 <h2 id="install-and-discovery">Install and discovery<a class="headerlink" href="#install-and-discovery" title="Permanent link">&para;</a></h2>
 <p>Install the MLX-Gen extra:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[mlx-gen]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"abstractvision[mlx-gen]"</span>
 </code></pre></div>
 <p>Inspect the local MLX-Gen catalog before long runs:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>catalog<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
@@ -1055,11 +1055,11 @@ setting rather than the default.</p>
 <span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">MLXGenBackendConfig</span><span class="p">,</span> <span class="n">MLXGenVisionBackend</span>
 
 <span class="n">backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span>
-    <span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-2512-8bit&quot;</span><span class="p">)</span>
+    <span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/qwen-image-2512-8bit"</span><span class="p">)</span>
 <span class="p">)</span>
-<span class="n">t2i</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span> <span class="n">model_id</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-2512-8bit&quot;</span><span class="p">)</span>
+<span class="n">t2i</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span> <span class="n">model_id</span><span class="o">=</span><span class="s2">"AbstractFramework/qwen-image-2512-8bit"</span><span class="p">)</span>
 <span class="n">assets</span> <span class="o">=</span> <span class="n">t2i</span><span class="o">.</span><span class="n">generate_image_batch</span><span class="p">(</span>
-    <span class="s2">&quot;Pixel art isometric research outpost on an icy exoplanet at blue hour&quot;</span><span class="p">,</span>
+    <span class="s2">"Pixel art isometric research outpost on an icy exoplanet at blue hour"</span><span class="p">,</span>
     <span class="n">count</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
     <span class="n">seeds</span><span class="o">=</span><span class="p">[</span><span class="mi">2512</span><span class="p">,</span> <span class="mi">2513</span><span class="p">],</span>
     <span class="n">width</span><span class="o">=</span><span class="mi">768</span><span class="p">,</span>
@@ -1068,28 +1068,28 @@ setting rather than the default.</p>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
     <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
         <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">&quot;prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors&quot;</span><span class="p">,</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors"</span><span class="p">,</span>
             <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="p">],</span>
 <span class="p">)</span>
 
 <span class="n">edit_backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span>
-    <span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-edit-2509-8bit&quot;</span><span class="p">)</span>
+    <span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/qwen-image-edit-2509-8bit"</span><span class="p">)</span>
 <span class="p">)</span>
-<span class="n">i2i</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">edit_backend</span><span class="p">,</span> <span class="n">model_id</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-edit-2509-8bit&quot;</span><span class="p">)</span>
+<span class="n">i2i</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">edit_backend</span><span class="p">,</span> <span class="n">model_id</span><span class="o">=</span><span class="s2">"AbstractFramework/qwen-image-edit-2509-8bit"</span><span class="p">)</span>
 <span class="n">edited</span> <span class="o">=</span> <span class="n">i2i</span><span class="o">.</span><span class="n">edit_image</span><span class="p">(</span>
-    <span class="s2">&quot;Re-render the same vehicle from behind and slightly above.&quot;</span><span class="p">,</span>
-    <span class="n">image</span><span class="o">=</span><span class="nb">open</span><span class="p">(</span><span class="s2">&quot;./input.png&quot;</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">(),</span>
+    <span class="s2">"Re-render the same vehicle from behind and slightly above."</span><span class="p">,</span>
+    <span class="n">image</span><span class="o">=</span><span class="nb">open</span><span class="p">(</span><span class="s2">"./input.png"</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">(),</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
     <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
         <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">&quot;lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors&quot;</span><span class="p">,</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"lightx2v/Qwen-Image-Lightning:Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors"</span><span class="p">,</span>
             <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
         <span class="p">),</span>
         <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">&quot;dx8152/Qwen-Edit-2509-Multiple-angles:镜头转换.safetensors&quot;</span><span class="p">,</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"dx8152/Qwen-Edit-2509-Multiple-angles:镜头转换.safetensors"</span><span class="p">,</span>
             <span class="n">scale</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
         <span class="p">),</span>
     <span class="p">],</span>
@@ -1169,7 +1169,7 @@ public proofs that held up visually at the supported sizes.</p>
 <span class="w">  </span>--lora<span class="w"> </span>prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;Pixel art isometric research outpost on an icy exoplanet at blue hour, tiny service drones, crisp tiles, retro RPG palette&quot;</span>
+<span class="w">  </span><span class="s2">"Pixel art isometric research outpost on an icy exoplanet at blue hour, tiny service drones, crisp tiles, retro RPG palette"</span>
 </code></pre></div>
 <p>Outputs:</p>
 <ul>
@@ -1191,7 +1191,7 @@ public proofs that held up visually at the supported sizes.</p>
 <span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">0</span>.9<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;Use the source starfighter as the same object. Re-render it from behind and slightly above, banking left over the snowy canyon, keeping the same vehicle identity and environment.&quot;</span>
+<span class="w">  </span><span class="s2">"Use the source starfighter as the same object. Re-render it from behind and slightly above, banking left over the snowy canyon, keeping the same vehicle identity and environment."</span>
 </code></pre></div>
 <p>Artifacts:</p>
 <ul>
@@ -1217,7 +1217,7 @@ public proofs that held up visually at the supported sizes.</p>
 <span class="w">  </span>--lora-target-role<span class="w"> </span>transformer<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">0</span>.8<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk, pedestrians in wool coats, historical street lamps glowing, gentle cinematic motion.&quot;</span>
+<span class="w">  </span><span class="s2">"HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk, pedestrians in wool coats, historical street lamps glowing, gentle cinematic motion."</span>
 </code></pre></div>
 <video controls muted playsinline preload="metadata" style="max-width: 100%; border-radius: 8px;">
   <source src="assets/mlx-gen-lora-examples/t2v_wan_ti2v5b_hstoric_832x480.mp4" type="video/mp4" />
@@ -1241,7 +1241,7 @@ public proofs that held up visually at the supported sizes.</p>
 <span class="w">  </span>--count<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--seeds<span class="w"> </span><span class="m">6251</span>,6252<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;A compact silver spaceship rests in a frozen canyon at dawn. Blue engines begin to glow, loose snow drifts across the landing pad, and the camera holds a stable wide composition with gentle atmospheric motion.&quot;</span>
+<span class="w">  </span><span class="s2">"A compact silver spaceship rests in a frozen canyon at dawn. Blue engines begin to glow, loose snow drifts across the landing pad, and the camera holds a stable wide composition with gentle atmospheric motion."</span>
 </code></pre></div>
 <p>Artifacts:</p>
 <ul>
@@ -1255,7 +1255,7 @@ public proofs that held up visually at the supported sizes.</p>
 <span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--store-dir<span class="w"> </span>&lt;store&gt;<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--negative<span class="w"> </span><span class="s2">&quot;oversaturated colors, overexposed, static shot, blurry details, subtitles, text, watermark, painting, illustration, ugly, deformed, broken anatomy, extra limbs, cluttered background, frozen frame, low quality, jpeg artifacts&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--negative<span class="w"> </span><span class="s2">"oversaturated colors, overexposed, static shot, blurry details, subtitles, text, watermark, painting, illustration, ugly, deformed, broken anatomy, extra limbs, cluttered background, frozen frame, low quality, jpeg artifacts"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span><span class="se">\</span>
@@ -1272,7 +1272,7 @@ public proofs that held up visually at the supported sizes.</p>
 <span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;A cinematic wide-angle movie shot of a massive futuristic starship taking off from a frozen tundra. The ship features sleek dark metallic armor. Two massive warp nacelles pulse with bright blue plasma. Violent snow squalls whip around the hull. The camera slowly tilts up as the thrusters ignite and massive clouds of snow blast away from the launch pad. Photorealistic, highly detailed, dramatic lighting.&quot;</span>
+<span class="w">  </span><span class="s2">"A cinematic wide-angle movie shot of a massive futuristic starship taking off from a frozen tundra. The ship features sleek dark metallic armor. Two massive warp nacelles pulse with bright blue plasma. Violent snow squalls whip around the hull. The camera slowly tilts up as the thrusters ignite and massive clouds of snow blast away from the launch pad. Photorealistic, highly detailed, dramatic lighting."</span>
 </code></pre></div>
 <video controls muted playsinline preload="metadata" style="max-width: 100%; border-radius: 8px;">
   <source src="assets/mlx-gen-lora-examples/t2v_wan_a14b_lightning_480x240.mp4" type="video/mp4" />
@@ -1287,7 +1287,7 @@ public proofs that held up visually at the supported sizes.</p>
 <span class="w">  </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--store-dir<span class="w"> </span>&lt;store&gt;<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--negative<span class="w"> </span><span class="s2">&quot;oversaturated colors, overexposed, static shot, blurry details, subtitles, text, watermark, painting, illustration, ugly, deformed, broken anatomy, extra limbs, cluttered background, frozen frame, low quality, jpeg artifacts&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--negative<span class="w"> </span><span class="s2">"oversaturated colors, overexposed, static shot, blurry details, subtitles, text, watermark, painting, illustration, ugly, deformed, broken anatomy, extra limbs, cluttered background, frozen frame, low quality, jpeg artifacts"</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span><span class="se">\</span>
@@ -1304,7 +1304,7 @@ public proofs that held up visually at the supported sizes.</p>
 <span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--lora-scale<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;Starting from the input image, the silver spaceship powers up and lifts off from the frozen ground. Blue engines brighten, snow blasts outward, vapor rolls under the hull, and the camera holds the same wide icy canyon framing while the ship rises smoothly.&quot;</span>
+<span class="w">  </span><span class="s2">"Starting from the input image, the silver spaceship powers up and lifts off from the frozen ground. Blue engines brighten, snow blasts outward, vapor rolls under the hull, and the camera holds the same wide icy canyon framing while the ship rises smoothly."</span>
 </code></pre></div>
 <p>Source image:</p>
 <p><img alt="Wan A14B I2V source image" src="../assets/mlx-gen-lora-examples/i2v_wan_a14b_lightning_480x240_input.png" /></p>

@@ -31,7 +31,7 @@
       "relative_path": "[WAN2.2]Followcam_Redmond_high_noise.safetensors",
       "repo_id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--artificialguybr--FollowCam-Redmond-WAN2-T2V-14B/snapshots/20415b092632128b1dd1b52bf46cc9cbac89a72b"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--artificialguybr--FollowCam-Redmond-WAN2-T2V-14B/snapshots/20415b092632128b1dd1b52bf46cc9cbac89a72b"
     },
     "repo_id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B",
     "suggested_target_roles": [
@@ -70,7 +70,7 @@
       "relative_path": "[WAN2.2]Followcam_Redmond_low_noise.safetensors",
       "repo_id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--artificialguybr--FollowCam-Redmond-WAN2-T2V-14B/snapshots/20415b092632128b1dd1b52bf46cc9cbac89a72b"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--artificialguybr--FollowCam-Redmond-WAN2-T2V-14B/snapshots/20415b092632128b1dd1b52bf46cc9cbac89a72b"
     },
     "repo_id": "artificialguybr/FollowCam-Redmond-WAN2-T2V-14B",
     "suggested_target_roles": [
@@ -109,7 +109,7 @@
       "relative_path": "Vintage-Cinematic-Redmond-WAN22.safetensors",
       "repo_id": "artificialguybr/Vintage-Cinematic-Redmond-Wan22",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--artificialguybr--Vintage-Cinematic-Redmond-Wan22/snapshots/57c97f96621e6139756e089aefac7560e9c01aa6"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--artificialguybr--Vintage-Cinematic-Redmond-Wan22/snapshots/57c97f96621e6139756e089aefac7560e9c01aa6"
     },
     "repo_id": "artificialguybr/Vintage-Cinematic-Redmond-Wan22",
     "suggested_target_roles": [
@@ -151,7 +151,7 @@
       "relative_path": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
       "repo_id": "lightx2v/Wan2.2-Lightning",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--lightx2v--Wan2.2-Lightning/snapshots/18bccf8884ec0a078eed79785eb4ef13ea16ce1e"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--lightx2v--Wan2.2-Lightning/snapshots/18bccf8884ec0a078eed79785eb4ef13ea16ce1e"
     },
     "repo_id": "lightx2v/Wan2.2-Lightning",
     "suggested_target_roles": [
@@ -192,7 +192,7 @@
       "relative_path": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
       "repo_id": "lightx2v/Wan2.2-Lightning",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--lightx2v--Wan2.2-Lightning/snapshots/18bccf8884ec0a078eed79785eb4ef13ea16ce1e"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--lightx2v--Wan2.2-Lightning/snapshots/18bccf8884ec0a078eed79785eb4ef13ea16ce1e"
     },
     "repo_id": "lightx2v/Wan2.2-Lightning",
     "suggested_target_roles": [

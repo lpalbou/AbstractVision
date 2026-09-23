@@ -980,9 +980,9 @@ already uses for generation and provider-catalog discovery.</p>
 <h3 id="request-normalization">Request normalization<a class="headerlink" href="#request-normalization" title="Permanent link">&para;</a></h3>
 <p>The first pass should accept only the fields that AbstractVision can key reliably today:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-4b&quot;</span>
+<span class="w">  </span><span class="nt">"task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text_to_image"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"provider"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mflux"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"flux2-klein-4b"</span>
 <span class="p">}</span>
 </code></pre></div>
 <p>Notes:</p>
@@ -1001,18 +1001,18 @@ already uses for generation and provider-catalog discovery.</p>
 <h3 id="public-state-shape">Public state shape<a class="headerlink" href="#public-state-shape" title="Permanent link">&para;</a></h3>
 <p>Return stable API fields, not plugin-internal tuple keys:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flux2-klein-4b&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;load_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux/flux2-klein-4b&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;backend_kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mflux&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;scope&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;process&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;resident&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;resident&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;explicit_preload&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;loaded_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;last_used_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="nt">"task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text_to_image"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"provider"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mflux"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"flux2-klein-4b"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"load_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mflux/flux2-klein-4b"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"backend_kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mflux"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"process"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"state"</span><span class="p">:</span><span class="w"> </span><span class="s2">"resident"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"resident"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"explicit_preload"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"loaded_at"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"last_used_at"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="p">}</span>
 </code></pre></div>
 <p>Keep any backend cache key internal to the plugin.</p>

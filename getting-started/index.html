@@ -1250,17 +1250,17 @@
 <p>AbstractVision’s base install is lightweight. It includes the shared API, packaged capability registries, artifact helpers, CLI, AbstractCore plugin entry point, and stdlib OpenAI-compatible HTTP backend. Local inference runtimes are explicit extras: install <code>abstractvision[diffusers]</code> for Torch/Diffusers, <code>abstractvision[sdcpp]</code> for the stable-diffusion.cpp python binding fallback, <code>abstractvision[mlx-gen]</code> for MLX-Gen, or <code>abstractvision[all-apple]</code> for the full native macOS stack. <code>abstractvision[mflux]</code> remains available as a compatibility alias for older install instructions.</p>
 <p>If you see “missing pipeline class” errors for newer model families, install the <code>diffusers-dev</code> extra (or compatibility alias <code>huggingface-dev</code>) to get compatible dependencies, then install Diffusers from source (<code>main</code>).</p>
 <p>For that newer-pipeline workflow from a <strong>repo checkout</strong>, install the <code>diffusers-dev</code> extra (compatible deps; does not include Diffusers <code>main</code>):</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[diffusers-dev]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[diffusers-dev]"</span>
 </code></pre></div>
 <p>If you're installing <strong>AbstractVision from PyPI</strong>, you can install the extra directly:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers-dev]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"abstractvision[diffusers-dev]"</span>
 </code></pre></div>
 <p>Or install Diffusers from source directly:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;git+https://github.com/huggingface/diffusers@main&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"git+https://github.com/huggingface/diffusers@main"</span>
 </code></pre></div>
 <p>Sanity check:</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import diffusers; print(diffusers.__version__)&quot;</span>
-python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import diffusers; print(&#39;GlmImagePipeline&#39;, hasattr(diffusers, &#39;GlmImagePipeline&#39;)); print(&#39;Flux2KleinPipeline&#39;, hasattr(diffusers, &#39;Flux2KleinPipeline&#39;))&quot;</span>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import diffusers; print(diffusers.__version__)"</span>
+python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import diffusers; print('GlmImagePipeline', hasattr(diffusers, 'GlmImagePipeline')); print('Flux2KleinPipeline', hasattr(diffusers, 'Flux2KleinPipeline'))"</span>
 </code></pre></div>
 <p>Offline alternative (if you already have a local Diffusers checkout):</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span>-e<span class="w"> </span>/path/to/diffusers
@@ -1269,7 +1269,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;i
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </code></pre></div>
 <p>For contributor tooling from a repo checkout, use:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
 </code></pre></div>
 <p>For local Diffusers generation, install <code>abstractvision[diffusers]</code> before selecting the <code>diffusers</code> backend. Use <code>diffusers-dev</code> only when you need newer Diffusers-compatible dependency pins, and use <code>sdcpp</code> only when you want the optional stable-diffusion.cpp python binding fallback.</p>
 <p>Optional extras:</p>
@@ -1461,7 +1461,7 @@ python<span class="w"> </span>scripts/download_model_sets.py<span class="w"> </s
 <li>If you want strong prompt following + text rendering: use exact MLX-Gen ids such as <code>AbstractFramework/qwen-image-2512-4bit</code> or <code>AbstractFramework/ernie-image-turbo-4bit</code>, select the matching <code>-8bit</code> repo when quality is more important than memory, or use <code>Qwen/Qwen-Image-2512</code> / <code>baidu/ERNIE-Image-Turbo</code> through Diffusers on <code>mps</code> when you want the full Diffusers path.</li>
 </ul>
 <p>Recommended default (local, cross-platform) — Stable Diffusion 1.5:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"abstractvision[diffusers]"</span>
 abstractvision<span class="w"> </span>download<span class="w"> </span>stable-diffusion<span class="w"> </span>--provider<span class="w"> </span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>diffusers
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>runwayml/stable-diffusion-v1-5
@@ -1496,7 +1496,7 @@ abstractvision<span class="w"> </span>cli
 <span class="c1"># export ABSTRACTVISION_DIFFUSERS_TORCH_DTYPE=float32</span>
 </code></pre></div>
 <p>Quick sanity check (device):</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import torch; print(&#39;mps&#39;, torch.backends.mps.is_available(), &#39;cuda&#39;, torch.cuda.is_available())&quot;</span>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import torch; print('mps', torch.backends.mps.is_available(), 'cuda', torch.cuda.is_available())"</span>
 </code></pre></div>
 <p>If you have an NVIDIA GPU but <code>cuda</code> is <code>False</code>, you likely installed a CPU-only PyTorch build. Follow the PyTorch install guide to install a CUDA-enabled wheel, then re-run the sanity check: <a href="https://pytorch.org/get-started/locally/">https://pytorch.org/get-started/locally/</a>.</p>
 <p>Start the interactive CLI (<code>abstractvision repl</code> remains an alias):</p>
@@ -1505,22 +1505,22 @@ abstractvision<span class="w"> </span>cli
 <p>With <code>ABSTRACTVISION_BACKEND=diffusers</code> and <code>ABSTRACTVISION_MODEL_ID</code> set above, the REPL uses <code>runwayml/stable-diffusion-v1-5</code>:</p>
 <div class="highlight"><pre><span></span><code>/set guidance_scale 7
 /set seed 42
-/t2i &quot;a cinematic photo of a red fox in snow&quot; --width 512 --height 512 --steps 10 --open
+/t2i "a cinematic photo of a red fox in snow" --width 512 --height 512 --steps 10 --open
 </code></pre></div>
 <p>Change settings by changing <code>/set …</code> values, or pass flags per request:</p>
-<div class="highlight"><pre><span></span><code>/t2i &quot;a watercolor painting of a lighthouse&quot; --width 512 --height 512 --steps 20 --seed 123 --guidance-scale 6.5 --open
+<div class="highlight"><pre><span></span><code>/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 20 --seed 123 --guidance-scale 6.5 --open
 </code></pre></div>
 <hr />
 <h2 id="2-next-small-model-flux2-klein-4b">2) Next small model (FLUX.2-klein-4B)<a class="headerlink" href="#2-next-small-model-flux2-klein-4b" title="Permanent link">&para;</a></h2>
 <p>After Stable Diffusion 1.5 works, <code>black-forest-labs/FLUX.2-klein-4B</code> is the next recommended local test. It is
 non-gated and much smaller than FLUX.2-dev, but it currently needs Diffusers from source because released Diffusers
 may not include <code>Flux2KleinPipeline</code>.</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;abstractvision[diffusers-dev]&quot;</span>
-pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;git+https://github.com/huggingface/diffusers@main&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"abstractvision[diffusers-dev]"</span>
+pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"git+https://github.com/huggingface/diffusers@main"</span>
 </code></pre></div>
 <p>Quick REPL test:</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
-/t2i &quot;a product photo of a matte black espresso machine&quot; --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --open
+/t2i "a product photo of a matte black espresso machine" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --open
 </code></pre></div>
 <p>Use <code>cuda float16</code> on NVIDIA, or <code>auto</code> if you want AbstractVision/Torch to pick the device.</p>
 <hr />
@@ -1532,13 +1532,13 @@ pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </s
 abstractvision<span class="w"> </span>provider-models<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:1234/v1<span class="w"> </span>--task<span class="w"> </span>text_to_image
 </code></pre></div>
 <p>One-shot (stores output via <code>LocalAssetStore</code> and prints an artifact ref + file path):</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:1234/v1<span class="w"> </span><span class="s2">&quot;a watercolor painting of a lighthouse&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">512</span><span class="w"> </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:1234/v1<span class="w"> </span><span class="s2">"a watercolor painting of a lighthouse"</span><span class="w"> </span>--width<span class="w"> </span><span class="m">512</span><span class="w"> </span>--height<span class="w"> </span><span class="m">512</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--open
 </code></pre></div>
 <p>Interactive CLI/REPL:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>cli
 </code></pre></div>
 <div class="highlight"><pre><span></span><code>/backend openai http://localhost:1234/v1
-/t2i &quot;a watercolor painting of a lighthouse&quot; --width 512 --height 512 --steps 10 --open
+/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
 </code></pre></div>
 <p>If your server also supports video endpoints, configure them via <code>ABSTRACTVISION_TEXT_TO_VIDEO_PATH</code> / <code>ABSTRACTVISION_IMAGE_TO_VIDEO_PATH</code> (see <a href="../reference/configuration/">docs/reference/configuration.md</a>).</p>
 <hr />
@@ -1550,7 +1550,7 @@ when upstream <code>mlx-gen</code> / <code>mlx</code> support is available. Abst
 <code>mlx-gen</code> Python API in-process and expects prepared model folders to exist in
 the Hugging Face cache. It does not silently download weights during
 generation.</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[models,mlx-gen]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"abstractvision[models,mlx-gen]"</span>
 abstractvision<span class="w"> </span>catalog<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/flux.2-klein-4b-4bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
 abstractvision<span class="w"> </span>download<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span>--provider<span class="w"> </span>mlx-gen
@@ -1588,25 +1588,25 @@ Runtime <code>--quantize</code> is only needed for official/source weights.</p>
 artifact ref followed by the local content path. Add <code>--open</code> to open the output
 after generation, or <code>--store-dir &lt;dir&gt;</code> to select the store directory.</p>
 <p>Text-to-image from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span><span class="s2">&quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
-abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>prism-ml/bonsai-image-ternary-4B-mlx-2bit<span class="w"> </span><span class="s2">&quot;a bonsai tree in a quiet ceramic studio&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">4</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span><span class="s2">"a studio product photo of a white ceramic mug with the AbstractFramework logo"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>prism-ml/bonsai-image-ternary-4B-mlx-2bit<span class="w"> </span><span class="s2">"a bonsai tree in a quiet ceramic studio"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">4</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
 </code></pre></div>
 <p>Structured control from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-8bit<span class="w"> </span>--control-image<span class="w"> </span>./pose.png<span class="w"> </span>--control-strength<span class="w"> </span><span class="m">0</span>.85<span class="w"> </span><span class="s2">&quot;fashion editorial portrait, same pose, soft daylight, neutral studio backdrop&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-8bit<span class="w"> </span>--control-image<span class="w"> </span>./pose.png<span class="w"> </span>--control-strength<span class="w"> </span><span class="m">0</span>.85<span class="w"> </span><span class="s2">"fashion editorial portrait, same pose, soft daylight, neutral studio backdrop"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
 <p>Image-to-image/edit from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
-abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">&quot;remove the background and keep the object edges clean&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">"replace the background with a clean white studio setup"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">"remove the background and keep the object edges clean"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
 <p>Masked edit from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-8bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span>--mask<span class="w"> </span>./mask.png<span class="w"> </span><span class="s2">&quot;replace only the masked region with a brushed steel panel&quot;</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-8bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span>--mask<span class="w"> </span>./mask.png<span class="w"> </span><span class="s2">"replace only the masked region with a brushed steel panel"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
 </code></pre></div>
 <p>Image upscaling from the shell:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>upscale<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/seedvr2-3b-8bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span>--resolution<span class="w"> </span>2x<span class="w"> </span>--softness<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span>--open
 </code></pre></div>
 <p>Text-to-video and first-frame image-to-video from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.0<span class="w"> </span>--open
-abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">&quot;slow camera push-in&quot;</span><span class="w"> </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--open
+<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit<span class="w"> </span><span class="s2">"a red fox walking through a snowy forest, cinematic"</span><span class="w"> </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.0<span class="w"> </span>--open
+abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit<span class="w"> </span>--image<span class="w"> </span>./first-frame.png<span class="w"> </span><span class="s2">"slow camera push-in"</span><span class="w"> </span>--width<span class="w"> </span><span class="m">480</span><span class="w"> </span>--height<span class="w"> </span><span class="m">240</span><span class="w"> </span>--frames<span class="w"> </span><span class="m">41</span><span class="w"> </span>--fps<span class="w"> </span><span class="m">10</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--guidance-2<span class="w"> </span><span class="m">3</span>.5<span class="w"> </span>--open
 </code></pre></div>
 <p>Wan 2.2 A14B uses 16px width/height multiples; <code>480x240</code> is valid for low-cost
 local checks, while larger native sizes are more appropriate for quality review.
@@ -1624,7 +1624,7 @@ For MLX-Gen Qwen structured control, use the validated base route
 <span class="w">  </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;Pixel art astronaut floating above Earth&quot;</span>
+<span class="w">  </span><span class="s2">"Pixel art astronaut floating above Earth"</span>
 
 abstractvision<span class="w"> </span>i2i<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
@@ -1635,7 +1635,7 @@ abstractvision<span class="w"> </span>i2i<span class="w"> </span><span class="se
 <span class="w">  </span>--steps<span class="w"> </span><span class="m">6</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;Use the source subject as the same object. &lt;sks&gt; back view low-angle shot wide shot.&quot;</span>
+<span class="w">  </span><span class="s2">"Use the source subject as the same object. &lt;sks&gt; back view low-angle shot wide shot."</span>
 
 abstractvision<span class="w"> </span>t2v<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span><span class="se">\</span>
@@ -1650,7 +1650,7 @@ abstractvision<span class="w"> </span>t2v<span class="w"> </span><span class="se
 <span class="w">  </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--flow-shift<span class="w"> </span><span class="m">3</span>.0<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk, pedestrians in wool coats, historical street lamps glowing, gentle cinematic motion.&quot;</span>
+<span class="w">  </span><span class="s2">"HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk, pedestrians in wool coats, historical street lamps glowing, gentle cinematic motion."</span>
 </code></pre></div>
 <p>Use provider/model discovery to check the route before a long LoRA run.
 Use <code>abstractvision catalog --provider mlx-gen</code> to browse downloadable models,
@@ -1672,7 +1672,7 @@ to list locally cached overlays for one route. MLX-Gen route rows surface
 <span class="w">  </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--guidance-scale<span class="w"> </span><span class="m">5</span>.0<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--progress<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">&quot;Pixel art isometric research outpost on an icy exoplanet at blue hour, tiny service drones, crisp tiles, retro RPG palette&quot;</span>
+<span class="w">  </span><span class="s2">"Pixel art isometric research outpost on an icy exoplanet at blue hour, tiny service drones, crisp tiles, retro RPG palette"</span>
 </code></pre></div>
 <p>Video examples (5s MP4):</p>
 <div class="af_media_carousel" aria-label="AbstractVision text-to-video examples">
@@ -1709,21 +1709,21 @@ gallery with commands and bundled outputs is available in
 <p>Interactive CLI/REPL (<code>abstractvision cli</code>; <code>abstractvision repl</code> remains an
 alias) uses the same backend and request normalization:</p>
 <div class="highlight"><pre><span></span><code>/backend mlx-gen AbstractFramework/flux.2-klein-4b-4bit
-/t2i &quot;a product photo of a matte black espresso machine&quot; --steps 4 --guidance-scale 1.0 --open
+/t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --open
 
 /backend mlx-gen AbstractFramework/qwen-image-edit-2511-4bit
-/i2i --image ./input.png &quot;make it watercolor&quot; --steps 20 --guidance-scale 2.5 --open
+/i2i --image ./input.png "make it watercolor" --steps 20 --guidance-scale 2.5 --open
 
 /backend mlx-gen briaai/FIBO
-/t2i &quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot; --steps 50 --guidance-scale 4.0 --open
+/t2i "a studio product photo of a white ceramic mug with the AbstractFramework logo" --steps 50 --guidance-scale 4.0 --open
 
 /backend mlx-gen prism-ml/bonsai-image-ternary-4B-mlx-2bit
-/t2i &quot;a bonsai tree in a quiet ceramic studio&quot; --steps 4 --guidance-scale 1.0 --open
+/t2i "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 
 /backend mlx-gen AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
-/t2v &quot;a red fox walking through a snowy forest, cinematic&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
+/t2v "a red fox walking through a snowy forest, cinematic" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 4.0 --guidance-2 3.0 --open
 /backend mlx-gen AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit
-/i2v --image ./first-frame.png &quot;slow camera push-in&quot; --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
+/i2v --image ./first-frame.png "slow camera push-in" --width 432 --height 240 --frames 41 --fps 10 --steps 20 --guidance-scale 3.5 --guidance-2 3.5 --open
 </code></pre></div>
 <p>Interactive <code>/t2v</code> and <code>/i2v</code> use the same default progress display; add
 <code>--no-progress</code> to suppress it.</p>
@@ -1738,7 +1738,7 @@ configuration should use <code>mlx-gen</code>.</p>
 </ul>
 <p>Use the same Diffusers flow:</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-2512 mps float16
-/t2i &quot;a poster with the word &#39;ABSTRACT&#39; rendered perfectly in bold typography&quot; --width 512 --height 512 --steps 10 --guidance-scale 2.5 --open
+/t2i "a poster with the word 'ABSTRACT' rendered perfectly in bold typography" --width 512 --height 512 --steps 10 --guidance-scale 2.5 --open
 </code></pre></div>
 <p>Notes:
 - Qwen Image models are <strong>large</strong>.
@@ -1766,11 +1766,11 @@ resolution, pass <code>--width</code>/<code>--height</code> flags in the REPL (f
 Extra JSON field.</p>
 <p>LoRA example (REPL; prefer the shared adapter flags):</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
-/i2i --image ./input.png &quot;make it watercolor&quot; --steps 8 --guidance-scale 1 --lora lightx2v/Qwen-Image-Edit-2511-Lightning --lora-scale 1.0 --open
+/i2i --image ./input.png "make it watercolor" --steps 8 --guidance-scale 1 --lora lightx2v/Qwen-Image-Edit-2511-Lightning --lora-scale 1.0 --open
 </code></pre></div>
 <p>Rapid-AIO example (distilled transformer override; Qwen Image Edit):</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers Qwen/Qwen-Image-Edit-2511 mps bfloat16
-/i2i --image ./input.png &quot;make it watercolor&quot; --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
+/i2i --image ./input.png "make it watercolor" --steps 4 --guidance-scale 1 --rapid_aio_repo linoyts/Qwen-Image-Edit-Rapid-AIO --open
 </code></pre></div>
 <hr />
 <h2 id="4-flux-2-diffusers">4) FLUX 2 (Diffusers)<a class="headerlink" href="#4-flux-2-diffusers" title="Permanent link">&para;</a></h2>
@@ -1781,7 +1781,7 @@ Extra JSON field.</p>
 <li><code>black-forest-labs/FLUX.2-dev</code> (non-commercial license, gated on Hugging Face)</li>
 </ul>
 <p>Sanity check:</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import diffusers; print(diffusers.__version__)&quot;</span>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import diffusers; print(diffusers.__version__)"</span>
 </code></pre></div>
 <p>Notes:
 - <code>FLUX.2-dev</code> uses Diffusers <code>Flux2Pipeline</code> and works on released Diffusers (0.36+).
@@ -1791,15 +1791,15 @@ Extra JSON field.</p>
   - <code>pip install -U "git+https://github.com/huggingface/diffusers@main"</code></p>
 <p>Recommended first FLUX example (<code>FLUX.2-klein-4B</code>, not gated):</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers black-forest-labs/FLUX.2-klein-4B mps float16
-/t2i &quot;a product photo of a matte black espresso machine&quot; --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
+/t2i "a product photo of a matte black espresso machine" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
 </code></pre></div>
 <p>Example (<code>FLUX.2-klein-9B</code>, gated; requires Diffusers <code>main</code> and HF access):</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers black-forest-labs/FLUX.2-klein-9B mps float16
-/t2i &quot;a minimalist product photo of a matte black espresso machine, studio lighting&quot; --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
+/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
 </code></pre></div>
 <p>Example (<code>FLUX.2-dev</code>, gated; you must pre-download it into your HF cache first):</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers black-forest-labs/FLUX.2-dev mps
-/t2i &quot;a minimalist product photo of a matte black espresso machine, studio lighting&quot; --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
+/t2i "a minimalist product photo of a matte black espresso machine, studio lighting" --width 1024 --height 1024 --steps 4 --guidance-scale 1.0 --seed 0 --open
 </code></pre></div>
 <p>If you use gated models (like <code>FLUX.2-dev</code>), you typically must accept the model’s terms on Hugging Face and set <code>HF_TOKEN</code> in your environment.</p>
 <hr />
@@ -1816,7 +1816,7 @@ Extra JSON field.</p>
 </code></pre></div>
 <p>Then in the REPL:</p>
 <div class="highlight"><pre><span></span><code>/backend diffusers stabilityai/stable-diffusion-3.5-large-turbo mps
-/t2i &quot;a modern product photo of a watch, studio lighting&quot; --width 1024 --height 1024 --steps 6 --guidance-scale 4 --seed 42 --open
+/t2i "a modern product photo of a watch, studio lighting" --width 1024 --height 1024 --steps 6 --guidance-scale 4 --seed 42 --open
 </code></pre></div>
 <p>Turbo models are usually best with low step counts (e.g. ~4–8).</p>
 <hr />
@@ -1824,7 +1824,7 @@ Extra JSON field.</p>
 <p>If you downloaded a GGUF diffusion model (like Qwen Image GGUF or FLUX.2 GGUF), Diffusers cannot load it. Use the stable-diffusion.cpp backend instead (either via pip-installed python bindings or <code>sd-cli</code>).</p>
 <h3 id="61-install-stable-diffusioncpp-runtime">6.1 Install stable-diffusion.cpp runtime<a class="headerlink" href="#61-install-stable-diffusioncpp-runtime" title="Permanent link">&para;</a></h3>
 <p>The base <code>pip install abstractvision</code> path does not install local inference runtimes. Use one of these explicit stable-diffusion.cpp runtime choices:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;abstractvision[sdcpp]&quot;</span>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"abstractvision[sdcpp]"</span>
 </code></pre></div>
 <p>This pip binding path is convenient, but it may require a native build or run <strong>CPU-only</strong> depending on how the wheel was built.</p>
 <p>Alternative (external executable):</p>
@@ -1840,7 +1840,7 @@ install <code>sd-cli</code> and re-run in CLI mode.</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>cli
 </code></pre></div>
 <div class="highlight"><pre><span></span><code>/backend sdcpp /path/to/sd-v1-5.gguf /path/to/sd-cli
-/t2i &quot;a watercolor painting of a lighthouse&quot; --width 512 --height 512 --steps 10 --open
+/t2i "a watercolor painting of a lighthouse" --width 512 --height 512 --steps 10 --open
 </code></pre></div>
 <p>If <code>sd-cli</code> is already in your <code>PATH</code>, you can omit the final <code>/path/to/sd-cli</code> argument. If it is not available,
 AbstractVision falls back to <code>stable-diffusion-cpp-python</code> when that package is installed, for example through <code>pip install "abstractvision[sdcpp]"</code>.</p>
@@ -1865,7 +1865,7 @@ hint instead of starting generation and then failing deep in the runtime.</p>
 <div class="highlight"><pre><span></span><code>/backend sdcpp qwen-image /path/to/sd-cli
 /set width 1024
 /set height 1024
-/t2i &quot;a cinematic photo of a red fox in snow&quot; --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
+/t2i "a cinematic photo of a red fox in snow" --sampling-method euler --offload-to-cpu --diffusion-fa --flow-shift 3 --open
 </code></pre></div>
 <p>Any extra <code>--flag</code> you pass (like <code>--sampling-method euler</code>) is forwarded to the backend as <code>extra</code>.
 - CLI mode: forwarded to <code>sd-cli</code>
@@ -1876,7 +1876,7 @@ hint instead of starting generation and then failing deep in the runtime.</p>
 model by key afterward.</p>
 <p>Example:</p>
 <div class="highlight"><pre><span></span><code>/backend sdcpp flux2-klein-base-4b /path/to/sd-cli
-/t2i &quot;a product photo of a matte black espresso machine&quot; --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
+/t2i "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0 --sampling-method euler --diffusion-fa --offload-to-cpu --open
 </code></pre></div>
 <p>Advanced/manual mode is still supported if you want to wire explicit component paths yourself:</p>
 <div class="highlight"><pre><span></span><code>/backend sdcpp /path/to/flux-2-klein-base-4b-Q8_0.gguf /path/to/vae/diffusion_pytorch_model.safetensors /path/to/Qwen3-4B-Q4_K_M.gguf /path/to/sd-cli

@@ -30,7 +30,7 @@
       "relative_path": "flymy_realism.safetensors",
       "repo_id": "flymy-ai/qwen-image-realism-lora",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--flymy-ai--qwen-image-realism-lora/snapshots/9b5a5951d4f9c998349000aeb84bc2823fc7975f"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--flymy-ai--qwen-image-realism-lora/snapshots/9b5a5951d4f9c998349000aeb84bc2823fc7975f"
     },
     "repo_id": "flymy-ai/qwen-image-realism-lora",
     "suggested_target_roles": [
@@ -68,7 +68,7 @@
       "relative_path": "Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
       "repo_id": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--prithivMLmods--Qwen-Image-2512-Pixel-Art-LoRA/snapshots/e14eea588e8e4a9c753439e52a203d06288769c5"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--prithivMLmods--Qwen-Image-2512-Pixel-Art-LoRA/snapshots/e14eea588e8e4a9c753439e52a203d06288769c5"
     },
     "repo_id": "prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA",
     "suggested_target_roles": [
@@ -106,7 +106,7 @@
       "relative_path": "qwen-studio-realism.safetensors",
       "repo_id": "prithivMLmods/Qwen-Image-Studio-Realism",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--prithivMLmods--Qwen-Image-Studio-Realism/snapshots/6ff46f64ff945644f48189eae4695352559ffce9"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--prithivMLmods--Qwen-Image-Studio-Realism/snapshots/6ff46f64ff945644f48189eae4695352559ffce9"
     },
     "repo_id": "prithivMLmods/Qwen-Image-Studio-Realism",
     "suggested_target_roles": [

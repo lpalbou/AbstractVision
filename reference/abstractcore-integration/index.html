@@ -869,8 +869,8 @@
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractcore</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_llm</span>
 
-<span class="n">llm</span> <span class="o">=</span> <span class="n">create_llm</span><span class="p">(</span><span class="s2">&quot;openai&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">)</span>
-<span class="n">png_bytes</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2i</span><span class="p">(</span><span class="s2">&quot;a red square&quot;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">llm</span> <span class="o">=</span> <span class="n">create_llm</span><span class="p">(</span><span class="s2">"openai"</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">"gpt-4o-mini"</span><span class="p">)</span>
+<span class="n">png_bytes</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2i</span><span class="p">(</span><span class="s2">"a red square"</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
 </code></pre></div>
 <p>Per-call routing can select the same backend/model ids used by the
 <code>abstractvision</code> shell commands. For MLX-Gen, pass the exact published model
@@ -879,48 +879,48 @@ repo id; there is no separate quantization parameter.</p>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">abstractcore</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_llm</span>
 
-<span class="n">llm</span> <span class="o">=</span> <span class="n">create_llm</span><span class="p">(</span><span class="s2">&quot;openai&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">)</span>
+<span class="n">llm</span> <span class="o">=</span> <span class="n">create_llm</span><span class="p">(</span><span class="s2">"openai"</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">"gpt-4o-mini"</span><span class="p">)</span>
 
 <span class="n">png_bytes</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2i</span><span class="p">(</span>
-    <span class="s2">&quot;a studio product photo of a white ceramic mug with the AbstractFramework logo&quot;</span><span class="p">,</span>
-    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-2512-4bit&quot;</span><span class="p">,</span>
+    <span class="s2">"a studio product photo of a white ceramic mug with the AbstractFramework logo"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/qwen-image-2512-4bit"</span><span class="p">,</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
-    <span class="n">on_progress</span><span class="o">=</span><span class="k">lambda</span> <span class="n">event</span><span class="p">:</span> <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">phase</span><span class="si">}</span><span class="s2">: step </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">step</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_steps</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">),</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="k">lambda</span> <span class="n">event</span><span class="p">:</span> <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">phase</span><span class="si">}</span><span class="s2">: step </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">step</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_steps</span><span class="si">}</span><span class="s2">"</span><span class="p">),</span>
 <span class="p">)</span>
 
 <span class="n">edited_png</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">i2i</span><span class="p">(</span>
-    <span class="s2">&quot;replace the background with a clean white studio setup&quot;</span><span class="p">,</span>
-    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;./input.png&quot;</span><span class="p">,</span>
-    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-edit-2511-4bit&quot;</span><span class="p">,</span>
+    <span class="s2">"replace the background with a clean white studio setup"</span><span class="p">,</span>
+    <span class="n">image</span><span class="o">=</span><span class="s2">"./input.png"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/qwen-image-edit-2511-4bit"</span><span class="p">,</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">2.5</span><span class="p">,</span>
     <span class="n">strength</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span>
-    <span class="n">on_progress</span><span class="o">=</span><span class="k">lambda</span> <span class="n">event</span><span class="p">:</span> <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">phase</span><span class="si">}</span><span class="s2">: step </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">step</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_steps</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">),</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="k">lambda</span> <span class="n">event</span><span class="p">:</span> <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">phase</span><span class="si">}</span><span class="s2">: step </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">step</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_steps</span><span class="si">}</span><span class="s2">"</span><span class="p">),</span>
 <span class="p">)</span>
 
 <span class="n">multi_ref_png</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">i2i</span><span class="p">(</span>
-    <span class="s2">&quot;compose the subject using the second image as style and layout reference&quot;</span><span class="p">,</span>
-    <span class="n">image</span><span class="o">=</span><span class="s2">&quot;./subject.png&quot;</span><span class="p">,</span>
-    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-edit-2511-4bit&quot;</span><span class="p">,</span>
-    <span class="n">reference_images</span><span class="o">=</span><span class="p">[</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;./style-reference.png&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()],</span>
+    <span class="s2">"compose the subject using the second image as style and layout reference"</span><span class="p">,</span>
+    <span class="n">image</span><span class="o">=</span><span class="s2">"./subject.png"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/qwen-image-edit-2511-4bit"</span><span class="p">,</span>
+    <span class="n">reference_images</span><span class="o">=</span><span class="p">[</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./style-reference.png"</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()],</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">2.5</span><span class="p">,</span>
 <span class="p">)</span>
 
 <span class="k">def</span><span class="w"> </span><span class="nf">on_video_progress</span><span class="p">(</span><span class="n">event</span><span class="p">):</span>
     <span class="nb">print</span><span class="p">(</span>
-        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">phase</span><span class="si">}</span><span class="s2">: step </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">step</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_steps</span><span class="si">}</span><span class="s2">, &quot;</span>
-        <span class="sa">f</span><span class="s2">&quot;frame </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">frame</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_frames</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">phase</span><span class="si">}</span><span class="s2">: step </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">step</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_steps</span><span class="si">}</span><span class="s2">, "</span>
+        <span class="sa">f</span><span class="s2">"frame </span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">frame</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">total_frames</span><span class="si">}</span><span class="s2">"</span>
     <span class="p">)</span>
 
 <span class="n">mp4_bytes</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2v</span><span class="p">(</span>
-    <span class="s2">&quot;a red fox walking through a snowy forest, cinematic&quot;</span><span class="p">,</span>
-    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit&quot;</span><span class="p">,</span>
+    <span class="s2">"a red fox walking through a snowy forest, cinematic"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"</span><span class="p">,</span>
     <span class="n">width</span><span class="o">=</span><span class="mi">432</span><span class="p">,</span>
     <span class="n">height</span><span class="o">=</span><span class="mi">240</span><span class="p">,</span>
     <span class="n">num_frames</span><span class="o">=</span><span class="mi">41</span><span class="p">,</span>
@@ -933,10 +933,10 @@ repo id; there is no separate quantization parameter.</p>
 <span class="p">)</span>
 
 <span class="n">first_frame_mp4</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">i2v</span><span class="p">(</span>
-    <span class="s2">&quot;./first-frame.png&quot;</span><span class="p">,</span>
-    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;slow camera push-in&quot;</span><span class="p">,</span>
-    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit&quot;</span><span class="p">,</span>
+    <span class="s2">"./first-frame.png"</span><span class="p">,</span>
+    <span class="n">prompt</span><span class="o">=</span><span class="s2">"slow camera push-in"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit"</span><span class="p">,</span>
     <span class="n">width</span><span class="o">=</span><span class="mi">432</span><span class="p">,</span>
     <span class="n">height</span><span class="o">=</span><span class="mi">240</span><span class="p">,</span>
     <span class="n">num_frames</span><span class="o">=</span><span class="mi">41</span><span class="p">,</span>
@@ -971,12 +971,12 @@ backends reject those fields explicitly instead of silently ignoring them.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">LoRAAdapterSpec</span>
 
 <span class="n">png</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2i</span><span class="p">(</span>
-    <span class="s2">&quot;Pixel art astronaut floating above Earth&quot;</span><span class="p">,</span>
-    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/qwen-image-2512-8bit&quot;</span><span class="p">,</span>
+    <span class="s2">"Pixel art astronaut floating above Earth"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/qwen-image-2512-8bit"</span><span class="p">,</span>
     <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
         <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">&quot;prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors&quot;</span><span class="p">,</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors"</span><span class="p">,</span>
             <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="p">],</span>
@@ -997,9 +997,9 @@ backends reject those fields explicitly instead of silently ignoring them.</p>
 <h3 id="provider-catalog-discovery">Provider Catalog Discovery<a class="headerlink" href="#provider-catalog-discovery" title="Permanent link">&para;</a></h3>
 <p>Core/Gateway hosts can inspect provider-advertised model catalogs through the same capability
 object used for generation:</p>
-<div class="highlight"><pre><span></span><code><span class="n">models</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_provider_models</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="s2">&quot;text_to_image&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="n">models</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_provider_models</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="s2">"text_to_image"</span><span class="p">)</span>
 <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">models</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">[</span><span class="s2">"id"</span><span class="p">])</span>
 </code></pre></div>
 <p>The return value is a JSON-safe list of dictionaries serialized from <code>ProviderModelInfo</code>. Raw
 provider metadata is retained in a bounded <code>raw</code> field for diagnostics. This method is explicit
@@ -1013,12 +1013,12 @@ cache-backed snapshots rather than a separate <code>~/models</code> download tre
 <p>The same capability object also exposes installed adapter discovery for routes
 that support LoRAs:</p>
 <div class="highlight"><pre><span></span><code><span class="n">adapters</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_provider_adapters</span><span class="p">(</span>
-    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit&quot;</span><span class="p">,</span>
-    <span class="n">task</span><span class="o">=</span><span class="s2">&quot;text_to_video&quot;</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"</span><span class="p">,</span>
+    <span class="n">task</span><span class="o">=</span><span class="s2">"text_to_video"</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="k">for</span> <span class="n">adapter</span> <span class="ow">in</span> <span class="n">adapters</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">adapter</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">],</span> <span class="n">adapter</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;suggested_target_roles&quot;</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">adapter</span><span class="p">[</span><span class="s2">"id"</span><span class="p">],</span> <span class="n">adapter</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"suggested_target_roles"</span><span class="p">))</span>
 </code></pre></div>
 <p>Adapter truth stays backend-owned. The plugin serializes
 <code>ProviderAdapterInfo</code> into JSON-safe dictionaries, but it does not invent
@@ -1036,17 +1036,17 @@ methods:</p>
 stacked <code>lora_adapters=[...]</code>, explicit <code>seeds=[...]</code>, optional base <code>seed</code>
 expansion, and typed video controls such as <code>guidance_2</code> / <code>flow_shift</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="n">videos</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2v_batch</span><span class="p">(</span>
-    <span class="s2">&quot;A compact silver spaceship lifts off from an icy canyon at dawn.&quot;</span><span class="p">,</span>
-    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span>
-    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit&quot;</span><span class="p">,</span>
+    <span class="s2">"A compact silver spaceship lifts off from an icy canyon at dawn."</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"</span><span class="p">,</span>
     <span class="n">count</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
     <span class="n">seeds</span><span class="o">=</span><span class="p">[</span><span class="mi">6251</span><span class="p">,</span> <span class="mi">6252</span><span class="p">],</span>
     <span class="n">flow_shift</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
     <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
         <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">&quot;owner/wan-style:video.safetensors&quot;</span><span class="p">,</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"owner/wan-style:video.safetensors"</span><span class="p">,</span>
             <span class="n">scale</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
-            <span class="n">target_role</span><span class="o">=</span><span class="s2">&quot;transformer&quot;</span><span class="p">,</span>
+            <span class="n">target_role</span><span class="o">=</span><span class="s2">"transformer"</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="p">],</span>
 <span class="p">)</span>
@@ -1055,17 +1055,17 @@ expansion, and typed video controls such as <code>guidance_2</code> / <code>flow
 <p>Core/Gateway hosts can also control in-process local model residency through the same capability
 object:</p>
 <div class="highlight"><pre><span></span><code><span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">load_resident_model</span><span class="p">(</span>
-    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;text_to_image&quot;</span><span class="p">,</span> <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;AbstractFramework/flux.2-klein-4b-4bit&quot;</span><span class="p">}</span>
+    <span class="p">{</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"text_to_image"</span><span class="p">,</span> <span class="s2">"provider"</span><span class="p">:</span> <span class="s2">"mlx-gen"</span><span class="p">,</span> <span class="s2">"model"</span><span class="p">:</span> <span class="s2">"AbstractFramework/flux.2-klein-4b-4bit"</span><span class="p">}</span>
 <span class="p">)</span>
 <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">load_resident_model</span><span class="p">(</span>
-    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;text_to_video&quot;</span><span class="p">,</span> <span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit&quot;</span><span class="p">}</span>
+    <span class="p">{</span><span class="s2">"task"</span><span class="p">:</span> <span class="s2">"text_to_video"</span><span class="p">,</span> <span class="s2">"provider"</span><span class="p">:</span> <span class="s2">"mlx-gen"</span><span class="p">,</span> <span class="s2">"model"</span><span class="p">:</span> <span class="s2">"AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"</span><span class="p">}</span>
 <span class="p">)</span>
 
 <span class="n">loaded</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_loaded_models</span><span class="p">()</span>
 <span class="n">resident</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">list_resident_models</span><span class="p">()</span>
 
 <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">unload_resident_model</span><span class="p">(</span>
-    <span class="p">{</span><span class="s2">&quot;provider&quot;</span><span class="p">:</span> <span class="s2">&quot;mlx-gen&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;AbstractFramework/flux.2-klein-4b-4bit&quot;</span><span class="p">}</span>
+    <span class="p">{</span><span class="s2">"provider"</span><span class="p">:</span> <span class="s2">"mlx-gen"</span><span class="p">,</span> <span class="s2">"model"</span><span class="p">:</span> <span class="s2">"AbstractFramework/flux.2-klein-4b-4bit"</span><span class="p">}</span>
 <span class="p">)</span>
 </code></pre></div>
 <p>Notes:</p>

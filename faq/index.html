@@ -1137,7 +1137,7 @@ abstractvision<span class="w"> </span>cli
 </ul>
 <h2 id="what-is-an-artifact-ref">What is an “artifact ref”?<a class="headerlink" href="#what-is-an-artifact-ref" title="Permanent link">&para;</a></h2>
 <p>An artifact ref is a small JSON dict that points to a stored blob. Minimal shape:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;$artifact&quot;</span><span class="p">:</span><span class="s2">&quot;&lt;id&gt;&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"$artifact"</span><span class="p">:</span><span class="s2">"&lt;id&gt;"</span><span class="p">}</span>
 </code></pre></div>
 <p>Helpers: <code>is_artifact_ref()</code> / <code>make_media_ref()</code> in <a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>.</p>
 <h2 id="how-do-i-allow-or-block-diffusers-downloads">How do I allow or block Diffusers downloads?<a class="headerlink" href="#how-do-i-allow-or-block-diffusers-downloads" title="Permanent link">&para;</a></h2>
@@ -1163,7 +1163,7 @@ abstractvision<span class="w"> </span>cli
 <p>If you have an NVIDIA GPU and want CUDA acceleration:</p>
 <p>1) Install a CUDA-enabled PyTorch wheel using the official selector: <a href="https://pytorch.org/get-started/locally/">https://pytorch.org/get-started/locally/</a><br />
 2) Verify:</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import torch; print(&#39;cuda&#39;, torch.cuda.is_available())&quot;</span>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import torch; print('cuda', torch.cuda.is_available())"</span>
 </code></pre></div>
 <h2 id="how-do-i-pass-advanced-flags-parameters">How do I pass advanced flags / parameters?<a class="headerlink" href="#how-do-i-pass-advanced-flags-parameters" title="Permanent link">&para;</a></h2>
 <p>AbstractVision exposes an <code>extra</code> dict on requests (<a href="../src/abstractvision/types.py"><code>../src/abstractvision/types.py</code></a>), and the REPL forwards unknown <code>--flags</code> into <code>request.extra</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>).</p>
@@ -1216,7 +1216,7 @@ explicit <code>high_noise_transformer</code> / <code>low_noise_transformer</code
 <p>AbstractCore is the host package; AbstractVision does not install it as a dependency.</p>
 <h2 id="how-do-i-run-tests">How do I run tests?<a class="headerlink" href="#how-do-i-run-tests" title="Permanent link">&para;</a></h2>
 <p>From the repo root:</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>discover<span class="w"> </span>-s<span class="w"> </span>tests<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;test_*.py&quot;</span><span class="w"> </span>-q
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>discover<span class="w"> </span>-s<span class="w"> </span>tests<span class="w"> </span>-p<span class="w"> </span><span class="s2">"test_*.py"</span><span class="w"> </span>-q
 </code></pre></div>
 
 

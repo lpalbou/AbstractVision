@@ -30,7 +30,7 @@
       "relative_path": "\u955c\u5934\u8f6c\u6362.safetensors",
       "repo_id": "dx8152/Qwen-Edit-2509-Multiple-angles",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--dx8152--Qwen-Edit-2509-Multiple-angles/snapshots/c342b0e746c3a3275af1a4a0c6ae78e0e4802531"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--dx8152--Qwen-Edit-2509-Multiple-angles/snapshots/c342b0e746c3a3275af1a4a0c6ae78e0e4802531"
     },
     "repo_id": "dx8152/Qwen-Edit-2509-Multiple-angles",
     "suggested_target_roles": [
@@ -66,7 +66,7 @@
       "relative_path": "Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors",
       "repo_id": "lightx2v/Qwen-Image-Lightning",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--lightx2v--Qwen-Image-Lightning/snapshots/e74da8d4e71a54b341de86aa9f8d2509165aa513"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--lightx2v--Qwen-Image-Lightning/snapshots/e74da8d4e71a54b341de86aa9f8d2509165aa513"
     },
     "repo_id": "lightx2v/Qwen-Image-Lightning",
     "suggested_target_roles": [
@@ -102,7 +102,7 @@
       "relative_path": "Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors",
       "repo_id": "lightx2v/Qwen-Image-Lightning",
       "runtime_package": "mlx-gen",
-      "snapshot_dir": "/Users/albou/.cache/huggingface/hub/models--lightx2v--Qwen-Image-Lightning/snapshots/e74da8d4e71a54b341de86aa9f8d2509165aa513"
+      "snapshot_dir": "~/.cache/huggingface/hub/models--lightx2v--Qwen-Image-Lightning/snapshots/e74da8d4e71a54b341de86aa9f8d2509165aa513"
     },
     "repo_id": "lightx2v/Qwen-Image-Lightning",
     "suggested_target_roles": [

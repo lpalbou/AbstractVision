@@ -17,7 +17,7 @@
         "applied_target_count": 400,
         "matched_key_count": 1200,
         "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
-        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+        "resolved_path": "~/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
         "role": "high_noise_transformer",
         "scale": 1.0,
         "total_key_count": 1200,
@@ -27,7 +27,7 @@
         "applied_target_count": 400,
         "matched_key_count": 1200,
         "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
-        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+        "resolved_path": "~/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
         "role": "low_noise_transformer",
         "scale": 1.0,
         "total_key_count": 1200,
@@ -37,8 +37,8 @@
     "lora_applied_file_count": 2,
     "lora_applied_target_count": 800,
     "lora_paths": [
-      "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
-      "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"
+      "~/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+      "~/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"
     ],
     "lora_scales": [
       1.0,
@@ -65,7 +65,7 @@
           "applied_target_count": 400,
           "matched_key_count": 1200,
           "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
-          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+          "resolved_path": "~/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
           "role": "high_noise_transformer",
           "scale": 1.0,
           "total_key_count": 1200,
@@ -75,7 +75,7 @@
           "applied_target_count": 400,
           "matched_key_count": 1200,
           "requested_path": "lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
-          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+          "resolved_path": "~/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
           "role": "low_noise_transformer",
           "scale": 1.0,
           "total_key_count": 1200,
@@ -85,8 +85,8 @@
       "lora_applied_file_count": 2,
       "lora_applied_target_count": 800,
       "lora_paths": [
-        "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
-        "/Users/albou/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"
+        "~/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+        "~/Library/Caches/mflux/loras/Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"
       ],
       "lora_scales": [
         1.0,
@@ -112,7 +112,7 @@
       "task": "text-to-video",
       "width": 480
     },
-    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--wan2.2-t2v-a14b-diffusers-8bit/snapshots/39ee5f1f630789956f29f40b5c2c6d48c6e9a798",
+    "model": "~/.cache/huggingface/hub/models--AbstractFramework--wan2.2-t2v-a14b-diffusers-8bit/snapshots/39ee5f1f630789956f29f40b5c2c6d48c6e9a798",
     "num_frames": 41,
     "quantization_bits": 8,
     "requested_lora_adapters": [
