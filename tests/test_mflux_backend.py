@@ -1852,7 +1852,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.18\.19",
+                        r"mlx-gen>=0\.38\.0",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(

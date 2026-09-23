@@ -166,7 +166,7 @@ class TestPackagingMetadata(unittest.TestCase):
     def test_mlx_gen_extra_uses_current_runtime_floor(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         expected = (
-            "mlx-gen>=0.18.19,<0.19.0; "
+            "mlx-gen>=0.38.0,<0.39.0; "
             "(platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'"
         )
 

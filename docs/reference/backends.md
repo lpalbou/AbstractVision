@@ -119,10 +119,10 @@ Runtime behavior notes:
 **When to use**
 - You want local quantized MLX generation through the optional MLX-Gen runtime. This release is validated on Apple Silicon first, and the install extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers apply.
 - You want the AbstractFramework-published q4/q8 prepared folders from the [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
-- You want the official MLX-Gen `0.18.19+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
+- You want the official MLX-Gen `0.38.0+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
 - You want the official Prism ML Bonsai ternary 2-bit checkpoint (`prism-ml/bonsai-image-ternary-4B-mlx-2bit`) for very small local `text_to_image`.
 - You want SeedVR2 single-image upscaling through canonical `AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}` packages or the official `ByteDance-Seed/SeedVR2-*` bases.
-- You want local Wan 2.2 video generation through MLX-Gen `0.18.19+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
+- You want local Wan 2.2 video generation through MLX-Gen `0.38.0+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
 
 Install:
 - `pip install "abstractvision[mlx-gen]"` (or `pip install "abstractvision[all-apple]"`)

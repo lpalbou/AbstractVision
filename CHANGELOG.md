@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.3.29 - 2026-09-23
+
+- Runtime dependency: raise the optional MLX-Gen runtime floor to `mlx-gen>=0.38.0,<0.39.0` in every extra that installs it (`mlx-gen`, `mflux`, `apple`, `gpu`, `all`, `all-apple`, `all-gpu`). The MLX-Gen 0.38 line requires Python 3.10+, `transformers>=5`, and `Pillow>=12.1.1`; the AbstractVision backend call surface is unchanged.
+
 ## 0.3.28 - 2026-06-16
 
 - MLX-Gen capabilities: align advertised `supports_mask` with the backend family gate so FLUX.2 models do not report mask support from inpaint-only route metadata when masked edits are implemented only for Qwen Image Edit and FIBO Edit families.

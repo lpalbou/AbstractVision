@@ -32,7 +32,7 @@ All assets referenced here were generated through AbstractVision with
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.18.19,<0.19.0`.
+  `mlx-gen>=0.38.0,<0.39.0`.
 
 This package release is validated on Apple Silicon first. The MLX-Gen install
 extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers

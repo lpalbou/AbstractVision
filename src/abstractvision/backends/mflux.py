@@ -56,7 +56,7 @@ from .base_backend import VisionBackend
 
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
-MLX_GEN_VERSION_FLOOR = "0.18.19"
+MLX_GEN_VERSION_FLOOR = "0.38.0"
 WAN_TI2V_MODEL_KEY = "wan2.2-ti2v-5b"
 WAN_T2V_A14B_MODEL_KEY = "wan2.2-t2v-a14b"
 WAN_I2V_A14B_MODEL_KEY = "wan2.2-i2v-a14b"

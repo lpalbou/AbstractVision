@@ -149,7 +149,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen `0.18.19+` supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.38.0+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
