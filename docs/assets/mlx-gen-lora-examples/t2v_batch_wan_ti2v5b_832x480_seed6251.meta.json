@@ -42,7 +42,7 @@
       "task": "text-to-video",
       "width": 832
     },
-    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--wan2.2-ti2v-5b-diffusers-8bit/snapshots/6875952a110b6bdbcfc00d72b1d89a8e02ab0fc3",
+    "model": "~/.cache/huggingface/hub/models--AbstractFramework--wan2.2-ti2v-5b-diffusers-8bit/snapshots/6875952a110b6bdbcfc00d72b1d89a8e02ab0fc3",
     "num_frames": 9,
     "quantization_bits": 8,
     "runtime_package": "mlx-gen",

@@ -14,7 +14,7 @@
         "applied_target_count": 840,
         "matched_key_count": 1680,
         "requested_path": "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors",
-        "resolved_path": "/Users/albou/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors",
+        "resolved_path": "~/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors",
         "role": null,
         "scale": 0.9,
         "total_key_count": 1680,
@@ -24,7 +24,7 @@
     "lora_applied_file_count": 1,
     "lora_applied_target_count": 840,
     "lora_paths": [
-      "/Users/albou/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors"
+      "~/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors"
     ],
     "lora_scales": [
       0.9
@@ -49,7 +49,7 @@
           "applied_target_count": 840,
           "matched_key_count": 1680,
           "requested_path": "fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors",
-          "resolved_path": "/Users/albou/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors",
+          "resolved_path": "~/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors",
           "role": null,
           "scale": 0.9,
           "total_key_count": 1680,
@@ -59,7 +59,7 @@
       "lora_applied_file_count": 1,
       "lora_applied_target_count": 840,
       "lora_paths": [
-        "/Users/albou/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors"
+        "~/Library/Caches/mflux/loras/qwen-image-edit-2511-multiple-angles-lora.safetensors"
       ],
       "lora_scales": [
         0.9
@@ -81,7 +81,7 @@
       "steps": 6,
       "width": 768
     },
-    "model": "/Users/albou/.cache/huggingface/hub/models--AbstractFramework--qwen-image-edit-2511-8bit/snapshots/5f35885dfe4061e57c87df2c03123e5e8124edfa",
+    "model": "~/.cache/huggingface/hub/models--AbstractFramework--qwen-image-edit-2511-8bit/snapshots/5f35885dfe4061e57c87df2c03123e5e8124edfa",
     "quantization_bits": 8,
     "reference_image_count": 1,
     "requested_lora_adapters": [

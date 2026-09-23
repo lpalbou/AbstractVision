@@ -1,10 +1,10 @@
 {
   "mlx_gen_version": "0.18.13",
-  "abstractvision_command": "PYTHONPATH=src python -m abstractvision.cli upscale --provider mlx-gen --model /Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit --image /private/tmp/abstractvision_seedvr2_20260607/input.png --scale 2x --seed 2407 --store-dir /private/tmp/abstractvision_seedvr2_20260607/store --progress",
-  "abstractvision_q4_command": "PYTHONPATH=src python -m abstractvision.cli upscale --provider mlx-gen --model /Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-4bit --image /private/tmp/abstractvision_seedvr2_20260607/input.png --scale 2x --seed 2408 --store-dir /private/tmp/abstractvision_seedvr2_20260607/store_q4 --progress",
-  "abstractcore_command": "ABSTRACTCORE_SERVER_ALLOW_UNAUTHENTICATED=1 PYTHONPATH=/Users/albou/tmp/abstractframework/abstractvision/src:. python - <<'PY' # FastAPI TestClient POST /v1/images/upscale provider=mlx-gen model=/Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit scale=2x seed=2409",
-  "abstractcore_exact_q4_command": "ABSTRACTCORE_SERVER_ALLOW_UNAUTHENTICATED=1 PYTHONPATH=/Users/albou/tmp/abstractframework/abstractvision/src:/Users/albou/tmp/abstractframework/abstractcore HF_HUB_CACHE=/private/tmp/abstractcore_seedvr2_q4_exact_proof/hf-cache ABSTRACTCORE_VISION_MODEL_DIR=/private/tmp/abstractcore_seedvr2_q4_exact_proof/models python - <<'PY' # FastAPI TestClient POST /v1/images/upscale provider=mlx-gen model=AbstractFramework/seedvr2-7b-4bit scale=2x seed=2410",
-  "model": "/Users/albou/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit",
+  "abstractvision_command": "PYTHONPATH=src python -m abstractvision.cli upscale --provider mlx-gen --model ~/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit --image /private/tmp/abstractvision_seedvr2_20260607/input.png --scale 2x --seed 2407 --store-dir /private/tmp/abstractvision_seedvr2_20260607/store --progress",
+  "abstractvision_q4_command": "PYTHONPATH=src python -m abstractvision.cli upscale --provider mlx-gen --model ~/projects/gh/sbx/mlx-gen/models/seedvr2-7b-4bit --image /private/tmp/abstractvision_seedvr2_20260607/input.png --scale 2x --seed 2408 --store-dir /private/tmp/abstractvision_seedvr2_20260607/store_q4 --progress",
+  "abstractcore_command": "ABSTRACTCORE_SERVER_ALLOW_UNAUTHENTICATED=1 PYTHONPATH=~/tmp/abstractframework/abstractvision/src:. python - <<'PY' # FastAPI TestClient POST /v1/images/upscale provider=mlx-gen model=~/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit scale=2x seed=2409",
+  "abstractcore_exact_q4_command": "ABSTRACTCORE_SERVER_ALLOW_UNAUTHENTICATED=1 PYTHONPATH=~/tmp/abstractframework/abstractvision/src:~/tmp/abstractframework/abstractcore HF_HUB_CACHE=/private/tmp/abstractcore_seedvr2_q4_exact_proof/hf-cache ABSTRACTCORE_VISION_MODEL_DIR=/private/tmp/abstractcore_seedvr2_q4_exact_proof/models python - <<'PY' # FastAPI TestClient POST /v1/images/upscale provider=mlx-gen model=AbstractFramework/seedvr2-7b-4bit scale=2x seed=2410",
+  "model": "~/projects/gh/sbx/mlx-gen/models/seedvr2-7b-8bit",
   "canonical_models": [
     "AbstractFramework/seedvr2-3b-8bit",
     "AbstractFramework/seedvr2-3b-4bit",
