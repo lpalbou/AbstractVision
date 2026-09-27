@@ -1812,6 +1812,15 @@ class MFluxVisionBackend(VisionBackend):
             gc.collect()
         except Exception:
             pass
+        # The dropped weights sit in MLX's allocator cache until something
+        # returns it to the OS -- exactly the 2026-09-25 "0 models loaded,
+        # 86 GB held" failure. Clear it here, at the release point.
+        try:
+            import mlx.core as mx  # type: ignore
+
+            mx.clear_cache()
+        except Exception:
+            pass
 
     def unload(self) -> None:
         if self._runtime_queue is None and self._runtime_thread is None:

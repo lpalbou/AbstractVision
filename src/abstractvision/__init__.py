@@ -17,7 +17,7 @@ from .types import (
 )
 from .vision_manager import VisionManager
 
-__version__ = "0.3.29"
+__version__ = "0.3.30"
 __author__ = "Laurent-Philippe Albou"
 __email__ = "contact@abstractcore.ai"
 
