@@ -72,6 +72,47 @@ WAN_TI2V_PRACTICAL_MIN_WIDTH = 832
 WAN_TI2V_PRACTICAL_MIN_HEIGHT = 480
 WAN_A14B_PROOF_WIDTH = 480
 WAN_A14B_PROOF_HEIGHT = 240
+# MLX allocator cache ceiling held while a Wan video is generated and decoded.
+# Without it the cache keeps every freed VAE-decode buffer: at 1280x704x121 the
+# process footprint reached 103.6 GiB for a 60.8 GiB MLX active peak (mlx-gen
+# 0.38.0, M5 Max). Mirrors mlx-gen's own default policy (RAM/8, 1-8 GiB), which
+# its Wan Python-API path never applies.
+WAN_VIDEO_MLX_CACHE_LIMIT_CEILING_BYTES = 8 * 1024**3
+WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES = 1 * 1024**3
+
+
+def _wan_video_mlx_cache_limit_bytes() -> int:
+    try:
+        total = int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+    except (ValueError, OSError, AttributeError):
+        total = 0
+    if total <= 0:
+        return WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES
+    return max(
+        WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES,
+        min(WAN_VIDEO_MLX_CACHE_LIMIT_CEILING_BYTES, total // 8),
+    )
+
+
+def _set_mlx_cache_limit(limit_bytes: int) -> Optional[int]:
+    """Set MLX's allocator cache limit and return the previous one.
+
+    Returns None when this process has no MLX runtime (non-Apple test hosts
+    driving a fake Wan model); there is no allocator cache to bound there.
+    """
+    try:
+        import mlx.core as mx  # type: ignore
+    except ImportError:
+        return None
+    return int(mx.set_cache_limit(int(limit_bytes)))
+
+
+def _clear_mlx_cache() -> None:
+    try:
+        import mlx.core as mx  # type: ignore
+    except ImportError:
+        return
+    mx.clear_cache()
 _LORA_METADATA_KEYS = (
     "lora_paths",
     "lora_scales",
@@ -1821,6 +1862,19 @@ class MFluxVisionBackend(VisionBackend):
             mx.clear_cache()
         except Exception:
             pass
+
+    def _drop_released_wan_model(self) -> None:
+        # The Wan instance ran with release_denoisers_before_decode: its
+        # transformer is gone and mlx-gen refuses to generate with it again.
+        # Forget it so the next request builds a fresh one. The resolved model
+        # path/base/bits stay: they describe the request just served.
+        self._model = None
+        self._model_key = None
+        self._warmed_model_key = None
+        import gc
+
+        gc.collect()
+        _clear_mlx_cache()
 
     def unload(self) -> None:
         if self._runtime_queue is None and self._runtime_thread is None:
@@ -4023,17 +4077,37 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["flow_shift"] = float(flow_shift)
         if progress_callbacks or step_progress_callback is not None:
             kwargs["progress_callback"] = _progress_bridge
+        # TI2V-5B's single denoiser (9.3 GiB at BF16 runtime) is dead weight while
+        # the VAE decodes, and the decode is the run's peak. Releasing it before
+        # decode lowered the measured MLX peak from 60.8 to 50.6 GiB at
+        # 1280x704x121. mlx-gen cannot reload a released TI2V denoiser, so the
+        # instance is dropped after the run and rebuilt on the next request
+        # (a few seconds against a run of many minutes).
+        release_denoisers = model_def.key == WAN_TI2V_MODEL_KEY
+        if release_denoisers:
+            kwargs["release_denoisers_before_decode"] = True
 
+        previous_cache_limit = _set_mlx_cache_limit(_wan_video_mlx_cache_limit_bytes())
         try:
-            generated = model.generate_video(**kwargs)
-        except Exception as e:
-            if _is_mlx_gen_download_required(e):
-                raise _wrap_mlx_gen_download_required(e) from e
-            raise
-        if self._model_key is not None:
+            try:
+                generated = model.generate_video(**kwargs)
+            except Exception as e:
+                if _is_mlx_gen_download_required(e):
+                    raise _wrap_mlx_gen_download_required(e) from e
+                raise
+            # mlx-gen streams the VAE decode into save(), so the decode peak
+            # happens here, inside the cache ceiling.
+            data = self._read_generated_video_bytes(generated)
+            mlx_metadata = self._generated_video_metadata(generated)
+        finally:
+            if previous_cache_limit is not None:
+                _set_mlx_cache_limit(previous_cache_limit)
+            if release_denoisers:
+                self._drop_released_wan_model()
+            else:
+                _clear_mlx_cache()
+        if not release_denoisers and self._model_key is not None:
             self._warmed_model_key = self._model_key
-        data = self._read_generated_video_bytes(generated)
-        mlx_metadata = self._generated_video_metadata(generated)
         requested_loras = serialize_lora_adapters(effective_loras)
         return GeneratedAsset(
             media_type="video",

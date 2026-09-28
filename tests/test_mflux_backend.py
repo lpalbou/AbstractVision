@@ -1456,6 +1456,166 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(asset.metadata["base_model"], "wan2.2-t2v-a14b")
         self.assertEqual(asset.metadata["guidance_2"], 3.0)
 
+    def _run_wan_videos_recording_memory_policy(self, repo_id, wan_cls, requests):
+        """Run requests through a Wan route, recording cache-limit and model lifecycle events."""
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        events = []
+        active_limit = [None]
+
+        def fake_set_limit(limit_bytes):
+            previous = active_limit[0] if active_limit[0] is not None else 999
+            active_limit[0] = int(limit_bytes)
+            events.append(("set_limit", int(limit_bytes)))
+            return previous
+
+        class _RecordingVideo(_GeneratedVideo):
+            def save(self, path=None, export_json_metadata=False, overwrite=True):
+                events.append(("save", active_limit[0]))
+                super().save(path=path, overwrite=overwrite)
+
+        class _RecordingWan(wan_cls):
+            instances = 0
+
+            def __init__(self, **kwargs):
+                type(self).instances += 1
+                events.append(("init", None))
+                super().__init__(**kwargs)
+
+            def generate_video(self, **kwargs):
+                events.append(("generate", active_limit[0]))
+                super().generate_video(**kwargs)
+                return _RecordingVideo()
+
+        assets = []
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), repo_id)
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=repo_id))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ), patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                    return_value=_RecordingWan,
+                ), patch(
+                    "abstractvision.backends.mflux._set_mlx_cache_limit",
+                    side_effect=fake_set_limit,
+                ), patch(
+                    "abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes",
+                    return_value=8 * 1024**3,
+                ):
+                    for request in requests:
+                        assets.append(backend.generate_video(request))
+        return backend, assets, events, _RecordingWan
+
+    def test_wan_ti2v_releases_denoiser_before_decode_and_rebuilds_next_request(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        backend, assets, events, wan_cls = self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+            _FakeWan,
+            [
+                VideoGenerationRequest(prompt="fox", width=832, height=480, num_frames=5, steps=2, seed=1),
+                VideoGenerationRequest(prompt="fox", width=832, height=480, num_frames=5, steps=2, seed=2),
+            ],
+        )
+
+        self.assertIs(_FakeWan.last_generate.get("release_denoisers_before_decode"), True)
+        # mlx-gen cannot reuse a TI2V instance whose denoiser was released:
+        # every request must build a fresh one.
+        self.assertEqual(wan_cls.instances, 2)
+        self.assertIsNone(backend._model)
+        self.assertEqual(assets[1].metadata["base_model"], "wan2.2-ti2v-5b")
+        self.assertEqual(assets[1].metadata["seed"], 2)
+
+    def test_wan_video_decode_runs_under_mlx_cache_ceiling_then_restores(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        _backend, _assets, events, _wan_cls = self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+            _FakeWan,
+            [VideoGenerationRequest(prompt="fox", width=832, height=480, num_frames=5, steps=2, seed=1)],
+        )
+
+        limit = 8 * 1024**3
+        # Generation AND save (where mlx-gen streams the VAE decode) run capped,
+        # and the host's previous limit is restored afterwards.
+        self.assertIn(("generate", limit), events)
+        self.assertIn(("save", limit), events)
+        set_calls = [value for kind, value in events if kind == "set_limit"]
+        self.assertEqual(set_calls, [limit, 999])
+
+    def test_wan_a14b_keeps_its_denoisers_between_requests(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        backend, _assets, events, wan_cls = self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+            _FakeWan,
+            [VideoGenerationRequest(prompt="fox", seed=1), VideoGenerationRequest(prompt="fox", seed=2)],
+        )
+
+        self.assertNotIn("release_denoisers_before_decode", _FakeWan.last_generate)
+        self.assertEqual(wan_cls.instances, 1)
+        self.assertIsNotNone(backend._model)
+        self.assertIn(("save", 8 * 1024**3), events)
+
+    def test_wan_ti2v_failed_decode_still_drops_released_model_and_restores_limit(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        limits = []
+
+        class _FailingVideo(_GeneratedVideo):
+            def save(self, path=None, export_json_metadata=False, overwrite=True):
+                raise RuntimeError("decode failed")
+
+        class _FailingWan(_FakeWan):
+            def generate_video(self, **kwargs):
+                super().generate_video(**kwargs)
+                return _FailingVideo()
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            )
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ), patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                    return_value=_FailingWan,
+                ), patch(
+                    "abstractvision.backends.mflux._set_mlx_cache_limit",
+                    side_effect=lambda value: limits.append(value) or 777,
+                ), patch(
+                    "abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes",
+                    return_value=8 * 1024**3,
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "decode failed"):
+                        backend.generate_video(
+                            VideoGenerationRequest(
+                                prompt="fox", width=832, height=480, num_frames=5, steps=2, seed=1
+                            )
+                        )
+
+        self.assertIsNone(backend._model)
+        self.assertIsNone(backend._model_key)
+        self.assertEqual(limits, [8 * 1024**3, 777])
+
+    def test_wan_video_mlx_cache_limit_follows_machine_ram(self):
+        from abstractvision.backends import mflux as mflux_mod
+
+        gib = 1024**3
+        for total, expected in ((128 * gib, 8 * gib), (32 * gib, 4 * gib), (4 * gib, 1 * gib)):
+            with patch.object(mflux_mod.os, "sysconf", side_effect=lambda name, t=total: {
+                "SC_PAGE_SIZE": 16384,
+                "SC_PHYS_PAGES": t // 16384,
+            }[name]):
+                self.assertEqual(mflux_mod._wan_video_mlx_cache_limit_bytes(), expected)
+
     def test_wan_a14b_text_to_video_accepts_explicit_guidance_2(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import VideoGenerationRequest
