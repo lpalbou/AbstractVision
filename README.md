@@ -72,13 +72,13 @@ Optional extras:
 | `abstractvision[diffusers]` | Install Torch/Diffusers and related packages for local Diffusers generation. |
 | `abstractvision[huggingface]` | Compatibility alias for callers that still request the historical Diffusers extra. |
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
-| `abstractvision[mlx-gen]` | Install the optional MLX-Gen image/video runtime. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` support is available. |
+| `abstractvision[mlx-gen]` | Install the optional MLX-Gen image/video runtime, validated on Apple Silicon. The extra also installs on Linux, where it is not validated yet (see [backlog 030](docs/backlog/planned/030_gpu_parity_with_mlx_gen.md)). |
 | `abstractvision[mflux]` | Compatibility alias for the MLX-Gen runtime. |
 | `abstractvision[local]` | Convenience for the Diffusers + `sdcpp` local runtime stack. Add `abstractvision[mlx-gen]` or use `abstractvision[all]` / `abstractvision[all-apple]` when you also want MLX-Gen. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
 | `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
-| `abstractvision[gpu]` | GPU-oriented local profile: Diffusers/Torch plus MLX-Gen when the platform markers match. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
-| `abstractvision[all-gpu]` | Full GPU-oriented local vision profile: Diffusers, stable-diffusion.cpp bindings, and MLX-Gen when the platform markers match. |
+| `abstractvision[gpu]` | NVIDIA/Linux local profile: Diffusers/Torch, no MLX. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
+| `abstractvision[all-gpu]` | Full NVIDIA/Linux local profile: Diffusers/Torch and stable-diffusion.cpp bindings, no MLX. Add `abstractvision[mlx-gen]` explicitly if you want to try MLX-Gen on Linux. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
 
 `stable-diffusion-cpp-python` is currently constrained below `0.4.6` because

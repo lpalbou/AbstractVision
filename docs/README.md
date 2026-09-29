@@ -41,7 +41,7 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. MLX-Gen is validated on Apple Silicon; the explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)), and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
   - MLX-Gen for Wan 2.2 local `text_to_video` and first-frame `image_to_video`
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))

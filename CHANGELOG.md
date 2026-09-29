@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.32 - 2026-09-29
+
+- Install profiles: the `gpu` and `all-gpu` extras no longer install MLX-Gen. They are the
+  NVIDIA/Linux profiles: `gpu` installs Diffusers/torch and `all-gpu` adds stable-diffusion.cpp.
+  On Linux, MLX-Gen pulled `mlx[cuda13]` (about 2.1 GB of CUDA 13 wheels next to torch's own CUDA
+  runtime) that AbstractCore never routes on CUDA hosts, and it required glibc 2.35 or newer. The
+  `gpu` and `all-gpu` installs are now that much smaller and install on Linux with an older glibc.
+  MLX-Gen still comes with `apple`, `all-apple` and `all`; to try it on Linux, install the explicit
+  `mlx-gen` extra (it installs there but is not validated; see backlog 030).
+
 ## 0.3.31 - 2026-09-29
 
 - MLX-Gen Wan video: every Wan model has its own default generation size, kept in one table

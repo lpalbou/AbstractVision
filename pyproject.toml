@@ -123,6 +123,10 @@ apple = [
   "Pillow>=9.0",
 ]
 
+# NVIDIA/Linux install profile: Diffusers/torch only, no MLX. MLX-Gen is Apple-first
+# and AbstractCore never routes it on CUDA hosts; its Linux build pulls mlx[cuda13]
+# (~2.1 GB of CUDA 13 wheels) and requires glibc >= 2.35. Opt in explicitly with
+# the `mlx-gen` extra to measure it on CUDA (backlog 030).
 gpu = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
@@ -136,7 +140,6 @@ gpu = [
   "einops>=0.7.0",
   "peft>=0.10.0",
   "gguf>=0.10.0",
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -214,6 +217,7 @@ all-apple = [
   "Pillow>=9.0",
 ]
 
+# Full NVIDIA/Linux profile: Diffusers/torch + stable-diffusion.cpp, no MLX.
 all-gpu = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
@@ -228,7 +232,6 @@ all-gpu = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 

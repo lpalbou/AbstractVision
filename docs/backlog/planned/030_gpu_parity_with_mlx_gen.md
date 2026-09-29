@@ -46,6 +46,15 @@ On `gpu` today (checked 2026-09-29):
 So the `gpu` setting pays for an engine it does not use and still lacks most of what `apple`
 offers.
 
+**Packaging part done (0.3.32, 2026-09-29, operator ruling):** `gpu` and `all-gpu` no longer
+require `mlx-gen` (NVIDIA/Linux profiles: Diffusers/torch, plus stable-diffusion.cpp in
+`all-gpu`, no MLX). The CUDA 13 wheels and the glibc 2.35 floor are gone from the `gpu` setting;
+`tests/test_packaging_metadata.py::test_nvidia_gpu_profiles_never_pull_mlx` goes red if MLX comes
+back. The explicit `mlx-gen` / `mflux` extras (and `apple`, `all-apple`, `all`) keep it, so
+option A below can still be measured on NVIDIA by installing `abstractvision[mlx-gen]`. Plan step
+2's marker half and the "installs no runtime AbstractCore never routes" criterion are met;
+parity (steps 1 and 3-6) remains open.
+
 ---
 
 ## Constraints
@@ -105,7 +114,7 @@ for images where it is lighter.
       memory on `apple` and on `gpu`; every "yes" on `gpu` has a recorded NVIDIA run.
 - [ ] Wan 2.2 text-to-video and image-to-video run locally on `gpu` with the same defaults and
       overrides as on `apple`.
-- [ ] The `gpu` setting installs no runtime that AbstractCore never routes on a GPU host.
+- [x] The `gpu` setting installs no runtime that AbstractCore never routes on a GPU host (0.3.32).
 - [ ] AbstractCore recommendations for image and video on a CUDA host point to validated local
       models.
 

@@ -31,7 +31,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available.
+- Local MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. MLX-Gen is validated on Apple Silicon. The explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the NVIDIA/Linux `gpu` and `all-gpu` profiles do not include it.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - OpenAI-compatible HTTP can also provide `text_to_video` / `image_to_video` **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).

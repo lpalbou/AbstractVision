@@ -4,7 +4,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines
-- **MLX-Gen (local, Apple-first)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V/A14B video routes. The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` support is available.
+- **MLX-Gen (local, Apple-first)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V/A14B video routes. AbstractVision validates MLX-Gen on Apple Silicon; the `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)).
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -87,15 +87,15 @@ Optional extras:
 | `openai-compatible` | Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today. |
 | `diffusers` | Installs Torch/Diffusers and related packages for local Diffusers generation. |
 | `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
-| `mlx-gen` | Installs the optional MLX-Gen runtime. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` markers are available. |
+| `mlx-gen` | Installs the optional MLX-Gen runtime, validated on Apple Silicon. The extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)). |
 | `mflux` | Compatibility alias for the MLX-Gen runtime. |
 | `apple` | Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
-| `gpu` | GPU-friendly profile for Diffusers/Torch and MLX-Gen when the platform markers match. |
+| `gpu` | NVIDIA/Linux profile: Diffusers/Torch, no MLX. |
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for the Diffusers + `sdcpp` local runtime stack. Add `mlx-gen` separately, or use `all` / `all-apple`, when you also want MLX-Gen. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
 | `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MLX-Gen. |
-| `all-gpu` | Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings + MLX-Gen when the platform markers match). |
+| `all-gpu` | Aggregate NVIDIA/Linux profile: Diffusers/Torch + stable-diffusion.cpp bindings, no MLX. |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 
 Contributor-only extras:
@@ -312,9 +312,10 @@ If your server also supports video endpoints, configure them via `ABSTRACTVISION
 ## 2.2) MLX-Gen local (q4 first)
 
 Use this path when you want local MLX-optimized image/video models without
-running a separate server. The current AbstractVision release is validated on
-Apple Silicon first. The `abstractvision[mlx-gen]` extra also installs on Linux
-when upstream `mlx-gen` / `mlx` support is available. AbstractVision uses the
+running a separate server. AbstractVision validates MLX-Gen on Apple Silicon.
+The `abstractvision[mlx-gen]` extra also installs on Linux, where it is not
+validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the `gpu` and `all-gpu` profiles do not
+include it. AbstractVision uses the
 `mlx-gen` Python API in-process and expects prepared model folders to exist in
 the Hugging Face cache. It does not silently download weights during
 generation.

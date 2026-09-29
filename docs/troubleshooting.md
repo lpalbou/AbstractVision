@@ -27,7 +27,7 @@ unless you choose the matching extra.
 - Diffusers: `pip install "abstractvision[diffusers]"`
 - If the error mentions missing `torchvision`: `pip install torchvision` (or upgrade/reinstall `abstractvision[diffusers]`)
 - stable-diffusion.cpp bindings: `pip install "abstractvision[sdcpp]"`
-- MLX-Gen: `pip install "abstractvision[mlx-gen]"` (or compatibility alias `abstractvision[mflux]`). The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` markers are available.
+- MLX-Gen: `pip install "abstractvision[mlx-gen]"` (or compatibility alias `abstractvision[mflux]`). MLX-Gen is validated on Apple Silicon. The extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the `gpu` and `all-gpu` profiles do not include it, so install `abstractvision[mlx-gen]` explicitly there.
 
 ### Verify
 

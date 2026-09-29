@@ -117,14 +117,14 @@ class TestPackagingMetadata(unittest.TestCase):
         self.assertIn("mlx-gen", apple_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(gpu_names))
         self.assertNotIn("stable-diffusion-cpp-python", gpu_names)
-        self.assertIn("mlx-gen", gpu_names)
+        self.assertNotIn("mlx-gen", gpu_names)
         self.assertTrue(DIFFUSERS_RUNTIME_PACKAGES.issubset(all_names))
         self.assertIn("stable-diffusion-cpp-python", all_names)
         self.assertIn("mlx-gen", all_names)
         self.assertEqual(apple_names, all_apple_names)
         self.assertIn("mlx-gen", all_apple_names)
-        self.assertEqual(local_names | {"mlx-gen"}, all_gpu_names)
-        self.assertIn("mlx-gen", all_gpu_names)
+        self.assertEqual(local_names, all_gpu_names)
+        self.assertNotIn("mlx-gen", all_gpu_names)
 
     def test_runtime_aliases_and_bundles_do_not_drift(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -145,10 +145,10 @@ class TestPackagingMetadata(unittest.TestCase):
         self.assertEqual(diffusers, huggingface)
         self.assertEqual(diffusers | sdcpp, local)
         self.assertEqual(local | mflux, apple)
-        self.assertEqual(diffusers | mflux, gpu)
+        self.assertEqual(diffusers, gpu)
         self.assertEqual(local | mflux, all_runtime)
         self.assertEqual(apple, all_apple)
-        self.assertEqual(local | mflux, all_gpu)
+        self.assertEqual(local, all_gpu)
         self.assertEqual(diffusers_dev, huggingface_dev)
 
         contributor_only = {
@@ -170,8 +170,28 @@ class TestPackagingMetadata(unittest.TestCase):
             "(platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'"
         )
 
-        for extra in ("mlx-gen", "mflux", "apple", "gpu", "all", "all-apple", "all-gpu"):
+        for extra in ("mlx-gen", "mflux", "apple", "all", "all-apple"):
             self.assertIn(expected, _optional_dependency_requirements(pyproject, extra))
+
+    def test_nvidia_gpu_profiles_never_pull_mlx(self):
+        # Operator ruling 2026-09-29: on Linux, mlx-gen pulls mlx[cuda13] (~2.1 GB of
+        # CUDA 13 wheels beside torch's CUDA 12) and forces glibc >= 2.35, while
+        # AbstractCore never routes MLX-Gen on CUDA hosts. The explicit `mlx-gen`
+        # extra stays available for measurement (backlog 030).
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        mlx_names = {"mlx", "mlx-gen", "mlx-cuda", "mlx-cuda-13", "mlx-metal", "mflux"}
+
+        for extra in ("gpu", "all-gpu"):
+            requirements = _optional_dependency_requirements(pyproject, extra)
+            self.assertTrue(requirements, f"{extra} extra is empty")
+            self.assertFalse(
+                mlx_names.intersection(_dependency_names(requirements)),
+                f"{extra} must not require MLX/MLX-Gen: {sorted(requirements)}",
+            )
+            self.assertFalse(
+                [r for r in requirements if r.lower().startswith("mlx")],
+                f"{extra} must not require any mlx* package",
+            )
 
     def test_sdcpp_binding_extras_avoid_known_broken_sdist(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

@@ -57,7 +57,7 @@ Agent quickstart (choose the path that matches your goal):
 - **Need the model/adapter curation policy**: read `docs/reference/capabilities-registry.md`, `docs/adr/0005_curated_capability_registry_and_download_catalog.md`, and `docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
 - **Need local Diffusers**: install `abstractvision[diffusers]`, set `ABSTRACTVISION_BACKEND=diffusers`, pre-download `runwayml/stable-diffusion-v1-5`, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
-- **Need local MLX-Gen**: install `abstractvision[mlx-gen]`. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` markers are available. Choose exact published model ids such as `AbstractFramework/qwen-image-2512-4bit` for `t2i`, `AbstractFramework/qwen-image-edit-2511-4bit` or `briaai/Fibo-Edit` for `i2i`, `AbstractFramework/seedvr2-3b-8bit` / `AbstractFramework/seedvr2-7b-8bit` for SeedVR2 `upscale`, and `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit` for Wan A14B `t2v`/`i2v`; use typed `guidance_2` / CLI `--guidance-2` for the A14B second-stage guidance control, typed `control_image` / CLI `--control-image` for validated Qwen structured-control routes, and `mask` for validated Qwen/FIBO masked-edit routes; pre-download with `abstractvision download ... --provider mlx-gen`.
+- **Need local MLX-Gen**: install `abstractvision[mlx-gen]`. MLX-Gen is validated on Apple Silicon; the extra also installs on Linux, where it is not validated yet, and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Choose exact published model ids such as `AbstractFramework/qwen-image-2512-4bit` for `t2i`, `AbstractFramework/qwen-image-edit-2511-4bit` or `briaai/Fibo-Edit` for `i2i`, `AbstractFramework/seedvr2-3b-8bit` / `AbstractFramework/seedvr2-7b-8bit` for SeedVR2 `upscale`, and `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit` for Wan A14B `t2v`/`i2v`; use typed `guidance_2` / CLI `--guidance-2` for the A14B second-stage guidance control, typed `control_image` / CLI `--control-image` for validated Qwen structured-control routes, and `mask` for validated Qwen/FIBO masked-edit routes; pre-download with `abstractvision download ... --provider mlx-gen`.
 - **Need LoRA adapters**: prefer the shared typed contract `lora_adapters=[LoRAAdapterSpec(...)]` in Python and repeated `--lora` / `--lora-scale` / `--lora-target-role` flags in the CLI. Use provider/model discovery to inspect `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile` before long runs.
 
 Reality checks (current shipped behavior, anchored in code):
@@ -210,13 +210,13 @@ Optional extras:
 | `abstractvision[diffusers]` | Install Torch/Diffusers and related packages for local Diffusers generation. |
 | `abstractvision[huggingface]` | Compatibility alias for callers that still request the historical Diffusers extra. |
 | `abstractvision[sdcpp]` | Install `stable-diffusion-cpp-python` for the pip binding fallback. |
-| `abstractvision[mlx-gen]` | Install the optional MLX-Gen image/video runtime. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` support is available. |
+| `abstractvision[mlx-gen]` | Install the optional MLX-Gen image/video runtime, validated on Apple Silicon. The extra also installs on Linux, where it is not validated yet (see [backlog 030](docs/backlog/planned/030_gpu_parity_with_mlx_gen.md)). |
 | `abstractvision[mflux]` | Compatibility alias for the MLX-Gen runtime. |
 | `abstractvision[local]` | Convenience for the Diffusers + `sdcpp` local runtime stack. Add `abstractvision[mlx-gen]` or use `abstractvision[all]` / `abstractvision[all-apple]` when you also want MLX-Gen. |
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
 | `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
-| `abstractvision[gpu]` | GPU-oriented local profile: Diffusers/Torch plus MLX-Gen when the platform markers match. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
-| `abstractvision[all-gpu]` | Full GPU-oriented local vision profile: Diffusers, stable-diffusion.cpp bindings, and MLX-Gen when the platform markers match. |
+| `abstractvision[gpu]` | NVIDIA/Linux local profile: Diffusers/Torch, no MLX. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
+| `abstractvision[all-gpu]` | Full NVIDIA/Linux local profile: Diffusers/Torch and stable-diffusion.cpp bindings, no MLX. Add `abstractvision[mlx-gen]` explicitly if you want to try MLX-Gen on Linux. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
 
 `stable-diffusion-cpp-python` is currently constrained below `0.4.6` because
@@ -880,7 +880,7 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. MLX-Gen is validated on Apple Silicon; the explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)), and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
   - MLX-Gen for Wan 2.2 local `text_to_video` and first-frame `image_to_video`
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
@@ -914,7 +914,7 @@ This guide helps you generate your first image using AbstractVision with the bui
 
 - **OpenAI-compatible HTTP**: call a local/remote server that exposes OpenAI-shaped image endpoints
 - **Diffusers (local Python)**: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines
-- **MLX-Gen (local, Apple-first)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V/A14B video routes. The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` support is available.
+- **MLX-Gen (local, Apple-first)**: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V/A14B video routes. AbstractVision validates MLX-Gen on Apple Silicon; the `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)).
 - **stable-diffusion.cpp (local GGUF)**: GGUF diffusion models via `sd-cli` (recommended for GPU backends like **Metal**/**CUDA**) or via pip-installable python bindings (often **CPU-only** fallback)
 - **Playground (web, optional)**: self-contained AbstractVision UI/API for local model loading and jobs (`/v1/vision/*`)
 
@@ -997,15 +997,15 @@ Optional extras:
 | `openai-compatible` | Empty local/remote OpenAI-shaped endpoint intent marker; the HTTP backend is stdlib-only today. |
 | `diffusers` | Installs Torch/Diffusers and related packages for local Diffusers generation. |
 | `sdcpp` | Installs `stable-diffusion-cpp-python` for the stable-diffusion.cpp pip binding fallback. |
-| `mlx-gen` | Installs the optional MLX-Gen runtime. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream `mlx-gen` / `mlx` markers are available. |
+| `mlx-gen` | Installs the optional MLX-Gen runtime, validated on Apple Silicon. The extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)). |
 | `mflux` | Compatibility alias for the MLX-Gen runtime. |
 | `apple` | Native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
-| `gpu` | GPU-friendly profile for Diffusers/Torch and MLX-Gen when the platform markers match. |
+| `gpu` | NVIDIA/Linux profile: Diffusers/Torch, no MLX. |
 | `huggingface` | Compatibility alias for the historical Diffusers backend dependency set. |
 | `local` | Convenience extra for the Diffusers + `sdcpp` local runtime stack. Add `mlx-gen` separately, or use `all` / `all-apple`, when you also want MLX-Gen. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
 | `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MLX-Gen. |
-| `all-gpu` | Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings + MLX-Gen when the platform markers match). |
+| `all-gpu` | Aggregate NVIDIA/Linux profile: Diffusers/Torch + stable-diffusion.cpp bindings, no MLX. |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 
 Contributor-only extras:
@@ -1222,9 +1222,10 @@ If your server also supports video endpoints, configure them via `ABSTRACTVISION
 ## 2.2) MLX-Gen local (q4 first)
 
 Use this path when you want local MLX-optimized image/video models without
-running a separate server. The current AbstractVision release is validated on
-Apple Silicon first. The `abstractvision[mlx-gen]` extra also installs on Linux
-when upstream `mlx-gen` / `mlx` support is available. AbstractVision uses the
+running a separate server. AbstractVision validates MLX-Gen on Apple Silicon.
+The `abstractvision[mlx-gen]` extra also installs on Linux, where it is not
+validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the `gpu` and `all-gpu` profiles do not
+include it. AbstractVision uses the
 `mlx-gen` Python API in-process and expects prepared model folders to exist in
 the Hugging Face cache. It does not silently download weights during
 generation.
@@ -1762,9 +1763,11 @@ All assets referenced here were generated through AbstractVision with
 - The current AbstractVision MLX runtime floor is
   `mlx-gen>=0.38.0,<0.39.0`.
 
-This package release is validated on Apple Silicon first. The MLX-Gen install
-extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers
-apply, but the proof assets on this page are Apple validations.
+MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
+Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
+pulls `mlx[cuda13]` there), where it is not validated yet (see
+[backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)). The NVIDIA/Linux `gpu` and `all-gpu` profiles do not
+include MLX-Gen.
 
 ## Install and discovery
 
@@ -2679,7 +2682,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. This release is validated on Apple Silicon first; the MLX-Gen install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available.
+- Local MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. MLX-Gen is validated on Apple Silicon. The explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the NVIDIA/Linux `gpu` and `all-gpu` profiles do not include it.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - OpenAI-compatible HTTP can also provide `text_to_video` / `image_to_video` **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
@@ -4499,6 +4502,16 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 ## Unreleased
 
+## 0.3.32 - 2026-09-29
+
+- Install profiles: the `gpu` and `all-gpu` extras no longer install MLX-Gen. They are the
+  NVIDIA/Linux profiles: `gpu` installs Diffusers/torch and `all-gpu` adds stable-diffusion.cpp.
+  On Linux, MLX-Gen pulled `mlx[cuda13]` (about 2.1 GB of CUDA 13 wheels next to torch's own CUDA
+  runtime) that AbstractCore never routes on CUDA hosts, and it required glibc 2.35 or newer. The
+  `gpu` and `all-gpu` installs are now that much smaller and install on Linux with an older glibc.
+  MLX-Gen still comes with `apple`, `all-apple` and `all`; to try it on Linux, install the explicit
+  `mlx-gen` extra (it installs there but is not validated; see backlog 030).
+
 ## 0.3.31 - 2026-09-29
 
 - MLX-Gen Wan video: every Wan model has its own default generation size, kept in one table
@@ -4914,6 +4927,10 @@ apple = [
   "Pillow>=9.0",
 ]
 
+# NVIDIA/Linux install profile: Diffusers/torch only, no MLX. MLX-Gen is Apple-first
+# and AbstractCore never routes it on CUDA hosts; its Linux build pulls mlx[cuda13]
+# (~2.1 GB of CUDA 13 wheels) and requires glibc >= 2.35. Opt in explicitly with
+# the `mlx-gen` extra to measure it on CUDA (backlog 030).
 gpu = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
@@ -4927,7 +4944,6 @@ gpu = [
   "einops>=0.7.0",
   "peft>=0.10.0",
   "gguf>=0.10.0",
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -5005,6 +5021,7 @@ all-apple = [
   "Pillow>=9.0",
 ]
 
+# Full NVIDIA/Linux profile: Diffusers/torch + stable-diffusion.cpp, no MLX.
 all-gpu = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
@@ -5019,7 +5036,6 @@ all-gpu = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 

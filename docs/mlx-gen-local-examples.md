@@ -34,9 +34,11 @@ All assets referenced here were generated through AbstractVision with
 - The current AbstractVision MLX runtime floor is
   `mlx-gen>=0.38.0,<0.39.0`.
 
-This package release is validated on Apple Silicon first. The MLX-Gen install
-extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers
-apply, but the proof assets on this page are Apple validations.
+MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
+Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
+pulls `mlx[cuda13]` there), where it is not validated yet (see
+[backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)). The NVIDIA/Linux `gpu` and `all-gpu` profiles do not
+include MLX-Gen.
 
 ## Install and discovery
 
