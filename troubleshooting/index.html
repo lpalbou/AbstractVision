@@ -981,15 +981,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mps-was-requested-but-is-unavailable" class="md-nav__link">
+  <a href="#diffusers-on-cuda-is-slow-or-runs-out-of-memory" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mps was requested but is unavailable
+        Diffusers on CUDA is slow or runs out of memory
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="mps was requested but is unavailable">
+    <nav class="md-nav" aria-label="Diffusers on CUDA is slow or runs out of memory">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1015,6 +1015,56 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#fix_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fix
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mps-was-requested-but-is-unavailable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mps was requested but is unavailable
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="mps was requested but is unavailable">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symptom_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symptom
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#likely-cause_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Likely cause
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#checks" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1026,7 +1076,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fix_7" class="md-nav__link">
+  <a href="#fix_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fix
@@ -1065,7 +1115,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#symptom_8" class="md-nav__link">
+  <a href="#symptom_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         Symptom
@@ -1076,7 +1126,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#likely-cause_8" class="md-nav__link">
+  <a href="#likely-cause_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         Likely cause
@@ -1087,7 +1137,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fix_8" class="md-nav__link">
+  <a href="#fix_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fix
@@ -1126,7 +1176,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#symptom_9" class="md-nav__link">
+  <a href="#symptom_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Symptom
@@ -1137,7 +1187,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#likely-cause_9" class="md-nav__link">
+  <a href="#likely-cause_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Likely cause
@@ -1148,7 +1198,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fix_9" class="md-nav__link">
+  <a href="#fix_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fix
@@ -1367,12 +1417,39 @@ capability.</p>
   peak memory</li>
 <li>unload other models before a video run</li>
 </ul>
-<h2 id="mps-was-requested-but-is-unavailable"><code>mps</code> was requested but is unavailable<a class="headerlink" href="#mps-was-requested-but-is-unavailable" title="Permanent link">&para;</a></h2>
+<h2 id="diffusers-on-cuda-is-slow-or-runs-out-of-memory">Diffusers on CUDA is slow or runs out of memory<a class="headerlink" href="#diffusers-on-cuda-is-slow-or-runs-out-of-memory" title="Permanent link">&para;</a></h2>
 <h3 id="symptom_7">Symptom<a class="headerlink" href="#symptom_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li>an image generation on an NVIDIA GPU that runs many steps takes longer than
+  expected, and the result metadata reports <code>cpu_offload: "sequential"</code></li>
+<li>the log shows <code>Diffusers: sequential CPU offload on cuda ... (much less GPU
+  memory; each step slower than model CPU offload)</code></li>
+<li>a generation fails with <code>CUDA out of memory</code></li>
+</ul>
+<h3 id="likely-cause_7">Likely cause<a class="headerlink" href="#likely-cause_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li>another process (for example a text model) holds part of the GPU, so the
+  free memory cannot hold the pipeline's largest component and the backend
+  falls back to sequential CPU offload</li>
+<li><code>cpu_offload="model"</code> or <code>"none"</code> was set explicitly on a GPU that is too
+  small for that placement</li>
+</ul>
+<h3 id="fix_7">Fix<a class="headerlink" href="#fix_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li>unload the other model from the GPU before generating; with enough free
+  memory the backend uses model CPU offload or moves the pipeline whole</li>
+<li>leave <code>cpu_offload</code> at <code>"auto"</code> (the default) so the backend picks a
+  placement that fits; see
+  <a href="../reference/backends/#diffusers-backend-local">docs/reference/backends.md</a>
+  for how it decides</li>
+<li>use a smaller model or a quantized (GGUF) variant on small GPUs</li>
+</ul>
+<h2 id="mps-was-requested-but-is-unavailable"><code>mps</code> was requested but is unavailable<a class="headerlink" href="#mps-was-requested-but-is-unavailable" title="Permanent link">&para;</a></h2>
+<h3 id="symptom_8">Symptom<a class="headerlink" href="#symptom_8" title="Permanent link">&para;</a></h3>
 <ul>
 <li>local Diffusers startup fails with an error mentioning <code>mps</code></li>
 </ul>
-<h3 id="likely-cause_7">Likely cause<a class="headerlink" href="#likely-cause_7" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_8">Likely cause<a class="headerlink" href="#likely-cause_8" title="Permanent link">&para;</a></h3>
 <p>PyTorch does not report Apple Metal / MPS as available in the current
 environment.</p>
 <h3 id="checks">Checks<a class="headerlink" href="#checks" title="Permanent link">&para;</a></h3>
@@ -1381,7 +1458,7 @@ environment.</p>
 <span class="s">print(torch.backends.mps.is_available())</span>
 <span class="s">PY</span>
 </code></pre></div>
-<h3 id="fix_7">Fix<a class="headerlink" href="#fix_7" title="Permanent link">&para;</a></h3>
+<h3 id="fix_8">Fix<a class="headerlink" href="#fix_8" title="Permanent link">&para;</a></h3>
 <ul>
 <li>use a PyTorch build with MPS support on Apple Silicon;</li>
 <li>or switch the backend device to <code>cpu</code>.</li>
@@ -1392,14 +1469,14 @@ environment.</p>
 <li>then retry with <code>--diffusers-device mps</code> or <code>--diffusers-device cpu</code></li>
 </ul>
 <h2 id="playground-panel-is-disabled">Playground panel is disabled<a class="headerlink" href="#playground-panel-is-disabled" title="Permanent link">&para;</a></h2>
-<h3 id="symptom_8">Symptom<a class="headerlink" href="#symptom_8" title="Permanent link">&para;</a></h3>
+<h3 id="symptom_9">Symptom<a class="headerlink" href="#symptom_9" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Image → Image or Text → Video controls stay disabled in the playground</li>
 </ul>
-<h3 id="likely-cause_8">Likely cause<a class="headerlink" href="#likely-cause_8" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_9">Likely cause<a class="headerlink" href="#likely-cause_9" title="Permanent link">&para;</a></h3>
 <p>The currently selected model does not advertise the required task in the
 packaged capability registry, or the backend cannot really execute that task.</p>
-<h3 id="fix_8">Fix<a class="headerlink" href="#fix_8" title="Permanent link">&para;</a></h3>
+<h3 id="fix_9">Fix<a class="headerlink" href="#fix_9" title="Permanent link">&para;</a></h3>
 <p>Choose a model that advertises the task:</p>
 <ul>
 <li>image edits: a model with <code>image_to_image</code></li>
@@ -1412,15 +1489,15 @@ packaged capability registry, or the backend cannot really execute that task.</p
 <li>inspect the selected model’s <code>tasks</code> and <code>task_specs</code></li>
 </ul>
 <h2 id="abstractcore-tool-expected-an-artifact-ref">AbstractCore tool expected an artifact ref<a class="headerlink" href="#abstractcore-tool-expected-an-artifact-ref" title="Permanent link">&para;</a></h2>
-<h3 id="symptom_9">Symptom<a class="headerlink" href="#symptom_9" title="Permanent link">&para;</a></h3>
+<h3 id="symptom_10">Symptom<a class="headerlink" href="#symptom_10" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>vision_text_to_image</code>, <code>vision_image_to_image</code>, or <code>vision_text_to_video</code>
   reports that an artifact ref was expected</li>
 </ul>
-<h3 id="likely-cause_9">Likely cause<a class="headerlink" href="#likely-cause_9" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_10">Likely cause<a class="headerlink" href="#likely-cause_10" title="Permanent link">&para;</a></h3>
 <p><code>make_vision_tools(...)</code> expects <code>VisionManager.store</code> to be set so outputs can
 be returned as artifact references instead of raw bytes.</p>
-<h3 id="fix_9">Fix<a class="headerlink" href="#fix_9" title="Permanent link">&para;</a></h3>
+<h3 id="fix_10">Fix<a class="headerlink" href="#fix_10" title="Permanent link">&para;</a></h3>
 <p>Create the manager with a store, for example <code>LocalAssetStore()</code> or a runtime
 adapter.</p>
 <h3 id="verify_5">Verify<a class="headerlink" href="#verify_5" title="Permanent link">&para;</a></h3>

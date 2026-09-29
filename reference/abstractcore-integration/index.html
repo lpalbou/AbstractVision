@@ -1080,6 +1080,9 @@ loaded local models from recent generation requests. <code>list_resident_models(
 returns the explicit pinned subset.</p>
 <p>Each loaded-model entry includes stable routing metadata such as <code>load_id</code>, <code>backend_kind</code>,
 <code>resident</code>, and a <code>tasks</code> list of observed task aliases using that loaded backend.</p>
+<p><code>load_resident_model()</code> returns the same entry plus <code>loaded_new</code>: <code>true</code> when that call loaded the
+model, <code>false</code> when it was already in memory. AbstractCore and AbstractRuntime use it to report the
+load as <code>loaded</code> or <code>already_loaded</code>.</p>
 <p>For deterministic unload behavior, prefer:</p>
 <ul>
 <li><code>load_id</code>, or</li>
