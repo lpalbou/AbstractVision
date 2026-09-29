@@ -1468,6 +1468,28 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(args.count, 2)
         self.assertEqual(args.seeds, ["91", "92"])
 
+    def test_t2v_no_vae_tiling_flag_reaches_the_request_extra(self):
+        from abstractvision.cli import main
+
+        seen = {}
+
+        class _FakeManager:
+            store = None
+            backend = None
+
+            def generate_video(self, prompt, **kwargs):
+                seen["kwargs"] = dict(kwargs)
+                return {"ok": True}
+
+        with patch.dict("os.environ", {}, clear=True):
+            with patch("abstractvision.cli._build_manager_from_args", new=lambda _args: _FakeManager()):
+                with patch("abstractvision.cli._print_json", new=lambda _value: None):
+                    self.assertEqual(main(["t2v", "fox", "--no-progress", "--no-vae-tiling"]), 0)
+                    self.assertEqual(seen["kwargs"]["extra"], {"vae_tiling": False})
+                    self.assertEqual(main(["t2v", "fox", "--no-progress"]), 0)
+                    # Default: no override, the backend decodes tiled.
+                    self.assertIsNone(seen["kwargs"]["extra"])
+
     def test_provider_adapters_command_prints_json_inventory(self):
         from abstractvision.cli import main
 

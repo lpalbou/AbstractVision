@@ -3428,7 +3428,7 @@
     "Wan-AI/Wan2.2-T2V-A14B": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Official Wan 2.2 A14B text-to-video Diffusers checkpoint. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
+      "notes": "Official Wan 2.2 A14B text-to-video Diffusers checkpoint. AbstractVision defaults to 832x480 (Wan's 480p tier; 1280x720 on request) and runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
       "downloads": [
         {
           "key": "wan2.2-t2v-a14b",
@@ -3484,11 +3484,11 @@
             },
             "width": {
               "required": false,
-              "default": 1280
+              "default": 832
             },
             "height": {
               "required": false,
-              "default": 720
+              "default": 480
             },
             "fps": {
               "required": false,
@@ -3528,7 +3528,7 @@
     "Wan-AI/Wan2.2-I2V-A14B": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Official Wan 2.2 A14B image-to-video Diffusers checkpoint. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
+      "notes": "Official Wan 2.2 A14B image-to-video Diffusers checkpoint. AbstractVision defaults to 832x480 (Wan's 480p tier; 1280x720 on request) and runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
       "downloads": [
         {
           "key": "wan2.2-i2v-a14b",
@@ -3588,11 +3588,11 @@
             },
             "width": {
               "required": false,
-              "default": 1280
+              "default": 832
             },
             "height": {
               "required": false,
-              "default": 720
+              "default": 480
             },
             "fps": {
               "required": false,
@@ -4442,7 +4442,7 @@
     "Wan-AI/Wan2.2-TI2V-5B-Diffusers": {
       "provider": "huggingface",
       "license": "apache-2.0",
-      "notes": "Unified Wan 2.2 TI2V 5B Diffusers checkpoint. Supports both text-to-video and image-to-video at 720p/24fps. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
+      "notes": "Unified Wan 2.2 TI2V 5B Diffusers checkpoint. Supports both text-to-video and image-to-video at 24 fps. Wan's reference size for it is 1280x704 (720p); AbstractVision defaults to 832x480 for speed and memory, and any larger size stays available on request. AbstractVision runs it locally through the MLX-Gen Wan runtime on Apple Silicon; the full Diffusers snapshot remains cataloged as a fallback artifact.",
       "downloads": [
         {
           "key": "wan2.2-ti2v-5b",
@@ -4497,10 +4497,12 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 832
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 480
             },
             "fps": {
               "required": false,
@@ -4520,7 +4522,7 @@
             },
             "flow_shift": {
               "required": false,
-              "default": 5.0
+              "default": 3.0
             },
             "seed": {
               "required": false
@@ -4550,10 +4552,12 @@
               "required": false
             },
             "width": {
-              "required": false
+              "required": false,
+              "default": 832
             },
             "height": {
-              "required": false
+              "required": false,
+              "default": 480
             },
             "fps": {
               "required": false,
@@ -4573,7 +4577,7 @@
             },
             "flow_shift": {
               "required": false,
-              "default": 5.0
+              "default": 3.0
             },
             "seed": {
               "required": false

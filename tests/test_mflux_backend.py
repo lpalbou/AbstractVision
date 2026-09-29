@@ -347,6 +347,15 @@ class _FakeFIBOEdit:
         return _Generated()
 
 
+class _FakeWanVae:
+    """Stands in for mlx-gen's Wan VAE: only the decode entry point the backend reroutes."""
+
+    patch_size = 2
+
+    def iter_decode_normalized_latent_slices(self, latents, *, clear_cache_each_slice=False, tile_spatial=False):
+        return iter(())
+
+
 class _FakeWan:
     last_init = None
     last_generate = None
@@ -354,12 +363,17 @@ class _FakeWan:
     last_image_size = None
     last_image_corner_pixel = None
     last_image_center_pixel = None
+    # Whether the VAE decode entry point was the backend's tiled decode while
+    # generate_video ran (mlx-gen resolves it on the instance at decode time).
+    last_decode_tiled = None
 
     def __init__(self, **kwargs):
         _FakeWan.last_init = dict(kwargs)
+        self.vae = _FakeWanVae()
 
     def generate_video(self, **kwargs):
         _FakeWan.last_generate = dict(kwargs)
+        _FakeWan.last_decode_tiled = "iter_decode_normalized_latent_slices" in vars(self.vae)
         image_path = kwargs.get("image_path")
         _FakeWan.last_image_path_existed = (
             Path(image_path).exists() if image_path is not None else None
@@ -1445,8 +1459,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(_FakeWan.last_init["model_config"], "wan-t2v-a14b-config")
         self.assertEqual(_FakeWan.last_init["model_path"], str(snapshot))
-        self.assertEqual(_FakeWan.last_generate["width"], 1280)
-        self.assertEqual(_FakeWan.last_generate["height"], 720)
+        self.assertEqual(_FakeWan.last_generate["width"], 832)
+        self.assertEqual(_FakeWan.last_generate["height"], 480)
         self.assertEqual(_FakeWan.last_generate["fps"], 16)
         self.assertEqual(_FakeWan.last_generate["num_frames"], 81)
         self.assertEqual(_FakeWan.last_generate["num_inference_steps"], 40)
@@ -1455,6 +1469,128 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertNotIn("image_path", _FakeWan.last_generate)
         self.assertEqual(asset.metadata["base_model"], "wan2.2-t2v-a14b")
         self.assertEqual(asset.metadata["guidance_2"], 3.0)
+
+    def _run_one_wan_video(self, repo_id, request, *, wan_cls=None):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), repo_id)
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=repo_id))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux",
+                    return_value=self._lazy_import_return(),
+                ), patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux_wan",
+                    return_value=wan_cls or _FakeWan,
+                ):
+                    asset = backend.generate_video(request)
+        return backend, asset
+
+    def test_wan_ti2v_default_canvas_is_832x480_121_frames(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        _backend, asset = self._run_one_wan_video(
+            "Wan-AI/Wan2.2-TI2V-5B-Diffusers", VideoGenerationRequest(prompt="fox", seed=1)
+        )
+
+        generate = _FakeWan.last_generate
+        self.assertEqual((generate["width"], generate["height"]), (832, 480))
+        self.assertEqual(generate["num_frames"], 121)
+        self.assertEqual(generate["fps"], 24)
+        self.assertEqual(generate["num_inference_steps"], 50)
+        # Wan's 480p shift follows the smaller default canvas.
+        self.assertEqual(generate["flow_shift"], 3.0)
+        self.assertEqual((asset.metadata["width"], asset.metadata["height"]), (832, 480))
+
+    def test_wan_ti2v_caller_can_still_request_720p_canvas(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        self._run_one_wan_video(
+            "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+            VideoGenerationRequest(prompt="fox", width=1280, height=704, num_frames=81, fps=16, steps=30, seed=1),
+        )
+
+        generate = _FakeWan.last_generate
+        self.assertEqual((generate["width"], generate["height"]), (1280, 704))
+        self.assertEqual((generate["num_frames"], generate["fps"], generate["num_inference_steps"]), (81, 16, 30))
+        # Above 832x480 the shift is left to mlx-gen's 720p default.
+        self.assertNotIn("flow_shift", generate)
+
+    def test_wan_default_canvases_live_in_one_table(self):
+        from abstractvision.backends import mflux as mflux_mod
+
+        table = mflux_mod.WAN_VIDEO_DEFAULT_CANVASES
+        self.assertEqual(
+            set(table),
+            {mflux_mod.WAN_TI2V_MODEL_KEY, mflux_mod.WAN_T2V_A14B_MODEL_KEY, mflux_mod.WAN_I2V_A14B_MODEL_KEY},
+        )
+        for key, canvas in table.items():
+            model_def = mflux_mod._MFLUX_MODELS[key]
+            self.assertEqual(
+                (model_def.default_width, model_def.default_height, model_def.default_frames,
+                 model_def.default_fps, model_def.default_steps),
+                (canvas.width, canvas.height, canvas.frames, canvas.fps, canvas.steps),
+                key,
+            )
+            self.assertEqual((canvas.frames - 1) % 4, 0, key)
+
+    def test_packaged_capability_registry_follows_wan_default_canvases(self):
+        import json
+        from importlib import resources
+
+        from abstractvision.backends import mflux as mflux_mod
+
+        data = json.loads(
+            resources.files("abstractvision").joinpath("assets/vision_model_capabilities.json").read_text()
+        )
+        for repo_id, key in (
+            ("Wan-AI/Wan2.2-TI2V-5B-Diffusers", mflux_mod.WAN_TI2V_MODEL_KEY),
+            ("Wan-AI/Wan2.2-T2V-A14B", mflux_mod.WAN_T2V_A14B_MODEL_KEY),
+            ("Wan-AI/Wan2.2-I2V-A14B", mflux_mod.WAN_I2V_A14B_MODEL_KEY),
+        ):
+            canvas = mflux_mod.WAN_VIDEO_DEFAULT_CANVASES[key]
+            for task, spec in data["models"][repo_id]["tasks"].items():
+                params = spec["params"]
+                self.assertEqual(
+                    (params["width"]["default"], params["height"]["default"], params["num_frames"]["default"],
+                     params["fps"]["default"], params["steps"]["default"]),
+                    (canvas.width, canvas.height, canvas.frames, canvas.fps, canvas.steps),
+                    f"{repo_id} {task}",
+                )
+
+    def test_wan_video_decodes_tiled_by_default_and_restores_the_vae(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        backend, asset = self._run_one_wan_video(
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers", VideoGenerationRequest(prompt="fox", seed=1)
+        )
+
+        self.assertIs(_FakeWan.last_decode_tiled, True)
+        self.assertIs(asset.metadata["vae_tiling"], True)
+        # The warm A14B instance keeps its VAE, back on mlx-gen's own method.
+        self.assertNotIn("iter_decode_normalized_latent_slices", vars(backend._model.vae))
+
+    def test_wan_video_vae_tiling_can_be_switched_off_per_request(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        _backend, asset = self._run_one_wan_video(
+            "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+            VideoGenerationRequest(prompt="fox", seed=1, extra={"vae_tiling": "false"}),
+        )
+
+        self.assertIs(_FakeWan.last_decode_tiled, False)
+        self.assertIs(asset.metadata["vae_tiling"], False)
+        self.assertNotIn("vae_tiling", _FakeWan.last_generate)
+
+    def test_wan_video_rejects_unreadable_vae_tiling_value(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        with self.assertRaisesRegex(ValueError, "vae_tiling"):
+            self._run_one_wan_video(
+                "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+                VideoGenerationRequest(prompt="fox", seed=1, extra={"vae_tiling": "sometimes"}),
+            )
 
     def _run_wan_videos_recording_memory_policy(self, repo_id, wan_cls, requests):
         """Run requests through a Wan route, recording cache-limit and model lifecycle events."""
@@ -1754,8 +1890,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(_FakeWan.last_init["model_config"], "wan-i2v-a14b-config")
         self.assertEqual(_FakeWan.last_init["model_path"], str(snapshot))
-        self.assertEqual(_FakeWan.last_generate["width"], 1280)
-        self.assertEqual(_FakeWan.last_generate["height"], 720)
+        self.assertEqual(_FakeWan.last_generate["width"], 832)
+        self.assertEqual(_FakeWan.last_generate["height"], 480)
         self.assertEqual(_FakeWan.last_generate["fps"], 16)
         self.assertEqual(_FakeWan.last_generate["num_frames"], 81)
         self.assertEqual(_FakeWan.last_generate["num_inference_steps"], 40)
@@ -2626,8 +2762,10 @@ class TestMFluxVisionBackend(unittest.TestCase):
         )
         self.assertEqual(tuple(t2v_models[0].capabilities), ("text_to_video",))
         self.assertEqual(t2v_models[0].raw["base_model"], "wan2.2-t2v-a14b")
-        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["width"], 1280)
-        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["height"], 720)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["width"], 832)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["height"], 480)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["num_frames"], 81)
+        self.assertEqual(t2v_models[0].raw["parameter_defaults"]["fps"], 16)
         self.assertEqual(t2v_models[0].raw["parameter_defaults"]["guidance_2"], 3.0)
         self.assertEqual(
             [m.id for m in i2v_models],

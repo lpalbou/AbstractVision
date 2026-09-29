@@ -1581,6 +1581,8 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
     extra: Dict[str, Any] = {}
     if getattr(args, "max_sequence_length", None) is not None:
         extra["max_sequence_length"] = int(args.max_sequence_length)
+    if getattr(args, "vae_tiling", True) is False:
+        extra["vae_tiling"] = False
     lora_adapters = _lora_adapters_from_mapping(vars(args))
     count, seeds = _seed_values_from_args(args)
     progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", True)))
@@ -1637,6 +1639,8 @@ def _cmd_i2v(args: argparse.Namespace) -> int:
     extra: Dict[str, Any] = {}
     if getattr(args, "max_sequence_length", None) is not None:
         extra["max_sequence_length"] = int(args.max_sequence_length)
+    if getattr(args, "vae_tiling", True) is False:
+        extra["vae_tiling"] = False
     lora_adapters = _lora_adapters_from_mapping(vars(args))
     count, seeds = _seed_values_from_args(args)
     progress = _CliVideoProgress(enabled=bool(getattr(args, "progress", True)))
@@ -3568,6 +3572,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable video generation progress output.",
     )
+    t2v.add_argument(
+        "--no-vae-tiling",
+        dest="vae_tiling",
+        action="store_false",
+        default=True,
+        help="Wan video (MLX-Gen): decode the whole frame at once instead of in overlapping tiles. "
+        "Faster decode, much higher peak memory.",
+    )
     _add_batch_cli_flags(t2v)
     _add_lora_cli_flags(t2v)
     t2v.set_defaults(_fn=_cmd_t2v)
@@ -3614,6 +3626,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="progress",
         action="store_false",
         help="Disable video generation progress output.",
+    )
+    i2v.add_argument(
+        "--no-vae-tiling",
+        dest="vae_tiling",
+        action="store_false",
+        default=True,
+        help="Wan video (MLX-Gen): decode the whole frame at once instead of in overlapping tiles. "
+        "Faster decode, much higher peak memory.",
     )
     _add_batch_cli_flags(i2v)
     _add_lora_cli_flags(i2v)

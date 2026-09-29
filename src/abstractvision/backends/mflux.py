@@ -62,12 +62,35 @@ WAN_T2V_A14B_MODEL_KEY = "wan2.2-t2v-a14b"
 WAN_I2V_A14B_MODEL_KEY = "wan2.2-i2v-a14b"
 SEEDVR2_3B_MODEL_KEY = "seedvr2-3b"
 SEEDVR2_7B_MODEL_KEY = "seedvr2-7b"
-WAN_DEFAULT_WIDTH = 1280
-WAN_DEFAULT_HEIGHT = 704
-WAN_DEFAULT_FRAMES = 121
-WAN_DEFAULT_STEPS = 50
-WAN_DEFAULT_FPS = 24
 WAN_DEFAULT_GUIDANCE = 5.0
+
+
+@dataclass(frozen=True)
+class WanVideoCanvas:
+    """Default generation size of one Wan video model."""
+
+    width: int
+    height: int
+    frames: int
+    fps: int
+    steps: int
+
+
+# Default generation canvas per Wan video model: the ONE place these defaults
+# live (the model table, capability discovery and the packaged capability
+# registry all follow it). Chosen for speed and memory: a 832x480 canvas has
+# about 45% of the tokens of 720p, so each denoising step runs several times
+# faster and the VAE decode needs far less memory. Every request can override
+# width, height, num_frames, fps and steps.
+WAN_VIDEO_DEFAULT_CANVASES: Dict[str, WanVideoCanvas] = {
+    # 5 s at 24 fps. Wan's reference TI2V size is 1280x704; 832x480 is the
+    # smallest canvas AbstractVision accepts for it.
+    WAN_TI2V_MODEL_KEY: WanVideoCanvas(width=832, height=480, frames=121, fps=24, steps=50),
+    # 5 s at 16 fps, Wan's 480p size for the A14B experts.
+    WAN_T2V_A14B_MODEL_KEY: WanVideoCanvas(width=832, height=480, frames=81, fps=16, steps=40),
+    WAN_I2V_A14B_MODEL_KEY: WanVideoCanvas(width=832, height=480, frames=81, fps=16, steps=40),
+}
+WAN_TI2V_480P_FLOW_SHIFT = 3.0
 WAN_TI2V_PRACTICAL_MIN_WIDTH = 832
 WAN_TI2V_PRACTICAL_MIN_HEIGHT = 480
 WAN_A14B_PROOF_WIDTH = 480
@@ -105,6 +128,26 @@ def _set_mlx_cache_limit(limit_bytes: int) -> Optional[int]:
     except ImportError:
         return None
     return int(mx.set_cache_limit(int(limit_bytes)))
+
+
+def _wan_vae_tiling_requested(value: Any) -> bool:
+    """Resolve the ``vae_tiling`` request option (default on)."""
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on", "auto"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"vae_tiling must be true or false (got {value!r}).")
+
+
+def _install_wan_tiled_decode(model: Any) -> Callable[[], None]:
+    from .wan_vae_tiling import install_tiled_decode
+
+    return install_tiled_decode(model.vae)
 
 
 def _clear_mlx_cache() -> None:
@@ -241,10 +284,12 @@ class _MFluxModelDef:
     supports_negative_prompt: bool = False
     supports_guidance_override: bool = True
     image_edit_catalog_rank: int = 50
-    default_width: int = WAN_DEFAULT_WIDTH
-    default_height: int = WAN_DEFAULT_HEIGHT
-    default_frames: int = WAN_DEFAULT_FRAMES
-    default_fps: int = WAN_DEFAULT_FPS
+    # Video canvas defaults: only Wan video models set them, from
+    # WAN_VIDEO_DEFAULT_CANVASES.
+    default_width: Optional[int] = None
+    default_height: Optional[int] = None
+    default_frames: Optional[int] = None
+    default_fps: Optional[int] = None
     default_guidance_2: Optional[float] = None
     default_flow_shift: Optional[float] = None
 
@@ -428,26 +473,30 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         key=WAN_TI2V_MODEL_KEY,
         config_method="wan2_2_ti2v_5b",
         family="wan-video",
-        default_steps=WAN_DEFAULT_STEPS,
+        default_steps=WAN_VIDEO_DEFAULT_CANVASES[WAN_TI2V_MODEL_KEY].steps,
         default_guidance=WAN_DEFAULT_GUIDANCE,
         supports_negative_prompt=True,
         supports_guidance_override=True,
-        default_width=1280,
-        default_height=704,
-        default_flow_shift=5.0,
+        default_width=WAN_VIDEO_DEFAULT_CANVASES[WAN_TI2V_MODEL_KEY].width,
+        default_height=WAN_VIDEO_DEFAULT_CANVASES[WAN_TI2V_MODEL_KEY].height,
+        default_frames=WAN_VIDEO_DEFAULT_CANVASES[WAN_TI2V_MODEL_KEY].frames,
+        default_fps=WAN_VIDEO_DEFAULT_CANVASES[WAN_TI2V_MODEL_KEY].fps,
+        # The 480p flow shift for the 832x480 default; canvases above 832x480
+        # keep mlx-gen's 720p default (5.0) unless flow_shift is set.
+        default_flow_shift=WAN_TI2V_480P_FLOW_SHIFT,
     ),
     WAN_T2V_A14B_MODEL_KEY: _MFluxModelDef(
         key=WAN_T2V_A14B_MODEL_KEY,
         config_method="wan2_2_t2v_a14b",
         family="wan-video",
-        default_steps=40,
+        default_steps=WAN_VIDEO_DEFAULT_CANVASES[WAN_T2V_A14B_MODEL_KEY].steps,
         default_guidance=4.0,
         supports_negative_prompt=True,
         supports_guidance_override=True,
-        default_width=1280,
-        default_height=720,
-        default_frames=81,
-        default_fps=16,
+        default_width=WAN_VIDEO_DEFAULT_CANVASES[WAN_T2V_A14B_MODEL_KEY].width,
+        default_height=WAN_VIDEO_DEFAULT_CANVASES[WAN_T2V_A14B_MODEL_KEY].height,
+        default_frames=WAN_VIDEO_DEFAULT_CANVASES[WAN_T2V_A14B_MODEL_KEY].frames,
+        default_fps=WAN_VIDEO_DEFAULT_CANVASES[WAN_T2V_A14B_MODEL_KEY].fps,
         default_guidance_2=3.0,
         default_flow_shift=3.0,
     ),
@@ -455,14 +504,14 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         key=WAN_I2V_A14B_MODEL_KEY,
         config_method="wan2_2_i2v_a14b",
         family="wan-video",
-        default_steps=40,
+        default_steps=WAN_VIDEO_DEFAULT_CANVASES[WAN_I2V_A14B_MODEL_KEY].steps,
         default_guidance=3.5,
         supports_negative_prompt=True,
         supports_guidance_override=True,
-        default_width=1280,
-        default_height=720,
-        default_frames=81,
-        default_fps=16,
+        default_width=WAN_VIDEO_DEFAULT_CANVASES[WAN_I2V_A14B_MODEL_KEY].width,
+        default_height=WAN_VIDEO_DEFAULT_CANVASES[WAN_I2V_A14B_MODEL_KEY].height,
+        default_frames=WAN_VIDEO_DEFAULT_CANVASES[WAN_I2V_A14B_MODEL_KEY].frames,
+        default_fps=WAN_VIDEO_DEFAULT_CANVASES[WAN_I2V_A14B_MODEL_KEY].fps,
         default_guidance_2=3.5,
         default_flow_shift=3.0,
     ),
@@ -3098,7 +3147,7 @@ class MFluxVisionBackend(VisionBackend):
             longer = max(width, height)
             shorter = min(width, height)
             if shorter <= 480 and longer <= 832:
-                flow_shift = 3.0
+                flow_shift = WAN_TI2V_480P_FLOW_SHIFT
         if flow_shift is not None:
             flow_shift = float(flow_shift)
             extra["flow_shift"] = flow_shift
@@ -4037,6 +4086,7 @@ class MFluxVisionBackend(VisionBackend):
             else model_def.default_guidance
         )
         max_sequence_length = extra.pop("max_sequence_length", None)
+        vae_tiling = _wan_vae_tiling_requested(extra.pop("vae_tiling", None))
         guidance_2 = (
             request.guidance_2
             if request.guidance_2 is not None
@@ -4088,6 +4138,10 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["release_denoisers_before_decode"] = True
 
         previous_cache_limit = _set_mlx_cache_limit(_wan_video_mlx_cache_limit_bytes())
+        # The VAE decode is the run's memory peak; decoding in overlapping
+        # spatial tiles bounds it by the tile instead of the frame (see
+        # wan_vae_tiling). extra={"vae_tiling": False} decodes untiled.
+        restore_decode = _install_wan_tiled_decode(model) if vae_tiling else None
         try:
             try:
                 generated = model.generate_video(**kwargs)
@@ -4100,6 +4154,8 @@ class MFluxVisionBackend(VisionBackend):
             data = self._read_generated_video_bytes(generated)
             mlx_metadata = self._generated_video_metadata(generated)
         finally:
+            if restore_decode is not None:
+                restore_decode()
             if previous_cache_limit is not None:
                 _set_mlx_cache_limit(previous_cache_limit)
             if release_denoisers:
@@ -4133,6 +4189,7 @@ class MFluxVisionBackend(VisionBackend):
                 **(_extract_lora_metadata(mlx_metadata) if mlx_metadata else {}),
                 **({"guidance_2": float(guidance_2)} if guidance_2 is not None else {}),
                 **({"flow_shift": float(flow_shift)} if flow_shift is not None else {}),
+                "vae_tiling": bool(vae_tiling),
                 **(
                     {"conditioning_image": conditioning_image_metadata}
                     if conditioning_image_metadata
@@ -4167,8 +4224,8 @@ class MFluxVisionBackend(VisionBackend):
         try:
             conditioning_path, conditioning_metadata = self._prepare_i2v_conditioning_image(
                 tmp_path,
-                width=int(request.width) if request.width is not None else WAN_DEFAULT_WIDTH,
-                height=int(request.height) if request.height is not None else WAN_DEFAULT_HEIGHT,
+                width=int(request.width),
+                height=int(request.height),
             )
             return self._generate_video_impl(
                 request,
