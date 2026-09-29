@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import inspect
+import logging
 import os
 import shutil
 import subprocess
@@ -40,6 +41,9 @@ from ..types import (
     VisionBackendCapabilities,
 )
 from .base_backend import VisionBackend
+
+
+logger = logging.getLogger(__name__)
 
 
 def _require_optional_dep(name: str, install_hint: str) -> None:
@@ -659,6 +663,85 @@ def _round_up_to_multiple(value: Optional[int], multiple_of: Any) -> Optional[in
     return current + (step - remainder)
 
 
+_GIB = 1024**3
+
+
+def _pipe_module_bytes(pipe: Any, torch: Any, dtype: Any = None) -> int:
+    """Bytes of every torch module of a Diffusers pipeline (parameters and buffers), counted at
+    `dtype` for floating-point tensors when given (what they will occupy after the cast)."""
+
+    components = getattr(pipe, "components", None)
+    if not isinstance(components, dict):
+        return 0
+    nn_module = getattr(getattr(torch, "nn", None), "Module", None)
+    target_size = None
+    if dtype is not None:
+        try:
+            target_size = torch.tensor([], dtype=dtype).element_size()
+        except Exception:
+            target_size = None
+    total = 0
+    seen: set[int] = set()
+    for component in components.values():
+        if nn_module is None or not isinstance(component, nn_module):
+            continue
+        tensors = list(component.parameters()) + list(component.buffers())
+        for t in tensors:
+            if id(t) in seen:
+                continue
+            seen.add(id(t))
+            size = t.element_size()
+            if target_size is not None and t.is_floating_point():
+                size = target_size
+            total += int(t.numel()) * int(size)
+    return total
+
+
+def _cuda_offload_decision(torch: Any, pipe: Any, device: str, dtype: Any, mode: str) -> Tuple[bool, str]:
+    """Whether to load a pipeline with Diffusers' model CPU offload instead of moving it whole to
+    the GPU, and why.
+
+    `mode`: "model" always offloads on CUDA, "none" never, "auto" (default) offloads when the
+    pipeline's weights do not fit the GPU's free memory minus a working reserve (the larger of
+    1.5 GiB and 10% of the card). Measured on a 16 GB Quadro RTX 5000 (framework backlog 0989):
+    FLUX.2 [klein] 4B in float16 is 14.9 GiB of weights and failed with CUDA out of memory when
+    moved whole; with model CPU offload (one component on the GPU at a time) it generated
+    768x768 in 17 s with a 7.8 GiB peak."""
+
+    d = str(device or "").strip().lower()
+    m = str(mode or "auto").strip().lower()
+    if not d.startswith("cuda") or m in {"none", "off", "false", "no"}:
+        return False, ""
+    if not callable(getattr(pipe, "enable_model_cpu_offload", None)):
+        return False, ""
+    if m in {"model", "on", "true", "yes"}:
+        return True, "model CPU offload requested"
+    try:
+        index = torch.device(d).index
+        free, total = torch.cuda.mem_get_info(index if index is not None else 0)
+    except Exception:
+        return False, ""
+    need = _pipe_module_bytes(pipe, torch, dtype)
+    reserve = max(int(1.5 * _GIB), int(0.10 * total))
+    if need > free - reserve:
+        return True, (
+            f"the pipeline's weights ({need / _GIB:.1f} GiB) do not fit the GPU's free memory "
+            f"({free / _GIB:.1f} GiB, keeping {reserve / _GIB:.1f} GiB for activations)"
+        )
+    return False, ""
+
+
+def _pipe_compute_device(pipe: Any) -> Any:
+    """Where the pipeline computes: its execution device under model CPU offload (whose
+    `pipe.device` reports the CPU the idle weights wait on), else `pipe.device`."""
+
+    if getattr(pipe, "_abstractvision_cpu_offload", False):
+        device = getattr(pipe, "_execution_device", None)
+        if device is not None:
+            return device
+    return getattr(pipe, "device", None)
+
+
 def _move_pipe_to_device(pipe: Any, *, device: str, dtype: Any = None) -> Any:
     last_error: Optional[Exception] = None
     if dtype is not None:
@@ -930,6 +1013,9 @@ class HuggingFaceDiffusersBackendConfig:
     variant: Optional[str] = None
     use_safetensors: bool = True
     low_cpu_mem_usage: bool = True
+    # CUDA only: "auto" loads with Diffusers' model CPU offload when the pipeline does not fit the
+    # GPU's free memory (see `_cuda_offload_decision`), "model" always, "none" never.
+    cpu_offload: str = "auto"
 
 
 class HuggingFaceDiffusersVisionBackend(VisionBackend):
@@ -2534,9 +2620,22 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             else:
                 raise ValueError(f"Unknown pipeline kind: {kind!r}")
 
-        pipe = _move_pipe_to_device(
-            pipe, device=str(device), dtype=None if gguf_transformer is not None else torch_dtype
+        move_dtype = None if gguf_transformer is not None else torch_dtype
+        offload, offload_reason = _cuda_offload_decision(
+            torch, pipe, str(device), move_dtype, str(getattr(self._cfg, "cpu_offload", "auto") or "auto")
         )
+        if offload:
+            try:
+                if move_dtype is not None:
+                    pipe = pipe.to(dtype=move_dtype)
+                pipe.enable_model_cpu_offload(device=str(device))
+                setattr(pipe, "_abstractvision_cpu_offload", True)
+                logger.info("Diffusers: model CPU offload on %s: %s", device, offload_reason)
+            except Exception as exc:
+                logger.warning("Diffusers: model CPU offload failed (%s); moving the whole pipeline to %s", exc, device)
+                offload = False
+        if not offload:
+            pipe = _move_pipe_to_device(pipe, device=str(device), dtype=move_dtype)
         template_snapshot = snap
         if template_snapshot is None:
             candidate = Path(str(load_model_id)).expanduser()
@@ -2755,6 +2854,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 torch, self._cfg.torch_dtype
             ) or _default_torch_dtype_for_device(torch, device)
 
+        if getattr(pipe, "_abstractvision_cpu_offload", False):
+            # An offloaded pipeline never fits on the GPU whole: moving it for a dtype retry would OOM.
+            return None
         candidates: list[Any] = []
         if current_dtype == getattr(torch, "bfloat16", object()):
             candidates.append(torch.float16)
@@ -2957,11 +3059,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             try:
                 current_pipe = self._pipelines.get("t2i", pipe)
                 dtype = getattr(current_pipe, "dtype", None)
-                device = getattr(current_pipe, "device", None)
+                device = _pipe_compute_device(current_pipe)
                 if dtype is not None:
                     meta["dtype"] = str(dtype)
                 if device is not None:
                     meta["device"] = str(device)
+                if getattr(current_pipe, "_abstractvision_cpu_offload", False):
+                    meta["cpu_offload"] = "model"
             except Exception:
                 pass
             return GeneratedAsset(
@@ -3120,11 +3224,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             try:
                 current_pipe = self._pipelines.get(kind, pipe)
                 dtype = getattr(current_pipe, "dtype", None)
-                device = getattr(current_pipe, "device", None)
+                device = _pipe_compute_device(current_pipe)
                 if dtype is not None:
                     meta["dtype"] = str(dtype)
                 if device is not None:
                     meta["device"] = str(device)
+                if getattr(current_pipe, "_abstractvision_cpu_offload", False):
+                    meta["cpu_offload"] = "model"
             except Exception:
                 pass
             return GeneratedAsset(
@@ -3218,11 +3324,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             try:
                 current_pipe = self._pipelines.get("t2v", pipe)
                 dtype = getattr(current_pipe, "dtype", None)
-                device = getattr(current_pipe, "device", None)
+                device = _pipe_compute_device(current_pipe)
                 if dtype is not None:
                     meta["dtype"] = str(dtype)
                 if device is not None:
                     meta["device"] = str(device)
+                if getattr(current_pipe, "_abstractvision_cpu_offload", False):
+                    meta["cpu_offload"] = "model"
             except Exception:
                 pass
             return GeneratedAsset(

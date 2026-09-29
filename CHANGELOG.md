@@ -16,6 +16,14 @@
   and that build needs MSVC (an elevated install), so `abstractcore[gpu]` could not install on
   Windows with wheels. Diffusers on PyTorch's CUDA build covers image and video there; Linux and
   macOS keep stable-diffusion.cpp in `all-gpu` (framework backlog 0988).
+- Diffusers on CUDA: a pipeline whose weights do not fit the GPU's free memory (minus a working
+  reserve of max(1.5 GiB, 10% of the card)) now loads with Diffusers' model CPU offload (one
+  component on the GPU at a time) instead of being moved whole and failing with CUDA out of memory.
+  Measured on a 16 GB Quadro RTX 5000 (framework backlog 0989): FLUX.2 [klein] 4B in float16
+  (14.9 GiB of weights) went from OOM to 768x768 in about 17 s at 4 steps, 7.8-8.3 GiB peak.
+  `HuggingFaceDiffusersBackendConfig(cpu_offload="auto" | "model" | "none")`; the result metadata
+  reports the execution device (`cuda:0`, not the CPU the idle weights wait on) and
+  `cpu_offload: "model"`.
 
 ## 0.3.31 - 2026-09-29
 
