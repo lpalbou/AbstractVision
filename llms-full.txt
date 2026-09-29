@@ -4516,7 +4516,8 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 - Install profiles: `all-gpu` no longer installs stable-diffusion.cpp on Windows
   (`stable-diffusion-cpp-python; sys_platform != 'win32'`). PyPI ships it as a source build only,
   and that build needs MSVC (an elevated install), so `abstractcore[gpu]` could not install on
-  Windows with wheels. Diffusers on PyTorch's CUDA build covers image and video there; Linux and
+  Windows with wheels. Diffusers on PyTorch's CUDA build covers image generation there (not yet validated on Windows
+  hardware); Linux and
   macOS keep stable-diffusion.cpp in `all-gpu` (framework backlog 0988).
 - Diffusers on CUDA: a pipeline whose weights do not fit the GPU's free memory (minus a working
   reserve of max(1.5 GiB, 10% of the card)) now loads with Diffusers' model CPU offload (one
@@ -5038,7 +5039,7 @@ all-apple = [
 
 # Full NVIDIA profile: Diffusers/torch + stable-diffusion.cpp, no MLX. On Windows,
 # stable-diffusion-cpp-python is left out: PyPI ships only its source build, which needs MSVC
-# (elevated install); Diffusers on PyTorch's CUDA build covers image and video there.
+# (elevated install); Diffusers on PyTorch's CUDA build covers image generation there.
 all-gpu = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",

@@ -219,7 +219,7 @@ all-apple = [
 
 # Full NVIDIA profile: Diffusers/torch + stable-diffusion.cpp, no MLX. On Windows,
 # stable-diffusion-cpp-python is left out: PyPI ships only its source build, which needs MSVC
-# (elevated install); Diffusers on PyTorch's CUDA build covers image and video there.
+# (elevated install); Diffusers on PyTorch's CUDA build covers image generation there.
 all-gpu = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
