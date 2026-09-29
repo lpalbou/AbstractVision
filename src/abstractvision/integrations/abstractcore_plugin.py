@@ -1737,17 +1737,24 @@ class _AbstractVisionCapability:
         binding = self._resolve_backend_binding(provider=provider, model=model)
         self._ensure_local_residency_supported(binding)
         backend = binding["backend"]
+        with self._state_lock:
+            existing = self._loaded_models.get(tuple(binding["backend_key"]))
+            already_loaded = bool(existing and existing.get("loaded"))
         preload = getattr(backend, "preload", None)
         if callable(preload):
             preload()
         loaded_at = time.time()
-        return self._record_loaded_model(
+        record = self._record_loaded_model(
             binding,
             task=task,
             resident=True,
             source="explicit_preload",
             loaded_at=loaded_at,
         )
+        # Per-operation fact (not stored in the loaded-model record): whether this call loaded the
+        # model or found it already in memory. Core and Runtime read it as the load's `loaded_new`.
+        record["loaded_new"] = not already_loaded
+        return record
 
     def list_loaded_models(self, filters: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
         filter_map = self._normalize_loaded_filters(filters)

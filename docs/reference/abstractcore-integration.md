@@ -314,6 +314,10 @@ returns the explicit pinned subset.
 Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,
 `resident`, and a `tasks` list of observed task aliases using that loaded backend.
 
+`load_resident_model()` returns the same entry plus `loaded_new`: `true` when that call loaded the
+model, `false` when it was already in memory. AbstractCore and AbstractRuntime use it to report the
+load as `loaded` or `already_loaded`.
+
 For deterministic unload behavior, prefer:
 
 - `load_id`, or

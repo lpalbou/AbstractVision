@@ -4173,6 +4173,10 @@ returns the explicit pinned subset.
 Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,
 `resident`, and a `tasks` list of observed task aliases using that loaded backend.
 
+`load_resident_model()` returns the same entry plus `loaded_new`: `true` when that call loaded the
+model, `false` when it was already in memory. AbstractCore and AbstractRuntime use it to report the
+load as `loaded` or `already_loaded`.
+
 For deterministic unload behavior, prefer:
 
 - `load_id`, or
@@ -4504,8 +4508,6 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
 
-## Unreleased
-
 ## 0.3.33 - 2026-09-29
 
 - Diffusers on CUDA: `cpu_offload="auto"` falls back to Diffusers' sequential CPU offload when the
@@ -4518,6 +4520,14 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
   The whole-pipeline and model CPU offload placements are unchanged when they fit.
 - `HuggingFaceDiffusersBackendConfig(cpu_offload=...)` accepts `"sequential"` to always use
   sequential CPU offload; `"model"` and `"none"` keep their meaning.
+- Diffusers: unloading a model now releases its memory. The pipeline (including its CPU offload
+  hooks) is freed when the unload returns, and on Linux the freed memory is returned to the
+  operating system. Measured on CUDA (FLUX.2 [klein] 4B with model CPU offload): 0.86 GB still
+  held after the unload, down from 16.3 GB. This matters when a host such as AbstractGateway
+  unloads an image model to make room for the next one.
+- AbstractCore plugin: `load_resident_model` reports `loaded_new` — `true` when the call loaded the
+  model, `false` when it was already in memory — so AbstractCore and AbstractRuntime report a fresh
+  image-model load as `loaded` instead of `already_loaded`.
 
 ## 0.3.32 - 2026-09-29
 

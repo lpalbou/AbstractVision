@@ -994,8 +994,20 @@ print("ok")
             self.assertEqual(state["load_id"], "diffusers/runwayml/stable-diffusion-v1-5")
             self.assertTrue(state["resident"])
             self.assertEqual(state["state"], "resident")
+            # A fresh load reports loaded_new=True; loading the same model again reports False,
+            # and the per-operation flag is not stored in the listed records.
+            self.assertIs(state["loaded_new"], True)
+            again = cap.load_resident_model(
+                {
+                    "task": "image_generation",
+                    "provider": "diffusers",
+                    "model": "runwayml/stable-diffusion-v1-5",
+                }
+            )
+            self.assertIs(again["loaded_new"], False)
 
             loaded = cap.list_loaded_models()
+            self.assertNotIn("loaded_new", loaded[0])
             resident = cap.list_resident_models()
             self.assertEqual(len(loaded), 1)
             self.assertEqual(len(resident), 1)
@@ -1016,7 +1028,7 @@ print("ok")
             self.assertEqual(out["state"], "unloaded")
             self.assertFalse(out["resident"])
 
-        self.assertEqual(backend.preloaded, 1)
+        self.assertEqual(backend.preloaded, 2)
         self.assertEqual(backend.unloaded, 1)
         self.assertEqual(cap.list_loaded_models(), [])
 
