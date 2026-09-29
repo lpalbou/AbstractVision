@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from contextlib import contextmanager
@@ -707,6 +708,38 @@ def _pipe_module_bytes(pipe: Any, torch: Any, dtype: Any = None) -> int:
     return sum(_pipe_component_bytes(pipe, torch, dtype).values())
 
 
+def _release_pipeline_adapters(pipe: Any) -> None:
+    """Best-effort LoRA release; runs in its own frame so no local reference
+    to `pipe` outlives the call (see `_unload_locked`)."""
+    for name in ("unfuse_lora", "unload_lora_weights"):
+        try:
+            method = getattr(pipe, name, None)
+            if callable(method):
+                method()
+        except Exception:
+            pass
+
+
+def _return_freed_host_memory() -> None:
+    """Hand freed heap pages back to the OS after an unload (glibc only).
+
+    glibc keeps freed allocations in its arenas, so a process that unloaded a
+    15 GB pipeline still shows (and holds) most of it: another process (the
+    one-shot image worker, LM Studio) then runs out of host RAM. `malloc_trim(0)`
+    returns them. No-op elsewhere (macOS/Windows allocators, musl)."""
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL("libc.so.6")
+        trim = getattr(libc, "malloc_trim", None)
+        if trim is not None:
+            trim(0)
+    except Exception:
+        pass
+
+
 def _cuda_offload_decision(torch: Any, pipe: Any, device: str, dtype: Any, mode: str) -> Tuple[str, str]:
     """How to place a pipeline on a CUDA device, and why: "" (move it whole to the GPU), "model"
     (Diffusers' model CPU offload) or "sequential" (Diffusers' sequential CPU offload).
@@ -1144,24 +1177,17 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self._rapid_transformer_key = None
         self._rapid_transformer = None
 
-        # Drop references and aggressively collect.
-        try:
-            for p in pipes:
-                try:
-                    # Try to free adapter weights.
-                    unfuse = getattr(p, "unfuse_lora", None)
-                    if callable(unfuse):
-                        unfuse()
-                except Exception:
-                    pass
-                try:
-                    unload = getattr(p, "unload_lora_weights", None)
-                    if callable(unload):
-                        unload()
-                except Exception:
-                    pass
-        finally:
-            pipes = []
+        # Drop references and aggressively collect. Nothing in THIS frame may
+        # still point at a pipeline when `gc.collect()` runs: a loop variable
+        # or a bound method (`unfuse_lora`, `unload_lora_weights`) kept the last
+        # pipeline alive, its reference cycles (accelerate offload hooks)
+        # survived the collect, and the weights stayed in memory after an
+        # unload that reported success. Measured on CUDA (FLUX.2 klein 4B,
+        # model CPU offload): 18.8 GB RSS after the unload, 6.2 GB after one
+        # more collect, 1.6 GB after returning the freed heap (framework
+        # backlog 0991). The adapter release runs in its own frame for that reason.
+        while pipes:
+            _release_pipeline_adapters(pipes.pop())
 
         try:
             import gc
@@ -1169,6 +1195,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             gc.collect()
         except Exception:
             pass
+        _return_freed_host_memory()
 
         try:
             torch = _lazy_import_torch()

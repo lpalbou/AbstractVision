@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Diffusers: an unload now frees the pipeline. The unload collected garbage while its own loop
+  variable and the bound `unfuse_lora` / `unload_lora_weights` methods still referenced the last
+  pipeline, so the pipeline's reference cycles (accelerate CPU offload hooks) survived and the
+  weights stayed in memory after an unload that reported success; glibc also kept the freed heap.
+  Measured on CUDA (FLUX.2 [klein] 4B, model CPU offload): 16.3 GB still held after the unload,
+  0.86 GB with the fix. On Linux the unload also returns the freed heap to the OS (`malloc_trim`).
+  In the Gateway, the leaked copy plus the next request's one-shot worker exhausted host RAM and the
+  kernel killed the Gateway (framework backlog 0991).
+
 ## 0.3.33 - 2026-09-29
 
 - Diffusers on CUDA: `cpu_offload="auto"` falls back to Diffusers' sequential CPU offload when the
