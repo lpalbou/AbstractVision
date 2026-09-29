@@ -11,6 +11,11 @@
   `gpu` and `all-gpu` installs are now that much smaller and install on Linux with an older glibc.
   MLX-Gen still comes with `apple`, `all-apple` and `all`; to try it on Linux, install the explicit
   `mlx-gen` extra (it installs there but is not validated; see backlog 030).
+- Install profiles: `all-gpu` no longer installs stable-diffusion.cpp on Windows
+  (`stable-diffusion-cpp-python; sys_platform != 'win32'`). PyPI ships it as a source build only,
+  and that build needs MSVC (an elevated install), so `abstractcore[gpu]` could not install on
+  Windows with wheels. Diffusers on PyTorch's CUDA build covers image and video there; Linux and
+  macOS keep stable-diffusion.cpp in `all-gpu` (framework backlog 0988).
 
 ## 0.3.31 - 2026-09-29
 

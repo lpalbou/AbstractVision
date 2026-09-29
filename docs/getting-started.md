@@ -95,7 +95,7 @@ Optional extras:
 | `local` | Convenience extra for the Diffusers + `sdcpp` local runtime stack. Add `mlx-gen` separately, or use `all` / `all-apple`, when you also want MLX-Gen. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
 | `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MLX-Gen. |
-| `all-gpu` | Aggregate NVIDIA/Linux profile: Diffusers/Torch + stable-diffusion.cpp bindings, no MLX. |
+| `all-gpu` | Aggregate NVIDIA profile: Diffusers/Torch + stable-diffusion.cpp bindings (left out on Windows: PyPI has only its source build, which needs MSVC), no MLX. |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 
 Contributor-only extras:

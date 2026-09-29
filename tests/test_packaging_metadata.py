@@ -148,7 +148,11 @@ class TestPackagingMetadata(unittest.TestCase):
         self.assertEqual(diffusers, gpu)
         self.assertEqual(local | mflux, all_runtime)
         self.assertEqual(apple, all_apple)
-        self.assertEqual(local, all_gpu)
+        # all-gpu is `local` with stable-diffusion.cpp marked out on Windows (backlog 0988).
+        self.assertEqual(
+            {r for r in local if not r.startswith("stable-diffusion-cpp-python")},
+            {r for r in all_gpu if not r.startswith("stable-diffusion-cpp-python")},
+        )
         self.assertEqual(diffusers_dev, huggingface_dev)
 
         contributor_only = {
@@ -197,13 +201,32 @@ class TestPackagingMetadata(unittest.TestCase):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         expected = "stable-diffusion-cpp-python>=0.4.2,<0.4.6"
 
-        for extra in ("sdcpp", "local", "apple", "all", "all-apple", "all-gpu"):
+        for extra in ("sdcpp", "local", "apple", "all", "all-apple"):
             self.assertIn(expected, _optional_dependency_requirements(pyproject, extra))
+        self.assertIn(
+            expected + "; sys_platform != 'win32'",
+            _optional_dependency_requirements(pyproject, "all-gpu"),
+        )
 
         self.assertNotIn(
             "stable-diffusion-cpp-python",
             _dependency_names(_optional_dependency_requirements(pyproject, "gpu")),
         )
+
+    def test_nvidia_gpu_profiles_resolve_with_wheels_only_on_windows(self):
+        # Backlog 0988: PyPI ships stable-diffusion-cpp-python as a source build only, and that
+        # build needs MSVC (an elevated install), so `abstractcore[gpu]` could not resolve with
+        # wheels on Windows. The NVIDIA profiles leave it out there; every other platform keeps it.
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        for extra in ("gpu", "all-gpu"):
+            for requirement in _optional_dependency_requirements(pyproject, extra):
+                if requirement.startswith("stable-diffusion-cpp-python"):
+                    self.assertTrue(
+                        requirement.endswith("; sys_platform != 'win32'"),
+                        f"{extra}: {requirement} must be marked out on Windows",
+                    )
+        all_gpu = _optional_dependency_requirements(pyproject, "all-gpu")
+        self.assertIn("stable-diffusion-cpp-python", _dependency_names(all_gpu))
 
     def test_lightweight_marker_extras_and_entry_point_exist(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

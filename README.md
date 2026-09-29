@@ -78,7 +78,7 @@ Optional extras:
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
 | `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
 | `abstractvision[gpu]` | NVIDIA/Linux local profile: Diffusers/Torch, no MLX. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
-| `abstractvision[all-gpu]` | Full NVIDIA/Linux local profile: Diffusers/Torch and stable-diffusion.cpp bindings, no MLX. Add `abstractvision[mlx-gen]` explicitly if you want to try MLX-Gen on Linux. |
+| `abstractvision[all-gpu]` | Full NVIDIA local profile: Diffusers/Torch and stable-diffusion.cpp bindings (not on Windows, where PyPI has only its source build), no MLX. Add `abstractvision[mlx-gen]` explicitly if you want to try MLX-Gen on Linux. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
 
 `stable-diffusion-cpp-python` is currently constrained below `0.4.6` because

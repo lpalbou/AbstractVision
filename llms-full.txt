@@ -216,7 +216,7 @@ Optional extras:
 | `abstractvision[all]` | All runtime backend dependencies, without contributor tooling. |
 | `abstractvision[apple]` / `abstractvision[all-apple]` | Native macOS Python profile: Diffusers/Torch MPS, stable-diffusion.cpp bindings, and MLX-Gen. |
 | `abstractvision[gpu]` | NVIDIA/Linux local profile: Diffusers/Torch, no MLX. Install a CUDA/ROCm-enabled PyTorch wheel when needed. |
-| `abstractvision[all-gpu]` | Full NVIDIA/Linux local profile: Diffusers/Torch and stable-diffusion.cpp bindings, no MLX. Add `abstractvision[mlx-gen]` explicitly if you want to try MLX-Gen on Linux. |
+| `abstractvision[all-gpu]` | Full NVIDIA local profile: Diffusers/Torch and stable-diffusion.cpp bindings (not on Windows, where PyPI has only its source build), no MLX. Add `abstractvision[mlx-gen]` explicitly if you want to try MLX-Gen on Linux. |
 | `abstractvision[abstractcore]` | Compatibility marker only; AbstractCore is still supplied by the host application. |
 
 `stable-diffusion-cpp-python` is currently constrained below `0.4.6` because
@@ -1005,7 +1005,7 @@ Optional extras:
 | `local` | Convenience extra for the Diffusers + `sdcpp` local runtime stack. Add `mlx-gen` separately, or use `all` / `all-apple`, when you also want MLX-Gen. |
 | `all` | All runtime backend dependencies, without contributor tooling. |
 | `all-apple` | Aggregate native macOS profile: Diffusers/Torch MPS, stable-diffusion.cpp, and MLX-Gen. |
-| `all-gpu` | Aggregate NVIDIA/Linux profile: Diffusers/Torch + stable-diffusion.cpp bindings, no MLX. |
+| `all-gpu` | Aggregate NVIDIA profile: Diffusers/Torch + stable-diffusion.cpp bindings (left out on Windows: PyPI has only its source build, which needs MSVC), no MLX. |
 | `abstractcore` | Empty compatibility marker; install AbstractCore in the host application environment. |
 
 Contributor-only extras:
@@ -4511,6 +4511,11 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
   `gpu` and `all-gpu` installs are now that much smaller and install on Linux with an older glibc.
   MLX-Gen still comes with `apple`, `all-apple` and `all`; to try it on Linux, install the explicit
   `mlx-gen` extra (it installs there but is not validated; see backlog 030).
+- Install profiles: `all-gpu` no longer installs stable-diffusion.cpp on Windows
+  (`stable-diffusion-cpp-python; sys_platform != 'win32'`). PyPI ships it as a source build only,
+  and that build needs MSVC (an elevated install), so `abstractcore[gpu]` could not install on
+  Windows with wheels. Diffusers on PyTorch's CUDA build covers image and video there; Linux and
+  macOS keep stable-diffusion.cpp in `all-gpu` (framework backlog 0988).
 
 ## 0.3.31 - 2026-09-29
 
@@ -5021,7 +5026,9 @@ all-apple = [
   "Pillow>=9.0",
 ]
 
-# Full NVIDIA/Linux profile: Diffusers/torch + stable-diffusion.cpp, no MLX.
+# Full NVIDIA profile: Diffusers/torch + stable-diffusion.cpp, no MLX. On Windows,
+# stable-diffusion-cpp-python is left out: PyPI ships only its source build, which needs MSVC
+# (elevated install); Diffusers on PyTorch's CUDA build covers image and video there.
 all-gpu = [
   "diffusers>=0.36.0",
   "torch>=2.0,<3.0.0",
@@ -5035,7 +5042,7 @@ all-gpu = [
   "einops>=0.7.0",
   "peft>=0.10.0",
   "gguf>=0.10.0",
-  "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
+  "stable-diffusion-cpp-python>=0.4.2,<0.4.6; sys_platform != 'win32'",
   "Pillow>=9.0",
 ]
 
