@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.31 - 2026-09-29
+
 - MLX-Gen Wan video: every Wan model has its own default generation size, kept in one table
   (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`) that the backend, provider discovery and
   the packaged capability registry follow. TI2V-5B now defaults to 832x480, 121 frames at 24 fps,
@@ -14,7 +16,7 @@
   peaks at 38.3 GiB (47.4 GiB untiled). Pass `extra={"vae_tiling": False}` (CLI `--no-vae-tiling`)
   to decode whole frames at once. Generated video metadata records `vae_tiling`.
 - MLX-Gen Wan video caps MLX's allocator cache while a video generates and decodes, and releases the
-  TI2V-5B denoiser before the decode (the next TI2V request loads it again). This keeps the
+  TI2V-5B denoiser before the decode (the next TI2V request loads it again, which takes about a minute). This keeps the
   process footprint close to the MLX peak instead of holding every freed decode buffer.
 
 ## 0.3.30 - 2026-09-27

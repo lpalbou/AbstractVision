@@ -4134,7 +4134,7 @@ class MFluxVisionBackend(VisionBackend):
         # decode lowered the measured MLX peak from 60.8 to 50.6 GiB at
         # 1280x704x121. mlx-gen cannot reload a released TI2V denoiser, so the
         # instance is dropped after the run and rebuilt on the next request
-        # (a few seconds against a run of many minutes).
+        # (about a minute, measured, against a run of several minutes).
         release_denoisers = model_def.key == WAN_TI2V_MODEL_KEY
         if release_denoisers:
             kwargs["release_denoisers_before_decode"] = True
