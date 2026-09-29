@@ -63,6 +63,7 @@ Agent quickstart (choose the path that matches your goal):
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image`, `image_to_image`, `image_upscale`, and backend-dependent `text_to_video` / `image_to_video`.
 - Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, FLUX.2/Qwen multi-reference image edits, validated Qwen structured control and Qwen/FIBO masked edits, canonical SeedVR2 q8/q4 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`.
+- Wan video defaults live in one per-model table (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`): 832x480 for TI2V-5B (121 frames, 24 fps, 50 steps) and the A14B models (81 frames, 16 fps, 40 steps); explicit `width`/`height`/`num_frames`/`fps`/`steps` override them. The VAE decode is tiled by default (`extra={"vae_tiling": False}` / `--no-vae-tiling` to disable); measured memory per size is in `docs/faq.md`.
 - Task-specific Wan A14B video declares typed `guidance_2` defaults in `vision_model_capabilities.json` (`3.0` for T2V, `3.5` for I2V); it is not transported through backend `extra`.
 - MLX-Gen progress is surfaced through Python/Core `on_progress(event)` callbacks, opt-in one-shot image generation/edit CLI `--progress`, and denoise-step video/upscale progress by default.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local surfaces.
@@ -363,6 +364,26 @@ Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at
 and `guidance_2` (`--guidance-2`) is the second-stage/low-noise guidance.
 Registry defaults are `4.0` + `3.0` for T2V and `3.5` + `3.5` for I2V; omit
 `guidance_2` for single-stage video models.
+
+### Wan video sizes and memory
+
+Each Wan video model has its own default generation size, chosen for speed and
+memory. Every request can override `width`, `height`, `num_frames`, `fps` and
+`steps` (CLI `--width/--height/--frames/--fps/--steps`, Python keyword
+arguments, or the AbstractCore/Gateway video options):
+
+| Model | Default size | Frames @ fps | Steps | Peak memory at the default (measured) |
+|---|---|---|---|---|
+| Wan 2.2 TI2V-5B (`AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`) | 832x480 | 121 @ 24 (5 s) | 50 | 16.6 GiB |
+| Wan 2.2 T2V-A14B (`AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit`) | 832x480 | 81 @ 16 (5 s) | 40 | 38.3 GiB |
+| Wan 2.2 I2V-A14B (`AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`) | 832x480 | 81 @ 16 (5 s) | 40 | 38.4 GiB |
+
+The MLX-Gen backend decodes Wan video in overlapping spatial tiles, which keeps
+the VAE decode below the denoising peak; pass `extra={"vae_tiling": False}`
+(CLI `--no-vae-tiling`) to decode whole frames at once. Figures are MLX
+allocator peaks measured with AbstractVision/mlx-gen 0.38 on Apple silicon;
+see [docs/faq.md](docs/faq.md#how-much-memory-does-wan-video-need) for other
+sizes.
 
 ### Shared LoRA adapters
 
@@ -1290,6 +1311,10 @@ abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-
 
 Wan 2.2 A14B uses 16px width/height multiples; `480x240` is valid for low-cost
 local checks, while larger native sizes are more appropriate for quality review.
+Leave out `--width/--height/--frames/--fps/--steps` to use each model's default
+(832x480 for every Wan model; 121 frames at 24 fps for TI2V-5B, 81 frames at
+16 fps for A14B). The measured memory per size is in
+[docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
 For MLX-Gen Qwen structured control, use the validated base route
 `AbstractFramework/qwen-image-8bit` and pass `--control-image` plus optional
 `--control-strength`. For masked edits, use the validated Qwen edit route
@@ -2366,6 +2391,18 @@ registry task declares it.
 For TI2V-5B, use `flow_shift` directly when you need to override the route
 default. The bundled visual proof uses `832x480` with `flow_shift=3.0`.
 
+Wan video defaults come from one per-model table,
+`WAN_VIDEO_DEFAULT_CANVASES` in
+[`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py):
+832x480 for every Wan model, 121 frames at 24 fps and 50 steps for TI2V-5B,
+81 frames at 16 fps and 40 steps for the A14B models. Any field you pass
+(`width`, `height`, `num_frames`, `fps`, `steps`) overrides the default;
+`backend.list_provider_models(task="text_to_video")` reports the same values in
+each model's `raw["parameter_defaults"]`. The Wan VAE decode runs in overlapping spatial tiles by
+default, which bounds its memory; pass `extra={"vae_tiling": False}` to decode
+whole frames at once. Generated asset metadata records `vae_tiling`. Measured
+memory per size: [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
+
 For MLX-Gen, `on_progress` receives an `abstractvision.VideoProgressEvent`.
 Image generation/editing/upscaling events carry `phase`, `step`, `total_steps`,
 and denoise-step `progress`. Wan video events add `frame`, `total_frames`, and
@@ -2755,6 +2792,51 @@ Examples:
   - CLI mode forwards flags to `sd-cli`
   - python-binding mode maps supported keys to binding kwargs and ignores unsupported keys ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
 
+## How do I change the size of a Wan video?
+
+Each Wan model has a default size in the MLX-Gen backend
+(`WAN_VIDEO_DEFAULT_CANVASES` in [`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py)):
+832x480 for TI2V-5B (121 frames at 24 fps, 50 steps) and for both A14B models
+(81 frames at 16 fps, 40 steps). Override any of them per request:
+
+- CLI: `abstractvision t2v ... --width 1280 --height 704 --frames 121 --fps 24 --steps 30`
+- Python: `vm.generate_video(prompt, width=1280, height=704, num_frames=121, fps=24, steps=30)`
+- AbstractCore / Gateway: pass the same fields (`width`, `height`, `num_frames`,
+  `fps`, `steps`) in the video request or its `output={...}` options.
+
+TI2V-5B accepts multiples of 32 from 832x480 (or 480x832) upward; the A14B
+models accept multiples of 16. Frame counts follow Wan's `4n+1` rule (for
+example 81 or 121). At 832x480 and below, TI2V-5B uses `flow_shift=3.0` unless
+you set `flow_shift` yourself.
+
+## How much memory does Wan video need?
+
+The figures below are MLX allocator peaks of a full AbstractVision generation
+(text encoding, denoising and VAE decode), measured with AbstractVision/mlx-gen
+0.38 on an Apple M5 Max. The denoising peak does not depend on the step count.
+AbstractVision keeps the text encoder and VAE in memory, so these are this
+engine's figures, not the models' own minimums.
+
+| Model | Size (width x height x frames) | Peak, tiled decode (default) | Peak, untiled decode |
+|---|---|---|---|
+| TI2V-5B | 832x480x121 (default) | 16.3 GiB (image-to-video 16.6 GiB) | 23.4 GiB |
+| TI2V-5B | 1280x704x121 | 25.4 GiB | 51.2 GiB |
+| T2V-A14B | 832x480x81 (default) | 38.3 GiB | 47.4 GiB |
+| T2V-A14B | 640x352x81 | 35.1 GiB | 41.8 GiB |
+| T2V-A14B | 1280x720x81 | 53.5 GiB | 71.6 GiB |
+| I2V-A14B | 832x480x81 (default) | 38.4 GiB | not measured |
+| I2V-A14B | 1280x720x81 | not measured | 71.7 GiB |
+
+The MLX-Gen backend decodes Wan video in overlapping spatial tiles (on by
+default), so the peak is set by denoising rather than by the VAE decode. Pass
+`extra={"vae_tiling": False}` (CLI `--no-vae-tiling`) to decode whole frames at
+once; at small sizes that decodes somewhat faster, and it raises the peak to the
+"untiled" figures.
+
+Time grows with the canvas and the step count: on the same Mac a default
+TI2V-5B clip (832x480, 121 frames, 50 steps) took about 25 minutes end to end.
+Lower `steps` for quick drafts: it changes the time, not the peak memory.
+
 ## How do I know whether a model route supports LoRA?
 
 Use provider/model discovery:
@@ -3078,6 +3160,7 @@ Runtime behavior notes:
 - Local MLX-Gen video is implemented for `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`, and the task-specific Wan A14B packages `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. TI2V-5B should be run at `832x480` / `480x832` or above in practice. Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at `480x240`.
 - Task-specific Wan A14B uses two guidance controls. `guidance_scale` controls the primary/high-noise stage and `guidance_2` controls the second-stage/low-noise stage. `guidance_2` is a typed video request field, CLI/REPL flag `--guidance-2`, and registry parameter default; it is not passed through `extra`.
 - Wan requests can pass `max_sequence_length` through Python `extra={...}` or CLI/REPL `--max-sequence-length`.
+- Each Wan model has its own default size (`WAN_VIDEO_DEFAULT_CANVASES`): 832x480 for TI2V-5B (121 frames at 24 fps, 50 steps) and for the A14B models (81 frames at 16 fps, 40 steps). Explicit `width`, `height`, `num_frames`, `fps` and `steps` always win. The Wan VAE decode runs in overlapping spatial tiles by default; `extra={"vae_tiling": False}` / CLI `--no-vae-tiling` decodes whole frames. Measured memory per size: [FAQ](../faq.md#how-much-memory-does-wan-video-need).
 - Generation does not silently download model files. Missing-cache errors tell you which `abstractvision download ... --provider mlx-gen` or `mlxgen` preparation step is needed.
 
 Code pointers:
@@ -4415,6 +4498,21 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 # Changelog
 
 ## Unreleased
+
+- MLX-Gen Wan video: every Wan model has its own default generation size, kept in one table
+  (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`) that the backend, provider discovery and
+  the packaged capability registry follow. TI2V-5B now defaults to 832x480, 121 frames at 24 fps,
+  50 steps (was 1280x704), with `flow_shift=3.0` at that size; T2V-A14B and I2V-A14B default to
+  832x480, 81 frames at 16 fps, 40 steps (was 1280x720). Pass `width`, `height`, `num_frames`,
+  `fps` and `steps` (CLI `--width/--height/--frames/--fps/--steps`) to generate at any other size.
+- MLX-Gen Wan video decodes in overlapping spatial tiles by default, so the VAE decode no longer
+  sets the run's memory peak. Measured on Apple silicon (mlx-gen 0.38): TI2V-5B at 832x480 peaks at
+  16.3 GiB (23.4 GiB untiled) and at 1280x704 at 25.4 GiB (51.2 GiB untiled); T2V-A14B at 832x480
+  peaks at 38.3 GiB (47.4 GiB untiled). Pass `extra={"vae_tiling": False}` (CLI `--no-vae-tiling`)
+  to decode whole frames at once. Generated video metadata records `vae_tiling`.
+- MLX-Gen Wan video caps MLX's allocator cache while a video generates and decodes, and releases the
+  TI2V-5B denoiser before the decode (the next TI2V request loads it again). This keeps the
+  process footprint close to the MLX peak instead of holding every freed decode buffer.
 
 ## 0.3.30 - 2026-09-27
 

@@ -227,6 +227,26 @@ and `guidance_2` (`--guidance-2`) is the second-stage/low-noise guidance.
 Registry defaults are `4.0` + `3.0` for T2V and `3.5` + `3.5` for I2V; omit
 `guidance_2` for single-stage video models.
 
+### Wan video sizes and memory
+
+Each Wan video model has its own default generation size, chosen for speed and
+memory. Every request can override `width`, `height`, `num_frames`, `fps` and
+`steps` (CLI `--width/--height/--frames/--fps/--steps`, Python keyword
+arguments, or the AbstractCore/Gateway video options):
+
+| Model | Default size | Frames @ fps | Steps | Peak memory at the default (measured) |
+|---|---|---|---|---|
+| Wan 2.2 TI2V-5B (`AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`) | 832x480 | 121 @ 24 (5 s) | 50 | 16.6 GiB |
+| Wan 2.2 T2V-A14B (`AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit`) | 832x480 | 81 @ 16 (5 s) | 40 | 38.3 GiB |
+| Wan 2.2 I2V-A14B (`AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`) | 832x480 | 81 @ 16 (5 s) | 40 | 38.4 GiB |
+
+The MLX-Gen backend decodes Wan video in overlapping spatial tiles, which keeps
+the VAE decode below the denoising peak; pass `extra={"vae_tiling": False}`
+(CLI `--no-vae-tiling`) to decode whole frames at once. Figures are MLX
+allocator peaks measured with AbstractVision/mlx-gen 0.38 on Apple silicon;
+see [docs/faq.md](docs/faq.md#how-much-memory-does-wan-video-need) for other
+sizes.
+
 ### Shared LoRA adapters
 
 AbstractVision exposes one shared LoRA adapter request shape across Python,

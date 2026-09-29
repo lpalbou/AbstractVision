@@ -79,8 +79,10 @@ class WanVideoCanvas:
 # Default generation canvas per Wan video model: the ONE place these defaults
 # live (the model table, capability discovery and the packaged capability
 # registry all follow it). Chosen for speed and memory: a 832x480 canvas has
-# about 45% of the tokens of 720p, so each denoising step runs several times
-# faster and the VAE decode needs far less memory. Every request can override
+# about 45% of the tokens of 720p, so each denoising step is much faster and
+# the run needs far less memory (measured, mlx-gen 0.38.0, tiled decode:
+# TI2V-5B 16.6 GiB at 832x480x121 vs 25.4 GiB at 1280x704x121; A14B 38.4 GiB
+# at 832x480x81 vs 53.5 GiB at 1280x720x81). Every request can override
 # width, height, num_frames, fps and steps.
 WAN_VIDEO_DEFAULT_CANVASES: Dict[str, WanVideoCanvas] = {
     # 5 s at 24 fps. Wan's reference TI2V size is 1280x704; 832x480 is the

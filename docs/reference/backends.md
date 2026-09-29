@@ -261,6 +261,7 @@ Runtime behavior notes:
 - Local MLX-Gen video is implemented for `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`, and the task-specific Wan A14B packages `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. TI2V-5B should be run at `832x480` / `480x832` or above in practice. Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at `480x240`.
 - Task-specific Wan A14B uses two guidance controls. `guidance_scale` controls the primary/high-noise stage and `guidance_2` controls the second-stage/low-noise stage. `guidance_2` is a typed video request field, CLI/REPL flag `--guidance-2`, and registry parameter default; it is not passed through `extra`.
 - Wan requests can pass `max_sequence_length` through Python `extra={...}` or CLI/REPL `--max-sequence-length`.
+- Each Wan model has its own default size (`WAN_VIDEO_DEFAULT_CANVASES`): 832x480 for TI2V-5B (121 frames at 24 fps, 50 steps) and for the A14B models (81 frames at 16 fps, 40 steps). Explicit `width`, `height`, `num_frames`, `fps` and `steps` always win. The Wan VAE decode runs in overlapping spatial tiles by default; `extra={"vae_tiling": False}` / CLI `--no-vae-tiling` decodes whole frames. Measured memory per size: [FAQ](../faq.md#how-much-memory-does-wan-video-need).
 - Generation does not silently download model files. Missing-cache errors tell you which `abstractvision download ... --provider mlx-gen` or `mlxgen` preparation step is needed.
 
 Code pointers:

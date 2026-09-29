@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- MLX-Gen Wan video: every Wan model has its own default generation size, kept in one table
+  (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`) that the backend, provider discovery and
+  the packaged capability registry follow. TI2V-5B now defaults to 832x480, 121 frames at 24 fps,
+  50 steps (was 1280x704), with `flow_shift=3.0` at that size; T2V-A14B and I2V-A14B default to
+  832x480, 81 frames at 16 fps, 40 steps (was 1280x720). Pass `width`, `height`, `num_frames`,
+  `fps` and `steps` (CLI `--width/--height/--frames/--fps/--steps`) to generate at any other size.
+- MLX-Gen Wan video decodes in overlapping spatial tiles by default, so the VAE decode no longer
+  sets the run's memory peak. Measured on Apple silicon (mlx-gen 0.38): TI2V-5B at 832x480 peaks at
+  16.3 GiB (23.4 GiB untiled) and at 1280x704 at 25.4 GiB (51.2 GiB untiled); T2V-A14B at 832x480
+  peaks at 38.3 GiB (47.4 GiB untiled). Pass `extra={"vae_tiling": False}` (CLI `--no-vae-tiling`)
+  to decode whole frames at once. Generated video metadata records `vae_tiling`.
+- MLX-Gen Wan video caps MLX's allocator cache while a video generates and decodes, and releases the
+  TI2V-5B denoiser before the decode (the next TI2V request loads it again). This keeps the
+  process footprint close to the MLX peak instead of holding every freed decode buffer.
+
 ## 0.3.30 - 2026-09-27
 
 - MLX-Gen: unloading a model now returns MLX's cached Metal memory to the operating system. Previously the released weights could stay reserved in the MLX allocator cache, so a process with no loaded model could still hold most of the model's memory. No API change.

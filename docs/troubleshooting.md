@@ -171,6 +171,32 @@ Notes:
   `requested_lora_adapters`, `lora_application_reports`,
   `lora_applied_file_count`, and `lora_applied_target_count`
 
+## Wan video runs out of memory or is slow
+
+### Symptom
+
+- a Wan video generation fails with a Metal out-of-memory error, or the Mac
+  starts swapping heavily
+- a Wan video takes far longer than expected
+
+### Likely cause
+
+- the request asks for a larger canvas than the model's default (for example
+  `1280x704` for TI2V-5B); memory and time grow with the frame size
+- `vae_tiling` was switched off, so the VAE decode holds whole frames at once
+- another large model is loaded in the same machine
+
+### Fix
+
+- leave `width`/`height` unset to use the model's default (832x480 for every
+  Wan model), or request a smaller canvas; see
+  [docs/faq.md](faq.md#how-much-memory-does-wan-video-need) for measured needs
+- keep the tiled VAE decode on (the default); do not pass `--no-vae-tiling` /
+  `extra={"vae_tiling": False}` on a memory-constrained Mac
+- lower `--steps` for quick drafts: the step count changes the time, not the
+  peak memory
+- unload other models before a video run
+
 ## `mps` was requested but is unavailable
 
 ### Symptom

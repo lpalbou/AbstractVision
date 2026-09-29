@@ -286,6 +286,18 @@ registry task declares it.
 For TI2V-5B, use `flow_shift` directly when you need to override the route
 default. The bundled visual proof uses `832x480` with `flow_shift=3.0`.
 
+Wan video defaults come from one per-model table,
+`WAN_VIDEO_DEFAULT_CANVASES` in
+[`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py):
+832x480 for every Wan model, 121 frames at 24 fps and 50 steps for TI2V-5B,
+81 frames at 16 fps and 40 steps for the A14B models. Any field you pass
+(`width`, `height`, `num_frames`, `fps`, `steps`) overrides the default;
+`backend.list_provider_models(task="text_to_video")` reports the same values in
+each model's `raw["parameter_defaults"]`. The Wan VAE decode runs in overlapping spatial tiles by
+default, which bounds its memory; pass `extra={"vae_tiling": False}` to decode
+whole frames at once. Generated asset metadata records `vae_tiling`. Measured
+memory per size: [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
+
 For MLX-Gen, `on_progress` receives an `abstractvision.VideoProgressEvent`.
 Image generation/editing/upscaling events carry `phase`, `step`, `total_steps`,
 and denoise-step `progress`. Wan video events add `frame`, `total_frames`, and

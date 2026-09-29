@@ -144,6 +144,51 @@ Examples:
   - CLI mode forwards flags to `sd-cli`
   - python-binding mode maps supported keys to binding kwargs and ignores unsupported keys ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
 
+## How do I change the size of a Wan video?
+
+Each Wan model has a default size in the MLX-Gen backend
+(`WAN_VIDEO_DEFAULT_CANVASES` in [`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py)):
+832x480 for TI2V-5B (121 frames at 24 fps, 50 steps) and for both A14B models
+(81 frames at 16 fps, 40 steps). Override any of them per request:
+
+- CLI: `abstractvision t2v ... --width 1280 --height 704 --frames 121 --fps 24 --steps 30`
+- Python: `vm.generate_video(prompt, width=1280, height=704, num_frames=121, fps=24, steps=30)`
+- AbstractCore / Gateway: pass the same fields (`width`, `height`, `num_frames`,
+  `fps`, `steps`) in the video request or its `output={...}` options.
+
+TI2V-5B accepts multiples of 32 from 832x480 (or 480x832) upward; the A14B
+models accept multiples of 16. Frame counts follow Wan's `4n+1` rule (for
+example 81 or 121). At 832x480 and below, TI2V-5B uses `flow_shift=3.0` unless
+you set `flow_shift` yourself.
+
+## How much memory does Wan video need?
+
+The figures below are MLX allocator peaks of a full AbstractVision generation
+(text encoding, denoising and VAE decode), measured with AbstractVision/mlx-gen
+0.38 on an Apple M5 Max. The denoising peak does not depend on the step count.
+AbstractVision keeps the text encoder and VAE in memory, so these are this
+engine's figures, not the models' own minimums.
+
+| Model | Size (width x height x frames) | Peak, tiled decode (default) | Peak, untiled decode |
+|---|---|---|---|
+| TI2V-5B | 832x480x121 (default) | 16.3 GiB (image-to-video 16.6 GiB) | 23.4 GiB |
+| TI2V-5B | 1280x704x121 | 25.4 GiB | 51.2 GiB |
+| T2V-A14B | 832x480x81 (default) | 38.3 GiB | 47.4 GiB |
+| T2V-A14B | 640x352x81 | 35.1 GiB | 41.8 GiB |
+| T2V-A14B | 1280x720x81 | 53.5 GiB | 71.6 GiB |
+| I2V-A14B | 832x480x81 (default) | 38.4 GiB | not measured |
+| I2V-A14B | 1280x720x81 | not measured | 71.7 GiB |
+
+The MLX-Gen backend decodes Wan video in overlapping spatial tiles (on by
+default), so the peak is set by denoising rather than by the VAE decode. Pass
+`extra={"vae_tiling": False}` (CLI `--no-vae-tiling`) to decode whole frames at
+once; at small sizes that decodes somewhat faster, and it raises the peak to the
+"untiled" figures.
+
+Time grows with the canvas and the step count: on the same Mac a default
+TI2V-5B clip (832x480, 121 frames, 50 steps) took about 25 minutes end to end.
+Lower `steps` for quick drafts: it changes the time, not the peak memory.
+
 ## How do I know whether a model route supports LoRA?
 
 Use provider/model discovery:
