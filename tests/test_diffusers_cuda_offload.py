@@ -3,7 +3,8 @@ offload when not even its largest component fits (framework backlog 0989).
 
 Measured on a 16 GB Quadro RTX 5000: FLUX.2 [klein] 4B in float16 (14.9 GiB of weights) failed with
 CUDA out of memory when moved whole to the GPU; with Diffusers' model CPU offload it generated
-768x768 in 17 s, 7.8 GiB peak, and ran out of memory when another process held 6.5 GiB of the card.
+768x768 in 17 s, 7.8 GiB peak. With another process holding 6.5 GiB, sequential CPU offload peaked
+near 1.4 GiB (10.9-15.6 s at 4 steps against 13.4-18.5 s with model CPU offload).
 No GPU is needed here: free memory is simulated, and the FLUX-sized modules live on torch's "meta"
 device (shapes without storage).
 """
@@ -87,12 +88,14 @@ class CudaOffloadDecisionTests(unittest.TestCase):
 
     def test_flux_klein_with_another_model_on_the_gpu_uses_sequential_offload(self):
         # Another process holds 6.5 GiB: 7.77 GiB free - 1.5 GiB reserve = 6.27 GiB usable, below
-        # the 7.49 GiB text encoder that model CPU offload would move to the GPU whole (it OOMed).
+        # the 7.49 GiB text encoder that model CPU offload would move to the GPU whole.
         with _gpu(free_gib=7.77, total_gib=14.56):
             offload, why = hd._cuda_offload_decision(torch, _FluxKleinPipe(), "cuda", torch.float16, "auto")
         self.assertEqual(offload, "sequential")
         self.assertIn("text_encoder", why)
-        self.assertIn("much slower", why)
+        self.assertIn("much less GPU memory", why)
+        self.assertIn("each step is slower", why)
+        self.assertNotIn("much slower", why)
 
     def test_flux_klein_on_a_free_gpu_uses_model_offload(self):
         # The measured free GPU: 14.2 GiB free, 12.7 GiB usable. The largest component fits, the
@@ -113,6 +116,22 @@ class CudaOffloadDecisionTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload = None
         with _gpu(free_gib=7.77, total_gib=14.56):
             self.assertEqual(hd._cuda_offload_decision(torch, pipe, "cuda", torch.float16, "auto")[0], "model")
+
+    def test_explicit_sequential_without_support_logs_and_uses_model_offload(self):
+        pipe = _Pipe([64])
+        pipe.enable_sequential_cpu_offload = None
+        with _gpu(free_gib=14.4, total_gib=15.0):
+            with self.assertLogs(hd.logger, level="WARNING") as logs:
+                offload, reason = hd._cuda_offload_decision(torch, pipe, "cuda", torch.float16, "sequential")
+        self.assertEqual(offload, "model")
+        self.assertIn("not supported", reason)
+        self.assertTrue(any("does not support it" in line for line in logs.output), logs.output)
+        # Neither offload available: it says so and moves the pipeline whole.
+        pipe.enable_model_cpu_offload = None
+        with _gpu(free_gib=14.4, total_gib=15.0):
+            with self.assertLogs(hd.logger, level="WARNING") as logs:
+                self.assertEqual(hd._cuda_offload_decision(torch, pipe, "cuda", torch.float16, "sequential"), ("", ""))
+        self.assertTrue(any("the whole pipeline on cuda" in line for line in logs.output), logs.output)
 
     def test_modes_and_non_cuda_devices(self):
         pipe = _Pipe([64])

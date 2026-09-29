@@ -5,13 +5,17 @@
 - Diffusers on CUDA: `cpu_offload="auto"` falls back to Diffusers' sequential CPU offload when the
   GPU's free memory (minus the working reserve) cannot hold the pipeline's largest component,
   which model CPU offload moves to the GPU whole. This covers a GPU shared with another loaded
-  model: on a 16 GB Quadro RTX 5000 with a text model holding 6.5 GiB, FLUX.2 [klein] 4B in
-  float16 (largest component about 7.5 GiB, 7.8 GiB free) ran out of memory with model CPU offload.
-  Sequential CPU offload runs in far less GPU memory but is much slower; the backend logs a
-  warning that says why it was chosen, and the result metadata reports `cpu_offload: "sequential"`.
-  The whole-pipeline and model CPU offload placements are unchanged when they fit.
+  model: on a 16 GB Quadro RTX 5000 with 6.5 GiB held by a text model (about 7.8 GiB free),
+  FLUX.2 [klein] 4B in float16 (largest component about 7.5 GiB) leaves model CPU offload no working
+  room. Sequential CPU offload uses much less GPU memory (about 1.4 GiB peak there) and each step is
+  slower: measured at 768x768 and 4 steps, 10.9-15.6 s against 13.4-18.5 s with model CPU offload,
+  but about 2.3 s per step against 1.5 s, so it is slower for models that run many steps. The
+  backend logs a warning that says why it was chosen, and the result metadata reports
+  `cpu_offload: "sequential"`. The whole-pipeline and model CPU offload placements are unchanged
+  when they fit.
 - `HuggingFaceDiffusersBackendConfig(cpu_offload=...)` accepts `"sequential"` to always use
-  sequential CPU offload; `"model"` and `"none"` keep their meaning.
+  sequential CPU offload; `"model"` and `"none"` keep their meaning. A pipeline that does not
+  support sequential offload logs a warning and uses model CPU offload instead.
 - Diffusers: unloading a model now releases its memory. The pipeline (including its CPU offload
   hooks) is freed when the unload returns, and on Linux the freed memory is returned to the
   operating system. Measured on CUDA (FLUX.2 [klein] 4B with model CPU offload): 0.86 GB still

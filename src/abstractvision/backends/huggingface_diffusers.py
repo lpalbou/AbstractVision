@@ -752,14 +752,16 @@ def _cuda_offload_decision(torch: Any, pipe: Any, device: str, dtype: Any, mode:
     - otherwise its largest component fits: model CPU offload. It moves one component at a time to
       the GPU, whole, so its peak is the largest component plus activations;
     - otherwise: sequential CPU offload, which streams weights to the GPU one submodule at a time.
-      Its peak is far lower, but every step re-reads the weights from system memory, so it is much
-      slower.
+      Its GPU peak is far lower, but every step re-reads the weights from system memory, so each
+      step is slower; a model that runs many steps is slower overall.
 
-    Measured on a 16 GB Quadro RTX 5000 (framework backlog 0989): FLUX.2 [klein] 4B in float16 is
-    14.9 GiB of weights and failed with CUDA out of memory when moved whole; with model CPU offload
-    it generated 768x768 in 17 s with a 7.8 GiB peak on a free GPU, and ran out of memory when
-    another process held 6.5 GiB of the card (about 7.8 GiB free, below its largest component plus
-    the reserve)."""
+    Measured on a 16 GB Quadro RTX 5000 (framework backlogs 0989, 0991): FLUX.2 [klein] 4B in
+    float16 is 14.9 GiB of weights (largest component about 7.5 GiB) and failed with CUDA out of
+    memory when moved whole; with model CPU offload it generated 768x768 in 17 s with a 7.8 GiB peak
+    on a free GPU. With another process holding 6.5 GiB (about 7.8 GiB free) the largest component
+    plus the reserve no longer fits, so "auto" picks sequential CPU offload: about 1.4 GiB peak and
+    10.9-15.6 s for 768x768 at 4 steps, against 13.4-18.5 s with model CPU offload (about 2.3 s per
+    step against 1.5 s, so sequential offload loses once a model runs many steps)."""
 
     d = str(device or "").strip().lower()
     m = str(mode or "auto").strip().lower()
@@ -768,7 +770,18 @@ def _cuda_offload_decision(torch: Any, pipe: Any, device: str, dtype: Any, mode:
     can_model = callable(getattr(pipe, "enable_model_cpu_offload", None))
     can_sequential = callable(getattr(pipe, "enable_sequential_cpu_offload", None))
     if m == "sequential":
-        return ("sequential", "sequential CPU offload requested") if can_sequential else ("", "")
+        if can_sequential:
+            return "sequential", "sequential CPU offload requested"
+        fallback = "model CPU offload" if can_model else f"the whole pipeline on {d}"
+        logger.warning(
+            "Diffusers: sequential CPU offload was requested, but this pipeline (%s) does not support "
+            "it; using %s instead",
+            type(pipe).__name__,
+            fallback,
+        )
+        if can_model:
+            return "model", "sequential CPU offload requested but not supported by this pipeline"
+        return "", ""
     if not can_model:
         return "", ""
     if m in {"model", "on", "true", "yes"}:
@@ -794,7 +807,7 @@ def _cuda_offload_decision(torch: Any, pipe: Any, device: str, dtype: Any, mode:
         f"the pipeline's weights ({need / _GIB:.1f} GiB) do not fit {room}, nor does its largest "
         f"component ({largest_name}, {largest / _GIB:.1f} GiB), which model CPU offload moves to the "
         "GPU whole; sequential CPU offload streams the weights one submodule at a time, so it runs "
-        "in much less GPU memory but is much slower"
+        "in much less GPU memory but each step is slower (slower overall for models with many steps)"
     )
 
 
@@ -2702,7 +2715,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 setattr(pipe, "_abstractvision_cpu_offload", True)
                 setattr(pipe, "_abstractvision_cpu_offload_mode", "sequential")
                 logger.warning(
-                    "Diffusers: sequential CPU offload on %s (much slower than model CPU offload): %s",
+                    "Diffusers: sequential CPU offload on %s (much less GPU memory; each step slower than "
+                    "model CPU offload): %s",
                     device,
                     offload_reason,
                 )

@@ -201,10 +201,10 @@ Notes:
 
 ### Symptom
 
-- an image generation on an NVIDIA GPU takes many times longer than expected,
-  and the result metadata reports `cpu_offload: "sequential"`
-- the log shows `Diffusers: sequential CPU offload on cuda ... (much slower than
-  model CPU offload)`
+- an image generation on an NVIDIA GPU that runs many steps takes longer than
+  expected, and the result metadata reports `cpu_offload: "sequential"`
+- the log shows `Diffusers: sequential CPU offload on cuda ... (much less GPU
+  memory; each step slower than model CPU offload)`
 - a generation fails with `CUDA out of memory`
 
 ### Likely cause

@@ -62,7 +62,7 @@ jobs:
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"
           DIFFUSERS_OFFLINE: "1"
-        run: python -m unittest tests.test_huggingface_diffusers_backend -q
+        run: python -m unittest tests.test_huggingface_diffusers_backend tests.test_diffusers_cuda_offload tests.test_diffusers_unload_releases_memory_unit -q
 
   docs:
     name: Build docs
