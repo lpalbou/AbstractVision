@@ -564,6 +564,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#how-do-i-change-the-size-of-a-wan-video" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I change the size of a Wan video?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-much-memory-does-wan-video-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How much memory does Wan video need?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#how-do-i-know-whether-a-model-route-supports-lora" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -990,6 +1012,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#how-do-i-change-the-size-of-a-wan-video" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I change the size of a Wan video?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-much-memory-does-wan-video-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How much memory does Wan video need?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#how-do-i-know-whether-a-model-route-supports-lora" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1173,6 +1217,89 @@ abstractvision<span class="w"> </span>cli
 - stable-diffusion.cpp backend:
   - CLI mode forwards flags to <code>sd-cli</code>
   - python-binding mode maps supported keys to binding kwargs and ignores unsupported keys (<a href="../src/abstractvision/backends/stable_diffusion_cpp.py"><code>../src/abstractvision/backends/stable_diffusion_cpp.py</code></a>)</p>
+<h2 id="how-do-i-change-the-size-of-a-wan-video">How do I change the size of a Wan video?<a class="headerlink" href="#how-do-i-change-the-size-of-a-wan-video" title="Permanent link">&para;</a></h2>
+<p>Each Wan model has a default size in the MLX-Gen backend
+(<code>WAN_VIDEO_DEFAULT_CANVASES</code> in <a href="../src/abstractvision/backends/mflux.py"><code>../src/abstractvision/backends/mflux.py</code></a>):
+832x480 for TI2V-5B (121 frames at 24 fps, 50 steps) and for both A14B models
+(81 frames at 16 fps, 40 steps). Override any of them per request:</p>
+<ul>
+<li>CLI: <code>abstractvision t2v ... --width 1280 --height 704 --frames 121 --fps 24 --steps 30</code></li>
+<li>Python: <code>vm.generate_video(prompt, width=1280, height=704, num_frames=121, fps=24, steps=30)</code></li>
+<li>AbstractCore / Gateway: pass the same fields (<code>width</code>, <code>height</code>, <code>num_frames</code>,
+  <code>fps</code>, <code>steps</code>) in the video request or its <code>output={...}</code> options.</li>
+</ul>
+<p>TI2V-5B accepts multiples of 32 from 832x480 (or 480x832) upward; the A14B
+models accept multiples of 16. Frame counts follow Wan's <code>4n+1</code> rule (for
+example 81 or 121). At 832x480 and below, TI2V-5B uses <code>flow_shift=3.0</code> unless
+you set <code>flow_shift</code> yourself.</p>
+<h2 id="how-much-memory-does-wan-video-need">How much memory does Wan video need?<a class="headerlink" href="#how-much-memory-does-wan-video-need" title="Permanent link">&para;</a></h2>
+<p>The figures below are MLX allocator peaks of a full AbstractVision generation
+(text encoding, denoising and VAE decode), measured with AbstractVision/mlx-gen
+0.38 on an Apple M5 Max. The denoising peak does not depend on the step count.
+AbstractVision keeps the text encoder and VAE in memory, so these are this
+engine's figures, not the models' own minimums.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Size (width x height x frames)</th>
+<th>Peak, tiled decode (default)</th>
+<th>Peak, untiled decode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TI2V-5B</td>
+<td>832x480x121 (default)</td>
+<td>16.3 GiB (image-to-video 16.6 GiB)</td>
+<td>23.4 GiB</td>
+</tr>
+<tr>
+<td>TI2V-5B</td>
+<td>1280x704x121</td>
+<td>25.4 GiB</td>
+<td>51.2 GiB</td>
+</tr>
+<tr>
+<td>T2V-A14B</td>
+<td>832x480x81 (default)</td>
+<td>38.3 GiB</td>
+<td>47.4 GiB</td>
+</tr>
+<tr>
+<td>T2V-A14B</td>
+<td>640x352x81</td>
+<td>35.1 GiB</td>
+<td>41.8 GiB</td>
+</tr>
+<tr>
+<td>T2V-A14B</td>
+<td>1280x720x81</td>
+<td>53.5 GiB</td>
+<td>71.6 GiB</td>
+</tr>
+<tr>
+<td>I2V-A14B</td>
+<td>832x480x81 (default)</td>
+<td>38.4 GiB</td>
+<td>not measured</td>
+</tr>
+<tr>
+<td>I2V-A14B</td>
+<td>1280x720x81</td>
+<td>not measured</td>
+<td>71.7 GiB</td>
+</tr>
+</tbody>
+</table>
+<p>The MLX-Gen backend decodes Wan video in overlapping spatial tiles (on by
+default), so the peak is set by denoising rather than by the VAE decode. Pass
+<code>extra={"vae_tiling": False}</code> (CLI <code>--no-vae-tiling</code>) to decode whole frames at
+once; at small sizes that decodes somewhat faster, and it raises the peak to the
+"untiled" figures.</p>
+<p>Time grows with the canvas and the step count: on the same Mac a default
+TI2V-5B clip (832x480, 121 frames, 50 steps) took about 25 minutes end to end.
+Lower <code>steps</code> for quick drafts: it changes the time, not the peak memory.</p>
 <h2 id="how-do-i-know-whether-a-model-route-supports-lora">How do I know whether a model route supports LoRA?<a class="headerlink" href="#how-do-i-know-whether-a-model-route-supports-lora" title="Permanent link">&para;</a></h2>
 <p>Use provider/model discovery:</p>
 <ul>

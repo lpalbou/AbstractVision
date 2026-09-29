@@ -931,15 +931,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mps-was-requested-but-is-unavailable" class="md-nav__link">
+  <a href="#wan-video-runs-out-of-memory-or-is-slow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mps was requested but is unavailable
+        Wan video runs out of memory or is slow
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="mps was requested but is unavailable">
+    <nav class="md-nav" aria-label="Wan video runs out of memory or is slow">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -965,6 +965,56 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#fix_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fix
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mps-was-requested-but-is-unavailable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mps was requested but is unavailable
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="mps was requested but is unavailable">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symptom_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symptom
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#likely-cause_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Likely cause
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#checks" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -976,7 +1026,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fix_6" class="md-nav__link">
+  <a href="#fix_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fix
@@ -1015,7 +1065,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#symptom_7" class="md-nav__link">
+  <a href="#symptom_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         Symptom
@@ -1026,7 +1076,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#likely-cause_7" class="md-nav__link">
+  <a href="#likely-cause_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         Likely cause
@@ -1037,7 +1087,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fix_7" class="md-nav__link">
+  <a href="#fix_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fix
@@ -1076,7 +1126,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#symptom_8" class="md-nav__link">
+  <a href="#symptom_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         Symptom
@@ -1087,7 +1137,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#likely-cause_8" class="md-nav__link">
+  <a href="#likely-cause_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         Likely cause
@@ -1098,7 +1148,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fix_8" class="md-nav__link">
+  <a href="#fix_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fix
@@ -1292,12 +1342,37 @@ capability.</p>
   <code>requested_lora_adapters</code>, <code>lora_application_reports</code>,
   <code>lora_applied_file_count</code>, and <code>lora_applied_target_count</code></li>
 </ul>
-<h2 id="mps-was-requested-but-is-unavailable"><code>mps</code> was requested but is unavailable<a class="headerlink" href="#mps-was-requested-but-is-unavailable" title="Permanent link">&para;</a></h2>
+<h2 id="wan-video-runs-out-of-memory-or-is-slow">Wan video runs out of memory or is slow<a class="headerlink" href="#wan-video-runs-out-of-memory-or-is-slow" title="Permanent link">&para;</a></h2>
 <h3 id="symptom_6">Symptom<a class="headerlink" href="#symptom_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>a Wan video generation fails with a Metal out-of-memory error, or the Mac
+  starts swapping heavily</li>
+<li>a Wan video takes far longer than expected</li>
+</ul>
+<h3 id="likely-cause_6">Likely cause<a class="headerlink" href="#likely-cause_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>the request asks for a larger canvas than the model's default (for example
+  <code>1280x704</code> for TI2V-5B); memory and time grow with the frame size</li>
+<li><code>vae_tiling</code> was switched off, so the VAE decode holds whole frames at once</li>
+<li>another large model is loaded in the same machine</li>
+</ul>
+<h3 id="fix_6">Fix<a class="headerlink" href="#fix_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>leave <code>width</code>/<code>height</code> unset to use the model's default (832x480 for every
+  Wan model), or request a smaller canvas; see
+  <a href="../faq/#how-much-memory-does-wan-video-need">docs/faq.md</a> for measured needs</li>
+<li>keep the tiled VAE decode on (the default); do not pass <code>--no-vae-tiling</code> /
+  <code>extra={"vae_tiling": False}</code> on a memory-constrained Mac</li>
+<li>lower <code>--steps</code> for quick drafts: the step count changes the time, not the
+  peak memory</li>
+<li>unload other models before a video run</li>
+</ul>
+<h2 id="mps-was-requested-but-is-unavailable"><code>mps</code> was requested but is unavailable<a class="headerlink" href="#mps-was-requested-but-is-unavailable" title="Permanent link">&para;</a></h2>
+<h3 id="symptom_7">Symptom<a class="headerlink" href="#symptom_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>local Diffusers startup fails with an error mentioning <code>mps</code></li>
 </ul>
-<h3 id="likely-cause_6">Likely cause<a class="headerlink" href="#likely-cause_6" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_7">Likely cause<a class="headerlink" href="#likely-cause_7" title="Permanent link">&para;</a></h3>
 <p>PyTorch does not report Apple Metal / MPS as available in the current
 environment.</p>
 <h3 id="checks">Checks<a class="headerlink" href="#checks" title="Permanent link">&para;</a></h3>
@@ -1306,7 +1381,7 @@ environment.</p>
 <span class="s">print(torch.backends.mps.is_available())</span>
 <span class="s">PY</span>
 </code></pre></div>
-<h3 id="fix_6">Fix<a class="headerlink" href="#fix_6" title="Permanent link">&para;</a></h3>
+<h3 id="fix_7">Fix<a class="headerlink" href="#fix_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>use a PyTorch build with MPS support on Apple Silicon;</li>
 <li>or switch the backend device to <code>cpu</code>.</li>
@@ -1317,14 +1392,14 @@ environment.</p>
 <li>then retry with <code>--diffusers-device mps</code> or <code>--diffusers-device cpu</code></li>
 </ul>
 <h2 id="playground-panel-is-disabled">Playground panel is disabled<a class="headerlink" href="#playground-panel-is-disabled" title="Permanent link">&para;</a></h2>
-<h3 id="symptom_7">Symptom<a class="headerlink" href="#symptom_7" title="Permanent link">&para;</a></h3>
+<h3 id="symptom_8">Symptom<a class="headerlink" href="#symptom_8" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Image → Image or Text → Video controls stay disabled in the playground</li>
 </ul>
-<h3 id="likely-cause_7">Likely cause<a class="headerlink" href="#likely-cause_7" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_8">Likely cause<a class="headerlink" href="#likely-cause_8" title="Permanent link">&para;</a></h3>
 <p>The currently selected model does not advertise the required task in the
 packaged capability registry, or the backend cannot really execute that task.</p>
-<h3 id="fix_7">Fix<a class="headerlink" href="#fix_7" title="Permanent link">&para;</a></h3>
+<h3 id="fix_8">Fix<a class="headerlink" href="#fix_8" title="Permanent link">&para;</a></h3>
 <p>Choose a model that advertises the task:</p>
 <ul>
 <li>image edits: a model with <code>image_to_image</code></li>
@@ -1337,15 +1412,15 @@ packaged capability registry, or the backend cannot really execute that task.</p
 <li>inspect the selected model’s <code>tasks</code> and <code>task_specs</code></li>
 </ul>
 <h2 id="abstractcore-tool-expected-an-artifact-ref">AbstractCore tool expected an artifact ref<a class="headerlink" href="#abstractcore-tool-expected-an-artifact-ref" title="Permanent link">&para;</a></h2>
-<h3 id="symptom_8">Symptom<a class="headerlink" href="#symptom_8" title="Permanent link">&para;</a></h3>
+<h3 id="symptom_9">Symptom<a class="headerlink" href="#symptom_9" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>vision_text_to_image</code>, <code>vision_image_to_image</code>, or <code>vision_text_to_video</code>
   reports that an artifact ref was expected</li>
 </ul>
-<h3 id="likely-cause_8">Likely cause<a class="headerlink" href="#likely-cause_8" title="Permanent link">&para;</a></h3>
+<h3 id="likely-cause_9">Likely cause<a class="headerlink" href="#likely-cause_9" title="Permanent link">&para;</a></h3>
 <p><code>make_vision_tools(...)</code> expects <code>VisionManager.store</code> to be set so outputs can
 be returned as artifact references instead of raw bytes.</p>
-<h3 id="fix_8">Fix<a class="headerlink" href="#fix_8" title="Permanent link">&para;</a></h3>
+<h3 id="fix_9">Fix<a class="headerlink" href="#fix_9" title="Permanent link">&para;</a></h3>
 <p>Create the manager with a store, for example <code>LocalAssetStore()</code> or a runtime
 adapter.</p>
 <h3 id="verify_5">Verify<a class="headerlink" href="#verify_5" title="Permanent link">&para;</a></h3>

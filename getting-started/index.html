@@ -1610,6 +1610,10 @@ abstractvision<span class="w"> </span>i2v<span class="w"> </span>--provider<span
 </code></pre></div>
 <p>Wan 2.2 A14B uses 16px width/height multiples; <code>480x240</code> is valid for low-cost
 local checks, while larger native sizes are more appropriate for quality review.
+Leave out <code>--width/--height/--frames/--fps/--steps</code> to use each model's default
+(832x480 for every Wan model; 121 frames at 24 fps for TI2V-5B, 81 frames at
+16 fps for A14B). The measured memory per size is in
+<a href="../faq/#how-much-memory-does-wan-video-need">docs/faq.md</a>.
 For MLX-Gen Qwen structured control, use the validated base route
 <code>AbstractFramework/qwen-image-8bit</code> and pass <code>--control-image</code> plus optional
 <code>--control-strength</code>. For masked edits, use the validated Qwen edit route
