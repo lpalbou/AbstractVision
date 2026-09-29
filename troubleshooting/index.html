@@ -1217,7 +1217,7 @@ unless you choose the matching extra.</p>
 <li>Diffusers: <code>pip install "abstractvision[diffusers]"</code></li>
 <li>If the error mentions missing <code>torchvision</code>: <code>pip install torchvision</code> (or upgrade/reinstall <code>abstractvision[diffusers]</code>)</li>
 <li>stable-diffusion.cpp bindings: <code>pip install "abstractvision[sdcpp]"</code></li>
-<li>MLX-Gen: <code>pip install "abstractvision[mlx-gen]"</code> (or compatibility alias <code>abstractvision[mflux]</code>). The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream <code>mlx-gen</code> / <code>mlx</code> markers are available.</li>
+<li>MLX-Gen: <code>pip install "abstractvision[mlx-gen]"</code> (or compatibility alias <code>abstractvision[mflux]</code>). MLX-Gen is validated on Apple Silicon. The extra also installs on Linux, where it is not validated yet (see <a href="../backlog/planned/030_gpu_parity_with_mlx_gen/">backlog 030</a>); the <code>gpu</code> and <code>all-gpu</code> profiles do not include it, so install <code>abstractvision[mlx-gen]</code> explicitly there.</li>
 </ul>
 <h3 id="verify">Verify<a class="headerlink" href="#verify" title="Permanent link">&para;</a></h3>
 <ul>

@@ -10,26 +10,24 @@
       
       
       
-        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/">
+        <link rel="canonical" href="https://lpalbou.github.io/abstractvision/backlog/planned/030_gpu_parity_with_mlx_gen/">
       
       
-      
-        <link rel="next" href="getting-started/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.svg">
+      <link rel="icon" href="../../../assets/images/favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>AbstractVision</title>
+        <title>030 gpu parity with mlx gen - AbstractVision</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -48,9 +46,9 @@
       
     
     
-      <link rel="stylesheet" href="assets/styles/media_carousel.css">
+      <link rel="stylesheet" href="../../../assets/styles/media_carousel.css">
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -68,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#abstractvision-documentation" class="md-skip">
+        <a href="#task-030-gpu-parity-with-mlx-gen-every-local-capability-apple-silicon-has-on-nvidialinux-too" class="md-skip">
           Skip to content
         </a>
       
@@ -84,7 +82,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+    <a href="../../.." title="AbstractVision" class="md-header__button md-logo" aria-label="AbstractVision" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -104,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              030 gpu parity with mlx gen
             
           </span>
         </div>
@@ -194,7 +192,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
+    <a href="../../.." title="AbstractVision" class="md-nav__button md-logo" aria-label="AbstractVision" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -221,37 +219,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
         
   
   
@@ -267,92 +238,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#start-here-new-users" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Start here (new users)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick reference
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#abstractframework-ecosystem" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        AbstractFramework ecosystem
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#current-implementation-status-as-shipped" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Current implementation status (as shipped)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#internal-engineering-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Internal engineering notes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#project" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Project
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -364,7 +249,7 @@
   
   
     <li class="md-nav__item">
-      <a href="getting-started/" class="md-nav__link">
+      <a href="../../../getting-started/" class="md-nav__link">
         
   
   
@@ -391,7 +276,7 @@
   
   
     <li class="md-nav__item">
-      <a href="mlx-gen-local-examples/" class="md-nav__link">
+      <a href="../../../mlx-gen-local-examples/" class="md-nav__link">
         
   
   
@@ -418,7 +303,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/" class="md-nav__link">
+      <a href="../../../api/" class="md-nav__link">
         
   
   
@@ -445,7 +330,7 @@
   
   
     <li class="md-nav__item">
-      <a href="architecture/" class="md-nav__link">
+      <a href="../../../architecture/" class="md-nav__link">
         
   
   
@@ -472,7 +357,7 @@
   
   
     <li class="md-nav__item">
-      <a href="faq/" class="md-nav__link">
+      <a href="../../../faq/" class="md-nav__link">
         
   
   
@@ -546,7 +431,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/configuration/" class="md-nav__link">
+      <a href="../../../reference/configuration/" class="md-nav__link">
         
   
   
@@ -574,7 +459,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/backends/" class="md-nav__link">
+      <a href="../../../reference/backends/" class="md-nav__link">
         
   
   
@@ -602,7 +487,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/artifacts/" class="md-nav__link">
+      <a href="../../../reference/artifacts/" class="md-nav__link">
         
   
   
@@ -630,7 +515,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/capabilities-registry/" class="md-nav__link">
+      <a href="../../../reference/capabilities-registry/" class="md-nav__link">
         
   
   
@@ -658,7 +543,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/abstractcore-integration/" class="md-nav__link">
+      <a href="../../../reference/abstractcore-integration/" class="md-nav__link">
         
   
   
@@ -703,8 +588,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -713,10 +596,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#start-here-new-users" class="md-nav__link">
+  <a href="#task-030-gpu-parity-with-mlx-gen-every-local-capability-apple-silicon-has-on-nvidialinux-too" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start here (new users)
+        Task 030: GPU parity with MLX-Gen (every local capability Apple silicon has, on NVIDIA/Linux too)
       
     </span>
   </a>
@@ -724,10 +607,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
+  <a href="#main-goals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick reference
+        Main goals
       
     </span>
   </a>
@@ -735,10 +618,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#abstractframework-ecosystem" class="md-nav__link">
+  <a href="#secondary-goals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        AbstractFramework ecosystem
+        Secondary goals
       
     </span>
   </a>
@@ -746,10 +629,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#current-implementation-status-as-shipped" class="md-nav__link">
+  <a href="#context-problem" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current implementation status (as shipped)
+        Context / problem
       
     </span>
   </a>
@@ -757,10 +640,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#internal-engineering-notes" class="md-nav__link">
+  <a href="#constraints" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Internal engineering notes
+        Constraints
       
     </span>
   </a>
@@ -768,10 +651,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#project" class="md-nav__link">
+  <a href="#research-options-and-references" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Project
+        Research, options, and references
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plan-after-the-measurement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plan (after the measurement)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acceptance-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acceptance criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
       
     </span>
   </a>
@@ -798,63 +714,118 @@
   
 
 
-<h1 id="abstractvision-documentation">AbstractVision documentation<a class="headerlink" href="#abstractvision-documentation" title="Permanent link">&para;</a></h1>
-<p>This folder contains the user-facing documentation for <code>abstractvision</code>.</p>
-<h2 id="start-here-new-users">Start here (new users)<a class="headerlink" href="#start-here-new-users" title="Permanent link">&para;</a></h2>
-<p>1) <a href="../README.md">Project overview + quickstart</a><br />
-2) <a href="getting-started/">Getting started</a> (shell and interactive <code>t2i</code>/<code>i2i</code>; then Diffusers, MLX-Gen, GGUF, OpenAI-compatible HTTP, Playground)
-3) <a href="architecture/">Architecture</a> (how the pieces fit together)</p>
-<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+  <h1>030 gpu parity with mlx gen</h1>
+
+<h2 id="task-030-gpu-parity-with-mlx-gen-every-local-capability-apple-silicon-has-on-nvidialinux-too">Task 030: GPU parity with MLX-Gen (every local capability Apple silicon has, on NVIDIA/Linux too)<a class="headerlink" href="#task-030-gpu-parity-with-mlx-gen-every-local-capability-apple-silicon-has-on-nvidialinux-too" title="Permanent link">&para;</a></h2>
+<p><strong>Date</strong>: 2026-09-29<br />
+<strong>Status</strong>: Planned<br />
+<strong>Priority</strong>: P1  </p>
+<hr />
+<h2 id="main-goals">Main goals<a class="headerlink" href="#main-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="faq/">FAQ</a></li>
-<li><a href="troubleshooting/">Troubleshooting</a></li>
-<li><a href="api/">API reference</a></li>
-<li><a href="adr/">Architecture decisions</a></li>
-<li><a href="reference/backends/">Backends</a></li>
-<li><a href="mlx-gen-local-examples/">MLX-Gen local examples</a> (current LoRA route proofs, progress logs, and generated assets)</li>
-<li><a href="reference/configuration/">Configuration (CLI/REPL env vars + flags)</a></li>
-<li><a href="reference/capabilities-registry/">Capability registries (models + adapters)</a></li>
-<li><a href="reference/artifacts/">Artifacts (artifact refs + stores)</a></li>
-<li><a href="reference/abstractcore-integration/">AbstractCore integration (capability plugin + tools)</a></li>
-<li>Agent-oriented docs: <a href="../llms.txt"><code>../llms.txt</code></a> and <a href="../llms-full.txt"><code>../llms-full.txt</code></a></li>
+<li>Everything a user can run locally on Apple silicon through MLX-Gen, a user of the <code>gpu</code> install
+  setting (NVIDIA on Linux) can run locally too: same models or honest equivalents, same
+  <code>VisionManager</code> calls, same AbstractCore routes and recommendations.</li>
+<li>The <code>gpu</code> setting installs only what actually runs on a GPU machine.</li>
 </ul>
-<h2 id="abstractframework-ecosystem">AbstractFramework ecosystem<a class="headerlink" href="#abstractframework-ecosystem" title="Permanent link">&para;</a></h2>
-<p>AbstractVision is part of the <strong>AbstractFramework</strong> ecosystem and is designed to compose with:</p>
+<h2 id="secondary-goals">Secondary goals<a class="headerlink" href="#secondary-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>AbstractFramework</strong> (project hub): <a href="https://github.com/lpalbou/AbstractFramework">https://github.com/lpalbou/AbstractFramework</a></li>
-<li><strong>AbstractCore</strong> (orchestration + tool calling): <a href="https://github.com/lpalbou/abstractcore">https://github.com/lpalbou/abstractcore</a></li>
-<li><strong>AbstractRuntime</strong> (runtime services, including artifact storage): <a href="https://github.com/lpalbou/abstractruntime">https://github.com/lpalbou/abstractruntime</a></li>
+<li>One capability table (docs and <code>vision_model_capabilities.json</code>) that says, per model and task,
+  which runtime serves it on <code>apple</code> and on <code>gpu</code>, with measured memory on both.</li>
 </ul>
-<h2 id="current-implementation-status-as-shipped">Current implementation status (as shipped)<a class="headerlink" href="#current-implementation-status-as-shipped" title="Permanent link">&para;</a></h2>
-<p>Public API surface: <a href="../src/abstractvision/vision_manager.py"><code>VisionManager</code></a> exposes:
-- <code>generate_image</code> (<code>text_to_image</code>), <code>edit_image</code> (<code>image_to_image</code>)
-- <code>generate_image_batch</code>, <code>edit_image_batch</code> (repeatable orchestration with explicit seed planning)
-- <code>generate_video</code> (<code>text_to_video</code>), <code>image_to_video</code> (<code>image_to_video</code>) (backend-dependent)
-- <code>generate_video_batch</code>, <code>image_to_video_batch</code> (repeatable orchestration with explicit seed planning)
-- <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
-<p>Built-in backends implement:
-- <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Current local policy</strong>: MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. MLX-Gen is validated on Apple Silicon; the explicit <code>mlx-gen</code> extra also installs on Linux, where it is not validated yet (see <a href="backlog/planned/030_gpu_parity_with_mlx_gen/">backlog 030</a>), and the NVIDIA/Linux <code>gpu</code> / <code>all-gpu</code> profiles do not include it. Local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
-- <strong>Video</strong>:
-  - MLX-Gen for Wan 2.2 local <code>text_to_video</code> and first-frame <code>image_to_video</code>
-  - OpenAI-compatible HTTP for optional <code>text_to_video</code> / <code>image_to_video</code> when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>
-<p>If you’re looking for “what can model X do?” or “which adapter defaults/compatibilities are packaged?”, the packaged registries are the source of truth:
-<a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>../src/abstractvision/assets/vision_model_capabilities.json</code></a> (loaded by <code>VisionModelCapabilitiesRegistry</code> in <a href="../src/abstractvision/model_capabilities.py"><code>../src/abstractvision/model_capabilities.py</code></a>) and
-<a href="../src/abstractvision/assets/vision_adapter_capabilities.json"><code>../src/abstractvision/assets/vision_adapter_capabilities.json</code></a> (loaded by <code>VisionAdapterCapabilitiesRegistry</code> in <a href="../src/abstractvision/adapter_capabilities.py"><code>../src/abstractvision/adapter_capabilities.py</code></a>).
-Exact runtime route truth still comes from the selected backend.
-The curation and cross-platform support policy for those registries is governed by
-<a href="adr/0005_curated_capability_registry_and_download_catalog/">ADR 0005</a>.</p>
-<h2 id="internal-engineering-notes">Internal engineering notes<a class="headerlink" href="#internal-engineering-notes" title="Permanent link">&para;</a></h2>
-<p><a href="adr/"><code>docs/adr/</code></a> contains durable engineering policy.</p>
-<p><a href="backlog/"><code>docs/backlog/</code></a> is an internal log (planned work + completion reports). It is not the normative user documentation surface.</p>
-<h2 id="project">Project<a class="headerlink" href="#project" title="Permanent link">&para;</a></h2>
+<hr />
+<h2 id="context-problem">Context / problem<a class="headerlink" href="#context-problem" title="Permanent link">&para;</a></h2>
+<p>The three install settings are light (remote only), <code>apple</code> and <code>gpu</code>. On <code>apple</code>, MLX-Gen gives
+the curated local catalog: FLUX.2 Klein 4B/9B (text-to-image, image-to-image), Qwen-Image and
+Qwen-Image-Edit (2509/2511, structured control, masked edits), Z-Image, ERNIE-Image-Turbo, Bria
+FIBO / Fibo-lite / Fibo-Edit / Fibo-Edit-RMBG, SeedVR2 3B/7B upscaling, shared LoRA adapters, and
+Wan 2.2 video (TI2V-5B text- and image-to-video, T2V-A14B, I2V-A14B) with per-model default
+canvases and tiled VAE decode.</p>
+<p>On <code>gpu</code> today (checked 2026-09-29):</p>
 <ul>
-<li>Release notes: <a href="../CHANGELOG.md"><code>CHANGELOG.md</code></a></li>
-<li>Contributing: <a href="../CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a></li>
-<li>Security: <a href="../SECURITY.md"><code>SECURITY.md</code></a></li>
-<li>License: <a href="../LICENSE"><code>LICENSE</code></a></li>
-<li>Acknowledgments: <a href="../ACKNOWLEDGMENTS.md"><code>ACKNOWLEDGMENTS.md</code></a></li>
+<li>AbstractCore never routes MLX-Gen on a CUDA or ROCm host (<code>abstractcore/config/model_catalog.py</code>
+  <code>_HOST_PREFERENCE</code>: <code>mlx-gen</code> only in the <code>metal</code> list).</li>
+<li>Yet <code>abstractvision[all-gpu]</code> installs <code>mlx-gen</code> on Linux (marker
+  <code>platform_system == 'Darwin' or platform_system == 'Linux'</code>, <code>pyproject.toml:96-231</code>), and
+  mlx-gen 0.38 requires <code>mlx[cuda13]</code> on Linux: about 2.1 GB of CUDA 13 wheels next to torch's
+  CUDA 12 stack, never used, and a glibc 2.35 floor for the whole <code>gpu</code> setting (the gpu profile
+  fails to resolve on older glibc). Found by the root 0.6.2 tag gate.</li>
+<li>Local Diffusers <code>text_to_video</code> is quarantined from the normal surfaces (task 0023) and local
+  Diffusers <code>image_to_video</code> does not exist yet (task 0022). So a <code>gpu</code> user has no local video
+  at all, while the registry lists diffusers repos for Wan 2.2.</li>
+<li>FIBO, SeedVR2 and the bonsai ternary model have no non-MLX path.</li>
 </ul>
+<p>So the <code>gpu</code> setting pays for an engine it does not use and still lacks most of what <code>apple</code>
+offers.</p>
+<p><strong>Packaging part done (0.3.32, 2026-09-29, operator ruling):</strong> <code>gpu</code> and <code>all-gpu</code> no longer
+require <code>mlx-gen</code> (NVIDIA/Linux profiles: Diffusers/torch, plus stable-diffusion.cpp in
+<code>all-gpu</code>, no MLX). The CUDA 13 wheels and the glibc 2.35 floor are gone from the <code>gpu</code> setting;
+<code>tests/test_packaging_metadata.py::test_nvidia_gpu_profiles_never_pull_mlx</code> goes red if MLX comes
+back. The explicit <code>mlx-gen</code> / <code>mflux</code> extras (and <code>apple</code>, <code>all-apple</code>, <code>all</code>) keep it, so
+option A below can still be measured on NVIDIA by installing <code>abstractvision[mlx-gen]</code>. Plan step
+2's marker half and the "installs no runtime AbstractCore never routes" criterion are met;
+parity (steps 1 and 3-6) remains open.</p>
+<hr />
+<h2 id="constraints">Constraints<a class="headerlink" href="#constraints" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Keep the <code>VisionManager</code> contract and the AbstractCore plugin contract stable.</li>
+<li>Permissive licences only (ADR policy); heavy imports stay lazy.</li>
+<li>Never claim a capability on <code>gpu</code> without a real run on NVIDIA hardware (ADR 0008): the
+  capability table only marks what was measured.</li>
+<li>Memory figures are engine measurements, labelled as such, never the model's requirement.</li>
+<li>No machine-specific heuristics; runtime choice stays explicit and operator-controlled (ADR 0006).</li>
+</ul>
+<hr />
+<h2 id="research-options-and-references">Research, options, and references<a class="headerlink" href="#research-options-and-references" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Option A: MLX-Gen on CUDA.</strong> mlx has a CUDA backend and mlx-gen declares <code>mlx[cuda13]</code> on
+  Linux, so one runtime could serve both settings with the same weights (the AbstractFramework
+  MLX quants). To measure: which mlx-gen pipelines actually run on CUDA 13, speed and memory
+  against Diffusers on the same GPU, driver requirements (CUDA 13 driver), glibc floor. If it
+  works, AbstractCore adds <code>mlx-gen</code> to the <code>cuda</code> preference list per validated model.</li>
+<li>References: <code>https://pypi.org/project/mlx-gen/</code> (requires_dist), <code>https://pypi.org/project/mlx/</code>
+    (<code>cuda13</code> extra).</li>
+<li><strong>Option B: Diffusers per family.</strong> Use the upstream Diffusers pipelines where they exist
+  (Wan 2.2 TI2V-5B / A14B T2V and I2V, FLUX.2 Klein, Qwen-Image / Qwen-Image-Edit, Z-Image),
+  finishing 0022 and lifting the 0023 quarantine for Wan with per-model default canvases
+  (832x480) and tiled VAE decode, as on Apple. Families with no Diffusers pipeline (FIBO,
+  SeedVR2) need their upstream reference code or stay "not available on gpu yet", stated in
+  the table.</li>
+<li><strong>Option C: stable-diffusion.cpp</strong> (already in <code>gpu</code> through <code>sdcpp</code>) for the image families it
+  supports with CUDA builds (FLUX, Qwen-Image, Z-Image GGUF): small memory, no torch.</li>
+</ul>
+<p>Recommendation: measure A first on one NVIDIA machine (it decides whether the 2.1 GB is useful or
+must go). If A is not production-ready: make the mlx-gen marker Darwin-only for <code>gpu</code>/<code>all-gpu</code>
+(removes the CUDA 13 wheels and the glibc floor), and reach parity family by family with B, and C
+for images where it is lighter.</p>
+<hr />
+<h2 id="plan-after-the-measurement">Plan (after the measurement)<a class="headerlink" href="#plan-after-the-measurement" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Measure A on NVIDIA (image: FLUX.2 Klein 4B; video: Wan TI2V-5B at 832x480); record speed and
+   peak memory next to Diffusers.</li>
+<li>Decide the <code>gpu</code> runtime per family; fix the packaging marker accordingly.</li>
+<li>Wan 2.2 local video on <code>gpu</code>: text-to-video and image-to-video with the same default canvases
+   and a tiled decode; closes 0022/0023 for Wan.</li>
+<li>Images: FLUX.2 Klein, Qwen-Image/Edit (including structured control and masked edits),
+   Z-Image, ERNIE-Image-Turbo, with the shared LoRA contract (task 025).</li>
+<li>FIBO and SeedVR2: port or state "not available on gpu yet".</li>
+<li>AbstractCore: the <code>cuda</code> preference and the recommendations name the validated <code>gpu</code> models;
+   the capability table shows both settings.</li>
+</ol>
+<hr />
+<h2 id="acceptance-criteria">Acceptance criteria<a class="headerlink" href="#acceptance-criteria" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] A capability table (docs + registry) lists, per model and task, the runtime and measured
+      memory on <code>apple</code> and on <code>gpu</code>; every "yes" on <code>gpu</code> has a recorded NVIDIA run.</li>
+<li>[ ] Wan 2.2 text-to-video and image-to-video run locally on <code>gpu</code> with the same defaults and
+      overrides as on <code>apple</code>.</li>
+<li>[x] The <code>gpu</code> setting installs no runtime that AbstractCore never routes on a GPU host (0.3.32).</li>
+<li>[ ] AbstractCore recommendations for image and video on a CUDA host point to validated local
+      models.</li>
+</ul>
+<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
+<p>Hermetic tests for routing and packaging markers (<code>uv pip compile</code> for <code>gpu</code> on manylinux 2.28 and
+2.35); real runs on an NVIDIA machine for each validated model, with peak memory recorded.</p>
 
 
 
@@ -910,12 +881,12 @@ The curation and cross-platform support policy for those registries is governed 
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
-        <script src="assets/js/media_carousel.js"></script>
+        <script src="../../../assets/js/media_carousel.js"></script>
       
     
   </body>

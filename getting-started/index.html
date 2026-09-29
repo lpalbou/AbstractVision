@@ -1227,7 +1227,7 @@
 <ul>
 <li><strong>OpenAI-compatible HTTP</strong>: call a local/remote server that exposes OpenAI-shaped image endpoints</li>
 <li><strong>Diffusers (local Python)</strong>: Stable Diffusion / Qwen Image / FLUX 2 / other supported Diffusers pipelines</li>
-<li><strong>MLX-Gen (local, Apple-first)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V/A14B video routes. The current AbstractVision release is validated on Apple Silicon first; the extra also installs on Linux when upstream <code>mlx-gen</code> / <code>mlx</code> support is available.</li>
+<li><strong>MLX-Gen (local, Apple-first)</strong>: q4/q8 AbstractFramework MLX-optimized image generation via the optional MLX-Gen runtime, official FIBO image models, canonical SeedVR2 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V/A14B video routes. AbstractVision validates MLX-Gen on Apple Silicon; the <code>mlx-gen</code> extra also installs on Linux, where it is not validated yet (see <a href="../backlog/planned/030_gpu_parity_with_mlx_gen/">backlog 030</a>).</li>
 <li><strong>stable-diffusion.cpp (local GGUF)</strong>: GGUF diffusion models via <code>sd-cli</code> (recommended for GPU backends like <strong>Metal</strong>/<strong>CUDA</strong>) or via pip-installable python bindings (often <strong>CPU-only</strong> fallback)</li>
 <li><strong>Playground (web, optional)</strong>: self-contained AbstractVision UI/API for local model loading and jobs (<code>/v1/vision/*</code>)</li>
 </ul>
@@ -1299,7 +1299,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import
 </tr>
 <tr>
 <td><code>mlx-gen</code></td>
-<td>Installs the optional MLX-Gen runtime. This release is validated on Apple Silicon first; the extra also installs on Linux when upstream <code>mlx-gen</code> / <code>mlx</code> markers are available.</td>
+<td>Installs the optional MLX-Gen runtime, validated on Apple Silicon. The extra also installs on Linux, where it is not validated yet (see <a href="../backlog/planned/030_gpu_parity_with_mlx_gen/">backlog 030</a>).</td>
 </tr>
 <tr>
 <td><code>mflux</code></td>
@@ -1311,7 +1311,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import
 </tr>
 <tr>
 <td><code>gpu</code></td>
-<td>GPU-friendly profile for Diffusers/Torch and MLX-Gen when the platform markers match.</td>
+<td>NVIDIA/Linux profile: Diffusers/Torch, no MLX.</td>
 </tr>
 <tr>
 <td><code>huggingface</code></td>
@@ -1331,7 +1331,7 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import
 </tr>
 <tr>
 <td><code>all-gpu</code></td>
-<td>Aggregate GPU profile (Diffusers + stable-diffusion.cpp bindings + MLX-Gen when the platform markers match).</td>
+<td>Aggregate NVIDIA profile: Diffusers/Torch + stable-diffusion.cpp bindings (left out on Windows: PyPI has only its source build, which needs MSVC), no MLX.</td>
 </tr>
 <tr>
 <td><code>abstractcore</code></td>
@@ -1544,9 +1544,10 @@ abstractvision<span class="w"> </span>provider-models<span class="w"> </span>--b
 <hr />
 <h2 id="22-mlx-gen-local-q4-first">2.2) MLX-Gen local (q4 first)<a class="headerlink" href="#22-mlx-gen-local-q4-first" title="Permanent link">&para;</a></h2>
 <p>Use this path when you want local MLX-optimized image/video models without
-running a separate server. The current AbstractVision release is validated on
-Apple Silicon first. The <code>abstractvision[mlx-gen]</code> extra also installs on Linux
-when upstream <code>mlx-gen</code> / <code>mlx</code> support is available. AbstractVision uses the
+running a separate server. AbstractVision validates MLX-Gen on Apple Silicon.
+The <code>abstractvision[mlx-gen]</code> extra also installs on Linux, where it is not
+validated yet (see <a href="../backlog/planned/030_gpu_parity_with_mlx_gen/">backlog 030</a>); the <code>gpu</code> and <code>all-gpu</code> profiles do not
+include it. AbstractVision uses the
 <code>mlx-gen</code> Python API in-process and expects prepared model folders to exist in
 the Hugging Face cache. It does not silently download weights during
 generation.</p>
