@@ -106,14 +106,16 @@ Config fields:
 - `allow_download`, `auto_retry_fp32`
 - `cache_dir`, `revision`, `variant`
 - `use_safetensors`, `low_cpu_mem_usage`
-- `cpu_offload` (CUDA only): `"auto"` (default) loads the pipeline with Diffusers' model CPU offload when its weights do not fit the GPU's free memory minus a working reserve (the larger of 1.5 GiB and 10% of the card), `"model"` always offloads, `"none"` never does
+- `cpu_offload` (CUDA only): `"auto"` (default) picks the fastest placement that fits the GPU's free memory minus a working reserve (the larger of 1.5 GiB and 10% of the card): the whole pipeline on the GPU when it fits, else Diffusers' model CPU offload when the largest component fits, else Diffusers' sequential CPU offload. `"model"` always uses model CPU offload, `"sequential"` always uses sequential CPU offload, `"none"` never offloads
 
 Runtime behavior notes:
 - The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
 - Local Diffusers `GLM-Image` is temporarily disabled for both `text_to_image` and `image_to_image` pending the follow-up in [`../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Local Diffusers `text_to_video` is currently experimental and disabled from the normal local surfaces.
 - Local video export still requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for MP4 packaging.
-- On CUDA, a pipeline larger than the GPU's free memory runs with model CPU offload (one component on the GPU at a time) instead of failing with CUDA out of memory. For example, FLUX.2 [klein] 4B in float16 (14.9 GiB of weights) generates 768x768 in about 17 s at 4 steps on a 16 GB card, with a peak near 8 GiB. The result metadata reports the execution device (for example `cuda:0`) and `cpu_offload: "model"`.
+- On CUDA, a pipeline larger than the GPU's free memory runs with model CPU offload instead of failing with CUDA out of memory. Model CPU offload moves one whole component (text encoder, transformer, VAE) to the GPU at a time, so it needs the largest component plus activations. For example, FLUX.2 [klein] 4B in float16 (14.9 GiB of weights, largest component about 7.5 GiB) generates 768x768 in about 17 s at 4 steps on a free 16 GB card, with a peak near 8 GiB.
+- When the free memory cannot hold even the largest component, for example because another model is loaded on the same GPU, the pipeline runs with sequential CPU offload: weights stream to the GPU one submodule at a time. It fits in far less GPU memory but is much slower, since every step reads the weights from system memory again. The backend logs a warning that says so; unload the other model to get model CPU offload back.
+- The result metadata reports the execution device (for example `cuda:0`) and `cpu_offload: "model"` or `cpu_offload: "sequential"` when the pipeline is offloaded.
 - This backend is where model-specific defaults and constraints such as packaged step counts, guidance defaults, dimension constraints, and unsupported-parameter dropping are enforced for all callers.
 
 ## MLX-Gen backend (local Apple-first)

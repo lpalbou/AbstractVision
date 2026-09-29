@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.3.33 - 2026-09-29
+
+- Diffusers on CUDA: `cpu_offload="auto"` falls back to Diffusers' sequential CPU offload when the
+  GPU's free memory (minus the working reserve) cannot hold the pipeline's largest component,
+  which model CPU offload moves to the GPU whole. This covers a GPU shared with another loaded
+  model: on a 16 GB Quadro RTX 5000 with a text model holding 6.5 GiB, FLUX.2 [klein] 4B in
+  float16 (largest component about 7.5 GiB, 7.8 GiB free) ran out of memory with model CPU offload.
+  Sequential CPU offload runs in far less GPU memory but is much slower; the backend logs a
+  warning that says why it was chosen, and the result metadata reports `cpu_offload: "sequential"`.
+  The whole-pipeline and model CPU offload placements are unchanged when they fit.
+- `HuggingFaceDiffusersBackendConfig(cpu_offload=...)` accepts `"sequential"` to always use
+  sequential CPU offload; `"model"` and `"none"` keep their meaning.
+
 ## 0.3.32 - 2026-09-29
 
 - Install profiles: the `gpu` and `all-gpu` extras no longer install MLX-Gen. They are the

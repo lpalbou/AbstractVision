@@ -197,6 +197,34 @@ Notes:
   peak memory
 - unload other models before a video run
 
+## Diffusers on CUDA is slow or runs out of memory
+
+### Symptom
+
+- an image generation on an NVIDIA GPU takes many times longer than expected,
+  and the result metadata reports `cpu_offload: "sequential"`
+- the log shows `Diffusers: sequential CPU offload on cuda ... (much slower than
+  model CPU offload)`
+- a generation fails with `CUDA out of memory`
+
+### Likely cause
+
+- another process (for example a text model) holds part of the GPU, so the
+  free memory cannot hold the pipeline's largest component and the backend
+  falls back to sequential CPU offload
+- `cpu_offload="model"` or `"none"` was set explicitly on a GPU that is too
+  small for that placement
+
+### Fix
+
+- unload the other model from the GPU before generating; with enough free
+  memory the backend uses model CPU offload or moves the pipeline whole
+- leave `cpu_offload` at `"auto"` (the default) so the backend picks a
+  placement that fits; see
+  [docs/reference/backends.md](reference/backends.md#diffusers-backend-local)
+  for how it decides
+- use a smaller model or a quantized (GGUF) variant on small GPUs
+
 ## `mps` was requested but is unavailable
 
 ### Symptom
