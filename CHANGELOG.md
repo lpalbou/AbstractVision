@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.34 - 2026-10-18
 
 - Endpoint profiles: a request whose provider is `endpoint:<id>` (an OpenAI-compatible connection kept as an
   AbstractCore provider profile or by a host such as AbstractGateway) now runs on that endpoint, with the
