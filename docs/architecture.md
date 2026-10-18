@@ -132,6 +132,7 @@ Current plugin behavior (evidence in [`../src/abstractvision/integrations/abstra
 - Default: OpenAI HTTP with backend id `abstractvision:openai`; the legacy backend id `abstractvision:openai-compatible` remains registered and preserves compatible-endpoint defaults when selected directly.
 - Compatible endpoints should set `OPENAI_BASE_URL`; set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Local Diffusers and stable-diffusion.cpp are supported when `vision_backend` / `ABSTRACTVISION_BACKEND` selects `diffusers` or `sdcpp`.
+- A request whose provider is `endpoint:<id>` runs on that endpoint profile's OpenAI-compatible API with the profile's own base URL and key (resolved by the owning Core provider's host resolver, then the ambient `abstractcore.providers.endpoint_context` resolver, then AbstractCore's `provider_profiles`; only `openai` / `openai-compatible` profiles are accepted).
 - Configuration is read from `owner.config` keys like `vision_base_url`, `vision_model_id`, `vision_backend`, and backend-specific keys, then falls back to `ABSTRACTVISION_*` and standard OpenAI env vars where relevant.
 
 ## Extending AbstractVision (practical steps)

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Endpoint profiles: a request whose provider is `endpoint:<id>` (an OpenAI-compatible connection kept as an
+  AbstractCore provider profile or by a host such as AbstractGateway) now runs on that endpoint, with the
+  profile's base URL and API key, through the OpenAI-compatible backend. Before, the provider fell through
+  to the configured default backend, so an image route set to an endpoint serving `gpt-image-2` could not
+  reach it. The profile is resolved by the owning Core provider's host resolver
+  (`resolve_provider_endpoint_profile`), then the ambient resolver (`abstractcore.providers.endpoint_context`),
+  then AbstractCore's `provider_profiles`; an unknown or disabled profile, or one of another family than
+  `openai` / `openai-compatible`, fails with an error that never contains the key. An `openai-compatible`
+  endpoint without a key never borrows `OPENAI_API_KEY`. Tests: `tests/test_endpoint_profile_routing.py`.
+
 ## 0.3.33 - 2026-09-29
 
 - Diffusers on CUDA: `cpu_offload="auto"` falls back to Diffusers' sequential CPU offload when the

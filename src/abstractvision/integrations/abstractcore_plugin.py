@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import ipaddress
 import os
@@ -725,8 +726,116 @@ class _AbstractVisionCapability:
             return str(value).strip() if value is not None else None
         return requested or None
 
+    def _resolve_endpoint_profile(self, provider: str) -> Dict[str, Any]:
+        """Resolve `endpoint:<id>` to {id, provider_family, base_url, api_key}.
+
+        An endpoint profile is a named OpenAI-compatible connection (an
+        AbstractCore `provider_profiles` row, or one a host such as
+        AbstractGateway keeps in its own store). Before this, `endpoint:<id>`
+        fell through to the configured default backend, so an image route set
+        to an endpoint profile never reached that endpoint. Resolution order,
+        first hit wins:
+
+        1. the resolver the host attached to the owning Core provider
+           (`resolve_provider_endpoint_profile`; AbstractRuntime attaches the
+           gateway's to every run client): it knows the host's scoping;
+        2. the host-injected ambient resolver
+           (`abstractcore.providers.endpoint_context`);
+        3. AbstractCore's own config (`provider_profiles`), from the owner's
+           config file when it names one.
+
+        The key never appears in an error message.
+        """
+        spec = str(provider or "").strip()
+        payload: Any = None
+        resolvers: List[Any] = [getattr(self._owner, "resolve_provider_endpoint_profile", None)]
+        try:
+            from abstractcore.providers.endpoint_context import current_provider_endpoint_profile_resolver
+
+            resolvers.append(current_provider_endpoint_profile_resolver())
+        except Exception:
+            pass
+        for resolver in resolvers:
+            if not callable(resolver):
+                continue
+            try:
+                payload = resolver(spec)
+            except Exception:
+                payload = None
+            if isinstance(payload, Mapping):
+                break
+            payload = None
+        if payload is None:
+            try:
+                config_file = getattr(self._owner, "_abstractcore_config_file", None)
+                if isinstance(config_file, str) and config_file.strip():
+                    from abstractcore.config.manager import ConfigurationManager
+
+                    manager = ConfigurationManager(config_file=config_file.strip(), apply_env=False)
+                else:
+                    from abstractcore.config import get_config_manager
+
+                    manager = get_config_manager()
+                profile = manager.resolve_provider_profile(spec)
+                if profile is not None:
+                    payload = profile.private_resolution()
+            except Exception:
+                payload = None
+        if not isinstance(payload, Mapping) or payload.get("enabled") is False:
+            raise AbstractVisionError(
+                f"Unknown or disabled endpoint profile {spec!r}: neither the host's endpoint-profile "
+                "resolver nor AbstractCore's provider profiles know it."
+            )
+        family = str(payload.get("provider_family") or payload.get("provider") or "").strip().lower().replace("_", "-")
+        if family not in {"openai", "openai-compatible"}:
+            raise AbstractVisionError(
+                f"Endpoint profile {spec!r} uses provider family {family or '<none>'!r}; image and video "
+                "generation through an endpoint needs an 'openai' or 'openai-compatible' profile."
+            )
+        return {
+            "id": str(payload.get("id") or spec),
+            "provider_family": family,
+            "base_url": str(payload.get("base_url") or "").strip(),
+            "api_key": str(payload.get("api_key") or "").strip(),
+        }
+
+    def _endpoint_backend_binding(self, provider: str, model: Any) -> Dict[str, Any]:
+        endpoint = self._resolve_endpoint_profile(provider)
+        model_id = _strip_openai_model_prefixes(str(model or "").strip())
+        # The key is part of the cache identity (a rotated key must not reuse
+        # the old backend), as a digest only.
+        key = endpoint["api_key"]
+        key_digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16] if key else ""
+        backend_key = ("endpoint", provider.strip().lower(), endpoint["base_url"], key_digest, model_id)
+        backend = self._routed_backends.get(backend_key)
+        if backend is None:
+            backend = self._make_openai_backend(
+                model_id=model_id or None,
+                provider_id=endpoint["provider_family"],
+                endpoint=endpoint,
+            )
+            self._routed_backends[backend_key] = backend
+        backend_kind = "openai-compatible" if endpoint["provider_family"] == "openai-compatible" else "openai"
+        resolved_model = self._resolved_model_for_backend(
+            backend,
+            backend_kind=backend_kind,
+            requested_model=model_id or None,
+        )
+        return {
+            "backend": backend,
+            "backend_key": backend_key,
+            "backend_kind": backend_kind,
+            "provider": _canonical_provider_for_backend_kind(backend_kind),
+            "model": resolved_model,
+            "load_id": _canonical_load_id(backend_kind, resolved_model),
+            "local_control": False,
+        }
+
     def _resolve_backend_binding(self, *, provider: Any = None, model: Any = None) -> Dict[str, Any]:
-        provider_id = str(provider or "").strip().lower().replace("_", "-")
+        raw_provider = str(provider or "").strip()
+        if raw_provider.lower().startswith("endpoint:"):
+            return self._endpoint_backend_binding(raw_provider, model)
+        provider_id = raw_provider.lower().replace("_", "-")
         model_id = str(model or "").strip()
         if model_id and "/" in model_id:
             head, tail = model_id.split("/", 1)
@@ -1047,17 +1156,37 @@ class _AbstractVisionCapability:
         )
         return HuggingFaceDiffusersVisionBackend(config=cfg)
 
-    def _make_openai_backend(self, *, model_id: Optional[str] = None, provider_id: Optional[str] = None):
+    def _make_openai_backend(
+        self,
+        *,
+        model_id: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        endpoint: Optional[Mapping[str, Any]] = None,
+    ):
+        """OpenAI(-compatible) HTTP backend.
+
+        `endpoint` is a resolved endpoint profile (`_resolve_endpoint_profile`):
+        its base URL and key replace the owner's single `vision_base_url` /
+        `vision_api_key`. An `openai-compatible` endpoint never borrows the
+        owner's or the environment's key (it would hand it to another server);
+        an `openai` one with no key of its own uses OpenAI's.
+        """
         configured_base_url = _configured_openai_base_url(self._owner)
         requested_provider = str(provider_id or "").strip().lower().replace("_", "-")
         explicit_openai_compatible = requested_provider in {"openai-compatible", "proxy"}
 
         base_url = configured_base_url
+        if endpoint is not None:
+            base_url = str(endpoint.get("base_url") or "").strip() or None
         if not base_url and not explicit_openai_compatible:
             base_url = _DEFAULT_OPENAI_BASE_URL
 
         owner_api_key = _owner_cfg(self._owner, "vision_api_key")
-        if owner_api_key:
+        if endpoint is not None:
+            api_key = str(endpoint.get("api_key") or "").strip() or None
+            if not api_key and not explicit_openai_compatible:
+                api_key = _openai_api_key()
+        elif owner_api_key:
             api_key = owner_api_key
         else:
             api_key = _openai_api_key()

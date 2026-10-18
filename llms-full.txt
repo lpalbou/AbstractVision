@@ -2634,6 +2634,7 @@ Current plugin behavior (evidence in [`../src/abstractvision/integrations/abstra
 - Default: OpenAI HTTP with backend id `abstractvision:openai`; the legacy backend id `abstractvision:openai-compatible` remains registered and preserves compatible-endpoint defaults when selected directly.
 - Compatible endpoints should set `OPENAI_BASE_URL`; set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Local Diffusers and stable-diffusion.cpp are supported when `vision_backend` / `ABSTRACTVISION_BACKEND` selects `diffusers` or `sdcpp`.
+- A request whose provider is `endpoint:<id>` runs on that endpoint profile's OpenAI-compatible API with the profile's own base URL and key (resolved by the owning Core provider's host resolver, then the ambient `abstractcore.providers.endpoint_context` resolver, then AbstractCore's `provider_profiles`; only `openai` / `openai-compatible` profiles are accepted).
 - Configuration is read from `owner.config` keys like `vision_base_url`, `vision_model_id`, `vision_backend`, and backend-specific keys, then falls back to `ABSTRACTVISION_*` and standard OpenAI env vars where relevant.
 
 ## Extending AbstractVision (practical steps)
@@ -3882,6 +3883,7 @@ The plugin registers these backend ids:
 
 Current behavior:
 - Default `abstractvision:openai`: OpenAI HTTP (`https://api.openai.com/v1`). Set `OPENAI_API_KEY`.
+- Endpoint profiles: `provider="endpoint:<id>"` on `t2i` / `i2i` (and the batch, video and upscale methods) sends the request to that profile's OpenAI-compatible endpoint with its base URL and API key, for example `llm.vision.t2i("a red cube", provider="endpoint:relay", model="gpt-image-2")`. The profile comes from the resolver a host attached to the Core provider (`resolve_provider_endpoint_profile`, which AbstractRuntime sets for AbstractGateway runs), else the ambient resolver in `abstractcore.providers.endpoint_context`, else AbstractCore's `provider_profiles`. Only `openai` and `openai-compatible` profiles are accepted; an `openai-compatible` profile without a key never borrows `OPENAI_API_KEY`.
 - OpenAI model ids are configured, not discovered dynamically. Providers may expose an OpenAI-compatible `GET /models` catalog; AbstractVision exposes it through `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, and the plugin method `llm.vision.list_provider_models(...)`, but the plugin does not call it automatically or use it to select a model. The static plugin default is `gpt-image-1`; set `OPENAI_IMAGE_MODEL_ID`, `OPENAI_IMAGE_MODEL`, `ABSTRACTVISION_MODEL_ID`, or `vision_model_id` for newer provider models.
 - Compatible HTTP: set `OPENAI_BASE_URL` to a local/remote compatible `/v1` server. Set `ABSTRACTVISION_BACKEND=openai-compatible` when you want to force compatible-endpoint semantics.
 - Legacy `abstractvision:openai-compatible`: keeps compatible-endpoint defaults when that backend id is selected directly.
@@ -4508,6 +4510,18 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
+
+## Unreleased
+
+- Endpoint profiles: a request whose provider is `endpoint:<id>` (an OpenAI-compatible connection kept as an
+  AbstractCore provider profile or by a host such as AbstractGateway) now runs on that endpoint, with the
+  profile's base URL and API key, through the OpenAI-compatible backend. Before, the provider fell through
+  to the configured default backend, so an image route set to an endpoint serving `gpt-image-2` could not
+  reach it. The profile is resolved by the owning Core provider's host resolver
+  (`resolve_provider_endpoint_profile`), then the ambient resolver (`abstractcore.providers.endpoint_context`),
+  then AbstractCore's `provider_profiles`; an unknown or disabled profile, or one of another family than
+  `openai` / `openai-compatible`, fails with an error that never contains the key. An `openai-compatible`
+  endpoint without a key never borrows `OPENAI_API_KEY`. Tests: `tests/test_endpoint_profile_routing.py`.
 
 ## 0.3.33 - 2026-09-29
 
