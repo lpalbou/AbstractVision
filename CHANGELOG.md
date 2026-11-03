@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.35 - 2026-11-03
+
+- No change to the package's behavior or API. The backlog now records planned work on cloud image models and
+  their aliases in the model registry (backlog 0025).
+
 ## 0.3.34 - 2026-10-18
 
 - Endpoint profiles: a request whose provider is `endpoint:<id>` (an OpenAI-compatible connection kept as an
