@@ -10,7 +10,9 @@ patterns again turns this RED. No network: the listings are the repos' real ones
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -104,7 +106,17 @@ class DownloadModelPresetTrimTests(unittest.TestCase):
 
             api = MagicMock()
             api.list_repo_files.return_value = list(_SDXL_TURBO)
-            with patch.object(md, "local_model_profile", return_value=profile), \
+            # The base CI job has no huggingface_hub (an optional dependency): the package imports
+            # it inside the download functions, so a stand-in module is enough for the patches.
+            try:
+                import huggingface_hub  # noqa: F401
+                hub_modules = {}
+            except ImportError:
+                stand_in = types.ModuleType("huggingface_hub")
+                stand_in.HfApi = stand_in.hf_hub_download = stand_in.snapshot_download = None
+                hub_modules = {"huggingface_hub": stand_in}
+            with patch.dict(sys.modules, hub_modules), \
+                 patch.object(md, "local_model_profile", return_value=profile), \
                  patch.object(md, "ensure_hf_repo_snapshot", return_value=None), \
                  patch("huggingface_hub.HfApi", return_value=api), \
                  patch("huggingface_hub.hf_hub_download", return_value=str(index)), \
