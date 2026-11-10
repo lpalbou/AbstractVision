@@ -17,3 +17,6 @@ class UnknownModelError(AbstractVisionError):
 class CapabilityNotSupportedError(AbstractVisionError):
     """Raised when a model/backend cannot satisfy a requested generative capability."""
 
+
+class GpuOutOfMemoryError(AbstractVisionError):
+    """Raised when a local generation runs out of GPU memory; the message says what to change."""

@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
+from ..errors import CapabilityNotSupportedError, GpuOutOfMemoryError, OptionalDependencyMissingError
 from ..lora_adapters import (
     lora_adapter_signature,
     recommended_lora_request_overrides,
@@ -816,6 +816,13 @@ def _cuda_offload_decision(torch: Any, pipe: Any, device: str, dtype: Any, mode:
         "GPU whole; sequential CPU offload streams the weights one submodule at a time, so it runs "
         "in much less GPU memory but each step is slower (slower overall for models with many steps)"
     )
+
+
+def _is_gpu_out_of_memory(error: BaseException) -> bool:
+    """torch.OutOfMemoryError (torch.cuda.OutOfMemoryError), or a CUDA allocator message."""
+    if type(error).__name__ == "OutOfMemoryError":
+        return True
+    return "CUDA out of memory" in str(error)
 
 
 def _pipe_cpu_offload_mode(pipe: Any) -> str:
@@ -2854,16 +2861,61 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 # Best-effort: never break inference for progress reporting.
                 pass
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always", RuntimeWarning)
-            with _hf_offline_env(not bool(self._cfg.allow_download)):
-                out = pipe(**call_kwargs)
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always", RuntimeWarning)
+                with _hf_offline_env(not bool(self._cfg.allow_download)):
+                    out = pipe(**call_kwargs)
+        except Exception as e:
+            if _is_gpu_out_of_memory(e):
+                raise self._gpu_out_of_memory_error(pipe, call_kwargs, e) from e
+            raise
         had_invalid_cast = any(
             issubclass(getattr(x, "category", Warning), RuntimeWarning)
             and "invalid value encountered in cast" in str(getattr(x, "message", ""))
             for x in w
         )
         return out, had_invalid_cast
+
+    def _gpu_out_of_memory_error(self, pipe: Any, call_kwargs: Dict[str, Any], error: Exception) -> Exception:
+        """A clear message for a CUDA out-of-memory during generation, after returning the
+        failed attempt's cached blocks so the loaded model can serve the next request.
+
+        Measured on a 16 GB Quadro RTX 5000 (2026-11-10): Z-Image in bfloat16 with model CPU
+        offload at its default 1024x1024 surfaced torch's own traceback ("CUDA out of memory.
+        Tried to allocate 3.75 GiB ...")."""
+
+        free_total = None
+        try:
+            torch = _lazy_import_torch()
+            torch.cuda.empty_cache()
+            device = torch.device(str(self._effective_device(torch)))
+            free_total = torch.cuda.mem_get_info(device.index if device.index is not None else 0)
+        except Exception:
+            pass
+        width, height = call_kwargs.get("width"), call_kwargs.get("height")
+        size = f"{int(width)}x{int(height)}" if width and height else "the pipeline's default size"
+        frames = call_kwargs.get("num_frames")
+        if frames:
+            size += f", {int(frames)} frames"
+        offload = _pipe_cpu_offload_mode(pipe)
+        placement = f"{offload} CPU offload" if offload else "the whole pipeline on the GPU"
+        import re
+
+        wanted = re.search(r"Tried to allocate ([0-9.]+ [KMG]iB)", str(error))
+        need = f" it needed {wanted.group(1)} more," if wanted else ""
+        room = (
+            f" {free_total[0] / _GIB:.1f} of {free_total[1] / _GIB:.1f} GiB are free now."
+            if free_total
+            else ""
+        )
+        hint = "a smaller width/height" + (" or fewer frames" if frames else "")
+        if offload != "sequential":
+            hint += ", cpu_offload='sequential' (much less GPU memory, slower steps)"
+        return GpuOutOfMemoryError(
+            f"The GPU ran out of memory generating with {self._cfg.model_id} at {size} ({placement}):"
+            f"{need}{room} Try {hint}, or this model's GGUF build on the stable-diffusion.cpp backend."
+        )
 
     def _pipe_progress_param_names(self, pipe: Any) -> set[str]:
         fn = getattr(pipe, "__call__", None)
