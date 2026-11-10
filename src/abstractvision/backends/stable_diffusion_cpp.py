@@ -11,7 +11,7 @@ import threading
 import urllib.request
 import zipfile
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
@@ -1101,11 +1101,37 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             },
         )
 
+    def _with_catalog_defaults(self, request: Any, task: str) -> Any:
+        """Fill `steps` / `guidance_scale` the request leaves unset from the catalog entry of
+        `capabilities_model_id`, as the Diffusers backend does. Without them sd-cli ran its own
+        defaults (20 steps, cfg 7): FLUX.2 [klein] 4B ran 20 steps instead of 4 and Z-Image-Turbo
+        20 instead of 9 (Quadro RTX 5000, 2026-11-10). A catalog guidance below 1 ("no CFG" in
+        Diffusers) is sent as cfg 1, stable-diffusion.cpp's no-CFG value (cfg 0 keeps only the
+        unconditional prediction)."""
+
+        model_id = str(self._cfg.capabilities_model_id or "").strip()
+        if not model_id or (request.steps is not None and request.guidance_scale is not None):
+            return request
+        try:
+            params = VisionModelCapabilitiesRegistry().get(model_id).tasks[task].params or {}
+        except Exception:
+            return request
+        changes: Dict[str, Any] = {}
+        steps_default = (params.get("steps") or {}).get("default") if isinstance(params.get("steps"), dict) else None
+        if request.steps is None and steps_default is not None:
+            changes["steps"] = int(steps_default)
+        guidance = params.get("guidance_scale")
+        guidance_default = guidance.get("default") if isinstance(guidance, dict) else None
+        if request.guidance_scale is None and guidance_default is not None:
+            changes["guidance_scale"] = max(1.0, float(guidance_default))
+        return replace(request, **changes) if changes else request
+
     def generate_image_with_progress(
         self,
         request: ImageGenerationRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
+        request = self._with_catalog_defaults(request, "text_to_image")
         self._validate_macos_gguf_supported()
         self._validate_qwen_image_components()
         mode = self._select_mode()
@@ -1159,6 +1185,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         request: ImageEditRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
+        request = self._with_catalog_defaults(request, "image_to_image")
         self._validate_macos_gguf_supported()
         self._validate_qwen_image_components()
         mode = self._select_mode()
