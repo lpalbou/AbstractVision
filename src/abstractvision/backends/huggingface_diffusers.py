@@ -548,6 +548,13 @@ def _default_torch_dtype_for_device(torch: Any, device: str) -> Any:
         #
         # You can still force bf16 explicitly via `torch_dtype=bfloat16`.
         return torch.float16
+    if d == "cpu" or d.startswith("cpu:"):
+        # The processor computes in float32. Without an explicit dtype, Diffusers loads its own
+        # models (UNet, VAE) in float32 but Transformers 5 loads text encoders in the checkpoint's
+        # dtype, so a float16 checkpoint ran a float16 text encoder into a float32 UNet and every
+        # generation failed with "mat1 and mat2 must have the same dtype" (segmind/tiny-sd on
+        # Linux CPU, torch 2.15, diffusers 0.42.1, transformers 5.22.2).
+        return getattr(torch, "float32", None)
     return None
 
 
