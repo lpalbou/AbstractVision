@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.35 - 2026-11-10
+
+Linux release check: this version was run end to end on an Ubuntu 24.04 host with an NVIDIA Quadro RTX 5000
+(16 GB, Turing) and on a processor-only Ubuntu 26.04 host with Python 3.14. On the card, `abstractvision[gpu]`
+installs with no compiler, the Diffusers backend picks `cuda` and float16 (the fast dtype on Turing, which has no
+native bfloat16), FLUX.2 [klein] 4B generates 1024² in 18-20 s with 8.6 GB of GPU memory and about 24 GB of host RAM
+for model CPU offload, the model stays resident between calls and `unload` returns the memory; the SDXL family, the
+turbo models, SD 1.5, Kolors, Lumina-2, PixArt-Sigma, the inpaint and instruct-pix2pix pipelines and the GGUF path
+(FLUX.2 klein, Z-Image, Qwen-Image-2512, Qwen-Image-Edit-2511 through `sd-cli`) all ran at their catalog defaults.
+On the processor the backend picks `cpu` and float32 and generates without a CUDA warning.
+
+- One-line standalone install: `curl -LsSf https://abstractframework.ai/vision/install.sh | sh` (macOS/Linux) and
+  `powershell -ExecutionPolicy ByPass -c "irm https://abstractframework.ai/vision/install.ps1 | iex"` (Windows),
+  `scripts/install.sh` / `scripts/install.ps1`: no admin rights, uv and Python 3.12 installed when missing,
+  `abstractvision[<profile>]==<version>` as an isolated user tool; the profile is detected like the framework
+  installer's (Apple Silicon + macOS 14 -> `apple`, NVIDIA or ROCm -> `gpu`, else `light`); `--print`, `--profile`,
+  `--pin`, `--from`; a re-run upgrades in place.
+- Diffusers on the processor loads every component in float32 (the CPU default dtype was unset, so Transformers 5
+  loaded float16 text encoders next to a float32 UNet and every generation failed with a dtype mismatch).
+- `local_model_profile()` reports `cpu` when `CUDA_VISIBLE_DEVICES` is empty or `-1` (it said `cuda`).
+- A CUDA out-of-memory during a Diffusers generation is raised as `GpuOutOfMemoryError`, naming the model's size,
+  its placement, what was free and what to change, instead of torch's traceback.
+- 8-bit GGUF presets download and run their `Q8_0` file only (they fetched every quantization of the repository:
+  258 GB for Qwen-Image-2512's 22 GB file, 92 GB for Z-Image, and then ran the BF16 file).
+- `sd-cli` auto-install picks the newest stable-diffusion.cpp release whose Linux build the host's glibc can run
+  and skips ROCm builds (since master-1044 the Linux builds need glibc 2.43, so every GGUF call failed on Ubuntu
+  24.04); a host that already installed a newer build deletes `~/.abstractvision/bin` once.
+- Z-Image GGUF presets bring their text encoder (Qwen3-4B Q4_K_M) and VAE, so `sd-cli` can build its context.
+- The GGUF path runs at the catalog's steps and guidance (it ran `sd-cli`'s 20 steps and cfg 7 for every model);
+  guidance below 1 is sent as cfg 1 for turbo and distilled models.
+- Qwen-Image-Edit-2511 on `sd-cli` passes `--model-args qwen_image_zero_cond_t=true` (the flag it used did not exist).
+
 ## 0.3.34 - 2026-10-18
 
 - Endpoint profiles: a request whose provider is `endpoint:<id>` (an OpenAI-compatible connection kept as an

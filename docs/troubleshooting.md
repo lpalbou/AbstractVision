@@ -224,6 +224,75 @@ Notes:
   [docs/reference/backends.md](reference/backends.md#diffusers-backend-local)
   for how it decides
 - use a smaller model or a quantized (GGUF) variant on small GPUs
+- an out-of-memory during the generation itself is raised as
+  `GpuOutOfMemoryError` with the model's size, its placement, what was free
+  and what to change; model CPU offload also needs host RAM for the whole
+  float16 weights plus about 3 GB (FLUX.2 klein 4B peaks near 24 GB of RAM)
+
+## A Diffusers result is an all-black image on CUDA
+
+### Symptom
+
+- the generation finishes, the file is written, the image is uniformly black
+
+### Likely cause
+
+The model was trained in bfloat16 (Z-Image, OmniGen and others) and ran in
+float16, which overflows in its layers. Cards before Ampere (compute capability
+8.0, for example the Turing Quadro RTX 5000) have no native bfloat16.
+
+### Fix
+
+- on Ampere or newer, set `torch_dtype=bfloat16`
+- on older cards, run the model in float32 (slower, more memory; OmniGen at
+  1024² took about 12 minutes with sequential offload on a 16 GB Turing card)
+  or use its GGUF variant through stable-diffusion.cpp
+
+## Linux without a GPU: Diffusers reports its runtime missing
+
+### Symptom
+
+- `pip install "abstractvision[gpu]"` on a processor-only Linux host, then
+  "Diffusers runtime missing" although `diffusers` is installed, or
+  `operator torchvision::nms does not exist` when importing
+
+### Likely cause
+
+`torch` was installed from PyTorch's CPU index and `torchvision` from PyPI
+(the CUDA build): the two do not match.
+
+### Fix
+
+Install both from the same index before the package:
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install "abstractvision[gpu]"
+```
+
+The processor path then runs in float32 (the default on cpu) and the profile
+reports `cpu`; hiding the card with an empty or `-1` `CUDA_VISIBLE_DEVICES`
+gives the same result on a GPU host.
+
+## stable-diffusion.cpp (`sd-cli`) fails with a `GLIBC` version error on Linux
+
+### Symptom
+
+- a GGUF generation fails with `version 'GLIBC_2.43' not found` (or similar)
+  right after `sd-cli` was auto-installed
+
+### Likely cause
+
+Since release master-1044 (2026-11-03) stable-diffusion.cpp's Linux builds are
+made on Ubuntu 26.04 and need glibc 2.43; Ubuntu 24.04 has 2.39.
+
+### Fix
+
+The auto-install now picks the newest release whose Linux build the host's
+glibc can run (master-1043 on Ubuntu 24.04) and skips ROCm builds. A host that
+auto-installed a newer build before this fix keeps it: delete
+`~/.abstractvision/bin` and let the next GGUF call install again. `sd-cli`
+reloads the model on every call (the Diffusers path keeps it resident).
 
 ## `mps` was requested but is unavailable
 

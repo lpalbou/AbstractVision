@@ -389,3 +389,4 @@ Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstrac
 - `CapabilityNotSupportedError` (task isn’t supported by the model registry or backend)
 - `UnknownModelError` (model id isn’t present in the registry)
 - `OptionalDependencyMissingError` (backend dependency is missing, e.g. Diffusers/Torch)
+- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback)
