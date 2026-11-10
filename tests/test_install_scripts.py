@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -135,7 +136,7 @@ class InstallScriptsTest(unittest.TestCase):
         names); the Python check runs from a .py file instead (Invoke-Smoke)."""
         ps1 = _read(PS1)
         args = re.findall(r"'-(?:c|Command)',\s*(\$\w+|'[^']*'|\"[^\"]*\")", ps1)
-        self.assertGreaterEqual(len(args), 2, f"expected the -c/-Command arguments install.ps1 builds, found {args}")
+        self.assertGreaterEqual(len(args), 1, f"expected the -Command argument install.ps1 builds, found {args}")
         for arg in args:
             if arg.startswith("$"):
                 values = re.findall(rf"^\s*\{arg}\s*=\s*(.+)$", ps1, re.MULTILINE)
@@ -151,10 +152,10 @@ class InstallScriptsTest(unittest.TestCase):
                     self.assertNotIn('"', inner, f"{arg} passes inline code with a double quote: {inner[:80]}")
             else:
                 self.assertNotIn('"', arg[1:-1], f"inline -c argument with a double quote: {arg[:80]}")
-        # No Python is run inline: python.exe is only ever given a script path.
+        # No Python is run inline, nor shown as such: python.exe is only ever given a script path.
         self.assertIsNone(re.search(r"&\s*\$\w*[Pp]y\w*\s+['\"]?-c", ps1))
-        self.assertIn("& $Python $file", ps1)
-        self.assertIn("$script:WorkDir", ps1)
+        self.assertNotIn("'-c'", ps1)
+        self.assertIn("& $Python $File", ps1)
 
     @unittest.skipIf(shutil.which("pwsh") is None, "no PowerShell")
     def test_install_ps1_parses(self):
@@ -224,8 +225,12 @@ class InstallScriptsTest(unittest.TestCase):
         for text in (sh, ps1):
             self.assertIn("import torchvision", text)  # a torch / torchvision pair from two indexes fails here
             self.assertIn("torch.cuda.is_available()", text)
-        self.assertIn('"$TOOL_PY" "$WORK/torch-check.py"', sh)
-        self.assertIn("Invoke-Smoke $toolPy $AvisTorchSmoke", ps1)
+        # The command printed is the one that runs (the check file, kept), never a `python -c` twin.
+        self.assertIn('"$TOOL_PY" "$CHECK_PY" 2>>"$LOG"', sh)
+        self.assertIn('show_cmd "$TOOL_PY" "$CHECK_PY"', sh)
+        self.assertNotIn("show_cmd \"$TOOL_PY\" -c", sh)
+        self.assertIn("Invoke-Smoke $toolPy $AvisTorchSmoke $checkPy", ps1)
+        self.assertIn("Format-Cmd @($toolPy, $checkPy)", ps1)
 
     def test_scripts_and_docs_name_the_exact_one_liners(self):
         readme, install = _read(README), _read(INSTALL_DOC)
@@ -233,7 +238,7 @@ class InstallScriptsTest(unittest.TestCase):
             for line in (SH_LINE, PS1_LINE) + PIP_LINES:
                 self.assertIn(line, doc, f"{name} lacks: {line}")
         self.assertIn("## One-line install", install)
-        self.assertIn("getting-started.md", _read(ROOT / "docs" / "README.md"))
+        self.assertIn("(getting-started.md#one-line-install)", _read(ROOT / "docs" / "README.md"))
         self.assertIn(SH_LINE, _read(SH))
         self.assertIn(PS1_LINE, _read(PS1))
         for text in (_read(SH), _read(PS1), readme):
@@ -250,6 +255,52 @@ class InstallScriptsTest(unittest.TestCase):
         self.assertIn(slim, install)
         self.assertIn("uv tool install --python $AVIS_PYTHON --torch-backend cpu --reinstall", sh)
         self.assertIn("Both must come from the same index", install)
+        # Measured on Ubuntu 24.04 (uv 0.13.7): re-runs and upgrades keep the CPU build, a reinstall
+        # brings the CUDA build back; the docs say to run the cpu line again after an upgrade.
+        self.assertIn("run the `--torch-backend cpu` line again", install)
+        self.assertIn("`uv tool upgrade --reinstall abstractvision` did", install)
+
+    @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh")
+    def test_install_sh_profile_value_and_previous_extras(self):
+        """`--profile LIGHT` works (lower-cased, as PowerShell's switch is case-insensitive), and a
+        previous install with extras that are not a profile (diffusers) is re-detected with a
+        warning, not silently switched. A fake uv answers `tool list` / `tool dir`; --print runs
+        nothing else."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "bin").mkdir()
+            (tmp / "home").mkdir()
+            (tmp / "tools" / "abstractvision").mkdir(parents=True)
+            uv = tmp / "bin" / "uv"
+            uv.write_text(
+                "#!/bin/sh\n"
+                'case "$1 $2" in\n'
+                f'  "tool dir") if [ "${{3:-}}" = --bin ]; then echo "{tmp}/home/.local/bin"; else echo "{tmp}/tools"; fi ;;\n'
+                '  "tool list") echo "abstractvision v0.3.34"; echo "- abstractvision" ;;\n'
+                '  *) echo "uv 0.13.7" ;;\n'
+                "esac\n",
+                encoding="utf-8",
+            )
+            uv.chmod(0o755)
+            receipt = tmp / "tools" / "abstractvision" / "uv-receipt.toml"
+            env = {"HOME": str(tmp / "home"), "PATH": f"{tmp / 'bin'}:/usr/bin:/bin", "TERM": "dumb"}
+
+            def plan(*args: str) -> str:
+                r = subprocess.run(["sh", str(SH), "--print", *args], env=env, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                return r.stdout
+
+            receipt.write_text('[tool]\nrequirements = [{ name = "abstractvision", extras = ["diffusers"], specifier = "==0.3.34" }]\n', encoding="utf-8")
+            out = plan("--profile", "LIGHT")
+            self.assertIn("profile: light (", out)
+            self.assertIn("the previous install used the extras [diffusers]: replacing them with the light profile", out)
+            out = plan()
+            self.assertIn("the previous install used the extras [diffusers], which are not a profile of this installer: re-detecting", out)
+            self.assertNotIn("kept from the previous install", out)
+            receipt.write_text('[tool]\nrequirements = [{ name = "abstractvision", specifier = "==0.3.34" }]\n', encoding="utf-8")
+            out = plan()
+            self.assertIn("profile: light (kept from the previous install", out)
+            self.assertNotIn("previous install used the extras", out)
 
 
 if __name__ == "__main__":

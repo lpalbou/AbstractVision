@@ -158,6 +158,7 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+PROFILE="$(printf '%s' "$PROFILE" | tr '[:upper:]' '[:lower:]')"  # --profile GPU works, as in install.ps1
 C_B=""; C_D=""; C_R=""; C_G=""; C_Y=""; C_C=""; C_0=""
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then E="$(printf '\033')"
     C_B="${E}[1m"; C_D="${E}[2m"; C_R="${E}[31m"; C_G="${E}[32m"; C_Y="${E}[33m"; C_C="${E}[36m"; C_0="${E}[0m"; fi
@@ -194,7 +195,7 @@ TOOL_BIN=""; TOOL_DIR=""
 [ -z "$UV" ] || { TOOL_BIN="$("$UV" tool dir --bin 2>/dev/null || true)"; TOOL_DIR="$("$UV" tool dir 2>/dev/null || true)"; }
 [ -n "$TOOL_BIN" ] || TOOL_BIN="${UV_TOOL_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
 [ -n "$TOOL_DIR" ] || TOOL_DIR="${UV_TOOL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/uv/tools}"
-BEFORE=""; PREV_PROFILE=""
+BEFORE=""; PREV_PROFILE=""; OTHER_EXTRAS=""
 if [ -n "$UV" ]; then  # the existing install: its version, and its profile from the uv receipt
     BEFORE="$("$UV" tool list 2>/dev/null | sed -n 's/^abstractvision v\([^ ]*\).*/\1/p' | head -n 1)"
     _rcpt="$TOOL_DIR/abstractvision/uv-receipt.toml"
@@ -204,6 +205,7 @@ if [ -n "$UV" ]; then  # the existing install: its version, and its profile from
             *'"apple"'*|*'"all-apple"'*) PREV_PROFILE=apple ;;
             *'"gpu"'*|*'"all-gpu"'*) PREV_PROFILE=gpu ;;
             '') PREV_PROFILE=light ;;
+            *) OTHER_EXTRAS="$(printf '%s' "$_extras" | tr -d '" ')" ;;  # e.g. diffusers, mlx-gen
         esac
     fi
 fi
@@ -212,6 +214,10 @@ nvidia_info; HAS_NVIDIA="$NV_OK"
 HAS_ROCM=0; have rocminfo && rocminfo >/dev/null 2>&1 && HAS_ROCM=1
 APPLE_OK=0; [ "$OS_ID" = macos ] && [ "$ARCH" = arm64 ] && [ "$MACOS_MAJOR" -ge 14 ] 2>/dev/null && APPLE_OK=1
 _local="no local generation: that needs the apple or gpu profile"
+if [ -n "$OTHER_EXTRAS" ]; then case "$PROFILE" in
+    auto|"") warn "the previous install used the extras [$OTHER_EXTRAS], which are not a profile of this installer: re-detecting the profile (--profile picks one)" ;;
+    *) warn "the previous install used the extras [$OTHER_EXTRAS]: replacing them with the $PROFILE profile" ;;
+esac; fi
 case "$PROFILE" in
     auto|"")
         if [ -n "$PREV_PROFILE" ]; then PROFILE="$PREV_PROFILE"; _why="kept from the previous install"
@@ -356,8 +362,8 @@ fi
 TORCH_RESULT=""; CPU_TORCH=0
 if [ -n "$EXTRAS" ]; then
     step "PyTorch (Diffusers): the device it runs on"
-    TOOL_PY="$TOOL_DIR/abstractvision/bin/python"
-    printf '  %s$ %s%s\n' "$C_D" "$(show_cmd "$TOOL_PY" -c 'import torch, torchvision; print(torch.__version__, torch.cuda.is_available())')" "$C_0"
+    TOOL_PY="$TOOL_DIR/abstractvision/bin/python"; CHECK_PY="$WORK/torch-check.py"
+    printf '  %s$ %s   # imports torch and torchvision, reports CUDA or MPS%s\n' "$C_D" "$(show_cmd "$TOOL_PY" "$CHECK_PY")" "$C_0"
     if [ "$PRINT" = 1 ]; then TORCH_RESULT="planned: the check above (torch and torchvision import; CUDA or MPS)"
     else
         printf '%s\n' 'try:
@@ -372,9 +378,9 @@ if [ -n "$EXTRAS" ]; then
     import torchvision
     print("AVISMOKE torchvision=" + torchvision.__version__)
 except BaseException as e:
-    print("AVISMOKE error=%s: %s" % (type(e).__name__, str(e).splitlines()[0] if str(e) else ""))' >"$WORK/torch-check.py"
+    print("AVISMOKE error=%s: %s" % (type(e).__name__, str(e).splitlines()[0] if str(e) else ""))' >"$CHECK_PY"
         printf '\n$ %s <torch check>\n' "$TOOL_PY" >>"$LOG"
-        _t="$("$TOOL_PY" "$WORK/torch-check.py" 2>>"$LOG")" || true
+        _t="$("$TOOL_PY" "$CHECK_PY" 2>>"$LOG")" || true
         printf '%s\n' "$_t" >>"$LOG"
         tv() { printf '%s\n' "$_t" | sed -n "s/^AVISMOKE $1=//p" | head -n 1; }
         _v="$(tv version)"; _cb="$(tv cuda_build)"; _err="$(tv error | cut -c1-240)"

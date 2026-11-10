@@ -83,7 +83,7 @@ except BaseException as e:
 print("AVISMOKE " + json.dumps(r))
 '@
 
-$script:RanAsFile = [bool]$PSCommandPath; $script:DryRun = [bool]$Print; $script:LogFile = ''; $script:WorkDir = ''; $script:StepNo = 0
+$script:RanAsFile = [bool]$PSCommandPath; $script:DryRun = [bool]$Print; $script:LogFile = ''; $script:StepNo = 0
 $script:ShowAll = ($VerbosePreference -eq 'Continue')   # -Verbose (CmdletBinding): show every command's output
 
 function Write-Step([string]$Text) { $script:StepNo++; Write-Host ''; Write-Host "[$($script:StepNo)] $Text" -ForegroundColor White }
@@ -162,19 +162,15 @@ function Get-ToolList([string]$Uv) {  # `uv tool list` lines (none without uv)
 }
 function Get-ToolVersion([string]$Uv) { foreach ($l in (Get-ToolList $Uv)) { if ($l -match '^abstractvision v(\S+)') { return $Matches[1] } }; return '' }
 # Run one smoke script with the tool environment's Python: the parsed JSON, or $null. Always from a
-# .py file in the installer's folder, run by path, never `python -c`: Windows PowerShell 5.1 strips
-# double quotes inside native arguments (pwsh 7 does not), so inline code holding a `"` would run
-# altered and misreport there. tests/test_install_scripts.py rejects any -c argument with a `"`.
-function Invoke-Smoke([string]$Python, [string]$Code) {
+# .py file in the installer's folder (kept, so the printed command can be run again), run by path,
+# never `python -c`: Windows PowerShell 5.1 strips double quotes inside native arguments (pwsh 7
+# does not), so inline code holding a `"` would run altered and misreport there.
+# tests/test_install_scripts.py rejects any -c argument with a `"`.
+function Invoke-Smoke([string]$Python, [string]$Code, [string]$File) {
     if (-not $Python -or -not (Test-Path -LiteralPath $Python)) { return $null }
-    $dir = if ($script:WorkDir) { $script:WorkDir } else { [System.IO.Path]::GetTempPath() }
-    $file = Join-Path $dir ("smoke-{0}-{1}.py" -f $PID, [guid]::NewGuid().ToString('N'))
-    [System.IO.File]::WriteAllText($file, $Code, (New-Object System.Text.UTF8Encoding($false)))
+    [System.IO.File]::WriteAllText($File, $Code, (New-Object System.Text.UTF8Encoding($false)))
     $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    try { $out = @(& $Python $file 2>&1 | ForEach-Object { "$_" }) } catch { $out = @("$_") } finally {
-        $ErrorActionPreference = $old
-        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
-    }
+    try { $out = @(& $Python $File 2>&1 | ForEach-Object { "$_" }) } catch { $out = @("$_") } finally { $ErrorActionPreference = $old }
     if ($script:LogFile) { Add-Content -Path $script:LogFile -Value (@("`r`n`$ $Python <smoke check>") + $out) -Encoding UTF8 }
     $line = $out | Where-Object { $_ -like 'AVISMOKE *' } | Select-Object -Last 1
     if (-not $line) { return $null }
@@ -189,6 +185,7 @@ function Main {
     $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
     $profileName = $InstallProfile
     if (-not $profileName) { $profileName = if ($env:AVIS_PROFILE) { $env:AVIS_PROFILE } else { 'auto' } }
+    $profileName = $profileName.ToLowerInvariant()   # -Profile GPU works, as in install.sh
     if (-not $Pin -and $env:AVIS_PIN) { $Pin = $env:AVIS_PIN }
     if (-not $From -and $env:AVIS_FROM) { $From = $env:AVIS_FROM }
     $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
@@ -201,12 +198,16 @@ function Main {
     if ($uv) { $toolBin = (& $uv tool dir --bin 2>$null | Select-Object -First 1); $toolDir = (& $uv tool dir 2>$null | Select-Object -First 1) }
     if (-not $toolBin) { $toolBin = if ($env:UV_TOOL_BIN_DIR) { $env:UV_TOOL_BIN_DIR } else { [IO.Path]::Combine($homeDir, '.local', 'bin') } }
     if (-not $toolDir) { $toolDir = if ($env:UV_TOOL_DIR) { $env:UV_TOOL_DIR } else { [IO.Path]::Combine($(if ($env:APPDATA) { $env:APPDATA } else { $homeDir }), 'uv', 'tools') } }
-    $before = Get-ToolVersion $uv; $prevProfile = ''   # the existing install: its version, and its profile from the uv receipt
+    $before = Get-ToolVersion $uv; $prevProfile = ''; $otherExtras = ''   # the existing install: its version, and its profile from the uv receipt
     $receipt = [IO.Path]::Combine($toolDir, 'abstractvision', 'uv-receipt.toml')
     if ($before -and (Test-Path -LiteralPath $receipt)) {
         $rc = Get-Content -LiteralPath $receipt -Raw
         if ($rc -match 'name = "abstractvision", extras = \[[^\]]*"(gpu|all-gpu)"') { $prevProfile = 'gpu' }
-        elseif ($rc -match 'name = "abstractvision"' -and $rc -notmatch 'name = "abstractvision", extras = ') { $prevProfile = 'light' } }
+        elseif ($rc -match 'name = "abstractvision", extras = \[([^\]]*)\]') { $otherExtras = ($Matches[1] -replace '[" ]', '') }   # e.g. diffusers
+        elseif ($rc -match 'name = "abstractvision"') { $prevProfile = 'light' } }
+    if ($otherExtras) {
+        if ($profileName -eq 'auto') { Write-Warn2 "the previous install used the extras [$otherExtras], which are not a profile of this installer: re-detecting the profile (-Profile picks one)" }
+        else { Write-Warn2 "the previous install used the extras [$otherExtras]: replacing them with the $profileName profile" } }
 
     $gpu = Get-NvidiaInfo; $local = 'no local generation: that needs the gpu profile'
     switch ($profileName) {
@@ -297,7 +298,7 @@ function Main {
     }
     $work = [IO.Path]::Combine($(if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { $homeDir }), 'abstractvision', 'installer')
     if (-not $script:DryRun) { New-Item -ItemType Directory -Force -Path $work | Out-Null
-        $script:WorkDir = $work; $script:LogFile = Join-Path $work 'install.log'; Set-Content -Path $script:LogFile -Value '' -Encoding UTF8 }
+        $script:LogFile = Join-Path $work 'install.log'; Set-Content -Path $script:LogFile -Value '' -Encoding UTF8 }
 
     # --- 2. uv and Python ------------------------------------------------------------------------
     Write-Step 'uv (Python toolchain manager)'
@@ -350,11 +351,11 @@ function Main {
     if ($extras) {
         Write-Step 'PyTorch (Diffusers): the device it runs on'
         $toolPy = [IO.Path]::Combine($toolDir, 'abstractvision', 'Scripts', 'python.exe')
-        $twin = 'import torch, torchvision; print(torch.__version__, torch.cuda.is_available())'
-        Write-Host "  `$ $(Format-Cmd @($toolPy, '-c', $twin))" -ForegroundColor DarkGray
+        $checkPy = Join-Path $work 'torch-check.py'
+        Write-Host "  `$ $(Format-Cmd @($toolPy, $checkPy))   # imports torch and torchvision, reports CUDA" -ForegroundColor DarkGray
         if ($script:DryRun) { $torchResult = 'planned: the check above (torch and torchvision import; CUDA)' }
         else {
-            $r = Invoke-Smoke $toolPy $AvisTorchSmoke
+            $r = Invoke-Smoke $toolPy $AvisTorchSmoke $checkPy
             if (-not $r -or $r.error -or -not $r.version) {
                 $torchResult = "does not import ($(if ($r -and $r.error) { $r.error } else { 'no answer' }); log: $($script:LogFile)): Diffusers cannot run"; Write-Warn2 "PyTorch $torchResult"
             } elseif ($r.cuda) {

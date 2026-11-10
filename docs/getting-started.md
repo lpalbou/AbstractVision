@@ -51,8 +51,9 @@ pip install "abstractvision[gpu]"     # NVIDIA / Linux
 
 The installer runs `uv tool install --python 3.12 "abstractvision[<profile>]==<version>"`, where
 the version is the release the script ships with. Every step prints its command; `--print`
-(`-Print` on Windows) shows the plan and changes nothing. After the install, it checks which
-device PyTorch runs on (`torch` and `torchvision` import, then CUDA or MPS) and says so.
+(`-Print` on Windows) shows the plan and changes nothing. After an `apple` or `gpu` install
+(not `light`, which has no PyTorch), it checks which device PyTorch runs on (`torch` and
+`torchvision` import, then CUDA or MPS) and says so.
 AbstractFramework's own installer (`https://abstractframework.ai/install.sh`) already includes
 AbstractVision: where it is installed, its gateway tool owns the `abstractvision` command and this
 installer stops with a sentence, changing nothing (upgrade the framework instead).
@@ -86,9 +87,14 @@ publishes no Windows ARM64 wheels.
 
   It takes torch and torchvision from PyTorch's CPU index and removes the NVIDIA libraries: the
   environment drops to about 1.1 GB. Both must come from the same index: a CPU torch next to the
-  CUDA torchvision breaks torchvision (its operators no longer load). A re-run of the installer
-  keeps the CPU build; `uv tool install --python 3.12 --reinstall "abstractvision[gpu]==<version>"`
-  puts the CUDA build back.
+  CUDA torchvision breaks torchvision (its operators no longer load). Measured with uv 0.13.7: uv's
+  receipt does not record `--torch-backend`, and uv keeps an installed torch that still satisfies,
+  so a re-run of the installer, an upgrade through it (0.3.33 to 0.3.34) and `uv tool upgrade`
+  kept the CPU build. A reinstall re-resolves torch from PyPI and brings the CUDA build back:
+  `uv tool upgrade --reinstall abstractvision` did, and so does
+  `uv tool install --python 3.12 --reinstall "abstractvision[gpu]==<version>"` (the way to get it
+  back on purpose). After an upgrade, check the summary's `PyTorch:` line: when it names a CUDA
+  build again, run the `--torch-backend cpu` line again.
 
 ### Options
 
@@ -123,8 +129,8 @@ the Xcode tools dialog). Checked against PyPI for Python 3.12:
 - `light`: nothing (no dependency).
 - GGUF models: the installer does not install stable-diffusion.cpp's `sd-cli`. The
   stable-diffusion.cpp backend prefers it and downloads it itself into `~/.abstractvision/bin` at
-  the first GGUF generation (a Metal build on Apple Silicon; a Vulkan build on Linux with NVIDIA;
-  a CUDA build on Windows); `ABSTRACTVISION_SDCPP_AUTO_INSTALL=0` turns that off.
+  the first GGUF generation (the macOS arm64 build on Apple Silicon; on Linux a Vulkan build when
+  NVIDIA is present; a CUDA build on Windows); `ABSTRACTVISION_SDCPP_AUTO_INSTALL=0` turns that off.
 
 ---
 

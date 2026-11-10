@@ -5,7 +5,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 ## Start here (new users)
 
 1) [Project overview + quickstart](../README.md)  
-2) [Getting started](getting-started.md) (shell and interactive `t2i`/`i2i`; then Diffusers, MLX-Gen, GGUF, OpenAI-compatible HTTP, Playground)
+2) [Getting started](getting-started.md) ([one-line install](getting-started.md#one-line-install); shell and interactive `t2i`/`i2i`; then Diffusers, MLX-Gen, GGUF, OpenAI-compatible HTTP, Playground)
 3) [Architecture](architecture.md) (how the pieces fit together)
 
 ## Quick reference
