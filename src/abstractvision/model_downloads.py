@@ -1513,6 +1513,24 @@ def _default_allow_patterns(*, target: str, engine: str) -> Tuple[str, ...]:
     return ()
 
 
+def _registry_allow_patterns(
+    *, key: str, repo_id: str, target: str, engine: str, bits: Optional[int]
+) -> Tuple[str, ...]:
+    """Download patterns for a registry-declared artifact.
+
+    An 8-bit GGUF artifact downloads only its Q8_0 file: the GGUF repos ship every quantization
+    in one repo (unsloth/Qwen-Image-2512-GGUF holds 15 files, 258 GB; the runtime reads the 22 GB
+    Q8_0 one), and the stable-diffusion.cpp selection picks the first file the patterns match,
+    which for `*.gguf` was the BF16 file (z-image, FLUX.2-dev), not the 8-bit one. A repo with a
+    stable-diffusion.cpp bundle uses the bundle's own file names."""
+
+    if str(target) == "gguf" and bits == 8:
+        bundle = _SDCPP_BUNDLES_BY_REPO_ID.get(str(repo_id).strip().lower(), _SDCPP_BUNDLES.get(str(key)))
+        quant = tuple(bundle.model_patterns) if bundle is not None else ("*Q8_0.gguf", "*q8_0.gguf")
+        return ("README.md", "LICENSE*") + quant
+    return _default_allow_patterns(target=target, engine=engine)
+
+
 def _default_source_priority(*, source: str, target: str, engine: str, bits: Optional[int]) -> int:
     source_s = str(source or "").strip().lower()
     if target == "fp8" and bits == 8:
@@ -1661,7 +1679,13 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
                     upstream_repo_id=None if str(dl.repo_id) == str(model_id) else str(model_id),
                     source=str(dl.source or "official"),
                     aliases=_merge_aliases(str(dl.key), str(model_id), str(dl.repo_id)),
-                    allow_patterns=_default_allow_patterns(target=str(dl.target), engine=str(dl.engine)),
+                    allow_patterns=_registry_allow_patterns(
+                        key=str(dl.key),
+                        repo_id=str(dl.repo_id),
+                        target=str(dl.target),
+                        engine=str(dl.engine),
+                        bits=dl.bits,
+                    ),
                     notes=str(dl.notes or spec.notes or ""),
                     source_priority=_default_source_priority(
                         source=str(dl.source or "official"),
