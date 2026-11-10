@@ -89,5 +89,43 @@ class SdCliAutoInstallGlibcTests(unittest.TestCase):
         self.assertTrue(requested[1].endswith("sd-master-3be2378-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip"))
 
 
+    def test_unknown_newer_ubuntu_build_is_refused(self):
+        # sd.cpp moving to Ubuntu 26.10 builds must not break 24.04/26.04 hosts again.
+        releases = [
+            _release("master-2000-aaaaaaa", "sd-master-aaaaaaa-bin-Linux-Ubuntu-26.10-x86_64-vulkan.zip"),
+            _release("master-1079-a3c49b1", "sd-master-a3c49b1-bin-Linux-Ubuntu-26.04-x86_64-vulkan.zip"),
+        ]
+        url = sd._pick_sd_cli_asset_url(releases, plat="linux", machine="x86_64", host_glibc=(2, 43), has_nvidia=True)
+        self.assertTrue(url.endswith("Ubuntu-26.04-x86_64-vulkan.zip"))
+        self.assertIsNone(sd._pick_sd_cli_asset_url(releases[:1], plat="linux", machine="x86_64", host_glibc=None, has_nvidia=True))
+
+    def test_unknown_older_ubuntu_build_needs_the_next_known_glibc(self):
+        releases = [_release("master-900-bbbbbbb", "sd-master-bbbbbbb-bin-Linux-Ubuntu-23.04-x86_64.zip")]
+        self.assertIsNotNone(sd._pick_sd_cli_asset_url(releases, plat="linux", machine="x86_64", host_glibc=(2, 39), has_nvidia=False))
+        self.assertIsNone(sd._pick_sd_cli_asset_url(releases, plat="linux", machine="x86_64", host_glibc=(2, 35), has_nvidia=False))
+
+    def test_linux_arm64_host_never_takes_an_x86_64_build(self):
+        self.assertIsNone(_pick(machine="aarch64"))
+        arm = [_release("master-1080-ccccccc", "sd-master-ccccccc-bin-Linux-Ubuntu-24.04-arm64.zip")] + _RELEASES
+        self.assertTrue(sd._pick_sd_cli_asset_url(arm, plat="linux", machine="aarch64", host_glibc=(2, 39), has_nvidia=False).endswith("Ubuntu-24.04-arm64.zip"))
+
+    def test_no_compatible_build_gives_a_clear_message(self):
+        import tempfile
+        from pathlib import Path
+
+        def fake_urlopen(req, timeout=None):
+            return io.BytesIO(json.dumps(_RELEASES).encode())
+
+        with tempfile.TemporaryDirectory() as td, \
+             patch.object(sd.urllib.request, "urlopen", side_effect=fake_urlopen), \
+             patch.object(sd.sys, "platform", "linux"), \
+             patch.object(sd._platform, "machine", return_value="aarch64"), \
+             patch.object(sd._platform, "libc_ver", return_value=("glibc", "2.39")), \
+             patch.object(sd.shutil, "which", return_value=None), \
+             patch.object(sd.Path, "home", return_value=Path(td)):
+            with self.assertRaises(sd.OptionalDependencyMissingError) as ctx:
+                sd._require_sd_cli("sd-cli")
+        self.assertIn("ships a linux arm64 build this host can run (glibc 2.39)", str(ctx.exception))
+
 if __name__ == "__main__":
     unittest.main()

@@ -110,8 +110,9 @@ def _require_sd_cli(path: str) -> str:
             installed = _try_auto_install_sd_cli(managed_dir)
             if installed is not None:
                 return installed
+        problem = f"{_SD_CLI_AUTO_INSTALL_PROBLEM} " if _SD_CLI_AUTO_INSTALL_PROBLEM else ""
         raise OptionalDependencyMissingError(
-            f"stable-diffusion.cpp executable not found in PATH: {p!r}. "
+            f"{problem}stable-diffusion.cpp executable not found in PATH: {p!r}. "
             "Install from https://github.com/leejet/stable-diffusion.cpp/releases or install `abstractvision[sdcpp]`, "
             "or set sd_cli_path. "
             "If you intended to run a standard Diffusers model (e.g. 'runwayml/stable-diffusion-v1-5'), use the "
@@ -165,6 +166,23 @@ def _is_high_memory_machine(*, min_memory_gb: float = 18.0) -> bool:
 # newer Ubuntu does not start on an older one: since master-1044 (2026-11-03) the Linux builds are
 # Ubuntu 26.04 (glibc 2.43), and on Ubuntu 24.04 (glibc 2.39) the installed `sd-cli` failed every
 # call with "version `GLIBC_2.43' not found".
+# FLUX models distilled on an embedded guidance value: sd.cpp takes it as `--guidance` with
+# `--cfg-scale 1` (docs/flux.md, docs/flux2.md). FLUX.2 [klein] is step-distilled (cfg 1, no
+# guidance input) and klein base runs real CFG, so neither is here.
+_SDCPP_GUIDANCE_DISTILLED_MODELS = frozenset(
+    {
+        "black-forest-labs/flux.1-dev",
+        "black-forest-labs/flux.1-kontext-dev",
+        "black-forest-labs/flux.1-krea-dev",
+        "black-forest-labs/flux.2-dev",
+    }
+)
+# stable-diffusion.cpp's documented CFG for Qwen Image Edit (2509, 2511): docs/qwen_image_edit.md.
+_SDCPP_QWEN_EDIT_CFG = 2.5
+
+# Why the last `sd-cli` auto-install found nothing to install (shown in the missing-sd-cli error).
+_SD_CLI_AUTO_INSTALL_PROBLEM: Optional[str] = None
+
 _UBUNTU_GLIBC = {
     (20, 4): (2, 31),
     (22, 4): (2, 35),
@@ -187,6 +205,35 @@ def _host_glibc_version() -> Optional[tuple]:
         return tuple(int(x) for x in str(version).split(".")[:2])
     except Exception:
         return None
+
+
+def _linux_arch(machine: str) -> Optional[str]:
+    m = str(machine or "").strip().lower()
+    if m in {"x86_64", "amd64"}:
+        return "x86_64"
+    if m in {"aarch64", "arm64"}:
+        return "arm64"
+    return None
+
+
+def _ubuntu_build_runs_here(version: tuple, host_glibc: Optional[tuple]) -> bool:
+    """Whether a build made on Ubuntu `version` starts with this host's glibc.
+
+    A version newer than every `_UBUNTU_GLIBC` entry needs a glibc this table does not know, so it
+    is refused: otherwise the day sd.cpp moves its Linux builds to 26.10 every 24.04 and 26.04 host
+    would install a binary that fails with "GLIBC not found" again. An older version missing from
+    the table needs at most the glibc of the next known release."""
+
+    version = tuple(version)
+    newest = max(_UBUNTU_GLIBC)
+    if version > newest:
+        return False
+    if host_glibc is None:
+        return True
+    needed = _UBUNTU_GLIBC.get(version)
+    if needed is None:
+        needed = _UBUNTU_GLIBC[min(v for v in _UBUNTU_GLIBC if v > version)]
+    return needed <= tuple(host_glibc)
 
 
 def _pick_sd_cli_asset_url(
@@ -228,16 +275,18 @@ def _pick_sd_cli_asset_url(
             elif plat == "linux":
                 if "bin-linux" not in low:
                     continue
-                if "x86_64" not in low and "arm64" not in low and "aarch64" not in low:
+                # The build must be for this machine: an x86_64 zip does not run on aarch64.
+                asset_arch = "x86_64" if ("x86_64" in low or "amd64" in low) else (
+                    "arm64" if ("arm64" in low or "aarch64" in low) else None
+                )
+                if asset_arch is None or asset_arch != _linux_arch(machine):
                     continue
                 # ROCm builds are AMD-only; Vulkan covers NVIDIA and AMD GPUs.
                 if "rocm" in low:
                     continue
                 m = re.search(r"ubuntu-(\d+)\.(\d+)", low)
-                if m and host_glibc is not None:
-                    needed = _UBUNTU_GLIBC.get((int(m.group(1)), int(m.group(2))))
-                    if needed is not None and needed > tuple(host_glibc):
-                        continue
+                if m and not _ubuntu_build_runs_here((int(m.group(1)), int(m.group(2))), host_glibc):
+                    continue
                 # Prefer Vulkan build when an NVIDIA runtime is present.
                 if has_nvidia and "vulkan" in low:
                     score += 30
@@ -302,6 +351,14 @@ def _try_auto_install_sd_cli(dest_dir: Path) -> Optional[str]:
 
         selected_url = pick_asset_url()
         if not selected_url:
+            global _SD_CLI_AUTO_INSTALL_PROBLEM
+            glibc = _host_glibc_version()
+            _SD_CLI_AUTO_INSTALL_PROBLEM = (
+                f"No stable-diffusion.cpp release among the last {len(releases)} ships a {plat} "
+                f"{_linux_arch(machine) or machine} build this host can run"
+                + (f" (glibc {'.'.join(str(x) for x in glibc)})" if plat == "linux" and glibc else "")
+                + "; build sd-cli from source or install `abstractvision[sdcpp]`."
+            )
             return None
 
         # Download + extract.
@@ -363,12 +420,15 @@ def _add_sd_cli_model_arg(cmd: List[str], key: str, value: str) -> None:
 
     if "--model-args" in cmd:
         i = cmd.index("--model-args")
-        if i + 1 < len(cmd):
-            entries = [e for e in str(cmd[i + 1]).split(",") if e.strip()]
-            if not any(e.split("=", 1)[0].strip() == key for e in entries):
-                entries.append(f"{key}={value}")
+        has_value = i + 1 < len(cmd) and not str(cmd[i + 1]).startswith("--")
+        entries = [e for e in str(cmd[i + 1]).split(",") if e.strip()] if has_value else []
+        if not any(e.split("=", 1)[0].strip() == key for e in entries):
+            entries.append(f"{key}={value}")
+        if has_value:
             cmd[i + 1] = ",".join(entries)
-            return
+        else:  # `--model-args` given with no value (end of extra_args, or followed by a flag)
+            cmd.insert(i + 1, ",".join(entries))
+        return
     cmd.extend(["--model-args", f"{key}={value}"])
 
 
@@ -1102,28 +1162,50 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         )
 
     def _with_catalog_defaults(self, request: Any, task: str) -> Any:
-        """Fill `steps` / `guidance_scale` the request leaves unset from the catalog entry of
-        `capabilities_model_id`, as the Diffusers backend does. Without them sd-cli ran its own
-        defaults (20 steps, cfg 7): FLUX.2 [klein] 4B ran 20 steps instead of 4 and Z-Image-Turbo
-        20 instead of 9 (Quadro RTX 5000, 2026-11-10). A catalog guidance below 1 ("no CFG" in
-        Diffusers) is sent as cfg 1, stable-diffusion.cpp's no-CFG value (cfg 0 keeps only the
-        unconditional prediction)."""
+        """Map the request's steps and guidance (the catalog's where it sets none) onto sd-cli.
+
+        Without the catalog defaults sd-cli ran its own (20 steps, cfg 7): FLUX.2 [klein] 4B ran
+        20 steps instead of 4 and Z-Image-Turbo 20 instead of 9 (Quadro RTX 5000, 2026-11-10).
+        `guidance_scale` follows Diffusers, and stable-diffusion.cpp spells it per model family
+        (its docs/flux.md, flux2.md, qwen_image_edit.md):
+
+        - guidance-distilled FLUX (FLUX.1-dev, Kontext, Krea, FLUX.2-dev): the value is the
+          embedded guidance, `--guidance <value>`, with `--cfg-scale 1`;
+        - Qwen Image Edit: Diffusers' `guidance_scale` is unused there (its CFG is
+          `true_cfg_scale`), so with none requested sd.cpp's documented `--cfg-scale 2.5` applies;
+        - otherwise it is the CFG scale, and a value below 1 ("no CFG" in Diffusers, e.g. the
+          turbo models' 0.0) is sent as cfg 1, sd.cpp's no-CFG value (cfg 0 keeps only the
+          unconditional prediction)."""
 
         model_id = str(self._cfg.capabilities_model_id or "").strip()
-        if not model_id or (request.steps is not None and request.guidance_scale is not None):
+        if not model_id:
             return request
+        params: Dict[str, Any] = {}
         try:
             params = VisionModelCapabilitiesRegistry().get(model_id).tasks[task].params or {}
         except Exception:
-            return request
+            params = {}
+
+        def default(name: str) -> Any:
+            spec = params.get(name)
+            return spec.get("default") if isinstance(spec, dict) else None
+
         changes: Dict[str, Any] = {}
-        steps_default = (params.get("steps") or {}).get("default") if isinstance(params.get("steps"), dict) else None
-        if request.steps is None and steps_default is not None:
-            changes["steps"] = int(steps_default)
-        guidance = params.get("guidance_scale")
-        guidance_default = guidance.get("default") if isinstance(guidance, dict) else None
-        if request.guidance_scale is None and guidance_default is not None:
-            changes["guidance_scale"] = max(1.0, float(guidance_default))
+        if request.steps is None and default("steps") is not None:
+            changes["steps"] = int(default("steps"))
+        guidance = request.guidance_scale if request.guidance_scale is not None else default("guidance_scale")
+        family = model_id.lower()
+        if family in _SDCPP_GUIDANCE_DISTILLED_MODELS:
+            if guidance is not None:
+                extra = dict(request.extra or {})
+                extra.setdefault("guidance", float(guidance))
+                changes["extra"] = extra
+            changes["guidance_scale"] = 1.0
+        elif "qwen/qwen-image-edit" in family:
+            if request.guidance_scale is None:
+                changes["guidance_scale"] = _SDCPP_QWEN_EDIT_CFG
+        elif request.guidance_scale is None and guidance is not None:
+            changes["guidance_scale"] = max(1.0, float(guidance))
         return replace(request, **changes) if changes else request
 
     def generate_image_with_progress(

@@ -47,6 +47,33 @@ class DiffusersGpuOutOfMemoryTests(unittest.TestCase):
         self.assertIn("cpu_offload='sequential'", msg)
         self.assertIsInstance(ctx.exception.__cause__, torch.OutOfMemoryError)
 
+    def test_the_failed_step_tensors_are_released_before_measuring(self):
+        import weakref
+
+        class _Activation:
+            pass
+
+        refs = []
+
+        class _HoldingPipe(_OomPipe):
+            def __call__(self, **kwargs):
+                activation = _Activation()  # stands for the failed step's GPU tensors
+                refs.append(weakref.ref(activation))
+                raise torch.OutOfMemoryError(_TORCH_MESSAGE)
+
+        backend = hd.HuggingFaceDiffusersVisionBackend(
+            config=hd.HuggingFaceDiffusersBackendConfig(model_id="x/y", device="cpu")
+        )
+        held = None
+        try:
+            backend._pipe_call(_HoldingPipe(), {"prompt": "fox"})
+        except GpuOutOfMemoryError as e:  # not assertRaises: it clears the frames itself
+            held = e
+        self.assertIsNotNone(held)
+        self.assertIsNotNone(held.__cause__.__traceback__)
+        # The error (and torch's, with its traceback) is still alive; the failed step's locals are not.
+        self.assertIsNone(refs[0]())
+
     def test_other_errors_pass_through(self):
         class _Boom:
             def __call__(self, **kwargs):

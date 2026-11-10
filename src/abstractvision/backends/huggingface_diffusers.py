@@ -2887,6 +2887,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         free_total = None
         try:
+            # The traceback pins every tensor the failed step allocated (the pipeline's frames
+            # are on it); clear those frames first, or `empty_cache()` cannot return them and the
+            # "free now" figure under-reports. The traceback text is kept.
+            import traceback
+
+            traceback.clear_frames(error.__traceback__)
+        except Exception:
+            pass
+        try:
             torch = _lazy_import_torch()
             torch.cuda.empty_cache()
             device = torch.device(str(self._effective_device(torch)))

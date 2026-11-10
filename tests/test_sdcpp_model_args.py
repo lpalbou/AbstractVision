@@ -29,5 +29,13 @@ class SdCliModelArgsTests(unittest.TestCase):
         self.assertEqual(cmd[-1], "qwen_image_zero_cond_t=false")
 
 
+    def test_a_valueless_model_args_gets_the_value_in_place(self):
+        cmd = ["sd-cli", "--model-args"]
+        _add_sd_cli_model_arg(cmd, "qwen_image_zero_cond_t", "true")
+        self.assertEqual(cmd, ["sd-cli", "--model-args", "qwen_image_zero_cond_t=true"])
+        cmd = ["sd-cli", "--model-args", "--mmap"]
+        _add_sd_cli_model_arg(cmd, "qwen_image_zero_cond_t", "true")
+        self.assertEqual(cmd, ["sd-cli", "--model-args", "qwen_image_zero_cond_t=true", "--mmap"])
+
 if __name__ == "__main__":
     unittest.main()

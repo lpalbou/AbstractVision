@@ -35,7 +35,7 @@ class GgufPresetsDownloadOneQuantTests(unittest.TestCase):
         files = [f"qwen-image-2512-{q}.gguf" for q in _QUANTS]
         self.assertEqual(_matched(_preset("unsloth/Qwen-Image-2512-GGUF"), files), ["qwen-image-2512-Q8_0.gguf"])
 
-    def test_repo_without_bundle_downloads_and_selects_q8(self):
+    def test_repo_without_bundle_matches_and_selects_only_its_q8_file(self):
         for repo, stem in (("unsloth/Z-Image-GGUF", "z-image"), ("city96/FLUX.2-dev-gguf", "flux2-dev")):
             with self.subTest(repo=repo):
                 preset = _preset(repo)
@@ -50,6 +50,29 @@ class GgufPresetsDownloadOneQuantTests(unittest.TestCase):
     def test_lowercase_q8_names_still_match(self):
         files = ["sd_turbo-f16-q8_0.gguf", "sd_turbo-f16.gguf"]
         self.assertEqual(_matched(_preset("Green-Sky/SD-Turbo-GGUF"), files), ["sd_turbo-f16-q8_0.gguf"])
+
+    def test_download_takes_root_gguf_files_only(self):
+        # Green-Sky/SD-Turbo-GGUF's real listing: the hub's fnmatch lets `*q8_0.gguf` match `old/...`.
+        from unittest.mock import patch
+
+        try:
+            from huggingface_hub.utils import filter_repo_objects
+        except ImportError:  # pragma: no cover - huggingface_hub is a test-time dependency here
+            self.skipTest("huggingface_hub not installed")
+        listing = ["README.md", "old/sd_turbo-q8_0.gguf", "sd_turbo-f16-q8_0.gguf", "sd_turbo-f16.gguf"]
+        captured = {}
+
+        def fake_snapshot_download(**kw):
+            captured.update(kw)
+            raise RuntimeError("stop after the request")
+
+        with patch.object(md, "ensure_hf_repo_snapshot", return_value=None), \
+             patch("huggingface_hub.snapshot_download", side_effect=fake_snapshot_download):
+            with self.assertRaises(RuntimeError):
+                md.download_model_preset(_preset("Green-Sky/SD-Turbo-GGUF"))
+        got = list(filter_repo_objects(listing, allow_patterns=captured["allow_patterns"],
+                                       ignore_patterns=captured["ignore_patterns"]))
+        self.assertEqual(sorted(got), ["README.md", "sd_turbo-f16-q8_0.gguf"])
 
 
 if __name__ == "__main__":

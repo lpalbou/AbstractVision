@@ -2332,15 +2332,22 @@ def download_model_preset(
         ) from e
 
     allow_patterns = list(preset.allow_patterns) or None
+    ignore_patterns = None
     if not all_files and preset.target == "diffusers" and preset.engine == "diffusers":
         trimmed = _diffusers_preset_download_files(preset, token=resolve_hf_token(token))
         if trimmed:
             allow_patterns = trimmed
+    if preset.target == "gguf" and not any("/" in str(p) for p in (allow_patterns or ())):
+        # A GGUF artifact is a root file (the sd.cpp selection globs the snapshot root), and the
+        # hub's fnmatch lets `*` cross `/`: `*q8_0.gguf` also took Green-Sky/SD-Turbo-GGUF's
+        # `old/sd_turbo-q8_0.gguf`.
+        ignore_patterns = ["*/*"]
     try:
         snapshot = snapshot_download(
             repo_id=preset.repo_id,
             repo_type="model",
             allow_patterns=allow_patterns,
+            ignore_patterns=ignore_patterns,
             token=resolve_hf_token(token),
             cache_dir=str(cache_root),
             max_workers=max(1, int(max_workers)),
