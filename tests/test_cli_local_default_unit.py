@@ -14,7 +14,14 @@ import os
 import unittest
 from unittest.mock import patch
 
-from abstractvision import cli
+
+
+def _cli():
+    # Imported inside each test, like tests/test_cli_smoke.py: test_abstractcore_plugin pops and reloads the backend
+    # modules, so a module-level import here would hold stale backend classes for the whole run.
+    from abstractvision import cli
+
+    return cli
 
 
 def _args(**overrides) -> argparse.Namespace:
@@ -34,6 +41,10 @@ _CLEAR_ENV = {k: "" for k in ("ABSTRACTVISION_PROVIDER", "ABSTRACTVISION_BACKEND
 
 
 class LocalDefaultTests(unittest.TestCase):
+    def setUp(self):
+        global cli
+        cli = _cli()
+
     def test_default_provider_follows_the_local_profile(self):
         self.assertEqual(cli.default_local_provider("apple-silicon"), "mlx-gen")
         self.assertEqual(cli.default_local_provider("cuda"), "sdcpp")
