@@ -353,6 +353,25 @@ def _try_auto_install_sd_cli(dest_dir: Path) -> Optional[str]:
         return None
 
 
+def _add_sd_cli_model_arg(cmd: List[str], key: str, value: str) -> None:
+    """Set `key=value` in sd-cli's `--model-args` list (one comma-separated option).
+
+    stable-diffusion.cpp has no `--qwen-image-zero-cond-t` flag: Qwen Image Edit 2511 takes
+    `--model-args qwen_image_zero_cond_t=true` (its docs/qwen_image_edit.md), and sd-cli printed
+    its usage and exited 1 for the old flag (master-1043, Quadro RTX 5000 host, 2026-11-10).
+    A `--model-args` already in the command (from `extra_args`) keeps its entries."""
+
+    if "--model-args" in cmd:
+        i = cmd.index("--model-args")
+        if i + 1 < len(cmd):
+            entries = [e for e in str(cmd[i + 1]).split(",") if e.strip()]
+            if not any(e.split("=", 1)[0].strip() == key for e in entries):
+                entries.append(f"{key}={value}")
+            cmd[i + 1] = ",".join(entries)
+            return
+    cmd.extend(["--model-args", f"{key}={value}"])
+
+
 def _flatten(xs: Iterable[Any]) -> List[str]:
     out: List[str] = []
     for x in xs:
@@ -874,7 +893,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                         init_kwargs.setdefault("offload_params_to_cpu", True)
                 else:
                     init_kwargs.setdefault("offload_params_to_cpu", True)
-            # stable-diffusion.cpp: Qwen Image Edit 2511 requires `--qwen-image-zero-cond-t`
+            # stable-diffusion.cpp: Qwen Image Edit 2511 requires `--model-args qwen_image_zero_cond_t=true`
             # (python bindings: qwen_image_zero_cond_t=True) or edit quality degrades significantly.
             if arch == "qwen_image_edit" and "2511" in Path(diffusion_model).name:
                 init_kwargs.setdefault("qwen_image_zero_cond_t", True)
@@ -1171,8 +1190,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 if qwen_ref_edit:
                     # sd-cli uses `-r` for reference images (Qwen Edit uses ref images, not init-img).
                     cmd.extend(["-r", str(init_path)])
-                    if "2511" in Path(diffusion_model).name and "--qwen-image-zero-cond-t" not in cmd:
-                        cmd.append("--qwen-image-zero-cond-t")
+                    if "2511" in Path(diffusion_model).name:
+                        _add_sd_cli_model_arg(cmd, "qwen_image_zero_cond_t", "true")
                     if "--flow-shift" not in cmd:
                         cmd.extend(["--flow-shift", "3"])
                     if "--diffusion-fa" not in cmd:

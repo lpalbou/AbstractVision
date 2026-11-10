@@ -342,7 +342,9 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         self.assertEqual(asset.mime_type, "image/png")
         cmd = run_mock.call_args[0][0]
         self.assertIn("-r", cmd)
-        self.assertIn("--qwen-image-zero-cond-t", cmd)
+        # stable-diffusion.cpp spells it as a model arg; there is no --qwen-image-zero-cond-t flag.
+        self.assertNotIn("--qwen-image-zero-cond-t", cmd)
+        self.assertEqual(cmd[cmd.index("--model-args") + 1], "qwen_image_zero_cond_t=true")
         self.assertEqual(cmd[cmd.index("--backend") + 1], "diffusion=mtl0,clip=cpu,vae=cpu")
         self.assertEqual(cmd[cmd.index("--params-backend") + 1], "diffusion=mtl0,clip=cpu,vae=cpu")
         self.assertNotIn("--offload-to-cpu", cmd)
