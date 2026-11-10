@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -311,6 +311,67 @@
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#one-line-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One-line install
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="One-line install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#linux-without-a-gpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux without a GPU
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upgrade-and-removal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrade and removal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-left-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is left out
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
   <a href="#0-install" class="md-nav__link">
@@ -926,6 +987,67 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#one-line-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One-line install
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="One-line install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#linux-without-a-gpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux without a GPU
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upgrade-and-removal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrade and removal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-left-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is left out
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#0-install" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1242,6 +1364,167 @@
 - Capability registries: <a href="../reference/capabilities-registry/">docs/reference/capabilities-registry.md</a>
 - Artifacts: <a href="../reference/artifacts/">docs/reference/artifacts.md</a>
 - AbstractCore integration: <a href="../reference/abstractcore-integration/">docs/reference/abstractcore-integration.md</a></p>
+<hr />
+<h2 id="one-line-install">One-line install<a class="headerlink" href="#one-line-install" title="Permanent link">&para;</a></h2>
+<p>One line, no admin rights, no Python needed beforehand. It installs AbstractVision alone (the
+<code>abstractvision</code> command; no gateway, no services) as a uv tool: an isolated, user-scoped
+environment with Python 3.12 managed by <a href="https://docs.astral.sh/uv">uv</a>, which it installs into
+<code>~/.local/bin</code> when missing.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># macOS / Linux</span>
+curl<span class="w"> </span>-LsSf<span class="w"> </span>https://abstractframework.ai/vision/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+curl<span class="w"> </span>-LsSf<span class="w"> </span>https://abstractframework.ai/vision/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--profile<span class="w"> </span>gpu<span class="w">   </span><span class="c1"># with options</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c"># Windows 10/11 (PowerShell 5.1 or 7)</span>
+<span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">ByPass</span> <span class="n">-c</span> <span class="s2">"irm https://abstractframework.ai/vision/install.ps1 | iex"</span>
+<span class="p">&amp;</span> <span class="p">(</span><span class="no">[scriptblock]</span><span class="p">::</span><span class="n">Create</span><span class="p">((</span><span class="nb">irm </span><span class="n">https</span><span class="p">://</span><span class="n">abstractframework</span><span class="p">.</span><span class="n">ai</span><span class="p">/</span><span class="n">vision</span><span class="p">/</span><span class="n">install</span><span class="p">.</span><span class="n">ps1</span><span class="p">)))</span> <span class="n">-Profile</span> <span class="n">gpu</span>   <span class="c"># with options</span>
+</code></pre></div>
+<p>Without the installer, in an environment of your own:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>abstractvision<span class="w">            </span><span class="c1"># light</span>
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"abstractvision[apple]"</span><span class="w">   </span><span class="c1"># Apple Silicon</span>
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"abstractvision[gpu]"</span><span class="w">     </span><span class="c1"># NVIDIA / Linux</span>
+</code></pre></div>
+<p>The installer runs <code>uv tool install --python 3.12 "abstractvision[&lt;profile&gt;]==&lt;version&gt;"</code>, where
+the version is the release the script ships with. Every step prints its command; <code>--print</code>
+(<code>-Print</code> on Windows) shows the plan and changes nothing. After an <code>apple</code> or <code>gpu</code> install
+(not <code>light</code>, which has no PyTorch), it checks which device PyTorch runs on (<code>torch</code> and
+<code>torchvision</code> import, then CUDA or MPS) and says so.
+AbstractFramework's own installer (<code>https://abstractframework.ai/install.sh</code>) already includes
+AbstractVision: where it is installed, its gateway tool owns the <code>abstractvision</code> command and this
+installer stops with a sentence, changing nothing (upgrade the framework instead).</p>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>Picked when</th>
+<th>Installs</th>
+<th>Local generation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apple</code></td>
+<td>Apple Silicon, macOS 14 or later</td>
+<td><code>abstractvision[apple]</code>: MLX-Gen, Diffusers on PyTorch</td>
+<td>Apple GPU (MLX, MPS)</td>
+</tr>
+<tr>
+<td><code>gpu</code></td>
+<td>Linux with NVIDIA (<code>nvidia-smi -L</code>) or ROCm (<code>rocminfo</code>); Windows with <code>nvidia-smi</code></td>
+<td><code>abstractvision[gpu]</code>: Diffusers on PyTorch</td>
+<td>CUDA when the card works, else the processor</td>
+</tr>
+<tr>
+<td><code>light</code></td>
+<td>anything else</td>
+<td><code>abstractvision</code>, no dependency at all: the CLI, the catalog, the OpenAI-compatible backend</td>
+<td>none (OpenAI or any <code>/v1/images</code> server)</td>
+</tr>
+</tbody>
+</table>
+<p>PyTorch for the <code>gpu</code> profile: on Linux, PyPI's PyTorch is the CUDA 13 build (NVIDIA driver 580
+or newer, compute capability 7.5 or newer). On Windows, the installer adds <code>--torch-backend cu130</code>
+(driver 580+ and compute capability 7.5+) or <code>cu126</code> (driver 525+), so torch and torchvision come
+from the same PyTorch index; otherwise PyPI's CPU build. An AMD GPU (ROCm) gets PyPI's CUDA build,
+which runs on the processor; the device check says so. Windows on ARM gets <code>light</code> only: PyTorch
+publishes no Windows ARM64 wheels.</p>
+<h3 id="linux-without-a-gpu">Linux without a GPU<a class="headerlink" href="#linux-without-a-gpu" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>light</code> (what <code>auto</code> picks) has no local generation: it talks to OpenAI-compatible image
+  servers only.</li>
+<li><code>--profile gpu</code> is the way to generate locally on the processor (Diffusers on PyTorch). It
+  installs PyPI's PyTorch, the CUDA build, which runs on the processor: the environment is about
+  5.5 GB (measured on Ubuntu 24.04 x86_64).</li>
+<li>For a smaller footprint, install PyTorch's CPU build afterwards (the installer's summary prints
+  this line with its version):</li>
+</ul>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12<span class="w"> </span>--torch-backend<span class="w"> </span>cpu<span class="w"> </span>--reinstall<span class="w"> </span><span class="s2">"abstractvision[gpu]==&lt;version&gt;"</span>
+</code></pre></div>
+<p>It takes torch and torchvision from PyTorch's CPU index and removes the NVIDIA libraries: the
+  environment drops to about 1.1 GB. Both must come from the same index: a CPU torch next to the
+  CUDA torchvision breaks torchvision (its operators no longer load). Measured with uv 0.13.7: uv's
+  receipt does not record <code>--torch-backend</code>, and uv keeps an installed torch that still satisfies,
+  so a re-run of the installer, an upgrade through it (0.3.33 to 0.3.34) and <code>uv tool upgrade</code>
+  kept the CPU build. A reinstall re-resolves torch from PyPI and brings the CUDA build back:
+  <code>uv tool upgrade --reinstall abstractvision</code> did, and so does
+  <code>uv tool install --python 3.12 --reinstall "abstractvision[gpu]==&lt;version&gt;"</code> (the way to get it
+  back on purpose). After an upgrade, check the summary's <code>PyTorch:</code> line: when it names a CUDA
+  build again, run the <code>--torch-backend cpu</code> line again.</p>
+<h3 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>macOS / Linux</th>
+<th>Windows</th>
+<th>Environment</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--profile auto\|light\|apple\|gpu</code></td>
+<td><code>-Profile auto\|light\|gpu</code></td>
+<td><code>AVIS_PROFILE</code></td>
+<td>install profile (default <code>auto</code>: the first that fits)</td>
+</tr>
+<tr>
+<td><code>--pin VERSION\|latest</code></td>
+<td><code>-Pin VERSION\|latest</code></td>
+<td><code>AVIS_PIN</code></td>
+<td>the AbstractVision version (default: the release the script ships with; <code>latest</code> = the newest on PyPI)</td>
+</tr>
+<tr>
+<td><code>--from PATH</code></td>
+<td><code>-From PATH</code></td>
+<td><code>AVIS_FROM</code></td>
+<td>install from a checkout, sdist or wheel (testing)</td>
+</tr>
+<tr>
+<td><code>--no-modify-path</code></td>
+<td><code>-NoModifyPath</code></td>
+<td></td>
+<td>do not run <code>uv tool update-shell</code></td>
+</tr>
+<tr>
+<td><code>--print</code>, <code>--dry-run</code>, <code>-n</code></td>
+<td><code>-Print</code>, <code>-DryRun</code></td>
+<td></td>
+<td>show the plan and the commands; change nothing</td>
+</tr>
+<tr>
+<td><code>-v</code>, <code>--verbose</code></td>
+<td><code>-Verbose</code></td>
+<td></td>
+<td>show the full output of every command</td>
+</tr>
+<tr>
+<td><code>-h</code>, <code>--help</code></td>
+<td><code>Get-Help .\install.ps1</code></td>
+<td></td>
+<td>the help</td>
+</tr>
+</tbody>
+</table>
+<h3 id="upgrade-and-removal">Upgrade and removal<a class="headerlink" href="#upgrade-and-removal" title="Permanent link">&para;</a></h3>
+<p>Run the same line again: it says <code>AbstractVision &lt;old&gt; found: upgrading to &lt;new&gt;</code> (or <code>already up
+to date</code>, after checking that the command starts and reinstalling it when it does not). The
+previous profile is kept (read from uv's receipt) unless <code>--profile</code> says otherwise; <code>--pin</code>
+goes back to an older release. When the command folder is not on <code>PATH</code>, <code>uv tool update-shell</code>
+adds it to your shell profile once. Remove with <code>uv tool uninstall abstractvision</code>.</p>
+<h3 id="what-is-left-out">What is left out<a class="headerlink" href="#what-is-left-out" title="Permanent link">&para;</a></h3>
+<p>The installer uses prebuilt wheels only, so it never starts a C compiler (a fresh Mac never sees
+the Xcode tools dialog). Checked against PyPI for Python 3.12:</p>
+<ul>
+<li><code>apple</code>: <code>stable-diffusion-cpp-python</code>, the Python binding of stable-diffusion.cpp, is left out
+  (an overrides file plus <code>--no-build-package</code>): PyPI has only its source build, for every
+  version. Every other package has a macOS 14 arm64 wheel. To add the binding with a C compiler
+  and CMake: <code>uv pip install --python "$(uv tool dir)/abstractvision/bin/python" "stable-diffusion-cpp-python&gt;=0.4.2,&lt;0.4.6"</code>.</li>
+<li><code>gpu</code>: nothing (every package has a Linux x86_64/aarch64 and a Windows x64 wheel).</li>
+<li><code>light</code>: nothing (no dependency).</li>
+<li>GGUF models: the installer does not install stable-diffusion.cpp's <code>sd-cli</code>. The
+  stable-diffusion.cpp backend prefers it and downloads it itself into <code>~/.abstractvision/bin</code> at
+  the first GGUF generation (the macOS arm64 build on Apple Silicon; on Linux a Vulkan build when
+  NVIDIA is present; a CUDA build on Windows); <code>ABSTRACTVISION_SDCPP_AUTO_INSTALL=0</code> turns that off.</li>
+</ul>
 <hr />
 <h2 id="0-install">0) Install<a class="headerlink" href="#0-install" title="Permanent link">&para;</a></h2>
 <p>From PyPI:</p>
@@ -1971,10 +2254,10 @@ packages when memory allows.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../assets/js/media_carousel.js"></script>
       
