@@ -53,8 +53,35 @@ Details: [`docs/reference/backends.md`](docs/reference/backends.md).
 
 ## Installation
 
+One line, no admin rights, no Python needed beforehand:
+
 ```bash
-pip install abstractvision
+# macOS / Linux
+curl -LsSf https://abstractframework.ai/vision/install.sh | sh
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://abstractframework.ai/vision/install.ps1 | iex"
+```
+
+It installs AbstractVision alone as a uv tool (the `abstractvision` command, Python 3.12
+through uv) and picks the profile for the machine: `apple` (Apple Silicon, macOS 14+: MLX-Gen
+and Diffusers), `gpu` (NVIDIA or ROCm: Diffusers on PyTorch) or `light` (the CLI and the
+OpenAI-compatible backend; no local generation). On Linux without a GPU,
+`curl -LsSf https://abstractframework.ai/vision/install.sh | sh -s -- --profile gpu` generates
+locally on the processor. Prebuilt wheels only: on Apple Silicon `stable-diffusion-cpp-python` is
+left out (PyPI has only its source build); GGUF models run through stable-diffusion.cpp's
+`sd-cli`, which AbstractVision downloads itself at the first GGUF generation. Run the line again
+to upgrade. Profiles, options and what is left out:
+[One-line install](docs/getting-started.md#one-line-install).
+
+Or with pip, in your own environment:
+
+```bash
+pip install abstractvision            # light: no dependency
+pip install "abstractvision[apple]"   # Apple Silicon
+pip install "abstractvision[gpu]"     # NVIDIA / Linux
 ```
 
 The base install is lightweight. It includes the shared API, capability
@@ -94,7 +121,7 @@ Contributor-only extras:
 | `abstractvision[docs]` | Documentation build tooling. |
 | `abstractvision[dev]` | Full contributor workflow: tests, docs, build, lint, formatting, and pre-commit. Do not use this as an application runtime profile. |
 
-Note (CUDA): on Windows/Linux, `pip install "abstractvision[diffusers]"` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
+Note (CUDA): on Windows, `pip install "abstractvision[diffusers]"` installs PyPI's CPU-only PyTorch build; for an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>; the one-line installer picks it for the driver). On Linux, PyPI's PyTorch is the CUDA 13 build (NVIDIA driver 580 or newer, compute capability 7.5 or newer). Verify `torch.cuda.is_available()` is `True`.
 
 AbstractCore is not installed by AbstractVision. When an AbstractCore application
 has AbstractVision installed in the same environment, AbstractCore can discover

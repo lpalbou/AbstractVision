@@ -1,0 +1,449 @@
+#!/bin/sh
+# =============================================================================
+# AbstractVision standalone installer (macOS / Linux)
+# =============================================================================
+# One line, no admin rights, no system Python needed:
+#
+#   curl -LsSf https://abstractframework.ai/vision/install.sh | sh
+#   curl -LsSf https://abstractframework.ai/vision/install.sh | sh -s -- --profile gpu
+#
+# AbstractVision alone (the abstractvision command: catalog, download, t2i, i2i, t2v, i2v,
+# upscale, playground), no gateway, no services. (AbstractFramework's own installer,
+# https://abstractframework.ai/install.sh, already includes AbstractVision.)
+#
+# Steps (each prints its command; --print shows them and changes nothing): preflight (OS, arch,
+# profile, disk, pypi.org); uv (https://docs.astral.sh/uv) into ~/.local/bin when missing; Python
+# 3.12 through uv; `uv tool install --python 3.12 "abstractvision[<profile>]==<version>"`
+# (isolated, user-scoped, prebuilt wheels only, below); the PyTorch device check (apple, gpu);
+# `uv tool update-shell` when the command folder is not on PATH.
+#
+# Profiles (--profile auto|light|apple|gpu; auto takes the first that fits):
+#   apple  Apple Silicon, macOS 14+: abstractvision[apple] (MLX-Gen on the Apple GPU, Diffusers
+#          on PyTorch MPS)
+#   gpu    Linux with NVIDIA (nvidia-smi -L) or ROCm (rocminfo): abstractvision[gpu] (Diffusers on
+#          PyPI's PyTorch, the CUDA build). Asked for without a card, the same stack runs on the
+#          processor: on Linux it is the way to generate locally without a GPU (the environment
+#          is 5.5 GB with the CUDA build and its NVIDIA libraries, 1.1 GB with PyTorch's CPU
+#          build: the summary prints the command when no GPU is used)
+#   light  anything else: abstractvision with no extra (no dependency at all): the CLI, the
+#          catalog and the OpenAI-compatible backend (OpenAI, any /v1/images server); no local
+#          generation, which needs the apple or gpu profile
+#
+# Prebuilt wheels only: no C compiler or Xcode tools (a fresh Mac never sees the Xcode dialog).
+# One package of the apple tree publishes no wheel on PyPI (only its source build, every version):
+#   stable-diffusion-cpp-python  the Python binding of stable-diffusion.cpp (GGUF): dropped by an
+#                                overrides file (an override whose marker is never true drops the
+#                                package) and --no-build-package, as in the framework installer
+# Every other package of the apple tree (macOS 14 arm64) and of the gpu tree (Linux x86_64 and
+# aarch64, glibc) has a wheel for Python 3.12; the light tree has no package at all.
+# GGUF models still run: AbstractVision's stable-diffusion.cpp backend prefers the `sd-cli`
+# executable and downloads it itself into ~/.abstractvision/bin at the first GGUF generation
+# (ABSTRACTVISION_SDCPP_AUTO_INSTALL=0 turns that off); this installer does not install it.
+#
+# Upgrade: run the same line again: "AbstractVision <old> found: upgrading to <new>" (or "already
+# up to date"); the previous profile is kept unless --profile says otherwise.
+# Remove: uv tool uninstall abstractvision
+#
+# Options (environment twins in brackets):
+#   --profile auto|light|apple|gpu  install profile (default auto)            [AVIS_PROFILE]
+#   --pin VERSION|latest     the AbstractVision version (default: the release this script
+#                            ships with, below; latest = the newest on PyPI)  [AVIS_PIN]
+#   --from PATH              install from a checkout, sdist or wheel (testing) [AVIS_FROM]
+#   --no-modify-path         do not run `uv tool update-shell`
+#   --print, --dry-run, -n   show the plan and the commands; change nothing
+#   -v, --verbose            show the full output of every command
+#   -h, --help               this help
+# =============================================================================
+
+if [ -n "${ZSH_VERSION:-}" ]; then emulate sh; fi
+set -eu
+
+# The release this script ships with = src/abstractvision/__init__.py __version__
+# (tests/test_install_scripts.py fails on drift), so an install lands on the tested version.
+AVIS_PIN_DEFAULT="0.3.35"
+AVIS_PYTHON="3.12"
+AVIS_SCRIPT_URL="https://abstractframework.ai/vision/install.sh"
+AVIS_DOCS="https://github.com/lpalbou/AbstractVision/blob/main/docs/getting-started.md#one-line-install"
+# Every name of [project.scripts] in pyproject.toml (the test compares them): uv refuses the
+# whole install when one of them already exists.
+AVIS_COMMANDS="abstractvision"
+# Packages of the apple tree with no wheel on PyPI (the test checks each is a real requirement).
+AVIS_NO_WHEEL="stable-diffusion-cpp-python"
+
+usage() {  # the header above when this runs as a file; a short form through curl | sh
+    if [ -f "$0" ] && head -n 3 "$0" 2>/dev/null | grep -q "AbstractVision standalone installer"; then
+        awk 'NR > 4 && /^# =+$/ { exit } NR > 4 { sub(/^# ?/, ""); print }' "$0"
+    else printf 'Usage: install.sh [--profile auto|light|apple|gpu] [--pin VERSION|latest] [--from PATH] [--print]\nFull help: %s\n' "$AVIS_DOCS"; fi
+}
+need_arg() { [ $# -ge 2 ] && [ -n "$2" ] || { echo "ERROR: $1 needs a value" >&2; exit 2; }; }
+STEP=0; step() { STEP=$((STEP + 1)); printf '\n%s[%s] %s%s\n' "$C_B" "$STEP" "$1" "$C_0"; }
+ok()   { printf '  %s✓%s %s\n' "$C_G" "$C_0" "$1"; }
+info() { printf '  %s·%s %s\n' "$C_C" "$C_0" "$1"; }
+warn() { printf '  %s!%s %s\n' "$C_Y" "$C_0" "$1"; }
+die()  { printf '\n%sERROR: %s%s\n' "$C_R" "$1" "$C_0" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+q() {  # shell-quote one word for display
+    case "$1" in
+        ''|*[!A-Za-z0-9_./:=@,+%-]*) printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+show_cmd() { _l=""; for _w in "$@"; do _l="$_l $(q "$_w")"; done; printf '%s' "${_l# }"; }
+
+# run DESCRIPTION CMD...: print the command, then run it (output in the log; live as well with
+# RUN_LIVE=1 or -v). RUN_SOFT=1: a failure warns and returns 1 instead of stopping the install.
+LOG=""; RUN_RC=0; RUN_SOFT=0; RUN_LIVE=0; RUN_SHOW=""
+run() {
+    _desc="$1"; shift
+    _shown="${RUN_SHOW:-$(show_cmd "$@")}"; RUN_SHOW=""
+    _soft="$RUN_SOFT"; _live="$RUN_LIVE"; RUN_SOFT=0; RUN_LIVE=0; RUN_RC=0
+    printf '  %s$ %s%s\n' "$C_D" "$_shown" "$C_0"
+    [ "$PRINT" = 1 ] && return 0
+    printf '\n$ %s\n' "$_shown" >>"$LOG"
+    if [ "$VERBOSE" = 1 ] || [ "$_live" = 1 ]; then
+        echo 0 >"$LOG.rc"
+        { "$@" 2>&1 || echo "$?" >"$LOG.rc"; } | tee -a "$LOG"
+        RUN_RC="$(cat "$LOG.rc")"
+    else "$@" >>"$LOG" 2>&1 || RUN_RC=$?; fi
+    [ "$RUN_RC" = 0 ] && return 0
+    if [ "$_soft" = 1 ]; then warn "$_desc did not succeed (exit $RUN_RC; log: $LOG)"; return 1; fi
+    tail -n 15 "$LOG" | sed 's/^/    /' >&2
+    die "$_desc failed (exit $RUN_RC). Log: $LOG
+What to do: run the installer again (it repairs a half-finished install); if it stops at the same step, report it with that log ($AVIS_DOCS)."
+}
+http() {  # http URL: the body on stdout; non-zero unless the answer is 2xx
+    if have curl; then curl -fsS --connect-timeout 5 --max-time 20 "$1" 2>/dev/null; else wget -qO- --timeout=20 "$1" 2>/dev/null; fi
+}
+UV=""; find_uv() {
+    if have uv; then UV="$(command -v uv)"; return 0; fi
+    for _c in "${UV_INSTALL_DIR:-}/uv" "${XDG_BIN_HOME:-}/uv" "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv"; do
+        if [ -x "$_c" ]; then UV="$_c"; return 0; fi
+    done
+    return 1
+}
+# The framework installer's nvidia_info: NV_OK (1 when nvidia-smi answers), NV_DRIVER, NV_MAJOR,
+# NV_CC10 (the lowest compute capability x10, empty when the driver cannot report it), NV_NAME,
+# NV_ERR (why an installed nvidia-smi gives no GPU; empty when there is no nvidia-smi at all).
+nvidia_info() {
+    NV_OK=0; NV_DRIVER=""; NV_MAJOR=0; NV_CC10=""; NV_NAME=""; NV_ERR=""
+    have nvidia-smi || return 0
+    nvidia-smi -L >/dev/null 2>&1 || { NV_ERR="nvidia-smi is installed but does not answer (driver not loaded?)"; return 0; }
+    _nv="$(nvidia-smi --query-gpu=driver_version,compute_cap,name --format=csv,noheader 2>/dev/null)" || _nv=""
+    if [ -n "$_nv" ]; then NV_NAME="$(printf '%s\n' "$_nv" | head -n 1 | cut -d, -f3- | sed 's/^ *//')"
+        NV_CC10="$(printf '%s\n' "$_nv" | cut -d, -f2 | tr -d ' ' | awk -F. '$1 ~ /^[0-9]+$/ { v = $1 * 10 + ($2 == "" ? 0 : substr($2, 1, 1)); if (m == "" || v < m) m = v } END { print m }')"
+    else  # drivers too old to report compute_cap: the driver alone
+        _nv="$(nvidia-smi --query-gpu=driver_version,name --format=csv,noheader 2>/dev/null)" || _nv=""
+        NV_NAME="$(printf '%s\n' "$_nv" | head -n 1 | cut -d, -f2- | sed 's/^ *//')"; fi
+    NV_DRIVER="$(printf '%s\n' "$_nv" | head -n 1 | cut -d, -f1 | tr -d ' ')"; NV_MAJOR="${NV_DRIVER%%.*}"
+    case "$NV_MAJOR" in ''|*[!0-9]*) NV_MAJOR=0; NV_ERR="nvidia-smi gave no driver version" ;; *) NV_OK=1 ;; esac
+}
+
+# The install is one function, called by the brace group on the last line, so a `curl | sh` cut
+# mid-download runs nothing: a cut inside main() or inside `{ main "$@"; }` is a syntax error
+# (a bare last line `main "$@"` cut after `main` would run it without its arguments). The body
+# is not indented, so multi-line messages stay flush.
+main() {
+PROFILE="${AVIS_PROFILE:-auto}"; PIN="${AVIS_PIN:-}"; FROM="${AVIS_FROM:-}"
+NO_MODIFY_PATH=0; PRINT=0; VERBOSE=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --profile) need_arg "$@"; PROFILE="$2"; shift ;;  --profile=*) PROFILE="${1#*=}" ;;
+        --pin) need_arg "$@"; PIN="$2"; shift ;;          --pin=*) PIN="${1#*=}" ;;
+        --from) need_arg "$@"; FROM="$2"; shift ;;        --from=*) FROM="${1#*=}" ;;
+        --no-modify-path) NO_MODIFY_PATH=1 ;;
+        --print|--dry-run|-n) PRINT=1 ;;
+        -v|--verbose) VERBOSE=1 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    esac
+    shift
+done
+C_B=""; C_D=""; C_R=""; C_G=""; C_Y=""; C_C=""; C_0=""
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then E="$(printf '\033')"
+    C_B="${E}[1m"; C_D="${E}[2m"; C_R="${E}[31m"; C_G="${E}[32m"; C_Y="${E}[33m"; C_C="${E}[36m"; C_0="${E}[0m"; fi
+
+# --- 1. Preflight -------------------------------------------------------------
+OS="$(uname -s)"; ARCH="$(uname -m)"
+case "$OS" in
+    Darwin) OS_ID=macos ;;
+    Linux)  OS_ID=linux ;;
+    MINGW*|MSYS*|CYGWIN*) die "Windows: use powershell -ExecutionPolicy ByPass -c \"irm https://abstractframework.ai/vision/install.ps1 | iex\"" ;;
+    *) die "unsupported OS: $OS (supported: macOS, Linux; Windows uses install.ps1)" ;;
+esac
+# A Terminal set to "Open using Rosetta" reports x86_64 on Apple Silicon: an Intel Python, no MLX.
+if [ "$OS_ID" = macos ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 1 ]; then
+    die "this Terminal runs in Intel (Rosetta) mode on an Apple Silicon Mac, so the installer would set up the
+slow Intel version without the Apple Silicon engines. Run it natively: curl -LsSf $AVIS_SCRIPT_URL | arch -arm64 sh"
+fi
+MACOS_VERSION=""; MACOS_MAJOR=0
+[ "$OS_ID" = macos ] && { MACOS_VERSION="$(sw_vers -productVersion 2>/dev/null || echo 0)"; MACOS_MAJOR="${MACOS_VERSION%%.*}"; }
+# PyTorch (the gpu profile) publishes Linux wheels for glibc x86_64 and aarch64 only.
+TORCH_WHY=""
+if [ "$OS_ID" = linux ]; then
+    if ldd --version 2>&1 | grep -qi musl; then TORCH_WHY="PyTorch publishes no wheels for musl Linux (Alpine)"
+    else case "$ARCH" in x86_64|aarch64|arm64) ;; *) TORCH_WHY="PyTorch publishes no Linux wheels for $ARCH" ;; esac; fi
+fi
+
+printf '%sAbstractVision installer%s  %s%s%s\n' "$C_B" "$C_0" "$C_D" \
+    "$([ "$PRINT" = 1 ] && echo '(--print: preflight only, nothing is installed)' || echo "$AVIS_SCRIPT_URL")" "$C_0"
+step "Preflight"
+ok "system: $OS_ID $ARCH${MACOS_VERSION:+ (macOS $MACOS_VERSION)}"
+
+find_uv || true
+TOOL_BIN=""; TOOL_DIR=""
+[ -z "$UV" ] || { TOOL_BIN="$("$UV" tool dir --bin 2>/dev/null || true)"; TOOL_DIR="$("$UV" tool dir 2>/dev/null || true)"; }
+[ -n "$TOOL_BIN" ] || TOOL_BIN="${UV_TOOL_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
+[ -n "$TOOL_DIR" ] || TOOL_DIR="${UV_TOOL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/uv/tools}"
+BEFORE=""; PREV_PROFILE=""
+if [ -n "$UV" ]; then  # the existing install: its version, and its profile from the uv receipt
+    BEFORE="$("$UV" tool list 2>/dev/null | sed -n 's/^abstractvision v\([^ ]*\).*/\1/p' | head -n 1)"
+    _rcpt="$TOOL_DIR/abstractvision/uv-receipt.toml"
+    if [ -n "$BEFORE" ] && grep -q 'name = "abstractvision"' "$_rcpt" 2>/dev/null; then
+        _extras="$(sed -n 's/.*name = "abstractvision", extras = \[\([^]]*\)\].*/\1/p' "$_rcpt" 2>/dev/null | head -n 1)"
+        case "$_extras" in
+            *'"apple"'*|*'"all-apple"'*) PREV_PROFILE=apple ;;
+            *'"gpu"'*|*'"all-gpu"'*) PREV_PROFILE=gpu ;;
+            '') PREV_PROFILE=light ;;
+        esac
+    fi
+fi
+
+nvidia_info; HAS_NVIDIA="$NV_OK"
+HAS_ROCM=0; have rocminfo && rocminfo >/dev/null 2>&1 && HAS_ROCM=1
+APPLE_OK=0; [ "$OS_ID" = macos ] && [ "$ARCH" = arm64 ] && [ "$MACOS_MAJOR" -ge 14 ] 2>/dev/null && APPLE_OK=1
+_local="no local generation: that needs the apple or gpu profile"
+case "$PROFILE" in
+    auto|"")
+        if [ -n "$PREV_PROFILE" ]; then PROFILE="$PREV_PROFILE"; _why="kept from the previous install"
+        elif [ "$APPLE_OK" = 1 ]; then PROFILE=apple; _why="Apple Silicon, macOS $MACOS_VERSION"
+        elif [ "$OS_ID" = macos ] && [ "$ARCH" = arm64 ]; then PROFILE=light
+            _why="macOS $MACOS_VERSION: the Apple Silicon engines (MLX-Gen) need macOS 14 or later; update macOS and run the installer again"
+        elif [ "$OS_ID" = macos ]; then PROFILE=light; _why="an Intel Mac: $_local, which needs an Apple Silicon Mac here"
+        elif [ -n "$TORCH_WHY" ]; then PROFILE=light; _why="$TORCH_WHY, so $_local"
+        elif [ "$HAS_NVIDIA" = 1 ]; then PROFILE=gpu; _why="nvidia-smi found ${NV_NAME:-a GPU}"
+        elif [ "$HAS_ROCM" = 1 ]; then PROFILE=gpu; _why="rocminfo found a GPU"
+        elif [ -n "$NV_ERR" ]; then PROFILE=light; _why="$NV_ERR, so cloud providers only; once the driver works, run the installer again"
+        else PROFILE=light; _why="no GPU found, so cloud providers only; --profile gpu generates locally on the processor"; fi
+        ok "profile: $PROFILE ($_why; override with --profile)" ;;
+    light) ok "profile: light (the CLI and the OpenAI-compatible backend; $_local)" ;;
+    apple)
+        [ "$OS_ID" = macos ] && [ "$ARCH" = arm64 ] || die "the apple profile needs an Apple Silicon Mac (this is $OS_ID $ARCH); use --profile light"
+        [ "$MACOS_MAJOR" -ge 14 ] 2>/dev/null || die "the apple profile needs macOS 14 or later (this is $MACOS_VERSION); use --profile light"
+        ok "profile: apple (MLX-Gen on the Apple GPU, Diffusers on PyTorch MPS)" ;;
+    gpu)
+        [ "$OS_ID" = linux ] || die "the gpu profile targets Linux (Windows: install.ps1); on a Mac use --profile apple"
+        [ -z "$TORCH_WHY" ] || die "$TORCH_WHY, so the gpu profile cannot install here; use --profile light"
+        [ "$HAS_NVIDIA" = 1 ] || [ "$HAS_ROCM" = 1 ] || warn "gpu profile requested, but ${NV_ERR:-neither nvidia-smi nor rocminfo works}: Diffusers will run on the processor"
+        ok "profile: gpu (Diffusers on PyTorch: CUDA when a card works, else the processor)" ;;
+    *) die "unknown profile '$PROFILE' (expected auto, light, apple or gpu)" ;;
+esac
+case "$PROFILE" in apple) EXTRAS=apple ;; gpu) EXTRAS=gpu ;; *) EXTRAS="" ;; esac
+[ "$PROFILE" != gpu ] || [ "$HAS_NVIDIA" = 0 ] || ok "NVIDIA: ${NV_NAME:-GPU}, driver $NV_DRIVER$([ -n "$NV_CC10" ] && echo ", compute capability $((NV_CC10 / 10)).$((NV_CC10 % 10))") (PyPI's PyTorch is a CUDA 13 build: driver 580+, compute capability 7.5+)"
+
+if [ -n "$FROM" ]; then
+    [ -e "$FROM" ] || die "--from: no such file or folder: $FROM"
+    FROM="$(cd "$(dirname "$FROM")" && pwd)/$(basename "$FROM")"; TARGET="(the build from $FROM)"; PIN_WHY="--from"
+elif [ "$PIN" = latest ]; then
+    _latest="$(http https://pypi.org/pypi/abstractvision/json | grep -o '"version": *"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')" || _latest=""
+    TARGET="${_latest:-the newest release on PyPI}"; PIN_WHY="--pin latest"
+else
+    if [ -n "$PIN" ]; then PIN_WHY="--pin"; else PIN="$AVIS_PIN_DEFAULT"; PIN_WHY="the release this installer ships with"; fi; TARGET="$PIN"
+fi
+spec() {  # spec EXTRAS: the requirement given to uv
+    if [ -n "$FROM" ]; then printf 'abstractvision%s @ file://%s' "${1:+[$1]}" "$FROM"
+    elif [ "$PIN" = latest ]; then printf 'abstractvision%s' "${1:+[$1]}"
+    else printf 'abstractvision%s==%s' "${1:+[$1]}" "$PIN"; fi
+}
+ok "package: $(spec "$EXTRAS")  ${C_D}(version: $PIN_WHY)${C_0}"
+if [ -z "$BEFORE" ]; then ok "No AbstractVision install found: installing AbstractVision $TARGET"
+elif [ -n "$FROM" ]; then ok "AbstractVision $BEFORE found: replacing it with the build from $FROM (--from)"
+elif [ "$BEFORE" = "$TARGET" ]; then ok "AbstractVision $BEFORE found: already up to date (checked, repaired if needed)"
+elif [ "$PIN" != latest ] && [ "$(printf '%s\n%s\n' "$BEFORE" "$PIN" | sort -V | tail -n 1)" = "$BEFORE" ]; then
+    ok "AbstractVision $BEFORE found: going back to AbstractVision $TARGET (--pin)"
+else ok "AbstractVision $BEFORE found: upgrading to AbstractVision $TARGET"; fi
+
+# A command of the same name from another program (often AbstractFramework's gateway tool, which
+# exposes abstractvision itself): uv would refuse the install, so stop and say why.
+if [ -z "$BEFORE" ]; then
+    for _n in $AVIS_COMMANDS; do
+        [ -e "$TOOL_BIN/$_n" ] || [ -L "$TOOL_BIN/$_n" ] || continue
+        _owner="$([ -z "$UV" ] || "$UV" tool list 2>/dev/null | awk -v n="$_n" '/^[^ -]/ { t = $1 } $1 == "-" && $2 == n { print t; exit }')"
+        _msg="$TOOL_BIN/$_n already exists ($([ -n "$_owner" ] && echo "from the uv tool '$_owner'" || echo "another program's"))"
+        [ "$_owner" != abstractgateway ] || _msg="$_msg: AbstractFramework is installed here and already includes AbstractVision; upgrade it with: curl -LsSf https://abstractframework.ai/install.sh | sh. A standalone AbstractVision beside the framework's gateway tool is not supported (there is no --force: both would own the same commands)"
+        [ "$PRINT" = 1 ] && { warn "$_msg (the real run stops here; nothing is changed)"; break; }
+        die "$_msg
+Nothing was changed."
+    done
+fi
+
+# Measured with uv 0.13.7 (environment + uv cache + Python): gpu 5.7 GB on Ubuntu 24.04 x86_64
+# (1.2 GB with PyTorch's CPU build), light 120 MB on Ubuntu 26.04;
+# apple is an estimate.
+case "$PROFILE" in apple) NEED_MB=5000 ;; gpu) NEED_MB=7000 ;; *) NEED_MB=500 ;; esac
+FREE_MB="$(df -Pk "$HOME" 2>/dev/null | awk 'NR == 2 { print int($4 / 1024) }')" || FREE_MB=""
+if [ -z "$FREE_MB" ]; then :
+elif [ "$FREE_MB" -lt 300 ]; then die "only $FREE_MB MB free in $HOME (about $NEED_MB MB needed)"
+elif [ "$FREE_MB" -lt "$NEED_MB" ]; then warn "only $FREE_MB MB free in $HOME; the $PROFILE profile needs about $NEED_MB MB (models need more)"
+else ok "disk: $FREE_MB MB free (about $NEED_MB MB needed, models extra)"; fi
+if http https://pypi.org/simple/pip/ >/dev/null; then ok "internet: pypi.org reachable"
+elif [ "$PRINT" = 1 ]; then warn "pypi.org is not reachable (a real run stops here)"
+else die "this computer cannot reach pypi.org, where AbstractVision is downloaded (check the connection or HTTPS_PROXY). Nothing was changed."; fi
+if [ -z "$FROM" ] && [ "$PIN" != latest ] && ! http "https://pypi.org/pypi/abstractvision/$PIN/json" >/dev/null; then
+    _m="abstractvision $PIN is not on PyPI (yet): use --pin latest for the newest published version"
+    if [ "$PRINT" = 1 ]; then warn "$_m"; else die "$_m. Nothing was changed."; fi
+fi
+[ -n "$UV" ] || have curl || have wget || die "neither curl nor wget is installed, so uv cannot be downloaded"
+WORK="${XDG_CACHE_HOME:-$HOME/.cache}/abstractvision/installer"
+[ "$PRINT" = 1 ] || { mkdir -p "$WORK"; LOG="$WORK/install.log"; : >"$LOG"; }
+
+# --- 2. uv and Python ---------------------------------------------------------
+step "uv (Python toolchain manager)"
+if [ -n "$UV" ]; then ok "uv found: $UV ($("$UV" --version 2>/dev/null | awk '{print $2}'))"
+else
+    info "installing uv from astral.sh into ~/.local/bin (no admin)"
+    if have curl; then run "download uv's installer" curl -LsSf https://astral.sh/uv/install.sh -o "$WORK/uv-install.sh"
+    else run "download uv's installer" wget -qO "$WORK/uv-install.sh" https://astral.sh/uv/install.sh; fi
+    run "install uv" env UV_NO_MODIFY_PATH=1 sh "$WORK/uv-install.sh"
+    if [ "$PRINT" = 1 ]; then UV=uv
+    else find_uv || die "uv was installed but cannot be found (looked in \$UV_INSTALL_DIR, \$XDG_BIN_HOME, ~/.local/bin)"
+        ok "uv installed: $UV"; TOOL_BIN="$("$UV" tool dir --bin)"; TOOL_DIR="$("$UV" tool dir)"; fi
+fi
+step "Python $AVIS_PYTHON (managed by uv, isolated from any system Python)"
+run "install Python $AVIS_PYTHON" "$UV" python install "$AVIS_PYTHON"
+
+# --- 3. AbstractVision --------------------------------------------------------
+step "AbstractVision"
+# Prebuilt wheels only (see the top of this script): the apple tree gets the overrides file and
+# --no-build-package; uv splits --overrides at whitespace, so the file is named relatively from
+# its folder. The gpu and light trees have no such package and need neither.
+install_tool() {  # install_tool SOFT [uv options]
+    _soft="$1"; shift
+    set -- "$UV" tool install --python "$AVIS_PYTHON" "$@"
+    if [ "$EXTRAS" = apple ]; then
+        if [ "$PRINT" = 1 ]; then info "uv-overrides.txt:"; for _p in $AVIS_NO_WHEEL; do echo "      $_p; sys_platform == 'never'"; done
+        else for _p in $AVIS_NO_WHEEL; do echo "$_p; sys_platform == 'never'"; done >"$WORK/uv-overrides.txt"; fi
+        set -- "$@" --overrides uv-overrides.txt
+        for _p in $AVIS_NO_WHEEL; do set -- "$@" --no-build-package "$_p"; done
+    fi
+    [ -z "$FROM" ] || set -- "$@" --reinstall-package abstractvision  # same version number, new code
+    # --pin latest: without --upgrade, uv keeps an installed version that still satisfies.
+    [ "$PIN" != latest ] || [ -n "$FROM" ] || set -- "$@" --upgrade
+    set -- "$@" "$(spec "$EXTRAS")"
+    RUN_SHOW="cd $(q "$WORK") && $(show_cmd "$@")"
+    _cwd="$(pwd)"; [ "$PRINT" = 1 ] || cd "$WORK"
+    _rc=0; RUN_LIVE=1 RUN_SOFT="$_soft" run "install $(spec "$EXTRAS")" "$@" || _rc=1
+    cd "$_cwd" 2>/dev/null || cd "$HOME"
+    return "$_rc"
+}
+install_tool 0
+# Repair: uv can report the tool installed while its command is missing or cannot start (an
+# interrupted install) and then does nothing, so check the command and reinstall in place.
+if [ "$PRINT" = 0 ] && ! "$TOOL_BIN/abstractvision" --help >/dev/null 2>&1; then
+    warn "the installed abstractvision does not start (an earlier install was interrupted or damaged): reinstalling it"
+    install_tool 0 --reinstall
+    "$TOOL_BIN/abstractvision" --help >/dev/null 2>&1 || die "abstractvision still does not start after reinstalling it (log: $LOG)"
+fi
+AFTER="$BEFORE"
+if [ "$PRINT" = 0 ]; then
+    AFTER="$("$UV" tool list 2>/dev/null | sed -n 's/^abstractvision v\([^ ]*\).*/\1/p' | head -n 1)"
+    if [ -z "$BEFORE" ]; then ok "installed abstractvision $AFTER"
+    elif [ "$BEFORE" != "$AFTER" ]; then ok "abstractvision $BEFORE -> $AFTER"
+    elif [ -n "$FROM" ]; then ok "abstractvision $AFTER reinstalled from $FROM"
+    else ok "abstractvision $AFTER already installed"; fi
+fi
+
+# --- 4. PyTorch: the device Diffusers runs on (apple, gpu) ---------------------
+TORCH_RESULT=""; CPU_TORCH=0
+if [ -n "$EXTRAS" ]; then
+    step "PyTorch (Diffusers): the device it runs on"
+    TOOL_PY="$TOOL_DIR/abstractvision/bin/python"
+    printf '  %s$ %s%s\n' "$C_D" "$(show_cmd "$TOOL_PY" -c 'import torch, torchvision; print(torch.__version__, torch.cuda.is_available())')" "$C_0"
+    if [ "$PRINT" = 1 ]; then TORCH_RESULT="planned: the check above (torch and torchvision import; CUDA or MPS)"
+    else
+        printf '%s\n' 'try:
+    import torch
+    print("AVISMOKE version=" + torch.__version__)
+    print("AVISMOKE cuda_build=" + str(torch.version.cuda or ""))
+    cuda = torch.cuda.is_available()
+    print("AVISMOKE cuda=" + ("1" if cuda else "0"))
+    print("AVISMOKE gpu=" + (torch.cuda.get_device_name(0) if cuda else ""))
+    mps = getattr(torch.backends, "mps", None)
+    print("AVISMOKE mps=" + ("1" if mps is not None and mps.is_available() else "0"))
+    import torchvision
+    print("AVISMOKE torchvision=" + torchvision.__version__)
+except BaseException as e:
+    print("AVISMOKE error=%s: %s" % (type(e).__name__, str(e).splitlines()[0] if str(e) else ""))' >"$WORK/torch-check.py"
+        printf '\n$ %s <torch check>\n' "$TOOL_PY" >>"$LOG"
+        _t="$("$TOOL_PY" "$WORK/torch-check.py" 2>>"$LOG")" || true
+        printf '%s\n' "$_t" >>"$LOG"
+        tv() { printf '%s\n' "$_t" | sed -n "s/^AVISMOKE $1=//p" | head -n 1; }
+        _v="$(tv version)"; _cb="$(tv cuda_build)"; _err="$(tv error | cut -c1-240)"
+        if [ -n "$_err" ] || [ -z "$_v" ]; then
+            TORCH_RESULT="does not import (${_err:-no answer}; log: $LOG): Diffusers cannot run"; warn "PyTorch $TORCH_RESULT"
+        elif [ "$(tv cuda)" = 1 ]; then
+            TORCH_RESULT="$_v (CUDA $_cb), torchvision $(tv torchvision): on the GPU ($(tv gpu))"; ok "PyTorch $TORCH_RESULT"
+        elif [ "$(tv mps)" = 1 ]; then
+            TORCH_RESULT="$_v, torchvision $(tv torchvision): on the Apple GPU (MPS)"; ok "PyTorch $TORCH_RESULT"
+        else
+            _need=0; case "$_cb" in 13.*) _need=580 ;; 12.*) _need=525 ;; esac
+            if [ -z "$_cb" ]; then _why="PyTorch's CPU build is installed"
+                [ "$HAS_NVIDIA" = 0 ] || _why="$_why; the CUDA build comes back with: uv tool install --python $AVIS_PYTHON --reinstall $(q "$(spec "$EXTRAS")")"
+            elif [ "$HAS_NVIDIA" = 1 ] && [ "$_need" -gt 0 ] && [ "$NV_MAJOR" -lt "$_need" ]; then
+                _why="its CUDA $_cb build needs NVIDIA driver $_need or newer (this one is $NV_DRIVER): update the driver"
+            elif [ "$HAS_NVIDIA" = 1 ] && [ "$_need" = 580 ] && [ -n "$NV_CC10" ] && [ "$NV_CC10" -lt 75 ]; then
+                _why="its CUDA $_cb build needs compute capability 7.5 or newer (this GPU has $((NV_CC10 / 10)).$((NV_CC10 % 10)))"
+            elif [ "$HAS_NVIDIA" = 1 ]; then _why="it does not see the GPU; log: $LOG"
+            elif [ "$HAS_ROCM" = 1 ] && [ -n "$_cb" ]; then _why="PyPI's PyTorch is the CUDA build; an AMD GPU needs PyTorch's ROCm build (https://pytorch.org/get-started/locally/)"
+            else _why="${NV_ERR:-no GPU here}"; fi
+            TORCH_RESULT="$_v, torchvision $(tv torchvision): on the processor ($_why)"; info "PyTorch $TORCH_RESULT"
+            [ "$OS_ID" != linux ] || [ -z "$_cb" ] || CPU_TORCH=1
+        fi
+    fi
+fi
+
+# --- 5. PATH and summary ------------------------------------------------------
+step "PATH"
+case ":$PATH:" in
+    *":$TOOL_BIN:"*) ok "$TOOL_BIN is on PATH" ;;
+    *)
+        _hand="add it yourself: export PATH=\"$TOOL_BIN:\$PATH\" in your shell's startup file"
+        # The startup files may name it as written here, as $HOME/..., ${HOME}/... or ~/..., or through
+        # uv's `. "$HOME/.local/bin/env"` (which contains $HOME/.local/bin).
+        _rel="${TOOL_BIN#"$HOME"}"; [ "$_rel" != "$TOOL_BIN" ] || _rel="//none"
+        if grep -qsF -e "$TOOL_BIN" -e "\$HOME$_rel" -e "\${HOME}$_rel" -e "~$_rel" "$HOME/.zshenv" "$HOME/.zshrc" "$HOME/.bashrc" \
+            "$HOME/.bash_profile" "$HOME/.profile" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/uv.env.fish"; then
+            ok "$TOOL_BIN is already on PATH in your shell profile (new terminals have it)"
+        elif [ "$NO_MODIFY_PATH" = 1 ]; then warn "$TOOL_BIN is not on PATH (--no-modify-path); $_hand"
+        elif RUN_SOFT=1 run "add $TOOL_BIN to PATH in your shell profile" "$UV" tool update-shell; then
+            info "open a new terminal for the 'abstractvision' command to be on PATH"
+        else info "$_hand"; fi ;;
+esac
+
+printf '\n%s%s%s\n' "$C_B" "$([ "$PRINT" = 1 ] && echo 'Plan (--print: nothing was changed)' || echo 'AbstractVision is installed')" "$C_0"
+_ver="${AFTER:-$TARGET}"; [ "$PRINT" = 1 ] && _ver="$TARGET"
+echo "  version:   $_ver$([ "$PRINT" = 0 ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "$AFTER" ] && echo " (was $BEFORE)")"
+echo "  profile:   $PROFILE ($(spec "$EXTRAS"))"
+case "$PROFILE" in
+    apple) echo "  engines:   MLX-Gen (Apple GPU), Diffusers (PyTorch), OpenAI-compatible endpoints" ;;
+    gpu)   echo "  engines:   Diffusers (PyTorch), OpenAI-compatible endpoints" ;;
+    *)     echo "  engines:   OpenAI-compatible endpoints only (OpenAI, any /v1/images server); local generation needs"
+           echo "             the apple profile (Apple Silicon) or the gpu profile, also without a GPU on Linux (Diffusers"
+           echo "             on the processor): run the installer again with --profile gpu" ;;
+esac
+[ -z "$TORCH_RESULT" ] || echo "  PyTorch:   $TORCH_RESULT"
+[ -z "$EXTRAS" ] || echo "  GGUF:      stable-diffusion.cpp's sd-cli is not installed here: AbstractVision downloads it into ~/.abstractvision/bin at the first GGUF generation (ABSTRACTVISION_SDCPP_AUTO_INSTALL=0 turns that off)"
+[ "$EXTRAS" != apple ] || echo "  left out:  stable-diffusion-cpp-python, the Python binding of stable-diffusion.cpp (PyPI has only its source build; sd-cli replaces it). With a C compiler and CMake: uv pip install --python \"$TOOL_DIR/abstractvision/bin/python\" \"stable-diffusion-cpp-python>=0.4.2,<0.4.6\""
+if [ "$CPU_TORCH" = 1 ] || { [ "$PRINT" = 1 ] && [ "$PROFILE" = gpu ] && [ "$HAS_NVIDIA" = 0 ] && [ "$HAS_ROCM" = 0 ]; }; then
+    echo "  smaller:   without a GPU, PyTorch's CPU build (torch and torchvision from the same index) saves about 4 GB:"
+    echo "             uv tool install --python $AVIS_PYTHON --torch-backend cpu --reinstall $(q "$(spec "$EXTRAS")")"
+fi
+echo "  commands:  $TOOL_BIN/abstractvision"
+[ "$PRINT" = 1 ] || echo "  log:       $LOG"
+echo
+echo "Try it:"
+echo "  abstractvision --help"
+echo "  abstractvision catalog            # the models this machine can download and run"
+echo "Docs: $AVIS_DOCS"
+}
+
+{ main "$@"; }

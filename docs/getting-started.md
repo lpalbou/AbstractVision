@@ -22,6 +22,112 @@ See also:
 
 ---
 
+## One-line install
+
+One line, no admin rights, no Python needed beforehand. It installs AbstractVision alone (the
+`abstractvision` command; no gateway, no services) as a uv tool: an isolated, user-scoped
+environment with Python 3.12 managed by [uv](https://docs.astral.sh/uv), which it installs into
+`~/.local/bin` when missing.
+
+```bash
+# macOS / Linux
+curl -LsSf https://abstractframework.ai/vision/install.sh | sh
+curl -LsSf https://abstractframework.ai/vision/install.sh | sh -s -- --profile gpu   # with options
+```
+
+```powershell
+# Windows 10/11 (PowerShell 5.1 or 7)
+powershell -ExecutionPolicy ByPass -c "irm https://abstractframework.ai/vision/install.ps1 | iex"
+& ([scriptblock]::Create((irm https://abstractframework.ai/vision/install.ps1))) -Profile gpu   # with options
+```
+
+Without the installer, in an environment of your own:
+
+```bash
+pip install abstractvision            # light
+pip install "abstractvision[apple]"   # Apple Silicon
+pip install "abstractvision[gpu]"     # NVIDIA / Linux
+```
+
+The installer runs `uv tool install --python 3.12 "abstractvision[<profile>]==<version>"`, where
+the version is the release the script ships with. Every step prints its command; `--print`
+(`-Print` on Windows) shows the plan and changes nothing. After the install, it checks which
+device PyTorch runs on (`torch` and `torchvision` import, then CUDA or MPS) and says so.
+AbstractFramework's own installer (`https://abstractframework.ai/install.sh`) already includes
+AbstractVision: where it is installed, its gateway tool owns the `abstractvision` command and this
+installer stops with a sentence, changing nothing (upgrade the framework instead).
+
+| Profile | Picked when | Installs | Local generation |
+|---|---|---|---|
+| `apple` | Apple Silicon, macOS 14 or later | `abstractvision[apple]`: MLX-Gen, Diffusers on PyTorch | Apple GPU (MLX, MPS) |
+| `gpu` | Linux with NVIDIA (`nvidia-smi -L`) or ROCm (`rocminfo`); Windows with `nvidia-smi` | `abstractvision[gpu]`: Diffusers on PyTorch | CUDA when the card works, else the processor |
+| `light` | anything else | `abstractvision`, no dependency at all: the CLI, the catalog, the OpenAI-compatible backend | none (OpenAI or any `/v1/images` server) |
+
+PyTorch for the `gpu` profile: on Linux, PyPI's PyTorch is the CUDA 13 build (NVIDIA driver 580
+or newer, compute capability 7.5 or newer). On Windows, the installer adds `--torch-backend cu130`
+(driver 580+ and compute capability 7.5+) or `cu126` (driver 525+), so torch and torchvision come
+from the same PyTorch index; otherwise PyPI's CPU build. An AMD GPU (ROCm) gets PyPI's CUDA build,
+which runs on the processor; the device check says so. Windows on ARM gets `light` only: PyTorch
+publishes no Windows ARM64 wheels.
+
+### Linux without a GPU
+
+- `light` (what `auto` picks) has no local generation: it talks to OpenAI-compatible image
+  servers only.
+- `--profile gpu` is the way to generate locally on the processor (Diffusers on PyTorch). It
+  installs PyPI's PyTorch, the CUDA build, which runs on the processor: the environment is about
+  5.5 GB (measured on Ubuntu 24.04 x86_64).
+- For a smaller footprint, install PyTorch's CPU build afterwards (the installer's summary prints
+  this line with its version):
+
+  ```bash
+  uv tool install --python 3.12 --torch-backend cpu --reinstall "abstractvision[gpu]==<version>"
+  ```
+
+  It takes torch and torchvision from PyTorch's CPU index and removes the NVIDIA libraries: the
+  environment drops to about 1.1 GB. Both must come from the same index: a CPU torch next to the
+  CUDA torchvision breaks torchvision (its operators no longer load). A re-run of the installer
+  keeps the CPU build; `uv tool install --python 3.12 --reinstall "abstractvision[gpu]==<version>"`
+  puts the CUDA build back.
+
+### Options
+
+| macOS / Linux | Windows | Environment | Meaning |
+|---|---|---|---|
+| `--profile auto\|light\|apple\|gpu` | `-Profile auto\|light\|gpu` | `AVIS_PROFILE` | install profile (default `auto`: the first that fits) |
+| `--pin VERSION\|latest` | `-Pin VERSION\|latest` | `AVIS_PIN` | the AbstractVision version (default: the release the script ships with; `latest` = the newest on PyPI) |
+| `--from PATH` | `-From PATH` | `AVIS_FROM` | install from a checkout, sdist or wheel (testing) |
+| `--no-modify-path` | `-NoModifyPath` | | do not run `uv tool update-shell` |
+| `--print`, `--dry-run`, `-n` | `-Print`, `-DryRun` | | show the plan and the commands; change nothing |
+| `-v`, `--verbose` | `-Verbose` | | show the full output of every command |
+| `-h`, `--help` | `Get-Help .\install.ps1` | | the help |
+
+### Upgrade and removal
+
+Run the same line again: it says `AbstractVision <old> found: upgrading to <new>` (or `already up
+to date`, after checking that the command starts and reinstalling it when it does not). The
+previous profile is kept (read from uv's receipt) unless `--profile` says otherwise; `--pin`
+goes back to an older release. When the command folder is not on `PATH`, `uv tool update-shell`
+adds it to your shell profile once. Remove with `uv tool uninstall abstractvision`.
+
+### What is left out
+
+The installer uses prebuilt wheels only, so it never starts a C compiler (a fresh Mac never sees
+the Xcode tools dialog). Checked against PyPI for Python 3.12:
+
+- `apple`: `stable-diffusion-cpp-python`, the Python binding of stable-diffusion.cpp, is left out
+  (an overrides file plus `--no-build-package`): PyPI has only its source build, for every
+  version. Every other package has a macOS 14 arm64 wheel. To add the binding with a C compiler
+  and CMake: `uv pip install --python "$(uv tool dir)/abstractvision/bin/python" "stable-diffusion-cpp-python>=0.4.2,<0.4.6"`.
+- `gpu`: nothing (every package has a Linux x86_64/aarch64 and a Windows x64 wheel).
+- `light`: nothing (no dependency).
+- GGUF models: the installer does not install stable-diffusion.cpp's `sd-cli`. The
+  stable-diffusion.cpp backend prefers it and downloads it itself into `~/.abstractvision/bin` at
+  the first GGUF generation (a Metal build on Apple Silicon; a Vulkan build on Linux with NVIDIA;
+  a CUDA build on Windows); `ABSTRACTVISION_SDCPP_AUTO_INSTALL=0` turns that off.
+
+---
+
 ## 0) Install
 
 From PyPI:
