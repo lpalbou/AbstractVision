@@ -1389,6 +1389,41 @@ _SDCPP_BUNDLES: Dict[str, _SdcppBundleSpec] = {
             ),
         ),
     ),
+    # Z-Image's GGUF repos hold the diffusion model only; stable-diffusion.cpp also needs its
+    # Qwen3-4B text encoder and VAE ("new_sd_ctx_t failed" without them). Measured on a Quadro
+    # RTX 5000 (sd-cli Vulkan, 2026-11-10): z-image-turbo-Q8_0 with these companions, 512x512.
+    "z-image-turbo": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("z-image-turbo-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="Tongyi-MAI/Z-Image-Turbo",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen3-4B-GGUF",
+                allow_patterns=("Qwen3-4B-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
+    "z-image": _SdcppBundleSpec(
+        mode="component",
+        model_patterns=("z-image-Q8_0.gguf",),
+        components=(
+            _SdcppBundleComponentSpec(
+                role="vae",
+                repo_id="Tongyi-MAI/Z-Image",
+                allow_patterns=("vae/diffusion_pytorch_model.safetensors",),
+            ),
+            _SdcppBundleComponentSpec(
+                role="llm",
+                repo_id="unsloth/Qwen3-4B-GGUF",
+                allow_patterns=("Qwen3-4B-Q4_K_M.gguf",),
+            ),
+        ),
+    ),
     "qwen-image": _SdcppBundleSpec(
         mode="component",
         model_patterns=("qwen-image-2512-Q8_0.gguf",),
