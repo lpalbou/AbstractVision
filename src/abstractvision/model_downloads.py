@@ -1681,7 +1681,13 @@ def local_model_profile() -> str:
     if sys.platform == "darwin" and machine in {"arm64", "aarch64"}:
         return "apple-silicon"
 
+    # `nvidia-smi` lists every GPU whatever `CUDA_VISIBLE_DEVICES` says, but an empty value (or
+    # "-1") hides them all from CUDA: PyTorch then runs on the processor, so the catalog must
+    # not offer GPU artifacts (the Diffusers backend's device "auto" already resolves to cpu).
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES")
     nvidia_smi = shutil.which("nvidia-smi")
+    if cuda_visible is not None and cuda_visible.strip() in {"", "-1"}:
+        nvidia_smi = None
     if nvidia_smi:
         try:
             proc = subprocess.run(
