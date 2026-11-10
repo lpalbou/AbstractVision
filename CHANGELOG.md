@@ -31,6 +31,22 @@ On the processor the backend picks `cpu` and float32 and generates without a CUD
 - The GGUF path runs at the catalog's steps and guidance (it ran `sd-cli`'s 20 steps and cfg 7 for every model);
   guidance below 1 is sent as cfg 1 for turbo and distilled models.
 - Qwen-Image-Edit-2511 on `sd-cli` passes `--model-args qwen_image_zero_cond_t=true` (the flag it used did not exist).
+- On a CUDA host, `abstractvision download <model>` no longer picks the FP8 side artifacts (for example
+  `black-forest-labs/FLUX.2-klein-4b-fp8`): no AbstractVision backend loads them. The CUDA auto order is gguf,
+  diffusers, hf-snapshot; FP8 is left out rather than moved last because downloads are 8-bit by default and FP8 is
+  the only 8-bit artifact of flux1-dev and flux2-klein-9b-kv. `--target fp8` still lists and downloads them.
+- A Diffusers download fetches only what the backend loads on this host: each component listed in
+  `model_index.json` with one safetensors set (fp16 on CUDA and Apple silicon, the default set on the processor),
+  without root single-file checkpoints or `.bin` / `.onnx` / `.msgpack` copies. Measured on the Quadro RTX 5000:
+  stabilityai/sdxl-turbo went from 41.6 GB in 162 s to 6.9 GB in 38 s and generated the same image; FLUX.2-klein-4B
+  goes from 23.7 GB to 16.0 GB. `abstractvision download --all-files` restores the full download. AbstractCore's own
+  Diffusers route downloads go through its model materializer and are not trimmed by this.
+- `sd-cli` guidance follows the model family: FLUX dev models get `--guidance <catalog value>` with `--cfg-scale 1`
+  (their guidance is distilled, not classifier-free), Qwen-Image-Edit defaults to cfg 2.5 as stable-diffusion.cpp
+  documents (checked on one edit with the same seed: 2.5 gives the asked-for subject, 1.0 a hybrid). The sd-cli
+  installer requires the host architecture in the build it picks, refuses Ubuntu builds newer than its glibc table and
+  says when no build fits; GGUF preset downloads take root files only; a valueless `--model-args` gets its value in
+  place; on a GPU out-of-memory the failed step's memory is released before the free figure is reported.
 
 ## 0.3.34 - 2026-10-18
 

@@ -50,6 +50,7 @@ Maintenance tips:
 - Regenerate `llms-full.txt` after doc/packaging changes: `python scripts/generate_llms_full.py`.
 
 Agent quickstart (choose the path that matches your goal):
+- **Install in one line**: `curl -LsSf https://abstractframework.ai/vision/install.sh | sh` (macOS/Linux) or `powershell -ExecutionPolicy ByPass -c "irm https://abstractframework.ai/vision/install.ps1 | iex"` (Windows), or `pip install "abstractvision[apple]"` / `"abstractvision[gpu]"`; the script detects the platform (Apple Silicon -> apple, NVIDIA/ROCm -> gpu, else light) and installs an isolated user tool; see `docs/getting-started.md#one-line-install`. On Linux with an NVIDIA card the Diffusers backend runs in float16 (bfloat16 only on Ampere or newer); on a processor-only Linux host install `torch torchvision` from the CPU index first.
 - **Use the library (Python / CLI)**: start with `README.md` → `docs/getting-started.md` → `docs/api.md` → `docs/reference/backends.md`; shell commands are `abstractvision t2i` / `abstractvision i2i` / `abstractvision upscale` / `abstractvision t2v` / `abstractvision i2v`, and the interactive path is `abstractvision cli` (legacy alias `abstractvision repl`) with `/t2i` / `/i2i` / `/t2v` / `/i2v`.
 - **Integrate with AbstractCore/Runtime**: read `docs/reference/abstractcore-integration.md` and `docs/reference/artifacts.md` (includes local model residency control for in-process backends).
 - **Inspect provider model catalogs**: use `abstractvision provider-models`, `VisionManager.list_provider_models(...)`, or `llm.vision.list_provider_models(...)`; catalog listing is explicit and does not select the active model.
@@ -191,8 +192,35 @@ Details: [`docs/reference/backends.md`](docs/reference/backends.md).
 
 ## Installation
 
+One line, no admin rights, no Python needed beforehand:
+
 ```bash
-pip install abstractvision
+# macOS / Linux
+curl -LsSf https://abstractframework.ai/vision/install.sh | sh
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://abstractframework.ai/vision/install.ps1 | iex"
+```
+
+It installs AbstractVision alone as a uv tool (the `abstractvision` command, Python 3.12
+through uv) and picks the profile for the machine: `apple` (Apple Silicon, macOS 14+: MLX-Gen
+and Diffusers), `gpu` (NVIDIA or ROCm: Diffusers on PyTorch) or `light` (the CLI and the
+OpenAI-compatible backend; no local generation). On Linux without a GPU,
+`curl -LsSf https://abstractframework.ai/vision/install.sh | sh -s -- --profile gpu` generates
+locally on the processor. Prebuilt wheels only: on Apple Silicon `stable-diffusion-cpp-python` is
+left out (PyPI has only its source build); GGUF models run through stable-diffusion.cpp's
+`sd-cli`, which AbstractVision downloads itself at the first GGUF generation. Run the line again
+to upgrade. Profiles, options and what is left out:
+[One-line install](docs/getting-started.md#one-line-install).
+
+Or with pip, in your own environment:
+
+```bash
+pip install abstractvision            # light: no dependency
+pip install "abstractvision[apple]"   # Apple Silicon
+pip install "abstractvision[gpu]"     # NVIDIA / Linux
 ```
 
 The base install is lightweight. It includes the shared API, capability
@@ -232,7 +260,7 @@ Contributor-only extras:
 | `abstractvision[docs]` | Documentation build tooling. |
 | `abstractvision[dev]` | Full contributor workflow: tests, docs, build, lint, formatting, and pre-commit. Do not use this as an application runtime profile. |
 
-Note (CUDA): on Windows/Linux, `pip install "abstractvision[diffusers]"` may install a CPU-only PyTorch build. If you want to use an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>) and verify `torch.cuda.is_available()` is `True`.
+Note (CUDA): on Windows, `pip install "abstractvision[diffusers]"` installs PyPI's CPU-only PyTorch build; for an NVIDIA GPU, install a CUDA-enabled PyTorch build first (see <https://pytorch.org/get-started/locally/>; the one-line installer picks it for the driver). On Linux, PyPI's PyTorch is the CUDA 13 build (NVIDIA driver 580 or newer, compute capability 7.5 or newer). Verify `torch.cuda.is_available()` is `True`.
 
 AbstractCore is not installed by AbstractVision. When an AbstractCore application
 has AbstractVision installed in the same environment, AbstractCore can discover
@@ -844,7 +872,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 ## Start here (new users)
 
 1) [Project overview + quickstart](../README.md)  
-2) [Getting started](getting-started.md) (shell and interactive `t2i`/`i2i`; then Diffusers, MLX-Gen, GGUF, OpenAI-compatible HTTP, Playground)
+2) [Getting started](getting-started.md) ([one-line install](getting-started.md#one-line-install); shell and interactive `t2i`/`i2i`; then Diffusers, MLX-Gen, GGUF, OpenAI-compatible HTTP, Playground)
 3) [Architecture](architecture.md) (how the pieces fit together)
 
 ## Quick reference
@@ -929,6 +957,118 @@ See also:
 - Capability registries: [docs/reference/capabilities-registry.md](reference/capabilities-registry.md)
 - Artifacts: [docs/reference/artifacts.md](reference/artifacts.md)
 - AbstractCore integration: [docs/reference/abstractcore-integration.md](reference/abstractcore-integration.md)
+
+---
+
+## One-line install
+
+One line, no admin rights, no Python needed beforehand. It installs AbstractVision alone (the
+`abstractvision` command; no gateway, no services) as a uv tool: an isolated, user-scoped
+environment with Python 3.12 managed by [uv](https://docs.astral.sh/uv), which it installs into
+`~/.local/bin` when missing.
+
+```bash
+# macOS / Linux
+curl -LsSf https://abstractframework.ai/vision/install.sh | sh
+curl -LsSf https://abstractframework.ai/vision/install.sh | sh -s -- --profile gpu   # with options
+```
+
+```powershell
+# Windows 10/11 (PowerShell 5.1 or 7)
+powershell -ExecutionPolicy ByPass -c "irm https://abstractframework.ai/vision/install.ps1 | iex"
+& ([scriptblock]::Create((irm https://abstractframework.ai/vision/install.ps1))) -Profile gpu   # with options
+```
+
+Without the installer, in an environment of your own:
+
+```bash
+pip install abstractvision            # light
+pip install "abstractvision[apple]"   # Apple Silicon
+pip install "abstractvision[gpu]"     # NVIDIA / Linux
+```
+
+The installer runs `uv tool install --python 3.12 "abstractvision[<profile>]==<version>"`, where
+the version is the release the script ships with. Every step prints its command; `--print`
+(`-Print` on Windows) shows the plan and changes nothing. After an `apple` or `gpu` install
+(not `light`, which has no PyTorch), it checks which device PyTorch runs on (`torch` and
+`torchvision` import, then CUDA or MPS) and says so.
+AbstractFramework's own installer (`https://abstractframework.ai/install.sh`) already includes
+AbstractVision: where it is installed, its gateway tool owns the `abstractvision` command and this
+installer stops with a sentence, changing nothing (upgrade the framework instead).
+
+| Profile | Picked when | Installs | Local generation |
+|---|---|---|---|
+| `apple` | Apple Silicon, macOS 14 or later | `abstractvision[apple]`: MLX-Gen, Diffusers on PyTorch | Apple GPU (MLX, MPS) |
+| `gpu` | Linux with NVIDIA (`nvidia-smi -L`) or ROCm (`rocminfo`); Windows with `nvidia-smi` | `abstractvision[gpu]`: Diffusers on PyTorch | CUDA when the card works, else the processor |
+| `light` | anything else | `abstractvision`, no dependency at all: the CLI, the catalog, the OpenAI-compatible backend | none (OpenAI or any `/v1/images` server) |
+
+PyTorch for the `gpu` profile: on Linux, PyPI's PyTorch is the CUDA 13 build (NVIDIA driver 580
+or newer, compute capability 7.5 or newer). On Windows, the installer adds `--torch-backend cu130`
+(driver 580+ and compute capability 7.5+) or `cu126` (driver 525+), so torch and torchvision come
+from the same PyTorch index; otherwise PyPI's CPU build. An AMD GPU (ROCm) gets PyPI's CUDA build,
+which runs on the processor; the device check says so. Windows on ARM gets `light` only: PyTorch
+publishes no Windows ARM64 wheels.
+
+### Linux without a GPU
+
+- `light` (what `auto` picks) has no local generation: it talks to OpenAI-compatible image
+  servers only.
+- `--profile gpu` is the way to generate locally on the processor (Diffusers on PyTorch). It
+  installs PyPI's PyTorch, the CUDA build, which runs on the processor: the environment is about
+  5.5 GB (measured on Ubuntu 24.04 x86_64).
+- For a smaller footprint, install PyTorch's CPU build afterwards (the installer's summary prints
+  this line with its version):
+
+  ```bash
+  uv tool install --python 3.12 --torch-backend cpu --reinstall "abstractvision[gpu]==<version>"
+  ```
+
+  It takes torch and torchvision from PyTorch's CPU index and removes the NVIDIA libraries: the
+  environment drops to about 1.1 GB. Both must come from the same index: a CPU torch next to the
+  CUDA torchvision breaks torchvision (its operators no longer load). Measured with uv 0.13.7: uv's
+  receipt does not record `--torch-backend`, and uv keeps an installed torch that still satisfies,
+  so a re-run of the installer, an upgrade through it (0.3.33 to 0.3.34) and `uv tool upgrade`
+  kept the CPU build. A reinstall re-resolves torch from PyPI and brings the CUDA build back:
+  `uv tool upgrade --reinstall abstractvision` did, and so does
+  `uv tool install --python 3.12 --reinstall "abstractvision[gpu]==<version>"` (the way to get it
+  back on purpose). After an upgrade, check the summary's `PyTorch:` line: when it names a CUDA
+  build again, run the `--torch-backend cpu` line again.
+
+### Options
+
+| macOS / Linux | Windows | Environment | Meaning |
+|---|---|---|---|
+| `--profile auto\|light\|apple\|gpu` | `-Profile auto\|light\|gpu` | `AVIS_PROFILE` | install profile (default `auto`: the first that fits) |
+| `--pin VERSION\|latest` | `-Pin VERSION\|latest` | `AVIS_PIN` | the AbstractVision version (default: the release the script ships with; `latest` = the newest on PyPI) |
+| `--from PATH` | `-From PATH` | `AVIS_FROM` | install from a checkout, sdist or wheel (testing) |
+| `--no-modify-path` | `-NoModifyPath` | | do not run `uv tool update-shell` |
+| `--print`, `--dry-run`, `-n` | `-Print`, `-DryRun` | | show the plan and the commands; change nothing |
+| `-v`, `--verbose` | `-Verbose` | | show the full output of every command |
+| `-h`, `--help` | `Get-Help .\install.ps1` | | the help |
+
+### Upgrade and removal
+
+Run the same line again: it says `AbstractVision <old> found: upgrading to <new>` (or `already up
+to date`, after checking that the command starts and reinstalling it when it does not). The
+previous profile is kept (read from uv's receipt) unless `--profile` says otherwise; `--pin`
+goes back to an older release. When the command folder is not on `PATH`, `uv tool update-shell`
+adds it to your shell profile once. Remove with `uv tool uninstall abstractvision`.
+
+### What is left out
+
+The installer uses prebuilt wheels only, so it never starts a C compiler (a fresh Mac never sees
+the Xcode tools dialog). Checked against PyPI for Python 3.12:
+
+- `apple`: `stable-diffusion-cpp-python`, the Python binding of stable-diffusion.cpp, is left out
+  (an overrides file plus `--no-build-package`): PyPI has only its source build, for every
+  version. Every other package has a macOS 14 arm64 wheel. To add the binding with a C compiler
+  and CMake: `uv pip install --python "$(uv tool dir)/abstractvision/bin/python" "stable-diffusion-cpp-python>=0.4.2,<0.4.6"`.
+- `gpu`: nothing (every package has a Linux x86_64/aarch64 and a Windows x64 wheel).
+- `light`: nothing (no dependency).
+- GGUF models: the installer does not install stable-diffusion.cpp's `sd-cli`. The
+  stable-diffusion.cpp backend prefers it and downloads it itself into `~/.abstractvision/bin` at
+  the first GGUF generation (the macOS arm64 build on Apple Silicon; on Linux a Vulkan build when
+  NVIDIA is present; a CUDA build on Windows); `ABSTRACTVISION_SDCPP_AUTO_INSTALL=0` turns that off.
 
 ---
 
@@ -2497,6 +2637,7 @@ Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstrac
 - `CapabilityNotSupportedError` (task isn’t supported by the model registry or backend)
 - `UnknownModelError` (model id isn’t present in the registry)
 - `OptionalDependencyMissingError` (backend dependency is missing, e.g. Diffusers/Torch)
+- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback)
 --- >8 --- END FILE: docs/api.md --- >8 ---
 
 --- 8< --- FILE: docs/architecture.md --- 8< ---
@@ -4510,6 +4651,54 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
+
+## 0.3.35 - 2026-11-10
+
+Linux release check: this version was run end to end on an Ubuntu 24.04 host with an NVIDIA Quadro RTX 5000
+(16 GB, Turing) and on a processor-only Ubuntu 26.04 host with Python 3.14. On the card, `abstractvision[gpu]`
+installs with no compiler, the Diffusers backend picks `cuda` and float16 (the fast dtype on Turing, which has no
+native bfloat16), FLUX.2 [klein] 4B generates 1024² in 18-20 s with 8.6 GB of GPU memory and about 24 GB of host RAM
+for model CPU offload, the model stays resident between calls and `unload` returns the memory; the SDXL family, the
+turbo models, SD 1.5, Kolors, Lumina-2, PixArt-Sigma, the inpaint and instruct-pix2pix pipelines and the GGUF path
+(FLUX.2 klein, Z-Image, Qwen-Image-2512, Qwen-Image-Edit-2511 through `sd-cli`) all ran at their catalog defaults.
+On the processor the backend picks `cpu` and float32 and generates without a CUDA warning.
+
+- One-line standalone install: `curl -LsSf https://abstractframework.ai/vision/install.sh | sh` (macOS/Linux) and
+  `powershell -ExecutionPolicy ByPass -c "irm https://abstractframework.ai/vision/install.ps1 | iex"` (Windows),
+  `scripts/install.sh` / `scripts/install.ps1`: no admin rights, uv and Python 3.12 installed when missing,
+  `abstractvision[<profile>]==<version>` as an isolated user tool; the profile is detected like the framework
+  installer's (Apple Silicon + macOS 14 -> `apple`, NVIDIA or ROCm -> `gpu`, else `light`); `--print`, `--profile`,
+  `--pin`, `--from`; a re-run upgrades in place.
+- Diffusers on the processor loads every component in float32 (the CPU default dtype was unset, so Transformers 5
+  loaded float16 text encoders next to a float32 UNet and every generation failed with a dtype mismatch).
+- `local_model_profile()` reports `cpu` when `CUDA_VISIBLE_DEVICES` is empty or `-1` (it said `cuda`).
+- A CUDA out-of-memory during a Diffusers generation is raised as `GpuOutOfMemoryError`, naming the model's size,
+  its placement, what was free and what to change, instead of torch's traceback.
+- 8-bit GGUF presets download and run their `Q8_0` file only (they fetched every quantization of the repository:
+  258 GB for Qwen-Image-2512's 22 GB file, 92 GB for Z-Image, and then ran the BF16 file).
+- `sd-cli` auto-install picks the newest stable-diffusion.cpp release whose Linux build the host's glibc can run
+  and skips ROCm builds (since master-1044 the Linux builds need glibc 2.43, so every GGUF call failed on Ubuntu
+  24.04); a host that already installed a newer build deletes `~/.abstractvision/bin` once.
+- Z-Image GGUF presets bring their text encoder (Qwen3-4B Q4_K_M) and VAE, so `sd-cli` can build its context.
+- The GGUF path runs at the catalog's steps and guidance (it ran `sd-cli`'s 20 steps and cfg 7 for every model);
+  guidance below 1 is sent as cfg 1 for turbo and distilled models.
+- Qwen-Image-Edit-2511 on `sd-cli` passes `--model-args qwen_image_zero_cond_t=true` (the flag it used did not exist).
+- On a CUDA host, `abstractvision download <model>` no longer picks the FP8 side artifacts (for example
+  `black-forest-labs/FLUX.2-klein-4b-fp8`): no AbstractVision backend loads them. The CUDA auto order is gguf,
+  diffusers, hf-snapshot; FP8 is left out rather than moved last because downloads are 8-bit by default and FP8 is
+  the only 8-bit artifact of flux1-dev and flux2-klein-9b-kv. `--target fp8` still lists and downloads them.
+- A Diffusers download fetches only what the backend loads on this host: each component listed in
+  `model_index.json` with one safetensors set (fp16 on CUDA and Apple silicon, the default set on the processor),
+  without root single-file checkpoints or `.bin` / `.onnx` / `.msgpack` copies. Measured on the Quadro RTX 5000:
+  stabilityai/sdxl-turbo went from 41.6 GB in 162 s to 6.9 GB in 38 s and generated the same image; FLUX.2-klein-4B
+  goes from 23.7 GB to 16.0 GB. `abstractvision download --all-files` restores the full download. AbstractCore's own
+  Diffusers route downloads go through its model materializer and are not trimmed by this.
+- `sd-cli` guidance follows the model family: FLUX dev models get `--guidance <catalog value>` with `--cfg-scale 1`
+  (their guidance is distilled, not classifier-free), Qwen-Image-Edit defaults to cfg 2.5 as stable-diffusion.cpp
+  documents (checked on one edit with the same seed: 2.5 gives the asked-for subject, 1.0 a hybrid). The sd-cli
+  installer requires the host architecture in the build it picks, refuses Ubuntu builds newer than its glibc table and
+  says when no build fits; GGUF preset downloads take root files only; a valueless `--model-args` gets its value in
+  place; on a GPU out-of-memory the failed step's memory is released before the free figure is reported.
 
 ## 0.3.34 - 2026-10-18
 
