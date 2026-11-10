@@ -307,6 +307,12 @@ def _split_provider_prefix(model: Optional[str]) -> Tuple[Optional[str], Optiona
     return None, s or None
 
 
+def _all_files_kwargs(args: argparse.Namespace) -> Dict[str, Any]:
+    """`download --all-files`: Diffusers presets then take every file their patterns match."""
+
+    return {"all_files": True} if bool(getattr(args, "all_files", False)) else {}
+
+
 def _resolve_cached_diffusers_model_id(model_id: str) -> str:
     """Resolve a curated diffusers preset to the HF cache when possible."""
 
@@ -1235,6 +1241,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 model_dir=model_dir,
                 token=cli_token,
                 max_workers=int(getattr(args, "max_workers", 4) or 4),
+                **_all_files_kwargs(args),
             )
         except HuggingFaceAccessError as e:
             retry_token = _interactive_hf_token_retry(
@@ -1248,6 +1255,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                     model_dir=model_dir,
                     token=retry_token,
                     max_workers=int(getattr(args, "max_workers", 4) or 4),
+                    **_all_files_kwargs(args),
                 )
                 cli_token = retry_token
             except (HuggingFaceAccessError, RuntimeError) as e2:
@@ -3204,6 +3212,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-non-8bit",
         action="store_true",
         help="Permit explicit fallback presets when no quantized artifact is curated.",
+    )
+    dl.add_argument(
+        "--all-files",
+        action="store_true",
+        help=(
+            "Diffusers presets: download every weight file the repo ships (single-file checkpoints, "
+            "fp32 and fp16 sets) instead of only what the Diffusers backend loads on this host."
+        ),
     )
     dl.add_argument(
         "--json", action="store_true", help="Print selected preset + snapshot path as JSON."

@@ -2193,17 +2193,120 @@ def download_hf_repo_snapshot(
     return Path(str(resolved))
 
 
+# Weight formats a Hugging Face repo may ship next to its safetensors. The Diffusers backend
+# loads safetensors only (`use_safetensors=True`), from the component folders model_index.json
+# names; the others are duplicates it never reads.
+_WEIGHT_FILE_SUFFIXES = (
+    ".safetensors", ".bin", ".ckpt", ".pt", ".pth", ".onnx", ".onnx_data", ".msgpack", ".h5", ".gguf",
+)
+_WEIGHT_VARIANTS = ("fp16", "bf16", "fp32", "fp8", "non_ema", "ema")
+
+
+def _safetensors_variant(name: str) -> Tuple[bool, Optional[str]]:
+    """(is a safetensors weight or index file, its Diffusers variant or None)."""
+
+    import re
+
+    base = str(name).rsplit("/", 1)[-1]
+    m = re.match(r"^[^.]+\.safetensors\.index(?:\.(?P<v>[A-Za-z0-9_]+))?\.json$", base)
+    if m:
+        v = m.group("v")
+        return True, (v if v in _WEIGHT_VARIANTS else None)
+    if not base.endswith(".safetensors"):
+        return False, None
+    m = re.match(r"^[^.]+\.(?P<v>[A-Za-z0-9_]+)(?:-\d{5}-of-\d{5})?\.safetensors$", base)
+    if m and m.group("v") in _WEIGHT_VARIANTS:
+        return True, m.group("v")
+    return True, None
+
+
+def diffusers_download_files(
+    files: Sequence[str], *, components: Sequence[str], variant: Optional[str]
+) -> List[str]:
+    """The files of a Diffusers repo the backend loads.
+
+    Root files except weights (a root `*.safetensors` / `.ckpt` is a single-file duplicate of the
+    pipeline), and in each `components` folder its non-weight files plus one set of safetensors:
+    the `variant` set when the folder ships it (the backend asks Diffusers for variant "fp16" on
+    CUDA and MPS), else the default set, else the folder's only variant. `.bin`, `.onnx`,
+    `.msgpack` and the other variant sets are never read. Measured: stabilityai/sdxl-turbo is
+    41.6 GB with every safetensors and 6.9 GB this way; FLUX.2-klein-4B 23.7 GB and 16.0 GB."""
+
+    wanted = set(str(c) for c in components)
+    keep: List[str] = []
+    by_dir: Dict[str, List[str]] = {}
+    for f in files:
+        f = str(f)
+        if "/" not in f:
+            if not f.lower().endswith(_WEIGHT_FILE_SUFFIXES):
+                keep.append(f)
+            continue
+        folder = f.split("/", 1)[0]
+        if folder in wanted:
+            by_dir.setdefault(folder, []).append(f)
+    for folder in sorted(by_dir):
+        sets: Dict[Optional[str], List[str]] = {}
+        for f in by_dir[folder]:
+            is_safetensors, v = _safetensors_variant(f)
+            if is_safetensors:
+                sets.setdefault(v, []).append(f)
+            elif not f.lower().endswith(_WEIGHT_FILE_SUFFIXES):
+                keep.append(f)
+        chosen = (sets.get(variant) if variant else None) or sets.get(None) or sets.get("fp16")
+        if chosen is None and sets:
+            chosen = sets[sorted(sets, key=str)[0]]
+        keep.extend(chosen or [])
+    return sorted(set(keep))
+
+
+def _diffusers_backend_variant() -> Optional[str]:
+    """The checkpoint variant the Diffusers backend requests on this host: "fp16" where its
+    default dtype is float16 (CUDA, Apple MPS), none on the processor (float32)."""
+
+    return "fp16" if local_model_profile() in {"cuda", "apple-silicon"} else None
+
+
+def _diffusers_preset_download_files(preset: VisionModelDownloadPreset, *, token: Optional[str]) -> List[str]:
+    """`diffusers_download_files` for a preset's repo, among the files its patterns allow.
+    Empty (download by the patterns) when the repo has no model_index.json or the listing fails."""
+
+    import fnmatch
+    import json
+
+    try:
+        from huggingface_hub import HfApi, hf_hub_download
+
+        files = HfApi().list_repo_files(str(preset.repo_id), token=token)
+        if "model_index.json" not in files:
+            return []
+        with open(hf_hub_download(str(preset.repo_id), "model_index.json", token=token), "r", encoding="utf-8") as fh:
+            index = json.load(fh)
+    except Exception:
+        return []
+    components = [
+        k for k, v in index.items()
+        if not str(k).startswith("_") and isinstance(v, list) and len(v) == 2 and v[0] is not None
+    ]
+    patterns = tuple(preset.allow_patterns or ())
+    allowed = [f for f in files if not patterns or any(fnmatch.fnmatch(f, p) for p in patterns)]
+    return diffusers_download_files(allowed, components=components, variant=_diffusers_backend_variant())
+
+
 def download_model_preset(
     preset: VisionModelDownloadPreset,
     *,
     model_dir: Optional[Path] = None,
     token: Optional[str] = None,
     max_workers: int = 4,
+    all_files: bool = False,
 ) -> Path:
     """Download a curated preset into the Hugging Face cache.
 
     Existing `~/models/<preset.local_dir_name>` trees are migrated into the same
     cache layout on first use so older installs do not need a manual re-download.
+
+    A Diffusers preset downloads only what the Diffusers backend loads on this host
+    (`diffusers_download_files`); `all_files=True` takes every file its patterns match.
     """
 
     required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
@@ -2228,11 +2331,16 @@ def download_model_preset(
             "Downloading model presets requires `huggingface_hub`. Install it or use the `hf download` CLI."
         ) from e
 
+    allow_patterns = list(preset.allow_patterns) or None
+    if not all_files and preset.target == "diffusers" and preset.engine == "diffusers":
+        trimmed = _diffusers_preset_download_files(preset, token=resolve_hf_token(token))
+        if trimmed:
+            allow_patterns = trimmed
     try:
         snapshot = snapshot_download(
             repo_id=preset.repo_id,
             repo_type="model",
-            allow_patterns=list(preset.allow_patterns) or None,
+            allow_patterns=allow_patterns,
             token=resolve_hf_token(token),
             cache_dir=str(cache_root),
             max_workers=max(1, int(max_workers)),
