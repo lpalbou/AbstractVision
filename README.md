@@ -633,7 +633,11 @@ Current behavior:
 - Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
-One-shot commands default to the OpenAI-compatible HTTP backend, but they also support local providers:
+One-shot commands pick this machine's local engine and FLUX.2 [klein] 4B in 8 bits when you give no provider, model
+or base URL: MLX-Gen with `AbstractFramework/flux.2-klein-4b-8bit` on Apple silicon, stable-diffusion.cpp with the Q8_0
+GGUF of `black-forest-labs/FLUX.2-klein-4B` on an NVIDIA card, Diffusers with the same model on a processor-only host
+(download the model once with `abstractvision download <model id>`; the command prints the choice). A configured
+`--base-url` (or `$OPENAI_BASE_URL`) selects the OpenAI-compatible HTTP backend instead, and `--provider` always wins:
 
 ```bash
 abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"

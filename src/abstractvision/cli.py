@@ -347,15 +347,44 @@ def _resolve_cached_diffusers_model_id(model_id: str) -> str:
     return str(preset.repo_id).strip() or candidate
 
 
+# The local default of the one-shot commands (t2i, i2i, ...) when no provider, model, environment
+# variable or base URL is given: FLUX.2 [klein] 4B in 8 bits on the machine's own engine.
+LOCAL_DEFAULT_MODEL_ID = "black-forest-labs/FLUX.2-klein-4B"
+LOCAL_DEFAULT_MLX_GEN_MODEL_ID = "AbstractFramework/flux.2-klein-4b-8bit"
+
+
+def default_local_provider(profile: Optional[str] = None) -> str:
+    """The local engine for this machine: ``mlx-gen`` on Apple silicon, ``sdcpp`` (the Q8_0 GGUF
+    through stable-diffusion.cpp) on an NVIDIA card, ``diffusers`` on the processor."""
+    profile = str(profile or local_model_profile()).strip().lower()
+    if profile == "apple-silicon":
+        return "mlx-gen"
+    if profile == "cuda":
+        return "sdcpp"
+    return "diffusers"
+
+
+def default_local_model_id(provider_kind: str) -> str:
+    return LOCAL_DEFAULT_MLX_GEN_MODEL_ID if provider_kind == "mlx-gen" else LOCAL_DEFAULT_MODEL_ID
+
+
 def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
     store = LocalAssetStore(args.store_dir) if args.store_dir else LocalAssetStore()
-    provider_kind = _normalize_cli_provider(
+    explicit_provider = (
         getattr(args, "provider", None)
         or getattr(args, "backend", None)
         or _env("ABSTRACTVISION_PROVIDER")
-        or _env("ABSTRACTVISION_BACKEND", "openai")
-        or "openai"
+        or _env("ABSTRACTVISION_BACKEND")
     )
+    defaulted_provider = False
+    if explicit_provider:
+        provider_kind = _normalize_cli_provider(explicit_provider)
+    elif str(getattr(args, "base_url", None) or _env("OPENAI_BASE_URL") or "").strip():
+        # A remote endpoint was configured: it is the choice.
+        provider_kind = "openai"
+    else:
+        provider_kind = default_local_provider()
+        defaulted_provider = True
 
     model_value = _first_nonempty(
         getattr(args, "model", None),
@@ -372,6 +401,14 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
         provider_kind = prefix_provider
     if unprefixed_model is not None:
         model_value = unprefixed_model
+    if defaulted_provider and not model_value:
+        model_value = default_local_model_id(provider_kind)
+        print(
+            f"No --provider or --model: using {provider_kind} with {model_value}, this machine's local default "
+            f"(8-bit FLUX.2 [klein] 4B). Download it once with: abstractvision download {model_value}"
+            + (" --provider mlx-gen" if provider_kind == "mlx-gen" else ""),
+            file=sys.stderr,
+        )
 
     if provider_kind == "mlx":
         raise SystemExit(_generic_mlx_backend_error())

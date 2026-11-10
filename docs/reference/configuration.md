@@ -27,7 +27,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision upscale ...` — one-shot SeedVR2 image upscaling; defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --resolution 2x --softness 0.25` and supports `--scale`, `--resolution`, `--softness`, `--seed`, optional source-weight `--quantize`, and `--vae-tiling`
 
 Note:
-- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mlx-gen|sdcpp` (legacy alias: `--backend`; `mflux` remains accepted).
+- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` run on this machine's local engine by default with FLUX.2 [klein] 4B in 8 bits (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor); `--base-url` selects the OpenAI-compatible HTTP backend and `--provider` picks another local engine.
 - Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 - One-shot image commands write to `ABSTRACTVISION_STORE_DIR` or `--store-dir` and print JSON artifact metadata followed by the local content path. They do not take an `--output` path flag.
 - One-shot generation/edit/video commands support `--count` plus optional `--seeds` for reproducible batch orchestration above the exact single-run request surface.

@@ -772,7 +772,11 @@ Current behavior:
 - Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
-One-shot commands default to the OpenAI-compatible HTTP backend, but they also support local providers:
+One-shot commands pick this machine's local engine and FLUX.2 [klein] 4B in 8 bits when you give no provider, model
+or base URL: MLX-Gen with `AbstractFramework/flux.2-klein-4b-8bit` on Apple silicon, stable-diffusion.cpp with the Q8_0
+GGUF of `black-forest-labs/FLUX.2-klein-4B` on an NVIDIA card, Diffusers with the same model on a processor-only host
+(download the model once with `abstractvision download <model id>`; the command prints the choice). A configured
+`--base-url` (or `$OPENAI_BASE_URL`) selects the OpenAI-compatible HTTP backend instead, and `--provider` always wins:
 
 ```bash
 abstractvision t2i --base-url http://localhost:1234/v1 "a studio photo of an espresso machine"
@@ -2863,7 +2867,7 @@ After that works, `black-forest-labs/FLUX.2-klein-4B` is the recommended next lo
 
 ## Do the one-shot CLI commands run locally?
 
-Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default to the OpenAI-compatible HTTP backend, but they also support local providers through `--provider diffusers`, `--provider mlx-gen`, or `--provider sdcpp` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)). The legacy `mflux` provider value is still accepted as an alias.
+Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` run on this machine's local engine by default (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor-only host) with FLUX.2 [klein] 4B in 8 bits as the default model; give `--base-url` for the OpenAI-compatible HTTP backend or `--provider` for another local engine.
 
 For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mlx-gen ...`, or `/backend sdcpp ...`.
 
@@ -3375,7 +3379,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision upscale ...` — one-shot SeedVR2 image upscaling; defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --resolution 2x --softness 0.25` and supports `--scale`, `--resolution`, `--softness`, `--seed`, optional source-weight `--quantize`, and `--vae-tiling`
 
 Note:
-- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` default to the OpenAI-compatible HTTP backend, but they also support local providers via `--provider diffusers|mlx-gen|sdcpp` (legacy alias: `--backend`; `mflux` remains accepted).
+- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` run on this machine's local engine by default with FLUX.2 [klein] 4B in 8 bits (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor); `--base-url` selects the OpenAI-compatible HTTP backend and `--provider` picks another local engine.
 - Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 - One-shot image commands write to `ABSTRACTVISION_STORE_DIR` or `--store-dir` and print JSON artifact metadata followed by the local content path. They do not take an `--output` path flag.
 - One-shot generation/edit/video commands support `--count` plus optional `--seeds` for reproducible batch orchestration above the exact single-run request surface.
@@ -4656,6 +4660,16 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 
 ## Unreleased
 
+## 0.3.36 - 2026-11-11
+
+- **The one-shot commands run locally by default**: `abstractvision t2i`, `i2i` and the other generation commands
+  pick this machine's engine and FLUX.2 [klein] 4B in 8 bits when no `--provider`, `--model`, `ABSTRACTVISION_PROVIDER`
+  or base URL is given: MLX-Gen with `AbstractFramework/flux.2-klein-4b-8bit` on Apple silicon, stable-diffusion.cpp
+  with the Q8_0 GGUF of `black-forest-labs/FLUX.2-klein-4B` on an NVIDIA card (the artifact `abstractvision download`
+  already picks there), Diffusers with the same model on a processor-only host. The command prints its choice and the
+  download command for the model. A `--base-url` (or `$OPENAI_BASE_URL`) selects the OpenAI-compatible HTTP backend as
+  before; `--provider` keeps winning. Until now the commands defaulted to the remote backend on every platform and
+  stopped with `Missing --base-url`. Tests cover the three profiles, the base URL and the explicit provider.
 - Docs: a platform check of 0.3.35 (`docs/benchmark.md`) with the measured generation times per model on Linux
   without a GPU, Linux with an NVIDIA card and Apple silicon, linked from the README and the docs index.
 

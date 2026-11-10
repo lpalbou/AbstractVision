@@ -57,7 +57,7 @@ param(
 )
 
 # The release this script ships with = src/abstractvision/__init__.py (tests/test_install_scripts.py).
-$AvisPinDefault = '0.3.35'
+$AvisPinDefault = '0.3.36'
 $AvisPython = '3.12'
 $AvisScriptUrl = 'https://abstractframework.ai/vision/install.ps1'
 $AvisDocs = 'https://github.com/lpalbou/AbstractVision/blob/main/docs/getting-started.md#one-line-install'

@@ -60,7 +60,7 @@ set -eu
 
 # The release this script ships with = src/abstractvision/__init__.py __version__
 # (tests/test_install_scripts.py fails on drift), so an install lands on the tested version.
-AVIS_PIN_DEFAULT="0.3.35"
+AVIS_PIN_DEFAULT="0.3.36"
 AVIS_PYTHON="3.12"
 AVIS_SCRIPT_URL="https://abstractframework.ai/vision/install.sh"
 AVIS_DOCS="https://github.com/lpalbou/AbstractVision/blob/main/docs/getting-started.md#one-line-install"

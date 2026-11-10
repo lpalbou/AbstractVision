@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.36 - 2026-11-11
+
+- **The one-shot commands run locally by default**: `abstractvision t2i`, `i2i` and the other generation commands
+  pick this machine's engine and FLUX.2 [klein] 4B in 8 bits when no `--provider`, `--model`, `ABSTRACTVISION_PROVIDER`
+  or base URL is given: MLX-Gen with `AbstractFramework/flux.2-klein-4b-8bit` on Apple silicon, stable-diffusion.cpp
+  with the Q8_0 GGUF of `black-forest-labs/FLUX.2-klein-4B` on an NVIDIA card (the artifact `abstractvision download`
+  already picks there), Diffusers with the same model on a processor-only host. The command prints its choice and the
+  download command for the model. A `--base-url` (or `$OPENAI_BASE_URL`) selects the OpenAI-compatible HTTP backend as
+  before; `--provider` keeps winning. Until now the commands defaulted to the remote backend on every platform and
+  stopped with `Missing --base-url`. Tests cover the three profiles, the base URL and the explicit provider.
 - Docs: a platform check of 0.3.35 (`docs/benchmark.md`) with the measured generation times per model on Linux
   without a GPU, Linux with an NVIDIA card and Apple silicon, linked from the README and the docs index.
 

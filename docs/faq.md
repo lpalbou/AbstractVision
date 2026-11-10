@@ -68,7 +68,7 @@ After that works, `black-forest-labs/FLUX.2-klein-4B` is the recommended next lo
 
 ## Do the one-shot CLI commands run locally?
 
-Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` default to the OpenAI-compatible HTTP backend, but they also support local providers through `--provider diffusers`, `--provider mlx-gen`, or `--provider sdcpp` ([`../src/abstractvision/cli.py`](../src/abstractvision/cli.py)). The legacy `mflux` provider value is still accepted as an alias.
+Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` run on this machine's local engine by default (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor-only host) with FLUX.2 [klein] 4B in 8 bits as the default model; give `--base-url` for the OpenAI-compatible HTTP backend or `--provider` for another local engine.
 
 For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mlx-gen ...`, or `/backend sdcpp ...`.
 
