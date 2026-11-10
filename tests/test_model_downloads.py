@@ -393,7 +393,10 @@ class TestModelDownloads(unittest.TestCase):
         with self.assertRaises(ValueError):
             find_model_preset("flux1-dev", target="mlx", engine="mflux", require_8bit=True)
 
-        preset = find_model_preset("flux1-dev", target="auto", engine=None, require_8bit=False)
+        # The auto target order depends on the host profile (an NVIDIA host lists the FP8 side
+        # artifact first); pin a processor-only host so the test reads the same everywhere.
+        with patch("abstractvision.model_downloads.local_model_profile", return_value="cpu"):
+            preset = find_model_preset("flux1-dev", target="auto", engine=None, require_8bit=False)
         self.assertEqual((preset.target, preset.engine), ("diffusers", "diffusers"))
         self.assertEqual(preset.repo_id, "black-forest-labs/FLUX.1-dev")
 
