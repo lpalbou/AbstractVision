@@ -302,16 +302,21 @@ class TestModelDownloads(unittest.TestCase):
                     with self.assertRaisesRegex(MacOSGGUFUnsupportedError, "disabled on this macOS host"):
                         catalog_target_scope(target="auto", engine="sdcpp", include_all_targets=False)
 
-    def test_auto_scope_prefers_gpu_fp8_before_other_targets(self):
-        from abstractvision.model_downloads import catalog_target_scope, find_model_preset
+    def test_auto_scope_on_cuda_leaves_out_unloadable_fp8(self):
+        # FP8 component artifacts are not loadable by any AbstractVision backend: on a CUDA host
+        # the auto pick for flux2-klein-4b was black-forest-labs/FLUX.2-klein-4b-fp8 (2026-11-10).
+        from abstractvision.model_downloads import catalog_target_scope, default_model_target, find_model_preset
 
         with patch("abstractvision.model_downloads.local_model_profile", return_value="cuda"):
             self.assertEqual(
                 catalog_target_scope(target="auto", engine=None, include_all_targets=False),
-                ("fp8", "gguf", "diffusers", "hf-snapshot"),
+                ("gguf", "diffusers", "hf-snapshot"),
             )
+            self.assertEqual(default_model_target(), "gguf")
             preset = find_model_preset("flux2-klein-4b", target="auto", engine=None, require_8bit=True)
-        self.assertEqual((preset.target, preset.engine), ("fp8", "diffusers-component"))
+            explicit = find_model_preset("flux2-klein-4b", target="fp8", engine=None, require_8bit=True)
+        self.assertEqual((preset.target, preset.engine), ("gguf", "stable-diffusion.cpp"))
+        self.assertEqual((explicit.target, explicit.repo_id), ("fp8", "black-forest-labs/FLUX.2-klein-4b-fp8"))
 
     def test_diffusers_presets_keep_chat_templates(self):
         from abstractvision.model_downloads import find_model_preset

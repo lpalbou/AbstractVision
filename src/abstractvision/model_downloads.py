@@ -1773,7 +1773,12 @@ def local_catalog_targets() -> Tuple[str, ...]:
         # want to hide these entries can set `ABSTRACTVISION_DISABLE_GGUF_ON_MACOS=1`.
         return ("mlx", "diffusers", "hf-snapshot") if _macos_gguf_disabled() else ("mlx", "gguf", "diffusers", "hf-snapshot")
     if profile == "cuda":
-        return ("fp8", "gguf", "diffusers", "hf-snapshot")
+        # No fp8 in the auto order: those repos are component side artifacts no AbstractVision
+        # backend loads (FLUX.2-klein-4b-fp8 is "components only; not a standalone Diffusers
+        # pipeline"). Moving it last is not enough: downloads are 8-bit by default, and for
+        # flux1-dev or flux2-klein-9b-kv the FP8 repo is the only 8-bit artifact, so it would still
+        # be the auto pick. `--target fp8` (or the repo id) still reaches every FP8 artifact.
+        return ("gguf", "diffusers", "hf-snapshot")
     return ("diffusers", "hf-snapshot", "gguf")
 
 

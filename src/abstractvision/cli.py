@@ -3057,7 +3057,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         choices=["auto", "mlx", "gguf", "fp8", "diffusers", "hf-snapshot", "macos", "gpu"],
         help=(
-            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer fp8, others prefer diffusers). "
+            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer gguf, others prefer diffusers). "
             "If left as auto, an explicit --provider/--engine will infer the matching target."
         ),
     )
@@ -3107,7 +3107,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         choices=["auto", "mlx", "gguf", "fp8", "diffusers", "hf-snapshot", "macos", "gpu"],
         help=(
-            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer fp8, others prefer diffusers). "
+            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer gguf, others prefer diffusers). "
             "If left as auto, an explicit --provider/--engine will infer the matching target."
         ),
     )
@@ -3161,7 +3161,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         choices=["auto", "mlx", "gguf", "fp8", "diffusers", "hf-snapshot", "macos", "gpu"],
         help=(
-            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer fp8, others prefer diffusers). "
+            "Runtime artifact target (default: auto; Apple Silicon prefers mlx, CUDA hosts prefer gguf, others prefer diffusers). "
             "If left as auto, an explicit --provider/--engine will infer the matching target."
         ),
     )

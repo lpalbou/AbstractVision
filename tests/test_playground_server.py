@@ -512,7 +512,9 @@ class TestPlaygroundServer(unittest.TestCase):
 
         self.assertEqual(out["platform"], "cuda")
         self.assertTrue(all(m["target"] != "mlx" for m in out["models"]))
-        self.assertIn("fp8", out["targets"])
+        # FP8 component artifacts load in no AbstractVision backend, so a CUDA host is not offered them.
+        self.assertNotIn("fp8", out["targets"])
+        self.assertIn("gguf", out["targets"])
 
     def test_playground_catalog_hides_gpu_only_targets_on_apple_profiles(self):
         from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
