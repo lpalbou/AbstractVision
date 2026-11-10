@@ -161,6 +161,98 @@ def _is_high_memory_machine(*, min_memory_gb: float = 18.0) -> bool:
     return False
 
 
+# glibc of each Ubuntu release stable-diffusion.cpp builds its Linux binaries on. A binary built on a
+# newer Ubuntu does not start on an older one: since master-1044 (2026-11-03) the Linux builds are
+# Ubuntu 26.04 (glibc 2.43), and on Ubuntu 24.04 (glibc 2.39) the installed `sd-cli` failed every
+# call with "version `GLIBC_2.43' not found".
+_UBUNTU_GLIBC = {
+    (20, 4): (2, 31),
+    (22, 4): (2, 35),
+    (24, 4): (2, 39),
+    (24, 10): (2, 40),
+    (25, 4): (2, 41),
+    (25, 10): (2, 42),
+    (26, 4): (2, 43),
+}
+
+
+def _host_glibc_version() -> Optional[tuple]:
+    try:
+        lib, version = _platform.libc_ver()
+    except Exception:
+        return None
+    if lib != "glibc" or not version:
+        return None
+    try:
+        return tuple(int(x) for x in str(version).split(".")[:2])
+    except Exception:
+        return None
+
+
+def _pick_sd_cli_asset_url(
+    releases: Sequence[Dict[str, Any]],
+    *,
+    plat: str,
+    machine: str,
+    host_glibc: Optional[tuple],
+    has_nvidia: bool,
+) -> Optional[str]:
+    """The `sd-cli` zip to install: from the newest release that has a build this host runs."""
+
+    import re
+
+    for release in releases:
+        scored: List[tuple[int, str]] = []
+        for a in release.get("assets") or []:
+            name = str(a.get("name") or "")
+            url = str(a.get("browser_download_url") or "")
+            if not name or not url:
+                continue
+            low = name.lower()
+            if not low.endswith(".zip"):
+                continue
+
+            score = 0
+            if plat == "darwin":
+                if "bin-darwin" not in low or "arm64" not in low:
+                    continue
+                score = 100
+            elif plat.startswith("win"):
+                if "bin-win" not in low or "x64" not in low:
+                    continue
+                # Prefer CUDA build if present.
+                if "cuda" in low:
+                    score += 50
+                if "vulkan" in low:
+                    score += 10
+            elif plat == "linux":
+                if "bin-linux" not in low:
+                    continue
+                if "x86_64" not in low and "arm64" not in low and "aarch64" not in low:
+                    continue
+                # ROCm builds are AMD-only; Vulkan covers NVIDIA and AMD GPUs.
+                if "rocm" in low:
+                    continue
+                m = re.search(r"ubuntu-(\d+)\.(\d+)", low)
+                if m and host_glibc is not None:
+                    needed = _UBUNTU_GLIBC.get((int(m.group(1)), int(m.group(2))))
+                    if needed is not None and needed > tuple(host_glibc):
+                        continue
+                # Prefer Vulkan build when an NVIDIA runtime is present.
+                if has_nvidia and "vulkan" in low:
+                    score += 30
+                # Otherwise prefer the plain build.
+                if "vulkan" not in low:
+                    score += 5
+            else:
+                continue
+            scored.append((score, url))
+        if scored:
+            scored.sort(reverse=True, key=lambda x: x[0])
+            return scored[0][1]
+    return None
+
+
 def _try_auto_install_sd_cli(dest_dir: Path) -> Optional[str]:
     """Download and install `sd-cli` into `~/.abstractvision/bin` (best-effort).
 
@@ -184,8 +276,9 @@ def _try_auto_install_sd_cli(dest_dir: Path) -> Optional[str]:
         if dest_cli.exists():
             return str(dest_cli)
 
-        # Query latest release metadata.
-        api_url = "https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest"
+        # Recent releases, newest first: the newest one may only ship Linux builds for a newer
+        # Ubuntu than this host (see `_pick_sd_cli_asset_url`).
+        api_url = "https://api.github.com/repos/leejet/stable-diffusion.cpp/releases?per_page=100"
         req = urllib.request.Request(
             api_url,
             headers={
@@ -194,50 +287,18 @@ def _try_auto_install_sd_cli(dest_dir: Path) -> Optional[str]:
             },
         )
         with urllib.request.urlopen(req, timeout=30) as r:
-            meta = json.loads(r.read().decode("utf-8", errors="replace"))
-
-        assets = meta.get("assets") or []
+            releases = json.loads(r.read().decode("utf-8", errors="replace"))
+        if isinstance(releases, dict):
+            releases = [releases]
 
         def pick_asset_url() -> Optional[str]:
-            scored: List[tuple[int, str]] = []
-            for a in assets:
-                name = str(a.get("name") or "")
-                url = str(a.get("browser_download_url") or "")
-                if not name or not url:
-                    continue
-                low = name.lower()
-                if not low.endswith(".zip"):
-                    continue
-
-                score = 0
-                if plat == "darwin":
-                    if "bin-darwin" not in low or "arm64" not in low:
-                        continue
-                    score = 100
-                elif plat.startswith("win"):
-                    if "bin-win" not in low or "x64" not in low:
-                        continue
-                    # Prefer CUDA build if present.
-                    if "cuda" in low:
-                        score += 50
-                    if "vulkan" in low:
-                        score += 10
-                elif plat == "linux":
-                    if "bin-linux" not in low:
-                        continue
-                    if "x86_64" not in low and "arm64" not in low and "aarch64" not in low:
-                        continue
-                    # Prefer Vulkan build when an NVIDIA runtime is present.
-                    if shutil.which("nvidia-smi") and "vulkan" in low:
-                        score += 30
-                    # Otherwise prefer the plain build.
-                    if "vulkan" not in low and "rocm" not in low:
-                        score += 5
-                else:
-                    continue
-                scored.append((score, url))
-            scored.sort(reverse=True, key=lambda x: x[0])
-            return scored[0][1] if scored else None
+            return _pick_sd_cli_asset_url(
+                releases,
+                plat=plat,
+                machine=machine,
+                host_glibc=_host_glibc_version(),
+                has_nvidia=bool(shutil.which("nvidia-smi")),
+            )
 
         selected_url = pick_asset_url()
         if not selected_url:
