@@ -41,6 +41,7 @@ flowchart LR
 ## Status (current backend support)
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
+- Checked on Linux without a GPU, Linux with an NVIDIA card and Apple silicon; the measured generation times per model are in [docs/benchmark.md](docs/benchmark.md).
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
 - Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`.
 - Local MLX-Gen `0.38.0+` exposes route-aware Qwen structured control on validated base-Qwen routes through `control_image` / `control_strength`, and route-aware masked edit on validated Qwen 2511 edit routes through `mask`.

@@ -11,6 +11,7 @@ This folder contains the user-facing documentation for `abstractvision`.
 ## Quick reference
 
 - [FAQ](faq.md)
+- [Platform check (measured speed on Linux processor, Linux NVIDIA, Apple silicon)](benchmark.md)
 - [Troubleshooting](troubleshooting.md)
 - [API reference](api.md)
 - [Architecture decisions](adr/README.md)

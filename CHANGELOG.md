@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Docs: a platform check of 0.3.35 (`docs/benchmark.md`) with the measured generation times per model on Linux
+  without a GPU, Linux with an NVIDIA card and Apple silicon, linked from the README and the docs index.
+
 ## 0.3.35 - 2026-11-10
 
 Linux release check: this version was run end to end on an Ubuntu 24.04 host with an NVIDIA Quadro RTX 5000
