@@ -12,7 +12,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend
 from abstractvision.types import ImageGenerationRequest
 
 _PNG = (
@@ -22,15 +21,20 @@ _PNG = (
 
 
 def _cmd(model_id, request, edit=False):
-    backend = StableDiffusionCppVisionBackend(config=StableDiffusionCppBackendConfig(
+    # Imported here and patched by object: test_abstractcore_plugin pops and reloads the backend modules, so a
+    # module-level import would hold a class whose globals a `patch("<module path>...")` no longer reaches (the
+    # unpatched `_require_sd_cli` then looks for a real sd-cli, which the CI runners do not have).
+    import abstractvision.backends.stable_diffusion_cpp as sdc
+
+    backend = sdc.StableDiffusionCppVisionBackend(config=sdc.StableDiffusionCppBackendConfig(
         sd_cli_path="sd-cli", diffusion_model="model-Q8_0.gguf", vae="vae.safetensors", llm="llm.gguf",
         capabilities_model_id=model_id))
 
     def fake_run(cmd, check, stdout, stderr, cwd, timeout=None):
         Path(cmd[cmd.index("--output") + 1]).write_bytes(_PNG)
 
-    with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"), \
-         patch("abstractvision.backends.stable_diffusion_cpp.subprocess.run", side_effect=fake_run) as run:
+    with patch.object(sdc, "_require_sd_cli", return_value="/usr/bin/sd-cli"), \
+         patch.object(sdc.subprocess, "run", side_effect=fake_run) as run:
         if edit:
             backend.edit_image(request)
         else:
