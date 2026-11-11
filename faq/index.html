@@ -1164,7 +1164,7 @@ abstractvision<span class="w"> </span>cli
 <p>After that works, <code>black-forest-labs/FLUX.2-klein-4B</code> is the recommended next local test for a newer non-gated model
 (it currently requires Diffusers from source).</p>
 <h2 id="do-the-one-shot-cli-commands-run-locally">Do the one-shot CLI commands run locally?<a class="headerlink" href="#do-the-one-shot-cli-commands-run-locally" title="Permanent link">&para;</a></h2>
-<p>Yes. <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> default to the OpenAI-compatible HTTP backend, but they also support local providers through <code>--provider diffusers</code>, <code>--provider mlx-gen</code>, or <code>--provider sdcpp</code> (<a href="../src/abstractvision/cli.py"><code>../src/abstractvision/cli.py</code></a>). The legacy <code>mflux</code> provider value is still accepted as an alias.</p>
+<p>Yes. <code>abstractvision t2i</code> / <code>abstractvision i2i</code> / <code>abstractvision t2v</code> run on this machine's local engine by default (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor-only host) with FLUX.2 [klein] 4B in 8 bits as the default model; give <code>--base-url</code> for the OpenAI-compatible HTTP backend or <code>--provider</code> for another local engine.</p>
 <p>For interactive local generation, use <code>abstractvision cli</code> (legacy alias: <code>abstractvision repl</code>) with <code>/backend diffusers ...</code>, <code>/backend mlx-gen ...</code>, or <code>/backend sdcpp ...</code>.</p>
 <p>Current local video note:
 - local Diffusers <code>t2v</code> is currently experimental and disabled from the normal bundled local surfaces;
