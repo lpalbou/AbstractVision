@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -9,6 +10,9 @@ from .backends.base_backend import VisionBackend
 from .errors import BackendNotConfiguredError, CapabilityNotSupportedError
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .types import (
+    BATCH_EXTRA_KEY,
+    MEMORY_MODE_DEFAULT,
+    MEMORY_MODES,
     GeneratedAsset,
     ImageEditRequest,
     ImageGenerationRequest,
@@ -19,6 +23,7 @@ from .types import (
     ProviderModelInfo,
     VideoGenerationRequest,
     VisionBackendCapabilities,
+    resolve_memory_mode_with_source,
 )
 
 
@@ -96,10 +101,74 @@ class VisionManager:
         if merged_extra:
             kwargs["extra"] = merged_extra
 
+    def _apply_memory_mode(
+        self,
+        kwargs: Dict[str, Any],
+        caps: Optional[VisionBackendCapabilities],
+        task: str,
+    ) -> None:
+        """Resolve `memory_mode` (keyword, `extra["memory_mode"]` or $ABSTRACTVISION_MEMORY_MODE).
+
+        This is the early refusal for a mode the call names: one other than "default" must be
+        listed in the backend's `memory_modes`. Backends check again in `resolve_memory_request`,
+        which also covers callers that bypass VisionManager, and apply the environment default
+        there (it degrades to what the backend can honour instead of being refused).
+        """
+        extra = kwargs.get("extra")
+        mode, from_env = resolve_memory_mode_with_source(kwargs.get("memory_mode"), extra)
+        if from_env:
+            return
+        if isinstance(extra, dict) and "memory_mode" in extra:
+            extra = dict(extra)
+            extra.pop("memory_mode")
+            kwargs["extra"] = extra
+        if kwargs.get("memory_mode") is not None or mode != MEMORY_MODE_DEFAULT:
+            kwargs["memory_mode"] = mode
+        if mode == MEMORY_MODE_DEFAULT:
+            return
+        supported = tuple(caps.memory_modes) if caps is not None and caps.memory_modes else ()
+        if mode not in supported:
+            offered = ", ".join(supported or (MEMORY_MODE_DEFAULT,))
+            raise CapabilityNotSupportedError(
+                f"Backend {type(self.backend).__name__} does not support memory_mode={mode!r} "
+                f"for {task} (supported: {offered}). Known modes: {', '.join(MEMORY_MODES)}."
+            )
+
+    @staticmethod
+    def _batch_item_kwargs(
+        kwargs: Dict[str, Any],
+        *,
+        batch_id: str,
+        seed: Optional[int],
+        last: bool,
+        marks_batches: bool,
+    ) -> Dict[str, Any]:
+        call_kwargs = dict(kwargs)
+        call_kwargs["seed"] = seed
+        if not marks_batches:
+            return call_kwargs
+        extra = call_kwargs.get("extra")
+        extra = dict(extra) if isinstance(extra, dict) else {}
+        extra[BATCH_EXTRA_KEY] = {"id": batch_id, "last": bool(last)}
+        call_kwargs["extra"] = extra
+        return call_kwargs
+
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
         """List models advertised by the configured provider backend, if supported."""
         backend = self._require_backend()
         return backend.list_provider_models(task=task)
+
+    def describe_routes(
+        self, *, model: Optional[str] = None, task: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """The engine's route rows (MLX-Gen capability schema 17) for `model`/`task`, as JSON.
+
+        Empty when the backend publishes none. A host builds its controls and memory planning from
+        them without importing the engine.
+        """
+        backend = self._require_backend()
+        describe = getattr(backend, "describe_routes", None)
+        return list(describe(model=model, task=task)) if callable(describe) else []
 
     def list_provider_adapters(
         self,
@@ -147,6 +216,7 @@ class VisionManager:
                 "Backend does not support structured control images for text-to-image. "
                 "Inspect the selected route with `abstractvision show-model <model-id>`."
             )
+        self._apply_memory_mode(kwargs, caps, "text_to_image")
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageGenerationRequest(prompt=prompt, **kwargs)
         normalize = getattr(backend, "normalize_image_generation_request", None)
@@ -166,10 +236,16 @@ class VisionManager:
         **kwargs,
     ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
+        batch_id = uuid.uuid4().hex
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
-        for planned_seed in planned_seeds:
-            call_kwargs = dict(kwargs)
-            call_kwargs["seed"] = planned_seed
+        for index, planned_seed in enumerate(planned_seeds):
+            call_kwargs = self._batch_item_kwargs(
+                kwargs,
+                batch_id=batch_id,
+                seed=planned_seed,
+                last=index == len(planned_seeds) - 1,
+                marks_batches=bool(getattr(self.backend, "uses_batch_marker", False)),
+            )
             out.append(self.generate_image(prompt, **call_kwargs))
         return out
 
@@ -185,6 +261,7 @@ class VisionManager:
                 "Backend does not support masked image edits (mask parameter). "
                 "Inspect the selected route with `abstractvision show-model <model-id>`."
             )
+        self._apply_memory_mode(kwargs, caps, "image_to_image")
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageEditRequest(prompt=prompt, image=image, **kwargs)
         normalize = getattr(backend, "normalize_image_edit_request", None)
@@ -205,17 +282,24 @@ class VisionManager:
         **kwargs,
     ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
+        batch_id = uuid.uuid4().hex
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
-        for planned_seed in planned_seeds:
-            call_kwargs = dict(kwargs)
-            call_kwargs["seed"] = planned_seed
+        for index, planned_seed in enumerate(planned_seeds):
+            call_kwargs = self._batch_item_kwargs(
+                kwargs,
+                batch_id=batch_id,
+                seed=planned_seed,
+                last=index == len(planned_seeds) - 1,
+                marks_batches=bool(getattr(self.backend, "uses_batch_marker", False)),
+            )
             out.append(self.edit_image(prompt, image=image, **call_kwargs))
         return out
 
     def upscale_image(self, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("image_upscale")
-        self._require_backend_support(backend, "image_upscale")
+        caps = self._require_backend_support(backend, "image_upscale")
+        self._apply_memory_mode(kwargs, caps, "image_upscale")
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageUpscaleRequest(image=image, **kwargs)
         normalize = getattr(backend, "normalize_image_upscale_request", None)
@@ -240,7 +324,8 @@ class VisionManager:
     def generate_video(self, prompt: str, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("text_to_video")
-        self._require_backend_support(backend, "text_to_video")
+        caps = self._require_backend_support(backend, "text_to_video")
+        self._apply_memory_mode(kwargs, caps, "text_to_video")
         self._move_progress_callbacks_to_extra(kwargs)
         request = VideoGenerationRequest(prompt=prompt, **kwargs)
         normalize = getattr(backend, "normalize_video_generation_request", None)
@@ -260,17 +345,24 @@ class VisionManager:
         **kwargs,
     ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
+        batch_id = uuid.uuid4().hex
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
-        for planned_seed in planned_seeds:
-            call_kwargs = dict(kwargs)
-            call_kwargs["seed"] = planned_seed
+        for index, planned_seed in enumerate(planned_seeds):
+            call_kwargs = self._batch_item_kwargs(
+                kwargs,
+                batch_id=batch_id,
+                seed=planned_seed,
+                last=index == len(planned_seeds) - 1,
+                marks_batches=bool(getattr(self.backend, "uses_batch_marker", False)),
+            )
             out.append(self.generate_video(prompt, **call_kwargs))
         return out
 
     def image_to_video(self, image: bytes, **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
         backend = self._require_backend()
         self._require_model_support("image_to_video")
-        self._require_backend_support(backend, "image_to_video")
+        caps = self._require_backend_support(backend, "image_to_video")
+        self._apply_memory_mode(kwargs, caps, "image_to_video")
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageToVideoRequest(image=image, **kwargs)
         normalize = getattr(backend, "normalize_image_to_video_request", None)
@@ -290,9 +382,15 @@ class VisionManager:
         **kwargs,
     ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
+        batch_id = uuid.uuid4().hex
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
-        for planned_seed in planned_seeds:
-            call_kwargs = dict(kwargs)
-            call_kwargs["seed"] = planned_seed
+        for index, planned_seed in enumerate(planned_seeds):
+            call_kwargs = self._batch_item_kwargs(
+                kwargs,
+                batch_id=batch_id,
+                seed=planned_seed,
+                last=index == len(planned_seeds) - 1,
+                marks_batches=bool(getattr(self.backend, "uses_batch_marker", False)),
+            )
             out.append(self.image_to_video(image, **call_kwargs))
         return out

@@ -4,9 +4,18 @@ import base64
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from ..artifacts import MediaStore, get_artifact_id, is_artifact_ref
-from ..errors import AbstractVisionError, OptionalDependencyMissingError
+from ..errors import (
+    AbstractVisionError,
+    CapabilityNotSupportedError,
+    OptionalDependencyMissingError,
+)
 from ..model_capabilities import VisionModelCapabilitiesRegistry
-from ..types import LoRAAdapterSpec, ProviderAdapterInfo
+from ..types import (
+    MEMORY_MODE_DEFAULT,
+    LoRAAdapterSpec,
+    ProviderAdapterInfo,
+    normalize_memory_mode,
+)
 from ..vision_manager import VisionManager
 
 
@@ -145,15 +154,37 @@ def _coerce_lora_adapters(value: Optional[Sequence[Dict[str, Any]]]) -> List[LoR
     return adapters
 
 
+def _tools_memory_mode(vision_manager: VisionManager, memory_mode: Optional[str]) -> Optional[str]:
+    """Validate the tools' memory mode once, against the backend's listed modes when it says."""
+    if memory_mode is None:
+        return None
+    mode = normalize_memory_mode(memory_mode)
+    if mode == MEMORY_MODE_DEFAULT:
+        return mode
+    try:
+        caps = vision_manager.backend.get_capabilities() if vision_manager.backend is not None else None
+    except Exception:
+        caps = None
+    listed = tuple(caps.memory_modes) if caps is not None and caps.memory_modes else None
+    if listed is not None and mode not in listed:
+        raise CapabilityNotSupportedError(
+            f"make_vision_tools(memory_mode={mode!r}): the backend supports {', '.join(listed)}."
+        )
+    return mode
+
+
 def make_vision_tools(
     *,
     vision_manager: VisionManager,
     model_id: str,
     registry: Optional[VisionModelCapabilitiesRegistry] = None,
+    memory_mode: Optional[str] = None,
 ) -> List[Callable[..., Any]]:
     """Create AbstractCore tools for generative vision (artifact-ref outputs).
 
     Tools are returned as normal Python callables decorated with `@abstractcore.tool`.
+    `memory_mode` applies to every generation call of these tools; it is not a tool parameter,
+    so the model cannot change it. None leaves each call to $ABSTRACTVISION_MEMORY_MODE.
     """
     tool = _require_abstractcore_tool()
     reg = registry or VisionModelCapabilitiesRegistry()
@@ -161,6 +192,7 @@ def make_vision_tools(
     model_id = str(model_id or "").strip()
     if not model_id:
         raise ValueError("model_id must be a non-empty string")
+    tools_memory_mode = _tools_memory_mode(vision_manager, memory_mode)
 
     def _task_param_value(task_name: str, param_name: str, fallback: Any = None) -> Any:
         try:
@@ -237,6 +269,7 @@ def make_vision_tools(
             ),
             seed=seed,
             lora_adapters=_coerce_lora_adapters(lora_adapters),
+            memory_mode=tools_memory_mode,
         )
         return _require_artifact_ref_output("vision_text_to_image", out)
 
@@ -274,6 +307,7 @@ def make_vision_tools(
             count=int(count),
             seeds=seeds,
             lora_adapters=_coerce_lora_adapters(lora_adapters),
+            memory_mode=tools_memory_mode,
         )
         return _require_artifact_ref_list("vision_text_to_image_batch", out)
 
@@ -321,6 +355,7 @@ def make_vision_tools(
             seed=seed,
             extra=extra,
             lora_adapters=_coerce_lora_adapters(lora_adapters),
+            memory_mode=tools_memory_mode,
         )
         return _require_artifact_ref_output("vision_image_to_image", out)
 
@@ -372,6 +407,7 @@ def make_vision_tools(
             seeds=seeds,
             extra=extra,
             lora_adapters=_coerce_lora_adapters(lora_adapters),
+            memory_mode=tools_memory_mode,
         )
         return _require_artifact_ref_list("vision_image_to_image_batch", out)
 
@@ -472,6 +508,7 @@ def make_vision_tools(
                 if vae_tiling is not None
                 else _task_param_value("image_upscale", "vae_tiling", None)
             ),
+            memory_mode=tools_memory_mode,
         )
         if not (isinstance(out, dict) and is_artifact_ref(out)):
             raise AbstractVisionError("vision_image_upscale expected artifact-ref output; ensure VisionManager.store is set.")
@@ -525,6 +562,7 @@ def make_vision_tools(
             ),
             seed=seed,
             lora_adapters=_coerce_lora_adapters(lora_adapters),
+            memory_mode=tools_memory_mode,
         )
         return _require_artifact_ref_output("vision_text_to_video", out)
 
@@ -580,6 +618,7 @@ def make_vision_tools(
             count=int(count),
             seeds=seeds,
             lora_adapters=_coerce_lora_adapters(lora_adapters),
+            memory_mode=tools_memory_mode,
         )
         return _require_artifact_ref_list("vision_text_to_video_batch", out)
 
@@ -635,6 +674,7 @@ def make_vision_tools(
             ),
             seed=seed,
             lora_adapters=_coerce_lora_adapters(lora_adapters),
+            memory_mode=tools_memory_mode,
         )
         return _require_artifact_ref_output("vision_image_to_video", out)
 
@@ -694,6 +734,7 @@ def make_vision_tools(
             count=int(count),
             seeds=seeds,
             lora_adapters=_coerce_lora_adapters(lora_adapters),
+            memory_mode=tools_memory_mode,
         )
         return _require_artifact_ref_list("vision_image_to_video_batch", out)
 

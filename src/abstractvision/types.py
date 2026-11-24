@@ -1,7 +1,77 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
+
+# Memory modes a caller can request on a generation call, from the fastest run to the lowest
+# memory peak. "default" runs the backend as configured. "low" and "lowest" trade speed for a
+# lower peak on backends that implement them; `VisionBackendCapabilities.memory_modes` lists
+# what a configured backend can honour, and a mode it does not list is refused, never ignored.
+MEMORY_MODE_DEFAULT = "default"
+MEMORY_MODE_LOW = "low"
+MEMORY_MODE_LOWEST = "lowest"
+MEMORY_MODES: Tuple[str, ...] = (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW, MEMORY_MODE_LOWEST)
+# Process default for requests that do not name a mode; a request value wins.
+MEMORY_MODE_ENV_VAR = "ABSTRACTVISION_MEMORY_MODE"
+# Set by VisionManager on the items of a batch: {"id": <batch id>, "last": <bool>}. Backends that
+# release a model after a low-memory run keep it until the last item, as mlx-gen does for seeds.
+BATCH_EXTRA_KEY = "_abstractvision_batch"
+
+
+def normalize_memory_mode(value: Any) -> str:
+    """Return the canonical memory mode for `value` (None and "" mean "default")."""
+    if value is None:
+        return MEMORY_MODE_DEFAULT
+    text = str(value).strip().lower()
+    if not text:
+        return MEMORY_MODE_DEFAULT
+    if text in MEMORY_MODES:
+        return text
+    raise ValueError(f"memory_mode must be one of {', '.join(MEMORY_MODES)} (got {value!r}).")
+
+
+def resolve_memory_mode_with_source(value: Any, extra: Any = None) -> Tuple[str, bool]:
+    """The mode a call asks for, and whether it came from $ABSTRACTVISION_MEMORY_MODE.
+
+    `value` wins, then `extra["memory_mode"]`, then the environment, then "default". A keyword
+    and an `extra` value that disagree are refused.
+    """
+    from_extra = extra.get("memory_mode") if isinstance(extra, Mapping) else None
+    if value is not None and from_extra is not None:
+        if normalize_memory_mode(value) != normalize_memory_mode(from_extra):
+            raise ValueError(
+                f"memory_mode={value!r} and extra['memory_mode']={from_extra!r} disagree; pass one."
+            )
+    if value is None:
+        value = from_extra
+    if value is None or not str(value).strip():
+        env_value = os.environ.get(MEMORY_MODE_ENV_VAR)
+        if env_value is not None and env_value.strip():
+            try:
+                return normalize_memory_mode(env_value), True
+            except ValueError as e:
+                raise ValueError(f"{MEMORY_MODE_ENV_VAR}: {e}") from e
+    return normalize_memory_mode(value), False
+
+
+def resolve_memory_mode(value: Any, extra: Any = None) -> str:
+    """The mode a call asks for (see `resolve_memory_mode_with_source`)."""
+    return resolve_memory_mode_with_source(value, extra)[0]
+
+
+def highest_memory_mode_at_or_below(mode: str, supported: Sequence[str]) -> str:
+    """The lowest-memory mode in `supported` that does not go below `mode` ("default" if none)."""
+    rank = MEMORY_MODES.index(normalize_memory_mode(mode))
+    for candidate in reversed(MEMORY_MODES[: rank + 1]):
+        if candidate in supported:
+            return candidate
+    return MEMORY_MODE_DEFAULT
+
+
+def request_memory_mode(request: Any) -> str:
+    """The memory mode a request asks for (see `resolve_memory_mode`)."""
+    return resolve_memory_mode(getattr(request, "memory_mode", None), getattr(request, "extra", None))
 
 
 @dataclass(frozen=True)
@@ -49,6 +119,19 @@ class VisionBackendCapabilities:
     max_height: Optional[int] = None
     max_fps: Optional[int] = None
     max_frames: Optional[int] = None
+    # Memory modes this backend can honour for its configured model and device (see
+    # MEMORY_MODES); None when the backend does not say, which means "default" only.
+    memory_modes: Optional[Sequence[str]] = None
+    # Whether the configured MLX-Gen model streams transformer blocks, which "lowest" needs.
+    supports_block_streaming: Optional[bool] = None
+    # Load-time quantization widths the configured model accepts (`quantize`); None or empty
+    # means the option is refused.
+    quantize_bits: Optional[Sequence[int]] = None
+    # Whether `cancel_event` is honoured between steps ("step"), or only checked before a run
+    # starts ("start").
+    cancellation: Optional[str] = None
+    # Whether the configured model generates a soundtrack with its videos.
+    generates_audio: Optional[bool] = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +183,13 @@ class ImageGenerationRequest:
     control_strength: Optional[float] = None
     lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
+    memory_mode: Optional[str] = None
+    # Load-time quantization of the model's weights, in bits. Backends list what they accept;
+    # a value a backend or route cannot apply is refused.
+    quantize: Optional[int] = None
+    # A threading.Event-like object (anything with is_set()). When it is set, the backend stops
+    # at its next progress boundary and raises GenerationCancelledError.
+    cancel_event: Optional[Any] = None
 
 
 @dataclass(frozen=True)
@@ -113,6 +203,13 @@ class ImageEditRequest:
     guidance_scale: Optional[float] = None
     lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
+    memory_mode: Optional[str] = None
+    # Load-time quantization of the model's weights, in bits. Backends list what they accept;
+    # a value a backend or route cannot apply is refused.
+    quantize: Optional[int] = None
+    # A threading.Event-like object (anything with is_set()). When it is set, the backend stops
+    # at its next progress boundary and raises GenerationCancelledError.
+    cancel_event: Optional[Any] = None
 
 
 @dataclass(frozen=True)
@@ -125,6 +222,9 @@ class ImageUpscaleRequest:
     quantize: Optional[int] = None
     vae_tiling: Optional[bool] = None
     extra: Dict[str, Any] = field(default_factory=dict)
+    memory_mode: Optional[str] = None
+    # See ImageGenerationRequest.cancel_event.
+    cancel_event: Optional[Any] = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +254,20 @@ class VideoGenerationRequest:
     flow_shift: Optional[float] = None
     lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
+    memory_mode: Optional[str] = None
+    # Load-time quantization of the model's weights, in bits. Backends list what they accept;
+    # a value a backend or route cannot apply is refused.
+    quantize: Optional[int] = None
+    # A threading.Event-like object (anything with is_set()). When it is set, the backend stops
+    # at its next progress boundary and raises GenerationCancelledError.
+    cancel_event: Optional[Any] = None
+    # Video with a generated soundtrack (MiniMax-H3): the `overall_soundscape` and
+    # `non_diegetic_music` prompt sections, whether to decode the soundtrack, and the audio
+    # schedule shift. A backend or route without a soundtrack refuses them.
+    soundscape: Optional[str] = None
+    music: Optional[str] = None
+    generate_audio: Optional[bool] = None
+    audio_shift: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +286,37 @@ class ImageToVideoRequest:
     flow_shift: Optional[float] = None
     lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
     extra: Dict[str, Any] = field(default_factory=dict)
+    memory_mode: Optional[str] = None
+    # Load-time quantization of the model's weights, in bits. Backends list what they accept;
+    # a value a backend or route cannot apply is refused.
+    quantize: Optional[int] = None
+    # A threading.Event-like object (anything with is_set()). When it is set, the backend stops
+    # at its next progress boundary and raises GenerationCancelledError.
+    cancel_event: Optional[Any] = None
+    # Video with a generated soundtrack (MiniMax-H3): the `overall_soundscape` and
+    # `non_diegetic_music` prompt sections, whether to decode the soundtrack, and the audio
+    # schedule shift. A backend or route without a soundtrack refuses them.
+    soundscape: Optional[str] = None
+    music: Optional[str] = None
+    generate_audio: Optional[bool] = None
+    audio_shift: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class GeneratedAudioTrack:
+    """The soundtrack generated with a video.
+
+    `muxed` says whether the track is inside the asset's MP4 (AAC, `codec`). When the engine
+    could not mux it, `data` holds the track as a WAV file instead, so it is never lost.
+    """
+
+    sample_rate: int
+    channels: int
+    duration_seconds: float
+    muxed: bool
+    codec: Optional[str] = None
+    data: Optional[bytes] = None
+    mime_type: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -182,3 +327,4 @@ class GeneratedAsset:
     data: bytes
     mime_type: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    audio: Optional[GeneratedAudioTrack] = None

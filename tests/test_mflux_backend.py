@@ -473,6 +473,72 @@ class _CountingFlux2:
         return _Generated()
 
 
+class _RegisteringCallbackRegistry(_FakeCallbackRegistry):
+    def __init__(self):
+        super().__init__()
+        self.registered = []
+
+    def register(self, callback):
+        self.registered.append(callback)
+
+
+_MEMORY_EVENTS = []
+
+
+class _LowRamFlux2(_FakeFlux2):
+    instances = []
+    during_generate = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.callbacks = _RegisteringCallbackRegistry()
+        self.tiling_config = None
+        _LowRamFlux2.instances.append(self)
+        _MEMORY_EVENTS.append(("init", None))
+
+    def generate_image(self, **kwargs):
+        if _LowRamFlux2.during_generate is not None:
+            _LowRamFlux2.during_generate()
+        return super().generate_image(**kwargs)
+
+
+class _NoCallbacksFlux2:
+    def __init__(self, **kwargs):
+        pass
+
+    def generate_image(self, **kwargs):  # pragma: no cover
+        raise AssertionError("must not run without a low-RAM callback registry")
+
+
+class _LowRamSeedVR2(_FakeSeedVR2):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.callbacks = _RegisteringCallbackRegistry()
+        _MEMORY_EVENTS.append(("init", None))
+
+
+class _FakeMemorySaver:
+    """Stands in for mlx-gen's MemorySaver (mflux.callbacks.instances.memory_saver)."""
+
+    instances = []
+
+    def __init__(self, model, keep_transformer=True, cache_limit_bytes=1000**3, args=None):
+        self.model = model
+        self.keep_transformer = keep_transformer
+        self.cache_limit_bytes = cache_limit_bytes
+        model.tiling_config = "low-ram-tiling"
+        _FakeMemorySaver.instances.append(self)
+
+
+def _route_capabilities(*tasks, block_streaming=False):
+    return SimpleNamespace(
+        capabilities=tuple(
+            SimpleNamespace(public_task=task, supports_block_streaming=block_streaming)
+            for task in tasks
+        )
+    )
+
+
 class TestMFluxVisionBackend(unittest.TestCase):
     def _lazy_import_return(self, flux_cls=_FakeFlux2, flux_edit_cls=_FakeFlux2Edit, z_cls=_FakeZImage):
         return (_FakeModelConfig, _FakeDownloadRequiredError, flux_cls, flux_edit_cls, z_cls, z_cls)
@@ -1637,12 +1703,14 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ), patch(
                     "abstractvision.backends.mflux._set_mlx_cache_limit",
                     side_effect=fake_set_limit,
-                ), patch(
+                ), patch("abstractvision.backends.mflux._apply_mlx_gen_default_cache_limit"), patch(
                     "abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes",
                     return_value=8 * 1024**3,
                 ):
                     for request in requests:
-                        assets.append(backend.generate_video(request))
+                        assets.append(
+                            request(backend) if callable(request) else backend.generate_video(request)
+                        )
         return backend, assets, events, _RecordingWan
 
     def test_wan_ti2v_releases_denoiser_before_decode_and_rebuilds_next_request(self):
@@ -2148,7 +2216,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.38\.0",
+                        r"mlx-gen>=0\.40\.0",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(
@@ -3450,6 +3518,431 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(warmup["guidance"], 1.0)
         self.assertEqual(warmup["seed"], 0)
 
+
+    def _memory_patches(self, stack, cache_td, *, caps, flux_cls=_LowRamFlux2):
+        _LowRamFlux2.instances = []
+        _LowRamFlux2.during_generate = None
+        _FakeMemorySaver.instances = []
+        _MEMORY_EVENTS.clear()
+        limit = [555]
+
+        def fake_set_limit(value):
+            previous, limit[0] = limit[0], int(value)
+            _MEMORY_EVENTS.append(("limit", int(value)))
+            return previous
+
+        stack.enter_context(
+            patch.dict("os.environ", {"HF_HUB_CACHE": cache_td, "ABSTRACTVISION_MEMORY_MODE": ""}, clear=True)
+        )
+        stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mflux",
+                return_value=self._lazy_import_return(flux_cls=flux_cls, flux_edit_cls=flux_cls),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                return_value=(lambda **kwargs: caps, None),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mlx_gen_memory_saver",
+                return_value=_FakeMemorySaver,
+            )
+        )
+        stack.enter_context(
+            patch("abstractvision.backends.mflux._set_mlx_cache_limit", side_effect=fake_set_limit)
+        )
+        stack.enter_context(patch("abstractvision.backends.mflux._clear_mlx_cache"))
+        stack.enter_context(patch("abstractvision.backends.mflux._apply_mlx_gen_default_cache_limit"))
+        return limit
+
+    def _run_flux2_with_memory_modes(self, requests, *, block_streaming=False, flux_cls=_LowRamFlux2):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        assets = []
+        caps = _route_capabilities("text-to-image", "image-to-image", block_streaming=block_streaming)
+        with tempfile.TemporaryDirectory() as cache_td, contextlib.ExitStack() as stack:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit")
+            )
+            self._memory_patches(stack, cache_td, caps=caps, flux_cls=flux_cls)
+            self._last_low_ram_backend = backend
+            capabilities = backend.get_capabilities()
+            for request in requests:
+                if callable(request):
+                    assets.append(request(backend))
+                elif hasattr(request, "image"):
+                    assets.append(backend.edit_image(request))
+                else:
+                    assets.append(backend.generate_image(request))
+        return backend, assets, capabilities
+
+    def test_memory_mode_low_runs_image_route_in_mlx_gen_low_ram_mode(self):
+        from abstractvision.backends.mflux import LOW_RAM_MLX_CACHE_LIMIT_BYTES
+        from abstractvision.types import ImageGenerationRequest
+
+        backend, assets, capabilities = self._run_flux2_with_memory_modes(
+            [
+                ImageGenerationRequest(prompt="fox", steps=4, seed=1, memory_mode="low"),
+                ImageGenerationRequest(prompt="fox", steps=4, seed=2),
+            ]
+        )
+
+        self.assertEqual(tuple(capabilities.memory_modes), ("default", "low"))
+        self.assertFalse(capabilities.supports_block_streaming)
+        # As `mlxgen generate --low-ram` (flux2_generate.py): the 1 GB cache is set before the
+        # model loads, then one MemorySaver frees the text encoders and, for one seed, the transformer.
+        self.assertEqual(
+            _MEMORY_EVENTS[:3], [("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES), ("init", None), ("limit", 555)]
+        )
+        self.assertEqual(len(_FakeMemorySaver.instances), 1)
+        saver = _FakeMemorySaver.instances[0]
+        self.assertFalse(saver.keep_transformer)
+        self.assertEqual(saver.cache_limit_bytes, LOW_RAM_MLX_CACHE_LIMIT_BYTES)
+        self.assertIs(saver.model, _LowRamFlux2.instances[0])
+        self.assertEqual(_LowRamFlux2.instances[0].callbacks.registered, [saver])
+        # The released instance is rebuilt for the next (default) request, which runs as before.
+        self.assertEqual(len(_LowRamFlux2.instances), 2)
+        self.assertEqual(_LowRamFlux2.instances[1].callbacks.registered, [])
+        self.assertNotIn("stream_blocks", _FakeFlux2.last_init)
+        self.assertEqual(
+            {key: assets[0].metadata[key] for key in ("memory_mode", "low_ram", "stream_blocks")},
+            {"memory_mode": "low", "low_ram": True, "stream_blocks": False},
+        )
+        self.assertNotIn("memory_mode", assets[1].metadata)
+        self.assertTrue(backend.has_loaded_model())
+
+    def test_memory_mode_lowest_is_refused_where_the_route_cannot_stream_blocks(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageEditRequest
+
+        with self.assertRaisesRegex(CapabilityNotSupportedError, r"memory_mode='lowest'.*supported: default, low"):
+            self._run_flux2_with_memory_modes(
+                [ImageEditRequest(prompt="edit", image=PNG_1X1, steps=4, seed=1, memory_mode="lowest")]
+            )
+        self.assertEqual(_LowRamFlux2.instances, [])
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertEqual(_MEMORY_EVENTS, [])
+
+    def test_memory_mode_lowest_streams_blocks_where_the_route_publishes_it(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        backend, assets, capabilities = self._run_flux2_with_memory_modes(
+            [ImageGenerationRequest(prompt="fox", steps=4, seed=1, memory_mode="lowest")],
+            block_streaming=True,
+        )
+
+        self.assertEqual(tuple(capabilities.memory_modes), ("default", "low", "lowest"))
+        self.assertTrue(capabilities.supports_block_streaming)
+        self.assertIs(_FakeFlux2.last_init.get("stream_blocks"), True)
+        self.assertEqual(len(_FakeMemorySaver.instances), 1)
+        self.assertEqual(assets[0].metadata["memory_mode"], "lowest")
+        self.assertTrue(assets[0].metadata["stream_blocks"])
+        self.assertTrue(assets[0].metadata["low_ram"])
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_memory_mode_default_sends_nothing_new(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        _backend, assets, _caps = self._run_flux2_with_memory_modes(
+            [ImageGenerationRequest(prompt="fox", steps=4, seed=1, memory_mode="default")],
+            block_streaming=True,
+        )
+
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertEqual(_MEMORY_EVENTS, [("init", None)])
+        self.assertNotIn("stream_blocks", _FakeFlux2.last_init)
+        self.assertNotIn("memory_mode", assets[0].metadata)
+
+    def test_memory_mode_low_failed_run_still_drops_the_model_and_restores_the_cache(self):
+        from abstractvision.backends.mflux import LOW_RAM_MLX_CACHE_LIMIT_BYTES
+        from abstractvision.types import ImageGenerationRequest
+
+        class _FailingLowRamFlux2(_LowRamFlux2):
+            def generate_image(self, **kwargs):
+                raise RuntimeError("denoise failed")
+
+        with self.assertRaisesRegex(RuntimeError, "denoise failed"):
+            self._run_flux2_with_memory_modes(
+                [ImageGenerationRequest(prompt="fox", steps=4, memory_mode="low")],
+                flux_cls=_FailingLowRamFlux2,
+            )
+        # The failed instance carried a MemorySaver: it must not be reused.
+        self.assertEqual(len(_FakeMemorySaver.instances), 1)
+        self.assertEqual(_MEMORY_EVENTS[-1], ("limit", 555))
+        self.assertEqual(_MEMORY_EVENTS[0], ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES))
+        self.assertFalse(self._last_low_ram_backend.has_loaded_model())
+
+    def test_memory_mode_low_is_refused_when_model_has_no_callback_registry(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageGenerationRequest
+
+        with self.assertRaisesRegex(CapabilityNotSupportedError, "callback registry"):
+            self._run_flux2_with_memory_modes(
+                [ImageGenerationRequest(prompt="fox", steps=4, memory_mode="low")],
+                flux_cls=_NoCallbacksFlux2,
+            )
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertEqual(_MEMORY_EVENTS[-1], ("limit", 555))
+
+    def test_memory_mode_low_batch_keeps_the_model_until_the_last_item(self):
+        from abstractvision import VisionManager
+
+        def batch(backend):
+            return VisionManager(backend=backend).generate_image_batch(
+                "fox", count=3, seed=1, steps=4, memory_mode="low"
+            )
+
+        backend, assets, _caps = self._run_flux2_with_memory_modes([batch])
+
+        # mlx-gen keeps the transformer for several seeds (callback_manager.py:88): one load,
+        # one MemorySaver that frees the transformer after the last seed only.
+        self.assertEqual(len(_LowRamFlux2.instances), 1)
+        self.assertEqual(len(_FakeMemorySaver.instances), 1)
+        self.assertFalse(_FakeMemorySaver.instances[0].keep_transformer)
+        self.assertEqual(len(assets[0]), 3)
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_memory_mode_low_batch_releases_before_an_interleaved_request(self):
+        from abstractvision.types import BATCH_EXTRA_KEY, ImageGenerationRequest
+
+        backend, _assets, _caps = self._run_flux2_with_memory_modes(
+            [
+                ImageGenerationRequest(
+                    prompt="fox", steps=4, memory_mode="low", extra={BATCH_EXTRA_KEY: {"id": "b1", "last": False}}
+                ),
+                # Another caller's request on the same backend between two items of the batch.
+                ImageGenerationRequest(prompt="a different prompt", steps=4),
+            ]
+        )
+
+        self.assertTrue(_FakeMemorySaver.instances[0].keep_transformer)
+        # The kept instance had its text encoders freed: it is dropped, not reused.
+        self.assertEqual(len(_LowRamFlux2.instances), 2)
+        self.assertEqual(_LowRamFlux2.instances[1].callbacks.registered, [])
+        self.assertTrue(backend.has_loaded_model())
+
+    def test_memory_mode_low_fibo_batch_items_each_release(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import BATCH_EXTRA_KEY, ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "briaai/FIBO")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="briaai/FIBO"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td, "ABSTRACTVISION_MEMORY_MODE": ""}, clear=True):
+                _request, plan = backend._memory_plan(
+                    ImageGenerationRequest(
+                        prompt="fox", memory_mode="low", extra={BATCH_EXTRA_KEY: {"id": "b", "last": False}}
+                    ),
+                    task="text_to_image",
+                )
+        # mlx-gen refuses `--low-ram` with several seeds for FIBO (parsers.py:721); each item
+        # here is its own low-RAM run instead.
+        self.assertTrue(plan.low_ram)
+        self.assertFalse(plan.keep_model)
+
+    def test_preload_warmup_ignores_a_process_low_memory_default(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td, contextlib.ExitStack() as stack:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit"))
+            self._memory_patches(stack, cache_td, caps=_route_capabilities("text-to-image"))
+            stack.enter_context(patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": "low"}))
+            backend.preload()
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertTrue(backend.has_loaded_model())
+
+    def test_overlapping_runs_share_one_cache_limit_and_restore_it_last(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import (
+            LOW_RAM_MLX_CACHE_LIMIT_BYTES,
+            MFluxBackendConfig,
+            MFluxVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest, VideoGenerationRequest
+
+        seen = {}
+        with tempfile.TemporaryDirectory() as cache_td, contextlib.ExitStack() as stack:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            image_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit"))
+            video_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers"))
+            limit = self._memory_patches(stack, cache_td, caps=_route_capabilities("text-to-image"))
+            stack.enter_context(patch("abstractvision.backends.mflux._lazy_import_mflux_wan", return_value=_FakeWan))
+            stack.enter_context(
+                patch("abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes", return_value=8 * 1024**3)
+            )
+
+            def default_video_run_inside_the_low_image_run():
+                # A default Wan run (8 GiB ladder) on another backend thread starts and ends while
+                # the low-RAM image run holds 1 GB: the tighter limit stays until both end.
+                video_backend.generate_video(VideoGenerationRequest(prompt="fox", seed=1))
+                seen["after_video"] = limit[0]
+
+            _LowRamFlux2.during_generate = default_video_run_inside_the_low_image_run
+            image_backend.generate_image(ImageGenerationRequest(prompt="fox", steps=4, memory_mode="low"))
+            seen["after_both"] = limit[0]
+
+        self.assertEqual(seen["after_video"], LOW_RAM_MLX_CACHE_LIMIT_BYTES)
+        self.assertEqual(seen["after_both"], 555)
+        self.assertNotIn(("limit", 8 * 1024**3), _MEMORY_EVENTS)
+
+    def test_memory_mode_low_on_wan_a14b_matches_the_single_seed_cli(self):
+        from abstractvision.backends.mflux import LOW_RAM_MLX_CACHE_LIMIT_BYTES
+        from abstractvision.types import VideoGenerationRequest
+
+        backend, assets, events, _wan_cls = self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+            _FakeWan,
+            [VideoGenerationRequest(prompt="fox", seed=1, memory_mode="low")],
+        )
+
+        # wan_generate.py: release_denoisers_before_decode = low_ram and single_seed (75),
+        # release_inactive_denoiser=True on single-seed dual-expert runs (83-89),
+        # clear_cache_each_step / clear_cache_each_transformer_block = low_ram (145-149).
+        low_kwargs = dict(_FakeWan.last_generate)
+        for key in (
+            "release_denoisers_before_decode",
+            "release_inactive_denoiser",
+            "clear_cache_each_step",
+            "clear_cache_each_transformer_block",
+        ):
+            self.assertIs(low_kwargs.get(key), True, key)
+        # The 1 GB limit is set before the model loads (wan_generate.py:58, the load is at :62).
+        self.assertEqual(events[0], ("set_limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES))
+        self.assertLess(events.index(("set_limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES)), events.index(("init", None)))
+        self.assertIn(("save", LOW_RAM_MLX_CACHE_LIMIT_BYTES), events)
+        self.assertEqual(assets[0].metadata["memory_mode"], "low")
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_memory_mode_low_wan_batch_releases_on_the_last_item_only(self):
+        from abstractvision import VisionManager
+
+        class _BatchWan(_FakeWan):
+            calls = []
+
+            def generate_video(self, **kwargs):
+                _BatchWan.calls.append(dict(kwargs))
+                return super().generate_video(**kwargs)
+
+        _BatchWan.calls = []
+
+        def batch(backend):
+            return VisionManager(backend=backend).generate_video_batch(
+                "fox", count=2, seed=1, memory_mode="low"
+            )
+
+        backend, _assets, _events, wan_cls = self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers", _BatchWan, [batch]
+        )
+
+        first, last = _BatchWan.calls
+        # wan_generate.py:75 releases the denoisers only for a single seed; the clear flags stay.
+        self.assertNotIn("release_denoisers_before_decode", first)
+        self.assertNotIn("release_inactive_denoiser", first)
+        self.assertIs(first.get("clear_cache_each_step"), True)
+        self.assertIs(last.get("release_denoisers_before_decode"), True)
+        self.assertIs(last.get("release_inactive_denoiser"), True)
+        self.assertEqual(wan_cls.instances, 1)
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_memory_mode_low_on_wan_ti2v_has_no_inactive_expert_to_release(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+            _FakeWan,
+            [VideoGenerationRequest(prompt="fox", width=832, height=480, num_frames=5, steps=2, seed=1, extra={"memory_mode": "low"})],
+        )
+        self.assertNotIn("release_inactive_denoiser", _FakeWan.last_generate)
+        self.assertNotIn("stream_blocks", _FakeWan.last_init)
+        self.assertIs(_FakeWan.last_generate.get("clear_cache_each_transformer_block"), True)
+
+    def test_memory_mode_low_on_seedvr2_upscale_is_the_cache_limit_only(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import (
+            LOW_RAM_MLX_CACHE_LIMIT_BYTES,
+            MFluxBackendConfig,
+            MFluxVisionBackend,
+        )
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageUpscaleRequest
+
+        with tempfile.TemporaryDirectory() as cache_td, contextlib.ExitStack() as stack:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/seedvr2-3b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="seedvr2-3b"))
+            self._memory_patches(stack, cache_td, caps=_route_capabilities("image-upscale", block_streaming=True))
+            stack.enter_context(
+                patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux_seedvr2",
+                    return_value=(_FakeModelConfig, _LowRamSeedVR2, _FakeScaleFactor, _FakeTilingConfig),
+                )
+            )
+            self.assertEqual(tuple(backend.supported_memory_modes("image_upscale")), ("default", "low"))
+            first = backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1, seed=1, memory_mode="low"))
+            instance = _FakeSeedVR2.last_instance
+            second = backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1, seed=2, memory_mode="low"))
+            with self.assertRaises(CapabilityNotSupportedError):
+                backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1, memory_mode="lowest"))
+
+        # seedvr2_upscale.py:1031-1053: images get the 1 GB cache (apply_runtime_memory_options),
+        # no MemorySaver, and SeedVR2's own tiling. The instance is reused.
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertEqual(instance.tiling_config, "unset")
+        self.assertIs(_FakeSeedVR2.last_instance, instance)
+        self.assertEqual(
+            _MEMORY_EVENTS,
+            [
+                ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES),
+                ("init", None),
+                ("limit", 555),
+                ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES),
+                ("limit", 555),
+            ],
+        )
+        self.assertEqual(first.metadata["memory_mode"], "low")
+        self.assertEqual(second.metadata["vae_tiling_policy"], "runtime_default")
+        self.assertTrue(backend.has_loaded_model())
+
+    def test_provider_catalog_lists_the_memory_modes_each_model_can_honour(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        for block_streaming, modes in ((False, ["default", "low"]), (True, ["default", "low", "lowest"])):
+            caps = _route_capabilities("text-to-image", block_streaming=block_streaming)
+            with tempfile.TemporaryDirectory() as cache_td:
+                self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+                backend = MFluxVisionBackend(
+                    config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit")
+                )
+                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True), patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(lambda caps=caps, **kwargs: caps, None),
+                ):
+                    models = [
+                        model
+                        for model in backend.list_provider_models(task="text_to_image")
+                        if model.id == "AbstractFramework/flux.2-klein-4b-8bit"
+                    ]
+
+            self.assertEqual(len(models), 1)
+            raw = models[0].raw
+            self.assertEqual(raw["parameter_defaults"]["memory_mode"], "default")
+            self.assertEqual(
+                raw["parameter_constraints"]["memory_mode"],
+                {"enum": modes, "block_streaming": block_streaming},
+            )
+            self.assertEqual(raw["parameters"]["constraints"]["memory_mode"]["enum"], modes)
 
 if __name__ == "__main__":
     unittest.main()

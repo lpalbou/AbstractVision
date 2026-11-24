@@ -4590,6 +4590,208 @@
         }
       }
     },
+    "MiniMaxAI/MiniMax-H3": {
+      "provider": "huggingface",
+      "license": "minimax-h3-community-license",
+      "notes": "MiniMax-H3 (gated; MiniMax H3 Community License, whose grant excludes the European Union, the United Kingdom, the Republic of Korea and the United States of America). Video with a synchronized stereo soundtrack, text-to-video and first-frame image-to-video, through the MLX-Gen MiniMax-H3 runtime on Apple Silicon. The packages hold the base weights; choose the schedule with base_model (vision_mflux_base_model / ABSTRACTVISION_MFLUX_BASE_MODEL): minimax-h3-turbo-544p (8 steps, 960x544), minimax-h3-turbo (8 steps, 1344x768) or minimax-h3 (base, 50 steps). The Turbo schedules need their lightx2v adapter cached: `mlxgen download --model AbstractFramework/minimax-h3-8bit --base-model minimax-h3-turbo-544p` fetches the package and the adapter. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation.",
+      "downloads": [
+        {
+          "key": "minimax-h3",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 8,
+          "repo_id": "AbstractFramework/minimax-h3-8bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen 8-bit package (64.3 GiB): 8-bit transformer and conditioner. Recommended. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation."
+        },
+        {
+          "key": "minimax-h3",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "AbstractFramework/minimax-h3-bf16",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen 16-bit package (115.1 GiB): the released weights, repacked. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation."
+        },
+        {
+          "key": "minimax-h3",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 4,
+          "repo_id": "AbstractFramework/minimax-h3-4bit",
+          "source": "abstractframework-mlx-gen",
+          "notes": "AbstractFramework MLX-Gen mixed package (44.9 GiB): 4-bit conditioner, 6-bit transformer. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation."
+        },
+        {
+          "key": "minimax-h3",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "MiniMaxAI/MiniMax-H3",
+          "source": "official",
+          "notes": "Official MiniMax-H3 source snapshot consumed by MLX-Gen 0.40.0+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation."
+        }
+      ],
+      "tasks": {
+        "text_to_video": {
+          "inputs": [
+            "text"
+          ],
+          "outputs": [
+            "video",
+            "audio"
+          ],
+          "params": {
+            "prompt": {
+              "required": true,
+              "description": "integrated_multimodal_description, or a complete structured prompt (section labels present), passed through unchanged."
+            },
+            "soundscape": {
+              "required": false,
+              "description": "overall_soundscape section: diegetic sound design."
+            },
+            "music": {
+              "required": false,
+              "description": "non_diegetic_music section: the score, or a statement that there is none."
+            },
+            "generate_audio": {
+              "required": false,
+              "default": true,
+              "description": "Decode and mux the stereo soundtrack (AAC in the MP4)."
+            },
+            "negative_prompt": {
+              "required": false,
+              "supported": false
+            },
+            "guidance_scale": {
+              "required": false,
+              "supported": false
+            },
+            "width": {
+              "required": false,
+              "multiple_of": 32,
+              "description": "Default from the schedule (base_model): 960x544 for minimax-h3-turbo-544p, 1344x768 otherwise."
+            },
+            "height": {
+              "required": false,
+              "multiple_of": 32
+            },
+            "num_frames": {
+              "required": false,
+              "default": 124,
+              "format": "17n+5",
+              "min": 124,
+              "max": 345,
+              "description": "Rounded up to the next 17n+5 count at 24 fps; MLX-Gen's capability row is authoritative."
+            },
+            "fps": {
+              "required": false,
+              "const": 24
+            },
+            "steps": {
+              "required": false,
+              "description": "Default from the schedule: 8 for the Turbo entries, 50 for the base model."
+            },
+            "flow_shift": {
+              "required": false,
+              "description": "The video shift (MLX-Gen video_shift). Default from the schedule: 12, or 6 for minimax-h3-turbo."
+            },
+            "audio_shift": {
+              "required": false,
+              "default": 3.0
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.40.0"
+          }
+        },
+        "image_to_video": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "video",
+            "audio"
+          ],
+          "params": {
+            "image": {
+              "required": true,
+              "description": "First frame (keyframe). MLX-Gen maps it onto the entry's canvas unless width/height are given."
+            },
+            "prompt": {
+              "required": true,
+              "description": "integrated_multimodal_description, or a complete structured prompt (section labels present), passed through unchanged."
+            },
+            "soundscape": {
+              "required": false,
+              "description": "overall_soundscape section: diegetic sound design."
+            },
+            "music": {
+              "required": false,
+              "description": "non_diegetic_music section: the score, or a statement that there is none."
+            },
+            "generate_audio": {
+              "required": false,
+              "default": true,
+              "description": "Decode and mux the stereo soundtrack (AAC in the MP4)."
+            },
+            "negative_prompt": {
+              "required": false,
+              "supported": false
+            },
+            "guidance_scale": {
+              "required": false,
+              "supported": false
+            },
+            "width": {
+              "required": false,
+              "multiple_of": 32,
+              "description": "Default from the schedule (base_model): 960x544 for minimax-h3-turbo-544p, 1344x768 otherwise."
+            },
+            "height": {
+              "required": false,
+              "multiple_of": 32
+            },
+            "num_frames": {
+              "required": false,
+              "default": 124,
+              "format": "17n+5",
+              "min": 124,
+              "max": 345,
+              "description": "Rounded up to the next 17n+5 count at 24 fps; MLX-Gen's capability row is authoritative."
+            },
+            "fps": {
+              "required": false,
+              "const": 24
+            },
+            "steps": {
+              "required": false,
+              "description": "Default from the schedule: 8 for the Turbo entries, 50 for the base model."
+            },
+            "flow_shift": {
+              "required": false,
+              "description": "The video shift (MLX-Gen video_shift). Default from the schedule: 12, or 6 for minimax-h3-turbo."
+            },
+            "audio_shift": {
+              "required": false,
+              "default": 3.0
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.40.0"
+          }
+        }
+      }
+    },
     "stabilityai/stable-video-diffusion-img2vid-xt-1-1": {
       "provider": "huggingface",
       "license": "stable-video-diffusion-1-1-community",

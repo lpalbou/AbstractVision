@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import importlib.util
 import ipaddress
@@ -15,8 +16,19 @@ from urllib.parse import urlparse
 
 from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
 from ..backends.base_backend import VisionBackend
-from ..errors import AbstractVisionError
-from ..types import ProviderAdapterInfo, ProviderModelInfo
+from ..errors import AbstractVisionError, CapabilityNotSupportedError
+from ..types import (
+    MEMORY_MODE_DEFAULT,
+    MEMORY_MODE_LOW,
+    MEMORY_MODES,
+    ImageEditRequest,
+    ImageGenerationRequest,
+    ImageToVideoRequest,
+    ImageUpscaleRequest,
+    ProviderAdapterInfo,
+    ProviderModelInfo,
+    VideoGenerationRequest,
+)
 from ..vision_manager import VisionManager
 
 _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
@@ -610,6 +622,45 @@ def _read_bytes_from_path(path: Union[str, Path]) -> bytes:
     return p.read_bytes()
 
 
+_REQUEST_TYPES = (
+    ImageGenerationRequest,
+    ImageEditRequest,
+    ImageUpscaleRequest,
+    VideoGenerationRequest,
+    ImageToVideoRequest,
+)
+# Fields passed positionally or resolved by the facade itself, never as keyword pass-through.
+_FACADE_HANDLED_FIELDS = frozenset({"prompt", "image", "mask"})
+# Keywords a facade method moves into `extra` itself (image edits take width/height there).
+_FACADE_EXTRA_PROMOTED = {ImageEditRequest: frozenset({"width", "height"})}
+
+
+def _request_kwarg_names(request_cls: Any) -> set:
+    """The keyword options a facade method forwards as typed request fields: the request's own."""
+    names = {field.name for field in dataclasses.fields(request_cls)} - _FACADE_HANDLED_FIELDS
+    if request_cls is ImageToVideoRequest:
+        names.add("prompt")
+    return names
+
+
+def _refuse_misplaced_typed_options(request_cls: Any, kwargs: Mapping[str, Any], *, method: str) -> None:
+    """Refuse a typed option of another request type (guidance_2 on an image call, say).
+
+    Other unknown keywords stay backend-specific `extra` parameters; a typed option of another
+    task would land there and be dropped, so it is refused instead.
+    """
+    own = _request_kwarg_names(request_cls) | _FACADE_EXTRA_PROMOTED.get(request_cls, frozenset())
+    typed = set().union(*(_request_kwarg_names(cls) for cls in _REQUEST_TYPES))
+    misplaced = sorted(
+        key for key, value in kwargs.items() if value is not None and key in typed and key not in own
+    )
+    if misplaced:
+        raise CapabilityNotSupportedError(
+            f"{method}() does not take {', '.join(misplaced)}: "
+            f"{'it is' if len(misplaced) == 1 else 'they are'} options of other tasks."
+        )
+
+
 def _resolve_bytes_input(value: Union[bytes, Dict[str, Any], str], *, artifact_store: Any) -> bytes:
     if isinstance(value, (bytes, bytearray)):
         return bytes(value)
@@ -1087,6 +1138,21 @@ class _AbstractVisionCapability:
                 record["tasks"] = [str(record["task"])]
             self._loaded_models[backend_key] = record
             return dict(record)
+
+    def _record_request_run(
+        self, binding: Mapping[str, Any], backend: Any, *, task: str, succeeded: bool
+    ) -> None:
+        # Runs after every request, failed ones included. A run can release the model it ran on
+        # (memory_mode "low"/"lowest" on MLX-Gen, the Wan TI2V denoiser release, a failed low-RAM
+        # run): the backend then holds no model, so the record goes, resident or not, and the next
+        # request loads it again. Only a run that succeeded records the model as loaded.
+        has_loaded_model = getattr(backend, "has_loaded_model", None)
+        if callable(has_loaded_model) and not has_loaded_model():
+            with self._state_lock:
+                self._remove_loaded_model_locked(tuple(binding["backend_key"]))
+            return
+        if succeeded:
+            self._record_loaded_model(binding, task=task, resident=False, source="request")
 
     def _remove_loaded_model_locked(self, backend_key: tuple[Any, ...]) -> Optional[Dict[str, Any]]:
         existing = self._loaded_models.pop(backend_key, None)
@@ -1826,6 +1892,21 @@ class _AbstractVisionCapability:
         order = ["openai", "openai-compatible", "huggingface", "mlx-gen", "mflux", "sdcpp"]
         available_sorted = [provider for provider in order if provider in available]  # provider ids are canonical
 
+        # Diffusers offloads to the CPU on CUDA only; sd.cpp offloads its parameters anywhere.
+        from ..host import local_device_profile
+
+        diffusers_modes = (
+            MEMORY_MODES if local_device_profile() == "cuda" else (MEMORY_MODE_DEFAULT,)
+        )
+        memory_modes_by_provider = {
+            "openai": (MEMORY_MODE_DEFAULT,),
+            "openai-compatible": (MEMORY_MODE_DEFAULT,),
+            "huggingface": diffusers_modes,
+            "mlx-gen": (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW),
+            "mflux": (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW),
+            "sdcpp": (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW),
+        }
+
         return {
             "task": task,
             "providers": list(known),
@@ -1838,6 +1919,10 @@ class _AbstractVisionCapability:
                     "weights_present": _mflux_weights_present() if provider in {"mlx-gen", "mflux"} else None,
                     "remote": provider in {"openai", "openai-compatible"},
                     "local": provider not in {"openai", "openai-compatible"},
+                    # Per-request `memory_mode` values the provider can honour on this host.
+                    # MLX-Gen lists "lowest" per model, in each catalog entry's
+                    # parameter_constraints["memory_mode"]["enum"].
+                    "memory_modes": list(memory_modes_by_provider[provider]),
                     "reachable": (
                         openai_available
                         if provider == "openai"
@@ -1973,17 +2058,10 @@ class _AbstractVisionCapability:
         model = kwargs.pop("model", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "width",
-            "height",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "lora_adapters",
-            "extra",
-        }
+        if kwargs.get("control_image") is not None:
+            kwargs["control_image"] = _resolve_bytes_input(kwargs["control_image"], artifact_store=store)
+        allowed_request_keys = _request_kwarg_names(ImageGenerationRequest)
+        _refuse_misplaced_typed_options(ImageGenerationRequest, kwargs, method="t2i")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in list(kwargs.keys()):
@@ -2000,14 +2078,16 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             out = vm.generate_image(str(prompt), **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="text_to_image", resident=False, source="request")
+            succeeded = True
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="text_to_image", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def t2i_batch(self, prompt: str, **kwargs: Any):
@@ -2020,17 +2100,10 @@ class _AbstractVisionCapability:
         seeds = kwargs.pop("seeds", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "width",
-            "height",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "lora_adapters",
-            "extra",
-        }
+        if kwargs.get("control_image") is not None:
+            kwargs["control_image"] = _resolve_bytes_input(kwargs["control_image"], artifact_store=store)
+        allowed_request_keys = _request_kwarg_names(ImageGenerationRequest)
+        _refuse_misplaced_typed_options(ImageGenerationRequest, kwargs, method="t2i_batch")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in list(kwargs.keys()):
@@ -2047,6 +2120,7 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             outputs = vm.generate_image_batch(
                 str(prompt),
@@ -2054,10 +2128,11 @@ class _AbstractVisionCapability:
                 seeds=seeds,
                 **kwargs,
             )
-            if binding.get("local_control") and outputs:
-                self._record_loaded_model(binding, task="text_to_image", resident=False, source="request")
+            succeeded = bool(outputs)
             return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="text_to_image", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def i2i(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2073,15 +2148,8 @@ class _AbstractVisionCapability:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageEditRequest)
+        _refuse_misplaced_typed_options(ImageEditRequest, kwargs, method="i2i")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in ("strength", "width", "height"):
@@ -2104,14 +2172,16 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             out = vm.edit_image(str(prompt), image=image_b, mask=mask_b, **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="image_to_image", resident=False, source="request")
+            succeeded = True
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="image_to_image", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def i2i_batch(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2129,15 +2199,8 @@ class _AbstractVisionCapability:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageEditRequest)
+        _refuse_misplaced_typed_options(ImageEditRequest, kwargs, method="i2i_batch")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in ("strength", "width", "height"):
@@ -2160,6 +2223,7 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             outputs = vm.edit_image_batch(
                 str(prompt),
@@ -2169,10 +2233,11 @@ class _AbstractVisionCapability:
                 seeds=seeds,
                 **kwargs,
             )
-            if binding.get("local_control") and outputs:
-                self._record_loaded_model(binding, task="image_to_image", resident=False, source="request")
+            succeeded = bool(outputs)
             return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="image_to_image", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def multi_view_image(self, prompt: str, **kwargs: Any):
@@ -2195,15 +2260,8 @@ class _AbstractVisionCapability:
         image_b = _resolve_bytes_input(image, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "resolution",
-            "scale",
-            "seed",
-            "softness",
-            "quantize",
-            "vae_tiling",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageUpscaleRequest)
+        _refuse_misplaced_typed_options(ImageUpscaleRequest, kwargs, method="upscale_image")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in list(kwargs.keys()):
@@ -2218,14 +2276,16 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             out = vm.upscale_image(image=image_b, **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="image_upscale", resident=False, source="request")
+            succeeded = True
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="image_upscale", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def image_upscale(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2239,20 +2299,8 @@ class _AbstractVisionCapability:
         model = kwargs.pop("model", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "width",
-            "height",
-            "fps",
-            "num_frames",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "flow_shift",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(VideoGenerationRequest)
+        _refuse_misplaced_typed_options(VideoGenerationRequest, kwargs, method="t2v")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in list(kwargs.keys()):
@@ -2269,14 +2317,16 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             out = vm.generate_video(str(prompt), **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="text_to_video", resident=False, source="request")
+            succeeded = True
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="text_to_video", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def t2v_batch(self, prompt: str, **kwargs: Any):
@@ -2289,20 +2339,8 @@ class _AbstractVisionCapability:
         seeds = kwargs.pop("seeds", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "width",
-            "height",
-            "fps",
-            "num_frames",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "flow_shift",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(VideoGenerationRequest)
+        _refuse_misplaced_typed_options(VideoGenerationRequest, kwargs, method="t2v_batch")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in list(kwargs.keys()):
@@ -2319,6 +2357,7 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             outputs = vm.generate_video_batch(
                 str(prompt),
@@ -2326,10 +2365,11 @@ class _AbstractVisionCapability:
                 seeds=seeds,
                 **kwargs,
             )
-            if binding.get("local_control") and outputs:
-                self._record_loaded_model(binding, task="text_to_video", resident=False, source="request")
+            succeeded = bool(outputs)
             return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="text_to_video", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def i2v(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2341,21 +2381,8 @@ class _AbstractVisionCapability:
         image_b = _resolve_bytes_input(image, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "prompt",
-            "negative_prompt",
-            "width",
-            "height",
-            "fps",
-            "num_frames",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "flow_shift",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageToVideoRequest)
+        _refuse_misplaced_typed_options(ImageToVideoRequest, kwargs, method="i2v")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in list(kwargs.keys()):
@@ -2370,14 +2397,16 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             out = vm.image_to_video(image=image_b, **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="image_to_video", resident=False, source="request")
+            succeeded = True
             if isinstance(out, dict):
                 return out
             return bytes(getattr(out, "data", b""))
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="image_to_video", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def i2v_batch(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2391,21 +2420,8 @@ class _AbstractVisionCapability:
         image_b = _resolve_bytes_input(image, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "prompt",
-            "negative_prompt",
-            "width",
-            "height",
-            "fps",
-            "num_frames",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "flow_shift",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageToVideoRequest)
+        _refuse_misplaced_typed_options(ImageToVideoRequest, kwargs, method="i2v_batch")
         extra = kwargs.get("extra")
         merged_extra = dict(extra) if isinstance(extra, dict) else {}
         for key in list(kwargs.keys()):
@@ -2420,6 +2436,7 @@ class _AbstractVisionCapability:
             store=self._request_store_adapter(store, run_id=run_id, tags=tags),
         )
         self._acquire_backend_snapshot(backend)
+        succeeded = False
         try:
             outputs = vm.image_to_video_batch(
                 image=image_b,
@@ -2427,10 +2444,11 @@ class _AbstractVisionCapability:
                 seeds=seeds,
                 **kwargs,
             )
-            if binding.get("local_control") and outputs:
-                self._record_loaded_model(binding, task="image_to_video", resident=False, source="request")
+            succeeded = bool(outputs)
             return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
         finally:
+            if binding.get("local_control"):
+                self._record_request_run(binding, backend, task="image_to_video", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
 

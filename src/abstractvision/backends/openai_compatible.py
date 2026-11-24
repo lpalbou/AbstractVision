@@ -336,6 +336,9 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             supported_tasks=sorted(tasks),
             supports_mask=True,
             supports_control_image=False,
+            memory_modes=self.supported_memory_modes(),
+            # cancel_event is checked before a run starts; it cannot stop a running one here.
+            cancellation="start",
         )
 
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
@@ -477,6 +480,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         raise ValueError("Invalid response: missing data[0].b64_json or data[0].url")
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
+        request, _mode, _batch = self.resolve_memory_request(request, task="text_to_image")
         if request.control_image is not None:
             raise CapabilityNotSupportedError(
                 "OpenAI-compatible backend does not support structured control images for text-to-image."
@@ -519,6 +523,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         return self._parse_media(resp, fallback_mime="image/png")
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
+        request, _mode, _batch = self.resolve_memory_request(request, task="image_to_image")
         family = _model_family(self._cfg.model_id)
         openai_api = _looks_like_openai_api(self._cfg.base_url) or family is not None
         # OpenAI-style image edits use multipart form data.
@@ -558,6 +563,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         )
 
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
+        request, _mode, _batch = self.resolve_memory_request(request, task="text_to_video")
         if not self._cfg.text_to_video_path:
             raise CapabilityNotSupportedError("text_to_video is not configured for this backend.")
         payload: Dict[str, Any] = {"prompt": request.prompt, "response_format": "b64_json", "n": 1}
@@ -588,6 +594,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         return self._parse_media(resp, fallback_mime="video/mp4")
 
     def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
+        request, _mode, _batch = self.resolve_memory_request(request, task="image_to_video")
         if not self._cfg.image_to_video_path:
             raise CapabilityNotSupportedError("image_to_video is not configured for this backend.")
 

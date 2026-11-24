@@ -14,12 +14,14 @@ from collections import deque
 from dataclasses import dataclass, field, replace
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from ..errors import CapabilityNotSupportedError, OptionalDependencyMissingError
 from ..model_capabilities import VisionModelCapabilitiesRegistry
 from ..model_cache import cached_hf_model_sources
 from ..types import (
+    MEMORY_MODE_DEFAULT,
+    MEMORY_MODE_LOW,
     GeneratedAsset,
     ImageEditRequest,
     ImageGenerationRequest,
@@ -778,7 +780,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         self._validate_macos_gguf_supported()
         mode = self._select_mode()
         if mode == "python":
-            self._ensure_python_model()
+            # Load with the placement the process default asks for, so its first request reuses it.
+            self._ensure_python_model(offload_params_to_cpu=self.process_memory_mode() == MEMORY_MODE_LOW)
 
     def unload(self) -> None:
         # Best-effort: drop python-binding model reference so native memory can be reclaimed.
@@ -806,7 +809,18 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             supported_tasks=supported_tasks,
             supports_mask="image_to_image" in set(supported_tasks),
             supports_control_image=False,
+            memory_modes=self.supported_memory_modes(),
+            # cancel_event is checked before a run starts; it cannot stop a running one here.
+            cancellation="start",
         )
+
+    def supported_memory_modes(self, task: Optional[str] = None) -> Tuple[str, ...]:
+        # "low" keeps the model parameters in system RAM and moves them to the compute device when
+        # needed: `--offload-to-cpu` for sd-cli, `offload_params_to_cpu` for the Python binding
+        # (both builds accept it; on a CPU-only build the parameters are in RAM already). There is
+        # no lower level to map "lowest" to.
+        _ = task
+        return (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW)
 
     def _supported_task_names(self, model_id: str) -> List[str]:
         try:
@@ -857,7 +871,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             )
         return out
 
-    def _base_cmd(self) -> List[str]:
+    def _base_cmd(self, *, offload_to_cpu: bool = False) -> List[str]:
         self._validate_macos_gguf_supported()
         sd_cli = _require_sd_cli(self._cfg.sd_cli_path)
         cmd: List[str] = [sd_cli]
@@ -888,6 +902,9 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             cmd.extend(["--t5xxl", str(self._cfg.t5xxl)])
 
         cmd.extend(_flatten(self._cfg.extra_args))
+        # memory_mode="low" only raises the configured placement; an operator's flag stays.
+        if offload_to_cpu and "--offload-to-cpu" not in cmd:
+            cmd.append("--offload-to-cpu")
         return cmd
 
     def _select_mode(self) -> str:
@@ -924,9 +941,13 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             self._cfg.t5xxl,
         )
 
-    def _ensure_python_model(self) -> Any:
+    def _ensure_python_model(self, *, offload_params_to_cpu: bool = False) -> Any:
         if self._py_model is not None:
-            return self._py_model
+            loaded_offloaded = bool((self._py_init_kwargs or {}).get("offload_params_to_cpu"))
+            if not offload_params_to_cpu or loaded_offloaded:
+                return self._py_model
+            # memory_mode="low" needs the parameters offloaded, which is fixed at load: reload.
+            self.unload()
 
         self._select_mode()
         if self._mode != "python":
@@ -958,6 +979,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             if arch == "qwen_image_edit" and "2511" in Path(diffusion_model).name:
                 init_kwargs.setdefault("qwen_image_zero_cond_t", True)
 
+        if offload_params_to_cpu:
+            init_kwargs["offload_params_to_cpu"] = True
         self._py_init_kwargs = init_kwargs
         self._py_default_generate_kwargs = default_generate_kwargs
 
@@ -1098,8 +1121,10 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         self,
         request: ImageGenerationRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+        *,
+        offload_params_to_cpu: bool = False,
     ) -> GeneratedAsset:
-        model = self._ensure_python_model()
+        model = self._ensure_python_model(offload_params_to_cpu=offload_params_to_cpu)
         kwargs = dict(self._py_default_generate_kwargs or {})
         kwargs.update(
             {
@@ -1158,6 +1183,11 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 "python_package": getattr(self._py_sd, "__version__", None),
                 "model": self._cfg.model,
                 "diffusion_model": self._cfg.diffusion_model,
+                **(
+                    {"memory_mode": MEMORY_MODE_LOW, "offload_to_cpu": True}
+                    if offload_params_to_cpu
+                    else {}
+                ),
             },
         )
 
@@ -1213,6 +1243,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         request: ImageGenerationRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
+        request, memory_mode, _batch = self.resolve_memory_request(request, task="text_to_image")
+        offload = memory_mode == MEMORY_MODE_LOW
         request = self._with_catalog_defaults(request, "text_to_image")
         self._validate_macos_gguf_supported()
         self._validate_qwen_image_components()
@@ -1220,7 +1252,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         if mode == "cli":
             with tempfile.TemporaryDirectory(prefix="abstractvision-sdcpp-") as td:
                 out_path = Path(td) / "output.png"
-                cmd = self._base_cmd()
+                cmd = self._base_cmd(offload_to_cpu=offload)
                 cmd.extend(["--output", str(out_path)])
                 cmd.extend(["--prompt", str(request.prompt)])
 
@@ -1254,10 +1286,13 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                         "sd_cli": str(self._cfg.sd_cli_path),
                         "model": self._cfg.model,
                         "diffusion_model": self._cfg.diffusion_model,
+                        **({"memory_mode": memory_mode, "offload_to_cpu": True} if offload else {}),
                     },
                 )
 
-        return self._generate_image_python(request, progress_callback)
+        return self._generate_image_python(
+            request, progress_callback, offload_params_to_cpu=offload
+        )
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         return self.edit_image_with_progress(request, progress_callback=None)
@@ -1267,6 +1302,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         request: ImageEditRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
+        request, memory_mode, _batch = self.resolve_memory_request(request, task="image_to_image")
+        offload = memory_mode == MEMORY_MODE_LOW
         request = self._with_catalog_defaults(request, "image_to_image")
         self._validate_macos_gguf_supported()
         self._validate_qwen_image_components()
@@ -1286,7 +1323,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
 
                 out_path = td_p / "output.png"
 
-                cmd = self._base_cmd()
+                cmd = self._base_cmd(offload_to_cpu=offload)
                 cmd.extend(["--output", str(out_path)])
                 cmd.extend(["--prompt", str(request.prompt)])
 
@@ -1344,10 +1381,11 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                         "sd_cli": str(self._cfg.sd_cli_path),
                         "model": self._cfg.model,
                         "diffusion_model": self._cfg.diffusion_model,
+                        **({"memory_mode": memory_mode, "offload_to_cpu": True} if offload else {}),
                     },
                 )
 
-        model = self._ensure_python_model()
+        model = self._ensure_python_model(offload_params_to_cpu=offload)
         kwargs = dict(self._py_default_generate_kwargs or {})
         kwargs.update(
             {
@@ -1419,6 +1457,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 "python_package": getattr(self._py_sd, "__version__", None),
                 "model": self._cfg.model,
                 "diffusion_model": self._cfg.diffusion_model,
+                **({"memory_mode": memory_mode, "offload_to_cpu": True} if offload else {}),
             },
         )
 

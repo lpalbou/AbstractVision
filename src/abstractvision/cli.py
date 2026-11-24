@@ -43,6 +43,7 @@ from .model_downloads import (
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
 from .types import (
+    MEMORY_MODES,
     ImageEditRequest,
     ImageGenerationRequest,
     ImageUpscaleRequest,
@@ -1378,6 +1379,8 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
                 control_image=request.control_image,
                 control_strength=request.control_strength,
                 lora_adapters=request.lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
                 extra=dict(request.extra or {}),
             )
         else:
@@ -1394,6 +1397,8 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
                 control_image=request.control_image,
                 control_strength=request.control_strength,
                 lora_adapters=request.lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
                 extra=dict(request.extra or {}),
             )
     finally:
@@ -1525,6 +1530,8 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
                 guidance_scale=args.guidance_scale,
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
                 extra=extra,
             )
         else:
@@ -1539,6 +1546,8 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
                 guidance_scale=args.guidance_scale,
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
                 extra=extra,
             )
     finally:
@@ -1607,6 +1616,7 @@ def _cmd_upscale(args: argparse.Namespace) -> int:
             softness=request.softness,
             quantize=request.quantize,
             vae_tiling=request.vae_tiling,
+            memory_mode=getattr(args, "memory_mode", None),
             extra=dict(request.extra or {}),
         )
     finally:
@@ -1648,6 +1658,12 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
                 flow_shift=getattr(args, "flow_shift", None),
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
+                soundscape=getattr(args, "soundscape", None),
+                music=getattr(args, "music", None),
+                generate_audio=getattr(args, "generate_audio", None),
+                audio_shift=getattr(args, "audio_shift", None),
                 extra=extra or None,
             )
         else:
@@ -1666,6 +1682,12 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
                 flow_shift=getattr(args, "flow_shift", None),
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
+                soundscape=getattr(args, "soundscape", None),
+                music=getattr(args, "music", None),
+                generate_audio=getattr(args, "generate_audio", None),
+                audio_shift=getattr(args, "audio_shift", None),
                 extra=extra or None,
             )
     finally:
@@ -1707,6 +1729,12 @@ def _cmd_i2v(args: argparse.Namespace) -> int:
                 flow_shift=getattr(args, "flow_shift", None),
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
+                soundscape=getattr(args, "soundscape", None),
+                music=getattr(args, "music", None),
+                generate_audio=getattr(args, "generate_audio", None),
+                audio_shift=getattr(args, "audio_shift", None),
                 extra=extra or None,
             )
         else:
@@ -1726,6 +1754,12 @@ def _cmd_i2v(args: argparse.Namespace) -> int:
                 flow_shift=getattr(args, "flow_shift", None),
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
+                soundscape=getattr(args, "soundscape", None),
+                music=getattr(args, "music", None),
+                generate_audio=getattr(args, "generate_audio", None),
+                audio_shift=getattr(args, "audio_shift", None),
                 extra=extra or None,
             )
     finally:
@@ -2195,6 +2229,50 @@ def _add_lora_cli_flags(parser: argparse.ArgumentParser) -> None:
             "expects explicit high/low-noise transformer assignment."
         ),
     )
+
+
+def _add_memory_mode_cli_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--memory-mode",
+        dest="memory_mode",
+        choices=list(MEMORY_MODES),
+        default=None,
+        help=(
+            "Lower the run's memory peak at some cost in speed. MLX-Gen: low = its low-RAM mode, "
+            "lowest = also streams transformer blocks (routes that support it). Diffusers on CUDA: "
+            "low/lowest = model/sequential CPU offload. stable-diffusion.cpp: low = CPU offload of "
+            "parameters. A mode the provider cannot honour is refused. Default: "
+            "$ABSTRACTVISION_MEMORY_MODE, else default."
+        ),
+    )
+
+
+def _add_quantize_cli_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--quantize",
+        dest="load_quantize",
+        metavar="BITS",
+        type=int,
+        default=None,
+        help=(
+            "Load-time quantization in bits (MLX-Gen, on source snapshots; prepared packages are "
+            "already quantized). Values a model does not accept are refused."
+        ),
+    )
+
+
+def _add_soundtrack_cli_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--soundscape", default=None, help="Soundtrack routes (MiniMax-H3): diegetic sound design.")
+    parser.add_argument("--music", default=None, help="Soundtrack routes (MiniMax-H3): the score, or 'no music'.")
+    parser.add_argument(
+        "--no-audio",
+        dest="generate_audio",
+        action="store_const",
+        const=False,
+        default=None,
+        help="Soundtrack routes (MiniMax-H3): write a silent clip.",
+    )
+    parser.add_argument("--audio-shift", type=float, default=None, help="Soundtrack routes: audio flow shift.")
 
 
 def _add_batch_cli_flags(parser: argparse.ArgumentParser) -> None:
@@ -3391,7 +3469,7 @@ def build_parser() -> argparse.ArgumentParser:
         ap.add_argument(
             "--mflux-base-model",
             default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"),
-            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, bonsai-image-ternary, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, seedvr2-3b/seedvr2-7b, or wan2.2-ti2v-5b.",
+            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, bonsai-image-ternary, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, seedvr2-3b/seedvr2-7b, wan2.2-ti2v-5b, or the MiniMax-H3 schedule (minimax-h3-turbo-544p, minimax-h3-turbo, minimax-h3).",
         )
         ap.add_argument(
             "--mflux-model-dir",
@@ -3487,6 +3565,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_batch_cli_flags(t2i)
     _add_lora_cli_flags(t2i)
+    _add_memory_mode_cli_flag(t2i)
+    _add_quantize_cli_flag(t2i)
     t2i.set_defaults(_fn=_cmd_t2i)
 
     i2i = sub.add_parser(
@@ -3529,6 +3609,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_batch_cli_flags(i2i)
     _add_lora_cli_flags(i2i)
+    _add_memory_mode_cli_flag(i2i)
+    _add_quantize_cli_flag(i2i)
     i2i.set_defaults(_fn=_cmd_i2i)
 
     upscale = sub.add_parser(
@@ -3582,6 +3664,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable image upscaling progress output.",
     )
+    _add_memory_mode_cli_flag(upscale)
     upscale.set_defaults(_fn=_cmd_upscale)
 
     t2v = sub.add_parser(
@@ -3635,6 +3718,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_batch_cli_flags(t2v)
     _add_lora_cli_flags(t2v)
+    _add_memory_mode_cli_flag(t2v)
+    _add_quantize_cli_flag(t2v)
+    _add_soundtrack_cli_flags(t2v)
     t2v.set_defaults(_fn=_cmd_t2v)
 
     i2v = sub.add_parser(
@@ -3690,6 +3776,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_batch_cli_flags(i2v)
     _add_lora_cli_flags(i2v)
+    _add_memory_mode_cli_flag(i2v)
+    _add_quantize_cli_flag(i2v)
+    _add_soundtrack_cli_flags(i2v)
     i2v.set_defaults(_fn=_cmd_i2v)
 
     return p

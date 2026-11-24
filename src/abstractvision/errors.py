@@ -20,3 +20,7 @@ class CapabilityNotSupportedError(AbstractVisionError):
 
 class GpuOutOfMemoryError(AbstractVisionError):
     """Raised when a local generation runs out of GPU memory; the message says what to change."""
+
+
+class GenerationCancelledError(AbstractVisionError):
+    """Raised when a request's `cancel_event` was set; the run stopped at a progress boundary."""
