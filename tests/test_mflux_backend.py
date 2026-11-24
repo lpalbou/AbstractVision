@@ -841,11 +841,11 @@ class TestMFluxVisionBackend(unittest.TestCase):
             )
             adapter_snapshot = self._make_adapter_snapshot(
                 cache_root,
-                "diroverflo/FLux_Klein_9B_NSFW",
-                "Flux Klein - NSFW v2.safetensors",
+                "example-org/Flux_Klein_9B_Style",
+                "Flux Klein - Style v2.safetensors",
                 base_model="black-forest-labs/FLUX.2-klein-base-9B",
             )
-            expected_adapter = adapter_snapshot / "Flux Klein - NSFW v2.safetensors"
+            expected_adapter = adapter_snapshot / "Flux Klein - Style v2.safetensors"
             backend = MFluxVisionBackend(
                 config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
             )
@@ -862,7 +862,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             seed=3,
                             lora_adapters=(
                                 LoRAAdapterSpec(
-                                    source="diroverflo/FLux_Klein_9B_NSFW",
+                                    source="example-org/Flux_Klein_9B_Style",
                                     scale=0.75,
                                 ),
                             ),
@@ -884,11 +884,11 @@ class TestMFluxVisionBackend(unittest.TestCase):
             )
             adapter_snapshot = self._make_adapter_snapshot(
                 cache_root,
-                "diroverflo/FLux_Klein_9B_NSFW",
-                "Flux Klein - NSFW v2.safetensors",
+                "example-org/Flux_Klein_9B_Style",
+                "Flux Klein - Style v2.safetensors",
                 base_model="black-forest-labs/FLUX.2-klein-base-9B",
             )
-            expected_adapter = adapter_snapshot / "Flux Klein - NSFW v2.safetensors"
+            expected_adapter = adapter_snapshot / "Flux Klein - Style v2.safetensors"
             backend = MFluxVisionBackend(
                 config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
             )
@@ -905,7 +905,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             seed=4,
                             lora_adapters=(
                                 LoRAAdapterSpec(
-                                    source="diroverflo/FLux_Klein_9B_NSFW:Flux Klein - NSFW v2.safetensors",
+                                    source="example-org/Flux_Klein_9B_Style:Flux Klein - Style v2.safetensors",
                                     scale=0.5,
                                 ),
                             ),
