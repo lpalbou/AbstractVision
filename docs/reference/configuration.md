@@ -54,6 +54,25 @@ For MLX-Gen Wan, one-shot `t2v` and `i2v` show denoise-step progress with
 frame context on stderr by default. `upscale` also shows denoise-step progress
 by default. Add `--no-progress` when you need quiet shell output.
 
+`t2i`, `i2i`, `upscale`, `t2v` and `i2v` take `--memory-mode default|low|lowest`
+(default: `$ABSTRACTVISION_MEMORY_MODE`, else `default`) to lower the run's
+memory peak at some cost in speed: MLX-Gen low-RAM mode, Diffusers CPU offload
+on CUDA, stable-diffusion.cpp CPU offload of parameters. A mode the provider
+cannot honour is refused. See [Memory modes](../api.md#memory-modes-memory_mode).
+
+```bash
+abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --memory-mode low --open
+```
+
+`t2i`, `i2i`, `t2v` and `i2v` take `--quantize BITS` (load-time quantization of a
+source snapshot on MLX-Gen; refused elsewhere). `t2v` and `i2v` take the soundtrack
+options of MiniMax-H3: `--soundscape`, `--music`, `--no-audio`, `--audio-shift`
+(`--flow-shift` is its video shift):
+
+```bash
+abstractvision t2v --provider mlx-gen --model AbstractFramework/minimax-h3-8bit --mflux-base-model minimax-h3-turbo-544p "A red fox trots through fresh snow at dawn." --soundscape "Paws in dry snow, faint wind." --music "Sparse piano." --width 640 --height 352 --frames 124 --seed 42 --open
+```
+
 ## Interactive CLI backend selection
 
 Inside `abstractvision cli`:
@@ -111,6 +130,7 @@ The interactive CLI state object (`_ReplState` in [`../../src/abstractvision/cli
   - `diffusers`: Diffusers model id or local path
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root imported into the Hugging Face cache when older installs are migrated
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
+- `ABSTRACTVISION_MEMORY_MODE` — `default`, `low` or `lowest`: the memory mode of every generation request that names none, in the CLI, the playground, Python and the AbstractCore plugin; a request value wins. A mode that comes from `$ABSTRACTVISION_MEMORY_MODE` is one value for every backend of the process, so a backend that cannot honour it for its model and device runs the lowest-memory mode it lists that is not below it (`lowest` becomes `low` where `low` is listed, else `default`) and logs that once; a mode passed on the request is refused instead. Warmups (`preload`) follow the same rule. See [Memory modes](../api.md#memory-modes-memory_mode).
 
 Note:
 - Curated `abstractvision download ...` presets are written to the Hugging Face cache by default, and older `~/models/<preset>` trees are imported into that same cache on first use.

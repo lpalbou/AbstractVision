@@ -196,6 +196,68 @@ Wan LoRA calls may also need `target_role` in each adapter spec. TI2V-5B uses
 `transformer`. A14B routes require explicit
 `high_noise_transformer` / `low_noise_transformer` roles.
 
+To lower a run's memory peak, pass `memory_mode` (`"default"`, `"low"` or
+`"lowest"`) to `t2i`, `i2i`, `upscale_image`, `t2v`, `i2v` or their `_batch`
+variants; without it, `$ABSTRACTVISION_MEMORY_MODE` applies, else `"default"`
+(a backend that cannot honour the environment value runs the closest lower-memory
+mode it lists and logs it once; a value passed on the call is refused instead).
+MLX-Gen runs `"low"` in its low-RAM mode, Diffusers on CUDA runs `"low"` /
+`"lowest"` with model / sequential CPU offload, and stable-diffusion.cpp runs
+`"low"` with CPU offload of its parameters (see
+[Memory modes](../api.md#memory-modes-memory_mode)). A mode the selected
+backend cannot honour, passed on the call, raises `CapabilityNotSupportedError` before any model
+loads: `"lowest"`, for example, is accepted for MiniMax-H3 and refused on every
+other current MLX-Gen catalog model.
+
+```python
+mp4 = llm.vision.t2v(
+    "A red fox trots through fresh snow",
+    provider="mlx-gen",
+    model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+    memory_mode="low",
+)
+```
+
+AbstractCore's HTTP vision routes do not declare a `memory_mode` field; send it
+in the request's `extra` object (`"extra": {"memory_mode": "low"}`). The server
+builds AbstractVision backends and calls them directly, and every backend reads
+and checks the value itself, so the same refusal applies there.
+
+On MLX-Gen, a `"low"` run frees parts of the model and drops the instance, so
+the plugin removes its loaded-model record, a resident one included, whether
+the run succeeded or failed; the next request loads the model again. The same
+holds after every Wan TI2V-5B run, which releases its denoiser before the decode.
+
+Two facts about the current AbstractCore server, which this plugin does not change:
+
+- Its HTTP batch routes send the items of a batch one by one, without the batch
+  marker `VisionManager` adds, so with `"low"` each item of an HTTP batch loads
+  the model again. Python batches through `llm.vision.t2i_batch(...)` and the
+  other `_batch` methods of this plugin keep the model until their last item.
+- Its server-side residency records are its own and independent of this plugin's
+  loaded-model records.
+
+The facade forwards every typed field of the request a method builds, under the
+same name: `control_image` / `control_strength` on `t2i`, `soundscape`, `music`,
+`generate_audio`, `audio_shift` on `t2v` / `i2v`, and `quantize`, `memory_mode`
+and `cancel_event` on all of them. A typed option of another task (`guidance_2`
+on an image call, `soundscape` on an image call) is refused with
+`CapabilityNotSupportedError`; other unknown keywords remain backend-specific
+`extra` parameters.
+
+Discovery, and where each part is visible:
+
+- Every MLX-Gen entry of `llm.vision.list_provider_models(...)`, which the
+  AbstractCore HTTP model listing also returns, carries
+  `parameter_constraints["memory_mode"]` = `{"enum": [...], "block_streaming": <bool>}`;
+  `enum` holds the modes that model can honour.
+- `llm.vision.available_providers()["details"][<provider>]["memory_modes"]`
+  lists the modes each provider can honour on this host. It is a Python call
+  only: AbstractCore's HTTP server does not call `available_providers`.
+- With an `artifact_store`, the stored artifact's metadata records `memory_mode`
+  (and `low_ram` / `stream_blocks` on MLX-Gen); without one the plugin returns
+  bytes only.
+
 ```bash
 # OpenAI API.
 export OPENAI_API_KEY=...
@@ -364,6 +426,10 @@ plugin surface:
   artifact ref dict or a `{"b64": "..."}` payload.
 - `vision_list_adapters(task=...)` returns the currently discovered compatible
   adapter inventory for the selected model.
+- `make_vision_tools(..., memory_mode="low")` applies one memory mode to every
+  generation call of the tools. It is not a tool parameter, so the model cannot
+  choose it; it is checked once against the backend's listed modes when the
+  backend declares them. Without it each call follows `$ABSTRACTVISION_MEMORY_MODE`.
 
 Important:
 - Tool outputs are designed to be **artifact refs**, so `VisionManager.store` must be set ([`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)).

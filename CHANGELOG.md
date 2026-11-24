@@ -2,6 +2,72 @@
 
 ## Unreleased
 
+## 0.3.37 - 2026-11-23
+
+This release adds MiniMax-H3 (video with a synchronized stereo soundtrack), a `memory_mode` setting on every
+generation request, and what an application embedding `VisionManager` needs: cancellation, load-time quantization,
+the engine's route rows and metadata. It requires MLX-Gen 0.40. Existing requests run as before; the new fields are
+optional.
+
+- **MLX-Gen 0.40.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) now requires
+  `mlx-gen>=0.40.0,<0.41.0` (0.40.1 recommended). It brings MiniMax-H3, fixes saving images and videos with Pillow 13,
+  and publishes capability schema 17. The calls AbstractVision makes for FLUX.2, Z-Image, Qwen, ERNIE, FIBO, Bonsai,
+  SeedVR2 and Wan are unchanged. Upgrade with `pip install -U "abstractvision[mlx-gen]"`.
+- **MiniMax-H3: video with a synchronized stereo soundtrack**, `text_to_video` and first-frame `image_to_video`,
+  through the MLX-Gen backend. The catalog entry `MiniMaxAI/MiniMax-H3` lists the packages
+  `AbstractFramework/minimax-h3-8bit` (64.3 GiB), `AbstractFramework/minimax-h3-bf16` (115.1 GiB) and
+  `AbstractFramework/minimax-h3-4bit` (44.9 GiB) and the source snapshot. `base_model` picks the schedule:
+  `minimax-h3-turbo-544p`, `minimax-h3-turbo` or `minimax-h3`.
+  - Video requests take the new typed fields `soundscape`, `music`, `generate_audio` and `audio_shift`; `flow_shift`
+    is the video shift. Prompts are passed to MLX-Gen unchanged, and values left unset keep MLX-Gen's schedule
+    defaults. The frame grid (`17n+5` at 24 fps), canvas multiple and defaults come from MLX-Gen's capability row;
+    a request the route cannot apply (negative prompt, guidance, another fps, an unknown `extra` key, an adapter on
+    another role) is refused before any weights load. Wan and the other backends refuse the soundtrack fields.
+  - Results are the MP4 with its AAC soundtrack, a new `GeneratedAsset.audio` (`GeneratedAudioTrack`: sample rate,
+    channels, duration, whether muxed, and the track as WAV bytes when it could not be muxed) and MLX-Gen's metadata
+    under `metadata["mlx_gen"]` (the composed prompt, audio facts, memory peaks).
+  - The repositories are gated and the MiniMax H3 Community License's grant excludes the European Union, the United
+    Kingdom, the Republic of Korea and the United States of America. AbstractVision never downloads these weights
+    during generation, even with `allow_download`; download them explicitly after accepting the licence.
+  - CLI: `--soundscape`, `--music`, `--no-audio` and `--audio-shift` on `t2v` and `i2v`.
+- **`memory_mode` on every generation request**: `default`, `low` or `lowest`, as a request field, a
+  `VisionManager` keyword (batches included), `--memory-mode` on `t2i`, `i2i`, `upscale`, `t2v` and `i2v`, an
+  AbstractCore plugin keyword, `extra["memory_mode"]`, and a `make_vision_tools(..., memory_mode=...)` argument.
+  `ABSTRACTVISION_MEMORY_MODE` sets a process default for requests that name none.
+  - MLX-Gen: `low` is MLX-Gen's low-RAM mode as each route's `mlxgen` command applies `--low-ram`, with a 1 GB MLX
+    cache from before the model loads. Image and edit routes free the text encoders and the transformer, Wan routes
+    clear the cache every step and release the denoisers before the decode, SeedVR2 sets the cache limit only, and
+    MiniMax-H3 frees the transformer before the decode. `lowest` adds transformer block streaming; it is accepted
+    for MiniMax-H3 and refused on every other current catalog model.
+  - Diffusers on CUDA: `low` and `lowest` run with model and sequential CPU offload; a request only raises the
+    configured `cpu_offload`, never lowers it. stable-diffusion.cpp: `low` offloads the model parameters to the CPU.
+    OpenAI-compatible backends accept `default` only.
+  - A mode named on a request that the backend cannot honour raises `CapabilityNotSupportedError` before any model
+    loads or any request is sent, in `VisionManager` and in every backend. A process default the backend cannot
+    honour runs as the closest lower-memory mode the backend lists, with one warning.
+  - Image, edit and Wan models run in `low` are loaded again on the next request, and the AbstractCore plugin then
+    removes their loaded-model record; batches keep the model until their last item. Overlapping runs share one
+    process-wide MLX cache limit, and MLX-Gen's default cap is restored when the last one ends.
+  - Discovery: `get_capabilities().memory_modes` and `supports_block_streaming`, `parameter_constraints["memory_mode"]`
+    on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()`.
+- **For applications embedding AbstractVision.**
+  - `cancel_event` on every request: MLX-Gen stops between denoising steps and raises the new
+    `GenerationCancelledError` with the model still loaded; the other backends check it before a run starts
+    (`get_capabilities().cancellation`).
+  - Load-time `quantize` (bits) on generation requests and as `--quantize`, validated against the route
+    (`get_capabilities().quantize_bits`) and refused on prepared packages and on non-MLX-Gen backends.
+  - `VisionManager.describe_routes(model=..., task=...)` returns MLX-Gen's capability rows as JSON, so a host can
+    build its controls and memory planning without importing MLX-Gen.
+  - MLX-Gen results carry the engine's metadata under `metadata["mlx_gen"]` on every route, upscaling included.
+  - An exception raised in a progress callback is logged once and no longer ends the run; stop a run with
+    `cancel_event`.
+  - Importing AbstractVision and constructing a `VisionManager` write no files, set no environment variables and
+    import neither AbstractCore nor an engine.
+- **AbstractCore plugin.** Keyword options are forwarded as the request type's own fields: `control_image` and
+  `control_strength` now reach `t2i` (they were dropped), `guidance_2` or a soundtrack option on an image call is
+  refused with `CapabilityNotSupportedError` (it raised `TypeError`), and `memory_mode`, `quantize` and `cancel_event`
+  pass through.
+
 ## 0.3.36 - 2026-11-11
 
 - **The one-shot commands run locally by default**: `abstractvision t2i`, `i2i` and the other generation commands

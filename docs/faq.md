@@ -185,6 +185,12 @@ default), so the peak is set by denoising rather than by the VAE decode. Pass
 once; at small sizes that decodes somewhat faster, and it raises the peak to the
 "untiled" figures.
 
+To lower the peak further, pass `memory_mode="low"` (CLI `--memory-mode low`):
+MLX-Gen low-RAM mode clears the MLX cache after every step and transformer block
+and holds it at 1 GB, and releases the denoisers (and on A14B the inactive
+expert) before the decode, at some cost in speed; the model is loaded again on
+the next request. The figures above were measured without it. See [Memory modes](api.md#memory-modes-memory_mode).
+
 Time grows with the canvas and the step count: on the same Mac a default
 TI2V-5B clip (832x480, 121 frames, 50 steps) took about 25 minutes end to end.
 Lower `steps` for quick drafts: it changes the time, not the peak memory.

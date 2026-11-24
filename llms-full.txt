@@ -65,6 +65,9 @@ Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image`, `image_to_image`, `image_upscale`, and backend-dependent `text_to_video` / `image_to_video`.
 - Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, FLUX.2/Qwen multi-reference image edits, validated Qwen structured control and Qwen/FIBO masked edits, canonical SeedVR2 q8/q4 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`.
 - Wan video defaults live in one per-model table (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`): 832x480 for TI2V-5B (121 frames, 24 fps, 50 steps) and the A14B models (81 frames, 16 fps, 40 steps); explicit `width`/`height`/`num_frames`/`fps`/`steps` override them. The VAE decode is tiled by default (`extra={"vae_tiling": False}` / `--no-vae-tiling` to disable); measured memory per size is in `docs/faq.md`.
+- Every generation request takes `memory_mode` (`default`, `low`, `lowest`; CLI `--memory-mode`; AbstractCore keyword or `extra`; process default `ABSTRACTVISION_MEMORY_MODE`, which degrades to the closest mode a backend can honour, while a request value is refused; `make_vision_tools(..., memory_mode=...)` fixes it for all tool calls). MLX-Gen: `low` = its low-RAM mode per route, `lowest` = low-RAM plus block streaming, accepted where routes publish `supports_block_streaming`: MiniMax-H3, and no other current catalog model. Diffusers on CUDA: `low`/`lowest` = model/sequential CPU offload (the request only raises the configured `cpu_offload`). stable-diffusion.cpp: `low` = CPU offload of parameters. OpenAI-compatible: `default` only. Every backend refuses a mode it cannot honour with `CapabilityNotSupportedError`, also when called directly. Discovery: `get_capabilities().memory_modes`, MLX-Gen catalog `parameter_constraints["memory_mode"]` (also over HTTP), plugin `available_providers()` details (Python only).
+- MiniMax-H3 (`MiniMaxAI/MiniMax-H3`, packages `AbstractFramework/minimax-h3-8bit|bf16|4bit`, gated, territorial licence, never downloaded during generation): video with a stereo soundtrack through MLX-Gen; `base_model` picks the schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`); typed `soundscape`, `music`, `generate_audio`, `audio_shift` (and `flow_shift` as the video shift); frame grid and defaults from MLX-Gen's capability row; result MP4 with AAC plus `GeneratedAsset.audio`; `memory_mode` low = 1 GB cache + transformer release, lowest = block streaming.
+- Host contract: `cancel_event` on every request (`GenerationCancelledError`, between steps on MLX-Gen), typed load-time `quantize` (`get_capabilities().quantize_bits`), `VisionManager.describe_routes()` for MLX-Gen's schema-17 rows as JSON, engine metadata under `metadata["mlx_gen"]`, progress-callback errors logged without stopping the run.
 - Task-specific Wan A14B video declares typed `guidance_2` defaults in `vision_model_capabilities.json` (`3.0` for T2V, `3.5` for I2V); it is not transported through backend `extra`.
 - MLX-Gen progress is surfaced through Python/Core `on_progress(event)` callbacks, opt-in one-shot image generation/edit CLI `--progress`, and denoise-step video/upscale progress by default.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local surfaces.
@@ -182,8 +185,8 @@ flowchart LR
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
 - Checked on Linux without a GPU, Linux with an NVIDIA card and Apple silicon; the measured generation times per model are in [docs/benchmark.md](docs/benchmark.md).
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
-- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`.
-- Local MLX-Gen `0.38.0+` exposes route-aware Qwen structured control on validated base-Qwen routes through `control_image` / `control_strength`, and route-aware masked edit on validated Qwen 2511 edit routes through `mask`.
+- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`; and supports MiniMax-H3, video with a synchronized stereo soundtrack (`text_to_video` and first-frame `image_to_video`, with `soundscape` / `music`), from the gated `AbstractFramework/minimax-h3-*` packages. See [docs/api.md](docs/api.md#video-with-sound-minimax-h3).
+- Local MLX-Gen `0.40.0+` exposes route-aware Qwen structured control on validated base-Qwen routes through `control_image` / `control_strength`, and route-aware masked edit on validated Qwen 2511 edit routes through `mask`.
 - Local MLX-Gen exposes a shared `lora_adapters` contract across `text_to_image`, `image_to_image`, `text_to_video`, and `image_to_video`. Route-level LoRA truth stays backend-owned and is surfaced through provider catalogs as `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
@@ -354,7 +357,7 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen `0.38.0+` also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen `0.40.0+` also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, the prepared TI2V package
@@ -413,6 +416,13 @@ the VAE decode below the denoising peak; pass `extra={"vae_tiling": False}`
 allocator peaks measured with AbstractVision/mlx-gen 0.38 on Apple silicon;
 see [docs/faq.md](docs/faq.md#how-much-memory-does-wan-video-need) for other
 sizes.
+
+Every generation request also takes `memory_mode` (CLI `--memory-mode`,
+process default `ABSTRACTVISION_MEMORY_MODE`): `"low"` runs MLX-Gen in its
+low-RAM mode, Diffusers on CUDA with model CPU offload and stable-diffusion.cpp
+with CPU offload of its parameters; `"lowest"` runs Diffusers on CUDA with
+sequential CPU offload. A mode the provider cannot honour is refused. See
+[docs/api.md](docs/api.md#memory-modes-memory_mode).
 
 ### Shared LoRA adapters
 
@@ -1907,7 +1917,7 @@ All assets referenced here were generated through AbstractVision with
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.38.0,<0.39.0`.
+  `mlx-gen>=0.40.0,<0.41.0`.
 
 MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
 Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
@@ -2403,7 +2413,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen `0.38.0+` supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.40.0+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
@@ -2563,6 +2573,172 @@ two-argument `(current, total)` callback for backend-agnostic progress bars.
 For MLX-Gen, that callback reports denoise step counts; use
 `on_progress(event)` when a UI also needs video frame context.
 
+## Memory modes (`memory_mode`)
+
+Every generation request (`generate_image`, `edit_image`, `upscale_image`,
+`generate_video`, `image_to_video` and their `_batch` variants) takes
+`memory_mode`: `"default"`, `"low"` or `"lowest"` (`MEMORY_MODES` in
+[`../src/abstractvision/types.py`](../src/abstractvision/types.py)). The lower
+modes trade speed for a lower memory peak. A request that names no mode uses
+`$ABSTRACTVISION_MEMORY_MODE`, else `"default"`; a request value always wins.
+The environment value is one setting for every backend in the process: a
+backend that cannot honour it runs the lowest-memory mode it lists that is not
+below it (`"lowest"` becomes `"low"` where `"low"` is listed, else `"default"`)
+and logs that once, while a mode passed on the request is refused. Backend
+warmups (`preload`) use the same rule; MLX-Gen warms up in `"default"`, since
+`"low"` would release the model it preloads.
+
+```python
+asset_or_ref = vm.generate_video(
+    "a red fox trots through fresh snow",
+    memory_mode="low",
+)
+```
+
+| Backend | `low` | `lowest` |
+| --- | --- | --- |
+| MLX-Gen, image and edit routes | MLX-Gen low-RAM mode, as `mlxgen generate --low-ram`: a 1 GB MLX cache from before the model loads to the end of the run, and mlx-gen's `MemorySaver`, which tiles the VAE decode, frees the text encoders before the denoising loop and the transformer after it. | `low` plus transformer block streaming (`--stream-blocks`), on a model whose MLX-Gen routes publish `supports_block_streaming`: accepted for MiniMax-H3, refused on every other current catalog model. |
+| MLX-Gen, Wan video | As `mlxgen generate --low-ram` on one seed: the 1 GB cache, the MLX cache cleared after every step and transformer block, the denoisers released before the decode and, on the A14B models, the inactive expert released. | Refused on every current Wan route. |
+| MLX-Gen, MiniMax-H3 | The 1 GB cache and the transformer freed before the decode (`release_transformer=True`); the model stays loaded. | `low` plus block streaming (`stream_blocks=True`). Refused with load-time `quantize`. |
+| MLX-Gen, SeedVR2 upscale | As `mlxgen upscale --low-ram` on images: the 1 GB cache only. SeedVR2 keeps its own tiling and the loaded model. | Refused (SeedVR2 has no block streaming). |
+| Diffusers on CUDA | Model CPU offload. | Sequential CPU offload. |
+| Diffusers on CPU or MPS | Refused. | Refused. |
+| stable-diffusion.cpp | CPU offload of the model parameters: `--offload-to-cpu` for `sd-cli`, `offload_params_to_cpu` for the Python binding. | Refused. |
+| OpenAI-compatible | Refused. | Refused. |
+
+A mode named on the request that the backend cannot honour for its configured
+model and device raises `CapabilityNotSupportedError` before any model loads or
+any request is sent,
+whether the call comes through `VisionManager`, the AbstractCore plugin or a
+direct backend call. `extra={"memory_mode": ...}` is read the same way as the
+keyword; a keyword and an `extra` value that disagree raise `ValueError`.
+
+Placement is fixed when a model loads, so a request may only raise it. On
+Diffusers, the CPU offload that runs is the higher of the configured
+`cpu_offload` (or what `"auto"` picks) and the one the request needs; a loaded
+pipeline with less offload than a request needs is loaded again, and one with
+more offload keeps serving later requests until it is unloaded. stable-diffusion.cpp
+keeps an operator's `--offload-to-cpu` and loads the Python binding again
+with `offload_params_to_cpu` when a `low` request needs it.
+
+On MLX-Gen, `low` trades residency for memory: image, edit and Wan runs free
+parts of the model, so the instance is dropped after the run and the next
+request loads it again, a preloaded resident model included. Batches
+(`generate_image_batch`, `generate_video_batch`, ...) keep the instance until
+their last item, as mlx-gen does for several seeds (VisionManager marks batch
+items only for backends whose `uses_batch_marker` is true; MLX-Gen is the one
+built-in); FIBO, which mlx-gen does not
+run in low-RAM mode with several seeds, runs each item as its own low-RAM run.
+SeedVR2 keeps its instance.
+
+Discovery: `backend.get_capabilities().memory_modes` lists the modes a backend
+can honour for its configured model and device, and `supports_block_streaming`
+says whether the configured MLX-Gen model streams blocks. Each MLX-Gen provider
+catalog entry carries `raw["parameter_constraints"]["memory_mode"]` =
+`{"enum": [...], "block_streaming": <bool>}`, where `enum` holds the modes that
+model can honour. A run with a mode other than `default` records `memory_mode`
+in the result metadata (MLX-Gen also records `low_ram` and `stream_blocks`;
+stable-diffusion.cpp records `offload_to_cpu`; Diffusers records `cpu_offload`).
+
+## Video with sound (MiniMax-H3)
+
+The MLX-Gen backend serves MiniMax-H3, which generates a video with a synchronized
+stereo soundtrack: `text_to_video`, and `image_to_video` from a first frame. The
+catalog entry is `MiniMaxAI/MiniMax-H3`; the published packages are
+`AbstractFramework/minimax-h3-8bit` (64.3 GiB, recommended),
+`AbstractFramework/minimax-h3-bf16` (115.1 GiB) and the mixed
+`AbstractFramework/minimax-h3-4bit` (44.9 GiB). The packages hold the base
+weights; `base_model` picks the schedule: `minimax-h3-turbo-544p` (8 steps,
+960x544), `minimax-h3-turbo` (8 steps, 1344x768) or `minimax-h3` (50 steps).
+
+```python
+from abstractvision import VisionManager
+from abstractvision.backends.mflux import MLXGenBackendConfig, MLXGenVisionBackend
+
+backend = MLXGenVisionBackend(config=MLXGenBackendConfig(
+    model="AbstractFramework/minimax-h3-8bit", base_model="minimax-h3-turbo-544p"))
+clip = VisionManager(backend=backend).generate_video(
+    "A red fox trots through fresh snow at dawn.",
+    soundscape="Soft crunch of paws in dry snow, faint wind.", music="Sparse piano.",
+    width=640, height=352, num_frames=124, seed=42, memory_mode="low")
+```
+
+Request fields (on `VideoGenerationRequest` and `ImageToVideoRequest`):
+
+| Field | Meaning |
+| --- | --- |
+| `prompt` | The visual description, or a complete structured prompt with its section labels. Passed to MLX-Gen unchanged; MLX-Gen composes the structured prompt (and, for a first frame, its picture reference). |
+| `soundscape`, `music` | The `overall_soundscape` and `non_diegetic_music` sections. |
+| `generate_audio` | `False` writes a silent clip. Default: the soundtrack is generated. |
+| `flow_shift`, `audio_shift` | The video and audio schedule shifts (MLX-Gen `video_shift` / `audio_shift`). |
+| `width`, `height` | Multiples of the route's `dimension_multiple` (32). Unset: the schedule's canvas, or for a first frame MiniMax-H3's own mapping of the keyframe's aspect ratio. |
+| `num_frames` | Rounded up by MLX-Gen to its grid (`17n+5` at 24 fps, `124` to `345`); a count outside the grid is refused before any weights load. |
+| `steps`, `seed`, `quantize`, `memory_mode`, `cancel_event` | As for other routes. `quantize` applies to the source snapshot only (8 or 4, the row's `validated_quantization_bits`). |
+| `lora_adapters` | Adapters on the `transformer` role (the row's `lora_target_roles`). As in MLX-Gen, the list replaces the Turbo adapter a Turbo schedule attaches: include the Turbo file to keep the 8-step schedule. |
+
+Values left unset stay unset, so MLX-Gen applies the schedule's own defaults.
+What the route cannot apply is refused with `CapabilityNotSupportedError`:
+`negative_prompt`, `guidance_scale`, `guidance_2`, an `fps` other than 24, and
+any `extra` key. Every number the backend checks (frame grid, canvas multiple,
+defaults) comes from MLX-Gen's capability row; `describe_routes()` returns it.
+Wan and the other backends refuse `soundscape`, `music`, `generate_audio` and
+`audio_shift`.
+
+The result is the MP4 with its AAC soundtrack. `GeneratedAsset.audio` is a
+`GeneratedAudioTrack` (`sample_rate`, `channels`, `duration_seconds`, `muxed`,
+`codec`); when MLX-Gen could not mux the track, `muxed` is false and `data`
+holds it as WAV bytes. `metadata` carries `prompt` (the composed prompt),
+`seed`, `steps`, `width`, `height`, `num_frames`, `requested_frames`,
+`duration_seconds`, the two shifts, `audio`, and `mlx_gen`: MLX-Gen's own
+metadata sidecar, including its audio mux facts and `runtime_memory` (the
+process's memory at the end of the save, peaks included).
+
+Memory modes: `low` sets the 1 GB MLX cache and `release_transformer=True`
+(the transformer is freed before the decode and read again by the next run; the
+model stays loaded). `lowest` adds block streaming (`stream_blocks=True`): each
+transformer block is read from disk for the length of its call. It works from a
+prepared package or from the 16-bit source, and is refused with `quantize`.
+MLX-Gen's measured peaks for each package and mode are in the route row's
+`measured_runs`.
+
+The weights are never downloaded during generation, even with
+`allow_download=True`: the repositories are gated, and the MiniMax H3 Community
+License's grant excludes the European Union, the United Kingdom, the Republic of
+Korea and the United States of America. Accept the licence on the model page
+and download explicitly; `mlxgen download --model AbstractFramework/minimax-h3-8bit
+--base-model minimax-h3-turbo-544p` also caches the Turbo adapter the Turbo
+schedules load.
+
+## Host integration
+
+What an application embedding `VisionManager` can rely on:
+
+- **Engine metadata.** MLX-Gen results carry the engine's metadata under
+  `metadata["mlx_gen"]` (image, edit, upscale and video routes).
+- **Cancellation.** Every request takes `cancel_event` (anything with `is_set()`,
+  such as `threading.Event`). A set event stops an MLX-Gen run at its next
+  progress event, between denoising steps, and raises `GenerationCancelledError`;
+  the model stays loaded (in `memory_mode="low"` on image, edit and Wan routes it
+  was already being released). Other backends check the event before a run starts.
+  `get_capabilities().cancellation` is `"step"` or `"start"`.
+- **Load-time quantize.** `quantize` (bits) on generation requests.
+  `get_capabilities().quantize_bits` lists the widths the configured model
+  accepts: the route's `validated_quantization_bits`, else MLX-Gen's `--quantize`
+  choices. A prepared (already quantized) package, and every non-MLX-Gen backend,
+  refuse it.
+- **Route rows.** `vm.describe_routes(model=None, task=None)` returns MLX-Gen's
+  capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,
+  audio, `supports_block_streaming`, `measured_runs`, quantization. Other
+  backends return `[]`.
+- **Progress.** `on_progress(event)` receives `VideoProgressEvent` with `phase`,
+  `step`, `total_steps` (and `frame`, `total_frames` on video) as MLX-Gen emits
+  them. An exception raised in a progress callback is logged once per run and
+  does not stop the run; use `cancel_event` to stop one.
+- **Embedding.** `import abstractvision` and constructing a `VisionManager` write
+  no files, set no environment variables, configure no loggers and import neither
+  AbstractCore nor an engine. MLX-Gen is imported at the first capability lookup
+  or model load; its own import sets `TOKENIZERS_PARALLELISM=false` when unset.
+
 ## Shared LoRA adapters
 
 AbstractVision exposes a typed LoRA contract across Python, CLI, and the
@@ -2640,7 +2816,8 @@ See: [docs/reference/artifacts.md](reference/artifacts.md).
 Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstractvision/errors.py)):
 
 - `BackendNotConfiguredError` (calling `VisionManager` without a backend)
-- `CapabilityNotSupportedError` (task isn’t supported by the model registry or backend)
+- `CapabilityNotSupportedError` (task isn’t supported by the model registry or backend, or the backend does not accept the requested `memory_mode` or another typed option)
+- `GenerationCancelledError` (the request's `cancel_event` was set)
 - `UnknownModelError` (model id isn’t present in the registry)
 - `OptionalDependencyMissingError` (backend dependency is missing, e.g. Diffusers/Torch)
 - `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback)
@@ -2984,6 +3161,12 @@ default), so the peak is set by denoising rather than by the VAE decode. Pass
 once; at small sizes that decodes somewhat faster, and it raises the peak to the
 "untiled" figures.
 
+To lower the peak further, pass `memory_mode="low"` (CLI `--memory-mode low`):
+MLX-Gen low-RAM mode clears the MLX cache after every step and transformer block
+and holds it at 1 GB, and releases the denoisers (and on A14B the inactive
+expert) before the decode, at some cost in speed; the model is loaded again on
+the next request. The figures above were measured without it. See [Memory modes](api.md#memory-modes-memory_mode).
+
 Time grows with the canvas and the step count: on the same Mac a default
 TI2V-5B clip (832x480, 121 frames, 50 steps) took about 25 minutes end to end.
 Lower `steps` for quick drafts: it changes the time, not the peak memory.
@@ -3168,16 +3351,17 @@ Runtime behavior notes:
 - `cpu_offload="sequential"` on a pipeline that does not support sequential offload logs a warning and uses model CPU offload.
 - The result metadata reports the execution device (for example `cuda:0`) and `cpu_offload: "model"` or `cpu_offload: "sequential"` when the pipeline is offloaded.
 - This backend is where model-specific defaults and constraints such as packaged step counts, guidance defaults, dimension constraints, and unsupported-parameter dropping are enforced for all callers.
+- The request-level `memory_mode` maps onto `cpu_offload` on CUDA: `"low"` needs at least model CPU offload and `"lowest"` sequential CPU offload. The request only raises the placement: the higher of the configured `cpu_offload` (or what `"auto"` picks) and the request's level runs, and a loaded pipeline with less offload is loaded again. On CPU and MPS only `"default"` is accepted; other modes raise `CapabilityNotSupportedError`.
 
 ## MLX-Gen backend (local Apple-first)
 
 **When to use**
 - You want local quantized MLX generation through the optional MLX-Gen runtime. This release is validated on Apple Silicon first, and the install extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers apply.
 - You want the AbstractFramework-published q4/q8 prepared folders from the [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
-- You want the official MLX-Gen `0.38.0+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
+- You want the official MLX-Gen `0.40.0+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
 - You want the official Prism ML Bonsai ternary 2-bit checkpoint (`prism-ml/bonsai-image-ternary-4B-mlx-2bit`) for very small local `text_to_image`.
 - You want SeedVR2 single-image upscaling through canonical `AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}` packages or the official `ByteDance-Seed/SeedVR2-*` bases.
-- You want local Wan 2.2 video generation through MLX-Gen `0.38.0+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
+- You want local Wan 2.2 video generation through MLX-Gen `0.40.0+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
 
 Install:
 - `pip install "abstractvision[mlx-gen]"` (or `pip install "abstractvision[all-apple]"`)
@@ -3314,10 +3498,13 @@ Runtime behavior notes:
 - Local MLX-Gen `text_to_image` exposes route-aware structured control on `AbstractFramework/qwen-image-8bit` through typed `control_image` / `control_strength` (CLI: `--control-image` / `--control-strength`). Structured control is not silently reinterpreted as image edit.
 - Edit strength is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter where the runtime supports it.
 - Local MLX-Gen video is implemented for `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`, and the task-specific Wan A14B packages `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. TI2V-5B should be run at `832x480` / `480x832` or above in practice. Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at `480x240`.
+- Local MLX-Gen also serves MiniMax-H3 (`MiniMaxAI/MiniMax-H3`; packages `AbstractFramework/minimax-h3-8bit`, `-bf16`, `-4bit`): a video with a synchronized stereo soundtrack, `text_to_video` and first-frame `image_to_video`. Set `base_model` to `minimax-h3-turbo-544p`, `minimax-h3-turbo` or `minimax-h3` to pick the schedule. Requests take `soundscape`, `music`, `generate_audio`, `flow_shift` (the video shift) and `audio_shift`; MLX-Gen's capability row decides the frame grid, canvas multiple and defaults, and the backend refuses what the route cannot apply. Results are the MP4 with its AAC track plus `GeneratedAsset.audio`. The weights are never downloaded during generation (gated; territorial licence). See [Video with sound](../api.md#video-with-sound-minimax-h3).
+- Every MLX-Gen request takes `cancel_event` (stopped between steps, `GenerationCancelledError`) and load-time `quantize` (validated against the route; refused on prepared packages); `describe_routes()` returns MLX-Gen's capability rows as JSON; progress callback errors are logged and never stop a run. Diffusers, stable-diffusion.cpp and OpenAI-compatible backends check `cancel_event` before a run and refuse `quantize` and the soundtrack options. See [Host integration](../api.md#host-integration).
 - Task-specific Wan A14B uses two guidance controls. `guidance_scale` controls the primary/high-noise stage and `guidance_2` controls the second-stage/low-noise stage. `guidance_2` is a typed video request field, CLI/REPL flag `--guidance-2`, and registry parameter default; it is not passed through `extra`.
 - Wan requests can pass `max_sequence_length` through Python `extra={...}` or CLI/REPL `--max-sequence-length`.
 - Each Wan model has its own default size (`WAN_VIDEO_DEFAULT_CANVASES`): 832x480 for TI2V-5B (121 frames at 24 fps, 50 steps) and for the A14B models (81 frames at 16 fps, 40 steps). Explicit `width`, `height`, `num_frames`, `fps` and `steps` always win. The Wan VAE decode runs in overlapping spatial tiles by default; `extra={"vae_tiling": False}` / CLI `--no-vae-tiling` decodes whole frames. Measured memory per size: [FAQ](../faq.md#how-much-memory-does-wan-video-need).
 - Generation does not silently download model files. Missing-cache errors tell you which `abstractvision download ... --provider mlx-gen` or `mlxgen` preparation step is needed.
+- `memory_mode="low"` (CLI `--memory-mode low`) runs a request in MLX-Gen low-RAM mode as the route's `mlxgen` command does with `--low-ram`, with the 1 GB MLX cache set before the model loads: on image and edit routes mlx-gen's `MemorySaver` tiles the VAE decode and frees the text encoders before the denoising loop and the transformer after it; on Wan routes the MLX cache is cleared after every step and transformer block and the denoisers are released before the decode (and, on A14B, the inactive expert); on SeedVR2 upscaling the cache limit is the whole change. Image, edit and Wan instances are loaded again on the next request (batches keep them until their last item); SeedVR2 keeps its instance. `memory_mode="lowest"` adds transformer block streaming (`--stream-blocks`) and is accepted only for models whose routes publish `supports_block_streaming`; it is accepted for MiniMax-H3 and refused on every other current catalog model. See [Memory modes](../api.md#memory-modes-memory_mode).
 
 Code pointers:
 - Config: `MLXGenBackendConfig` / compatibility alias `MFluxBackendConfig` ([`../../src/abstractvision/backends/mflux.py`](../../src/abstractvision/backends/mflux.py))
@@ -3336,6 +3523,7 @@ Notes:
 - If you care about **GPU acceleration** (macOS **Metal**, NVIDIA **CUDA**, etc.), prefer **CLI mode** via `sd-cli`.
 - Python bindings run whatever backend the installed wheel was built with. On macOS, that often means **CPU-only**, so FLUX/Qwen-class models can be extremely slow.
 - Operators who want to hide GGUF presets (and reject GGUF execution) on macOS can set `ABSTRACTVISION_DISABLE_GGUF_ON_MACOS=1`.
+- `memory_mode="low"` keeps the model parameters in system RAM and moves them to the compute device when needed: `--offload-to-cpu` for `sd-cli` (an operator's own flag stays) and `offload_params_to_cpu` for the Python binding, which reloads the model when the loaded one was not offloaded. On a CPU-only build the parameters are in RAM already. `"lowest"` is refused.
 - The optional python binding is constrained below `0.4.6` because that sdist
   currently misses vendored CMake files needed by native Linux builds.
 - Interactive CLI selection supports both `/backend sdcpp <model_key|model.gguf|model.safetensors> [sd_cli_path]` and
@@ -3406,6 +3594,25 @@ For MLX-Gen Wan, one-shot `t2v` and `i2v` show denoise-step progress with
 frame context on stderr by default. `upscale` also shows denoise-step progress
 by default. Add `--no-progress` when you need quiet shell output.
 
+`t2i`, `i2i`, `upscale`, `t2v` and `i2v` take `--memory-mode default|low|lowest`
+(default: `$ABSTRACTVISION_MEMORY_MODE`, else `default`) to lower the run's
+memory peak at some cost in speed: MLX-Gen low-RAM mode, Diffusers CPU offload
+on CUDA, stable-diffusion.cpp CPU offload of parameters. A mode the provider
+cannot honour is refused. See [Memory modes](../api.md#memory-modes-memory_mode).
+
+```bash
+abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --memory-mode low --open
+```
+
+`t2i`, `i2i`, `t2v` and `i2v` take `--quantize BITS` (load-time quantization of a
+source snapshot on MLX-Gen; refused elsewhere). `t2v` and `i2v` take the soundtrack
+options of MiniMax-H3: `--soundscape`, `--music`, `--no-audio`, `--audio-shift`
+(`--flow-shift` is its video shift):
+
+```bash
+abstractvision t2v --provider mlx-gen --model AbstractFramework/minimax-h3-8bit --mflux-base-model minimax-h3-turbo-544p "A red fox trots through fresh snow at dawn." --soundscape "Paws in dry snow, faint wind." --music "Sparse piano." --width 640 --height 352 --frames 124 --seed 42 --open
+```
+
 ## Interactive CLI backend selection
 
 Inside `abstractvision cli`:
@@ -3463,6 +3670,7 @@ The interactive CLI state object (`_ReplState` in [`../../src/abstractvision/cli
   - `diffusers`: Diffusers model id or local path
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root imported into the Hugging Face cache when older installs are migrated
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
+- `ABSTRACTVISION_MEMORY_MODE` — `default`, `low` or `lowest`: the memory mode of every generation request that names none, in the CLI, the playground, Python and the AbstractCore plugin; a request value wins. A mode that comes from `$ABSTRACTVISION_MEMORY_MODE` is one value for every backend of the process, so a backend that cannot honour it for its model and device runs the lowest-memory mode it lists that is not below it (`lowest` becomes `low` where `low` is listed, else `default`) and logs that once; a mode passed on the request is refused instead. Warmups (`preload`) follow the same rule. See [Memory modes](../api.md#memory-modes-memory_mode).
 
 Note:
 - Curated `abstractvision download ...` presets are written to the Hugging Face cache by default, and older `~/models/<preset>` trees are imported into that same cache on first use.
@@ -4204,6 +4412,68 @@ Wan LoRA calls may also need `target_role` in each adapter spec. TI2V-5B uses
 `transformer`. A14B routes require explicit
 `high_noise_transformer` / `low_noise_transformer` roles.
 
+To lower a run's memory peak, pass `memory_mode` (`"default"`, `"low"` or
+`"lowest"`) to `t2i`, `i2i`, `upscale_image`, `t2v`, `i2v` or their `_batch`
+variants; without it, `$ABSTRACTVISION_MEMORY_MODE` applies, else `"default"`
+(a backend that cannot honour the environment value runs the closest lower-memory
+mode it lists and logs it once; a value passed on the call is refused instead).
+MLX-Gen runs `"low"` in its low-RAM mode, Diffusers on CUDA runs `"low"` /
+`"lowest"` with model / sequential CPU offload, and stable-diffusion.cpp runs
+`"low"` with CPU offload of its parameters (see
+[Memory modes](../api.md#memory-modes-memory_mode)). A mode the selected
+backend cannot honour, passed on the call, raises `CapabilityNotSupportedError` before any model
+loads: `"lowest"`, for example, is accepted for MiniMax-H3 and refused on every
+other current MLX-Gen catalog model.
+
+```python
+mp4 = llm.vision.t2v(
+    "A red fox trots through fresh snow",
+    provider="mlx-gen",
+    model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+    memory_mode="low",
+)
+```
+
+AbstractCore's HTTP vision routes do not declare a `memory_mode` field; send it
+in the request's `extra` object (`"extra": {"memory_mode": "low"}`). The server
+builds AbstractVision backends and calls them directly, and every backend reads
+and checks the value itself, so the same refusal applies there.
+
+On MLX-Gen, a `"low"` run frees parts of the model and drops the instance, so
+the plugin removes its loaded-model record, a resident one included, whether
+the run succeeded or failed; the next request loads the model again. The same
+holds after every Wan TI2V-5B run, which releases its denoiser before the decode.
+
+Two facts about the current AbstractCore server, which this plugin does not change:
+
+- Its HTTP batch routes send the items of a batch one by one, without the batch
+  marker `VisionManager` adds, so with `"low"` each item of an HTTP batch loads
+  the model again. Python batches through `llm.vision.t2i_batch(...)` and the
+  other `_batch` methods of this plugin keep the model until their last item.
+- Its server-side residency records are its own and independent of this plugin's
+  loaded-model records.
+
+The facade forwards every typed field of the request a method builds, under the
+same name: `control_image` / `control_strength` on `t2i`, `soundscape`, `music`,
+`generate_audio`, `audio_shift` on `t2v` / `i2v`, and `quantize`, `memory_mode`
+and `cancel_event` on all of them. A typed option of another task (`guidance_2`
+on an image call, `soundscape` on an image call) is refused with
+`CapabilityNotSupportedError`; other unknown keywords remain backend-specific
+`extra` parameters.
+
+Discovery, and where each part is visible:
+
+- Every MLX-Gen entry of `llm.vision.list_provider_models(...)`, which the
+  AbstractCore HTTP model listing also returns, carries
+  `parameter_constraints["memory_mode"]` = `{"enum": [...], "block_streaming": <bool>}`;
+  `enum` holds the modes that model can honour.
+- `llm.vision.available_providers()["details"][<provider>]["memory_modes"]`
+  lists the modes each provider can honour on this host. It is a Python call
+  only: AbstractCore's HTTP server does not call `available_providers`.
+- With an `artifact_store`, the stored artifact's metadata records `memory_mode`
+  (and `low_ram` / `stream_blocks` on MLX-Gen); without one the plugin returns
+  bytes only.
+
 ```bash
 # OpenAI API.
 export OPENAI_API_KEY=...
@@ -4372,6 +4642,10 @@ plugin surface:
   artifact ref dict or a `{"b64": "..."}` payload.
 - `vision_list_adapters(task=...)` returns the currently discovered compatible
   adapter inventory for the selected model.
+- `make_vision_tools(..., memory_mode="low")` applies one memory mode to every
+  generation call of the tools. It is not a tool parameter, so the model cannot
+  choose it; it is checked once against the backend's listed modes when the
+  backend declares them. Without it each call follows `$ABSTRACTVISION_MEMORY_MODE`.
 
 Important:
 - Tool outputs are designed to be **artifact refs**, so `VisionManager.store` must be set ([`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)).
@@ -4659,6 +4933,72 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 # Changelog
 
 ## Unreleased
+
+## 0.3.37 - 2026-11-23
+
+This release adds MiniMax-H3 (video with a synchronized stereo soundtrack), a `memory_mode` setting on every
+generation request, and what an application embedding `VisionManager` needs: cancellation, load-time quantization,
+the engine's route rows and metadata. It requires MLX-Gen 0.40. Existing requests run as before; the new fields are
+optional.
+
+- **MLX-Gen 0.40.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) now requires
+  `mlx-gen>=0.40.0,<0.41.0` (0.40.1 recommended). It brings MiniMax-H3, fixes saving images and videos with Pillow 13,
+  and publishes capability schema 17. The calls AbstractVision makes for FLUX.2, Z-Image, Qwen, ERNIE, FIBO, Bonsai,
+  SeedVR2 and Wan are unchanged. Upgrade with `pip install -U "abstractvision[mlx-gen]"`.
+- **MiniMax-H3: video with a synchronized stereo soundtrack**, `text_to_video` and first-frame `image_to_video`,
+  through the MLX-Gen backend. The catalog entry `MiniMaxAI/MiniMax-H3` lists the packages
+  `AbstractFramework/minimax-h3-8bit` (64.3 GiB), `AbstractFramework/minimax-h3-bf16` (115.1 GiB) and
+  `AbstractFramework/minimax-h3-4bit` (44.9 GiB) and the source snapshot. `base_model` picks the schedule:
+  `minimax-h3-turbo-544p`, `minimax-h3-turbo` or `minimax-h3`.
+  - Video requests take the new typed fields `soundscape`, `music`, `generate_audio` and `audio_shift`; `flow_shift`
+    is the video shift. Prompts are passed to MLX-Gen unchanged, and values left unset keep MLX-Gen's schedule
+    defaults. The frame grid (`17n+5` at 24 fps), canvas multiple and defaults come from MLX-Gen's capability row;
+    a request the route cannot apply (negative prompt, guidance, another fps, an unknown `extra` key, an adapter on
+    another role) is refused before any weights load. Wan and the other backends refuse the soundtrack fields.
+  - Results are the MP4 with its AAC soundtrack, a new `GeneratedAsset.audio` (`GeneratedAudioTrack`: sample rate,
+    channels, duration, whether muxed, and the track as WAV bytes when it could not be muxed) and MLX-Gen's metadata
+    under `metadata["mlx_gen"]` (the composed prompt, audio facts, memory peaks).
+  - The repositories are gated and the MiniMax H3 Community License's grant excludes the European Union, the United
+    Kingdom, the Republic of Korea and the United States of America. AbstractVision never downloads these weights
+    during generation, even with `allow_download`; download them explicitly after accepting the licence.
+  - CLI: `--soundscape`, `--music`, `--no-audio` and `--audio-shift` on `t2v` and `i2v`.
+- **`memory_mode` on every generation request**: `default`, `low` or `lowest`, as a request field, a
+  `VisionManager` keyword (batches included), `--memory-mode` on `t2i`, `i2i`, `upscale`, `t2v` and `i2v`, an
+  AbstractCore plugin keyword, `extra["memory_mode"]`, and a `make_vision_tools(..., memory_mode=...)` argument.
+  `ABSTRACTVISION_MEMORY_MODE` sets a process default for requests that name none.
+  - MLX-Gen: `low` is MLX-Gen's low-RAM mode as each route's `mlxgen` command applies `--low-ram`, with a 1 GB MLX
+    cache from before the model loads. Image and edit routes free the text encoders and the transformer, Wan routes
+    clear the cache every step and release the denoisers before the decode, SeedVR2 sets the cache limit only, and
+    MiniMax-H3 frees the transformer before the decode. `lowest` adds transformer block streaming; it is accepted
+    for MiniMax-H3 and refused on every other current catalog model.
+  - Diffusers on CUDA: `low` and `lowest` run with model and sequential CPU offload; a request only raises the
+    configured `cpu_offload`, never lowers it. stable-diffusion.cpp: `low` offloads the model parameters to the CPU.
+    OpenAI-compatible backends accept `default` only.
+  - A mode named on a request that the backend cannot honour raises `CapabilityNotSupportedError` before any model
+    loads or any request is sent, in `VisionManager` and in every backend. A process default the backend cannot
+    honour runs as the closest lower-memory mode the backend lists, with one warning.
+  - Image, edit and Wan models run in `low` are loaded again on the next request, and the AbstractCore plugin then
+    removes their loaded-model record; batches keep the model until their last item. Overlapping runs share one
+    process-wide MLX cache limit, and MLX-Gen's default cap is restored when the last one ends.
+  - Discovery: `get_capabilities().memory_modes` and `supports_block_streaming`, `parameter_constraints["memory_mode"]`
+    on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()`.
+- **For applications embedding AbstractVision.**
+  - `cancel_event` on every request: MLX-Gen stops between denoising steps and raises the new
+    `GenerationCancelledError` with the model still loaded; the other backends check it before a run starts
+    (`get_capabilities().cancellation`).
+  - Load-time `quantize` (bits) on generation requests and as `--quantize`, validated against the route
+    (`get_capabilities().quantize_bits`) and refused on prepared packages and on non-MLX-Gen backends.
+  - `VisionManager.describe_routes(model=..., task=...)` returns MLX-Gen's capability rows as JSON, so a host can
+    build its controls and memory planning without importing MLX-Gen.
+  - MLX-Gen results carry the engine's metadata under `metadata["mlx_gen"]` on every route, upscaling included.
+  - An exception raised in a progress callback is logged once and no longer ends the run; stop a run with
+    `cancel_event`.
+  - Importing AbstractVision and constructing a `VisionManager` write no files, set no environment variables and
+    import neither AbstractCore nor an engine.
+- **AbstractCore plugin.** Keyword options are forwarded as the request type's own fields: `control_image` and
+  `control_strength` now reach `t2i` (they were dropped), `guidance_2` or a soundtrack option on an image call is
+  refused with `CapabilityNotSupportedError` (it raised `TypeError`), and `memory_mode`, `quantize` and `cancel_event`
+  pass through.
 
 ## 0.3.36 - 2026-11-11
 
@@ -5168,13 +5508,13 @@ sdcpp = [
 # Native Apple image generation via MLX-Gen. Kept optional because it pulls
 # Apple-specific local runtime dependencies.
 mlx-gen = [
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.0,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
 ]
 
 # Compatibility extra for callers that still install the historical MFLUX extra.
 # It intentionally installs MLX-Gen, not the retired standalone mflux package.
 mflux = [
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.0,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
 ]
 
 # Native Apple Python install profile. Docker cannot expose Apple's Metal stack,
@@ -5193,7 +5533,7 @@ apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.0,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -5267,7 +5607,7 @@ all = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.0,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -5287,7 +5627,7 @@ all-apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.38.0,<0.39.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.0,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
