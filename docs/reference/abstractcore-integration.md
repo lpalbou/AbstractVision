@@ -200,8 +200,8 @@ To lower a run's memory peak, pass `memory_mode` (`"default"`, `"low"` or
 `"lowest"`) to `t2i`, `i2i`, `upscale_image`, `t2v`, `i2v` or their `_batch`
 variants; without it, `$ABSTRACTVISION_MEMORY_MODE` applies, else `"default"`
 (a backend that cannot honour the environment value runs the nearest less
-aggressive mode it lists, `lowest` → `low` → `default`, and logs it once; a value
-passed on the call is refused instead).
+aggressive mode it lists, `lowest` → `low` → `default`, and logs it once per
+process; a value passed on the call is refused instead).
 MLX-Gen runs `"low"` in its low-RAM mode, Diffusers on CUDA runs `"low"` /
 `"lowest"` with model / sequential CPU offload, and stable-diffusion.cpp runs
 `"low"` with CPU offload of its parameters (see
@@ -241,10 +241,25 @@ Two facts about the current AbstractCore server, which this plugin does not chan
 The facade forwards every typed field of the request a method builds, under the
 same name: `control_image` / `control_strength` on `t2i`, `soundscape`, `music`,
 `generate_audio`, `audio_shift` on `t2v` / `i2v`, and `quantize`, `memory_mode`
-and `cancel_event` on all of them. A typed option of another task (`guidance_2`
-on an image call, `soundscape` on an image call) is refused with
-`CapabilityNotSupportedError`; other unknown keywords remain backend-specific
-`extra` parameters.
+and `cancel_event` on all of them. Two kinds of keyword are refused with
+`CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i` (0.3.36 raised
+`TypeError` there), and the soundtrack options (`soundscape`, `music`,
+`generate_audio`, `audio_shift`) on a call whose request has none. Every other
+unknown keyword remains a backend-specific `extra` parameter, as in 0.3.36:
+`t2v(..., vae_tiling=False)` reaches Wan as `extra["vae_tiling"]`, and
+`t2i(..., fps=24)` lands in `extra` too.
+
+With an `artifact_store`, a MiniMax-H3 clip whose soundtrack MLX-Gen could not
+mux into the MP4 comes back with its WAV stored as a second artifact: the
+returned ref carries `audio` (the `GeneratedAsset.audio_summary()` shape:
+`present`, `sample_rate`, `channels`, `codec`, `muxed`, `duration_seconds`, and
+`wav`, the WAV's artifact ref, when `muxed` is false), and the stored metadata
+records the same object. Without a store the facade returns the MP4 bytes only
+and logs a warning when the soundtrack is not in them.
+
+`load_resident_model(...)` / `load_model(...)` preload the backend; on MLX-Gen a
+video model (Wan, MiniMax-H3) is loaded without a warm-up run. When the preload
+fails, the backend drops what it loaded and no loaded-model record is kept.
 
 Discovery, and where each part is visible:
 
@@ -427,6 +442,14 @@ plugin surface:
   artifact ref dict or a `{"b64": "..."}` payload.
 - `vision_list_adapters(task=...)` returns the currently discovered compatible
   adapter inventory for the selected model.
+- A parameter the tool call leaves unset takes the catalog's `default` (or
+  `const`) for the model and task; one the catalog lists without a default stays
+  unset, so the backend applies the engine's own default (MiniMax-H3: the
+  schedule's 8 steps on the Turbo entries, 50 on the base model). A tool's
+  built-in step count applies only to a model whose catalog entry does not list
+  `steps`.
+- Generated videos with a soundtrack that is not in the MP4 return its WAV as a
+  second artifact, under the ref's `audio["wav"]` (see the plugin section).
 - `make_vision_tools(..., memory_mode="low")` applies one memory mode to every
   generation call of the tools. It is not a tool parameter, so the model cannot
   choose it; it is checked once against the backend's listed modes when the

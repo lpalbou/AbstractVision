@@ -137,6 +137,64 @@ class TestAbstractCoreToolIntegration(unittest.TestCase):
         self.assertEqual(seen["i2i"].steps, 15)
         self.assertEqual(seen["i2i"].guidance_scale, 1.5)
 
+    def test_a_parameter_the_catalog_lists_without_a_default_is_left_to_the_engine(self):
+        from types import SimpleNamespace
+
+        from abstractvision import LocalAssetStore, VisionManager
+        from abstractvision.backends import VisionBackend
+        from abstractvision.integrations.abstractcore import make_vision_tools
+        from abstractvision.types import GeneratedAsset
+
+        seen = {}
+
+        class FakeBackend(VisionBackend):
+            def generate_image(self, request):
+                seen["t2i"] = request
+                return GeneratedAsset(media_type="image", data=b"gen", mime_type="image/png", metadata={})
+
+            def edit_image(self, request):
+                seen["i2i"] = request
+                return GeneratedAsset(media_type="image", data=b"edit", mime_type="image/png", metadata={})
+
+            def generate_angles(self, request):  # pragma: no cover
+                raise NotImplementedError
+
+            def generate_video(self, request):
+                seen["t2v"] = request
+                return GeneratedAsset(media_type="video", data=b"t2v", mime_type="video/mp4", metadata={})
+
+            def image_to_video(self, request):
+                seen["i2v"] = request
+                return GeneratedAsset(media_type="video", data=b"i2v", mime_type="video/mp4", metadata={})
+
+        listed = {"required": False}
+        tasks = {
+            "text_to_image": SimpleNamespace(params={"steps": listed, "guidance_scale": listed, "width": listed}),
+            "image_to_image": SimpleNamespace(params={"steps": listed}),
+            "text_to_video": SimpleNamespace(params={"steps": listed, "flow_shift": listed, "num_frames": {"default": 124}}),
+            "image_to_video": SimpleNamespace(params={"steps": listed}),
+        }
+        registry = SimpleNamespace(
+            get=lambda model_id: SimpleNamespace(tasks=tasks), require_support=lambda model_id, task: None
+        )
+        with tempfile.TemporaryDirectory() as td:
+            store = LocalAssetStore(td)
+            vm = VisionManager(backend=FakeBackend(), store=store)
+            with patch.dict(sys.modules, {"abstractcore": _fake_abstractcore_module()}):
+                tools = make_vision_tools(vision_manager=vm, model_id="example/model", registry=registry)
+            by_name = {t._tool_definition.name: t for t in tools if hasattr(t, "_tool_definition")}
+            image = store.store_bytes(b"input", content_type="image/png")
+            by_name["vision_text_to_image"](prompt="hello")
+            by_name["vision_image_to_image"](prompt="edit", image_artifact=image)
+            by_name["vision_text_to_video"](prompt="fox")
+            by_name["vision_image_to_video"](image_artifact=image)
+
+        for task in ("t2i", "i2i", "t2v", "i2v"):
+            self.assertIsNone(seen[task].steps, task)
+        self.assertIsNone(seen["t2i"].width)
+        self.assertIsNone(seen["t2v"].flow_shift)
+        self.assertEqual(seen["t2v"].num_frames, 124)
+
     def test_make_vision_video_tools_prefer_registry_defaults_over_old_hardcoded_values(self):
         from dataclasses import replace
 

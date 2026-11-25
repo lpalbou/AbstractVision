@@ -306,8 +306,9 @@ class ImageToVideoRequest:
 class GeneratedAudioTrack:
     """The soundtrack generated with a video.
 
-    `muxed` says whether the track is inside the asset's MP4 (AAC, `codec`). When the engine
-    could not mux it, `data` holds the track as a WAV file instead, so it is never lost.
+    `muxed` says whether the track is inside the asset's MP4 (`codec`: AAC). When the engine
+    could not mux it, `data` holds the track as a WAV file instead (`codec`: its PCM format), so
+    it is never lost; `VisionManager` stores it as an artifact of its own.
     """
 
     sample_rate: int
@@ -328,3 +329,26 @@ class GeneratedAsset:
     mime_type: str
     metadata: Dict[str, Any] = field(default_factory=dict)
     audio: Optional[GeneratedAudioTrack] = None
+
+    def audio_summary(self, wav: Any = None) -> Optional[Dict[str, Any]]:
+        """The soundtrack as every layer reports it (store, plugin, tools, HTTP); None without one.
+
+        `{"present": True, "sample_rate": int, "channels": int, "codec": str, "muxed": bool,
+        "duration_seconds": float}`. `codec` is the MP4's audio codec when `muxed`, else the WAV's
+        (`pcm_s16le`). Only when the track is not in the MP4, `"wav"` holds it: `wav` when given
+        (the stored WAV's artifact ref), else the WAV bytes.
+        """
+        track = self.audio
+        if track is None:
+            return None
+        summary: Dict[str, Any] = {
+            "present": True,
+            "sample_rate": int(track.sample_rate),
+            "channels": int(track.channels),
+            "codec": track.codec,
+            "muxed": bool(track.muxed),
+            "duration_seconds": float(track.duration_seconds),
+        }
+        if not track.muxed:
+            summary["wav"] = wav if wav is not None else track.data
+        return summary

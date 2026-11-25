@@ -4,6 +4,7 @@ import dataclasses
 import hashlib
 import importlib.util
 import ipaddress
+import logging
 import os
 import shlex
 import socket
@@ -15,7 +16,7 @@ from typing import Any, Dict, List, Mapping, Optional, Union
 from urllib.parse import urlparse
 
 from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
-from ..backends.base_backend import VisionBackend
+from ..backends.base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend
 from ..errors import AbstractVisionError, CapabilityNotSupportedError
 from ..types import (
     MEMORY_MODE_DEFAULT,
@@ -30,6 +31,8 @@ from ..types import (
     VideoGenerationRequest,
 )
 from ..vision_manager import VisionManager
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
@@ -622,17 +625,14 @@ def _read_bytes_from_path(path: Union[str, Path]) -> bytes:
     return p.read_bytes()
 
 
-_REQUEST_TYPES = (
-    ImageGenerationRequest,
-    ImageEditRequest,
-    ImageUpscaleRequest,
-    VideoGenerationRequest,
-    ImageToVideoRequest,
-)
 # Fields passed positionally or resolved by the facade itself, never as keyword pass-through.
 _FACADE_HANDLED_FIELDS = frozenset({"prompt", "image", "mask"})
-# Keywords a facade method moves into `extra` itself (image edits take width/height there).
-_FACADE_EXTRA_PROMOTED = {ImageEditRequest: frozenset({"width", "height"})}
+# Keywords 0.3.36 forwarded as fields of a request type that has none, so they raised TypeError;
+# they are refused with a typed error instead.
+_FIELDS_THAT_RAISED_TYPE_ERROR = {
+    ImageGenerationRequest: frozenset({"guidance_2"}),
+    ImageEditRequest: frozenset({"guidance_2"}),
+}
 
 
 def _request_kwarg_names(request_cls: Any) -> set:
@@ -644,21 +644,34 @@ def _request_kwarg_names(request_cls: Any) -> set:
 
 
 def _refuse_misplaced_typed_options(request_cls: Any, kwargs: Mapping[str, Any], *, method: str) -> None:
-    """Refuse a typed option of another request type (guidance_2 on an image call, say).
+    """Refuse what the call's request type cannot take and no backend would read from `extra`.
 
-    Other unknown keywords stay backend-specific `extra` parameters; a typed option of another
-    task would land there and be dropped, so it is refused instead.
+    That is a keyword that raised TypeError in 0.3.36 (`guidance_2` on an image call), and a typed
+    request option a backend must apply or refuse (OPTIONAL_REQUEST_FIELDS: the soundtrack options
+    on an image call). Every other unknown keyword stays a backend-specific `extra` parameter, as
+    in 0.3.36 (`vae_tiling` on `t2v`, which Wan reads there).
     """
-    own = _request_kwarg_names(request_cls) | _FACADE_EXTRA_PROMOTED.get(request_cls, frozenset())
-    typed = set().union(*(_request_kwarg_names(cls) for cls in _REQUEST_TYPES))
+    own = _request_kwarg_names(request_cls)
+    refused_names = _FIELDS_THAT_RAISED_TYPE_ERROR.get(request_cls, frozenset()) | frozenset(OPTIONAL_REQUEST_FIELDS)
     misplaced = sorted(
-        key for key, value in kwargs.items() if value is not None and key in typed and key not in own
+        key for key, value in kwargs.items() if value is not None and key in refused_names and key not in own
     )
     if misplaced:
         raise CapabilityNotSupportedError(
             f"{method}() does not take {', '.join(misplaced)}: "
-            f"{'it is' if len(misplaced) == 1 else 'they are'} options of other tasks."
+            f"{'it is an option' if len(misplaced) == 1 else 'they are options'} of other tasks."
         )
+
+
+def _media_bytes(asset: Any) -> bytes:
+    """The bytes a facade method returns without an artifact store (the media file only)."""
+    summary = asset.audio_summary() if callable(getattr(asset, "audio_summary", None)) else None
+    if summary is not None and not summary["muxed"]:
+        logger.warning(
+            "The soundtrack of this video could not be muxed into the MP4 and is not in the returned "
+            "bytes; pass an artifact_store to keep it (stored as a WAV artifact)."
+        )
+    return bytes(getattr(asset, "data", b""))
 
 
 def _resolve_bytes_input(value: Union[bytes, Dict[str, Any], str], *, artifact_store: Any) -> bytes:
@@ -1956,7 +1969,15 @@ class _AbstractVisionCapability:
             already_loaded = bool(existing and existing.get("loaded"))
         preload = getattr(backend, "preload", None)
         if callable(preload):
-            preload()
+            try:
+                preload()
+            except BaseException:
+                # A backend drops what a failed preload loaded; a record must not outlive it.
+                has_loaded_model = getattr(backend, "has_loaded_model", None)
+                if callable(has_loaded_model) and not has_loaded_model():
+                    with self._state_lock:
+                        self._remove_loaded_model_locked(tuple(binding["backend_key"]))
+                raise
         loaded_at = time.time()
         record = self._record_loaded_model(
             binding,
@@ -2084,7 +2105,7 @@ class _AbstractVisionCapability:
             succeeded = True
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="text_to_image", succeeded=succeeded)
@@ -2129,7 +2150,7 @@ class _AbstractVisionCapability:
                 **kwargs,
             )
             succeeded = bool(outputs)
-            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
+            return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="text_to_image", succeeded=succeeded)
@@ -2178,7 +2199,7 @@ class _AbstractVisionCapability:
             succeeded = True
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="image_to_image", succeeded=succeeded)
@@ -2234,7 +2255,7 @@ class _AbstractVisionCapability:
                 **kwargs,
             )
             succeeded = bool(outputs)
-            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
+            return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="image_to_image", succeeded=succeeded)
@@ -2246,7 +2267,7 @@ class _AbstractVisionCapability:
         out = vm.generate_angles(str(prompt), **kwargs)
         if isinstance(out, list) and all(isinstance(x, dict) for x in out):
             return out
-        return [bytes(getattr(asset, "data", b"")) for asset in out]
+        return [_media_bytes(asset) for asset in out]
 
     def generate_angles(self, prompt: str, **kwargs: Any):
         return self.multi_view_image(prompt, **kwargs)
@@ -2282,7 +2303,7 @@ class _AbstractVisionCapability:
             succeeded = True
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="image_upscale", succeeded=succeeded)
@@ -2323,7 +2344,7 @@ class _AbstractVisionCapability:
             succeeded = True
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="text_to_video", succeeded=succeeded)
@@ -2366,7 +2387,7 @@ class _AbstractVisionCapability:
                 **kwargs,
             )
             succeeded = bool(outputs)
-            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
+            return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="text_to_video", succeeded=succeeded)
@@ -2403,7 +2424,7 @@ class _AbstractVisionCapability:
             succeeded = True
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="image_to_video", succeeded=succeeded)
@@ -2445,7 +2466,7 @@ class _AbstractVisionCapability:
                 **kwargs,
             )
             succeeded = bool(outputs)
-            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
+            return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             if binding.get("local_control"):
                 self._record_request_run(binding, backend, task="image_to_video", succeeded=succeeded)

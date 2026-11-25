@@ -82,12 +82,30 @@ class VisionManager:
     ) -> Union[GeneratedAsset, Dict[str, Any]]:
         if self.store is None:
             return asset
-        return self.store.store_bytes(
+        metadata = dict(asset.metadata or {})
+        track = asset.audio
+        wav_ref: Optional[Dict[str, Any]] = None
+        if track is not None and not track.muxed and track.data:
+            # The soundtrack is not in the MP4: it is stored as an artifact of its own, and the
+            # video's `audio` summary points at it.
+            wav_ref = self.store.store_bytes(
+                track.data,
+                content_type=track.mime_type or "audio/wav",
+                metadata={"task": metadata.get("task"), "role": "soundtrack"},
+                tags={**(tags or {}), "modality": "audio"},
+            )
+        audio = asset.audio_summary(wav=wav_ref)
+        if audio is not None:
+            metadata["audio"] = audio
+        ref = self.store.store_bytes(
             asset.data,
             content_type=asset.mime_type,
-            metadata=asset.metadata,
+            metadata=metadata,
             tags=tags,
         )
+        if audio is not None:
+            ref["audio"] = audio
+        return ref
 
     def _move_progress_callbacks_to_extra(self, kwargs: Dict[str, Any]) -> None:
         extra = kwargs.get("extra")

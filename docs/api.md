@@ -320,9 +320,12 @@ modes trade speed for a lower memory peak. A request that names no mode uses
 The environment value is one setting for every backend in the process: a
 backend that cannot honour it runs the lowest-memory mode it lists that is not
 below it (`"lowest"` becomes `"low"` where `"low"` is listed, else `"default"`)
-and logs that once, while a mode passed on the request is refused. Backend
-warmups (`preload`) use the same rule; MLX-Gen warms up in `"default"`, since
-`"low"` would release the model it preloads.
+and logs that once per process, while a mode passed on the request is refused.
+Backend warmups (`preload`) use the same rule; MLX-Gen warms up in `"default"`,
+since `"low"` would release the model it preloads. On MLX-Gen, `preload()` loads
+the model and runs one image generation as its warm-up on image and edit models;
+video models (Wan, MiniMax-H3) are loaded without a warm-up run. When anything in
+a preload fails, the model it loaded is dropped before the error is raised.
 
 ```python
 asset_or_ref = vm.generate_video(
@@ -335,7 +338,7 @@ asset_or_ref = vm.generate_video(
 | --- | --- | --- |
 | MLX-Gen, image and edit routes | MLX-Gen low-RAM mode, as `mlxgen generate --low-ram`: a 1 GB MLX cache from before the model loads to the end of the run, and mlx-gen's `MemorySaver`, which tiles the VAE decode, frees the text encoders before the denoising loop and the transformer after it. | `low` plus transformer block streaming (`--stream-blocks`), on a model whose MLX-Gen routes publish `supports_block_streaming`: accepted for MiniMax-H3, refused on every other current catalog model. |
 | MLX-Gen, Wan video | As `mlxgen generate --low-ram` on one seed: the 1 GB cache, the MLX cache cleared after every step and transformer block, the denoisers released before the decode and, on the A14B models, the inactive expert released. | Refused on every current Wan route. |
-| MLX-Gen, MiniMax-H3 | The 1 GB cache and the transformer freed before the decode (`release_transformer=True`); the model stays loaded. | `low` plus block streaming (`stream_blocks=True`). Refused with load-time `quantize`. |
+| MLX-Gen, MiniMax-H3 | The 1 GB cache and the transformer freed before the decode (`release_transformer=True`); the model stays loaded. | `low` plus block streaming (`stream_blocks=True`). Refused with load-time `quantize`, and with an adapter that trains the AdaLN projections. |
 | MLX-Gen, SeedVR2 upscale | As `mlxgen upscale --low-ram` on images: the 1 GB cache only. SeedVR2 keeps its own tiling and the loaded model. | Refused (SeedVR2 has no block streaming). |
 | Diffusers on CUDA | Model CPU offload. | Sequential CPU offload. |
 | Diffusers on CPU or MPS | Refused. | Refused. |
@@ -365,7 +368,9 @@ their last item, as mlx-gen does for several seeds (VisionManager marks batch
 items only for backends whose `uses_batch_marker` is true; MLX-Gen is the one
 built-in); FIBO, which mlx-gen does not
 run in low-RAM mode with several seeds, runs each item as its own low-RAM run.
-SeedVR2 keeps its instance.
+SeedVR2 keeps its instance. MLX-Gen holds one instance at a time: a request
+whose model, adapters, `quantize` or block streaming differ from the loaded
+instance's releases it, and clears the MLX cache, before the new one loads.
 
 Discovery: `backend.get_capabilities().memory_modes` lists the modes a backend
 can honour for its configured model and device, and `supports_block_streaming`
@@ -405,37 +410,71 @@ Request fields (on `VideoGenerationRequest` and `ImageToVideoRequest`):
 | --- | --- |
 | `prompt` | The visual description, or a complete structured prompt with its section labels. Passed to MLX-Gen unchanged; MLX-Gen composes the structured prompt (and, for a first frame, its picture reference). |
 | `soundscape`, `music` | The `overall_soundscape` and `non_diegetic_music` sections. |
-| `generate_audio` | `False` writes a silent clip. Default: the soundtrack is generated. |
-| `flow_shift`, `audio_shift` | The video and audio schedule shifts (MLX-Gen `video_shift` / `audio_shift`). |
-| `width`, `height` | Multiples of the route's `dimension_multiple` (32). Unset: the schedule's canvas, or for a first frame MiniMax-H3's own mapping of the keyframe's aspect ratio. |
+| `generate_audio` | `False` writes a silent clip. Default: the soundtrack is generated. A boolean: any other type, the string `"false"` included, is refused. |
+| `flow_shift`, `audio_shift` | The video and audio schedule shifts (MLX-Gen `video_shift` / `audio_shift`), positive numbers. |
+| `width`, `height` | Given together; positive multiples of the route's `dimension_multiple` (32), with an aspect ratio inside MLX-Gen's window (1:4 to 4:1). Unset: the schedule's canvas, or for a first frame MiniMax-H3's own mapping of the keyframe's aspect ratio, which must then lie in the same window. |
 | `num_frames` | Rounded up by MLX-Gen to its grid (`17n+5` at 24 fps, `124` to `345`); a count outside the grid is refused before any weights load. |
-| `steps`, `seed`, `quantize`, `memory_mode`, `cancel_event` | As for other routes. `quantize` applies to the source snapshot only (8 or 4, the row's `validated_quantization_bits`). |
+| `steps`, `seed`, `quantize`, `memory_mode`, `cancel_event` | As for other routes; `steps` is at least 1 and `seed` lies in `[0, 2**64 - 1]` (MLX's random key). `quantize` applies to the source snapshot only (8 or 4, the row's `validated_quantization_bits`). |
 | `lora_adapters` | Adapters on the `transformer` role (the row's `lora_target_roles`). As in MLX-Gen, the list replaces the Turbo adapter a Turbo schedule attaches: include the Turbo file to keep the 8-step schedule. |
 
 Values left unset stay unset, so MLX-Gen applies the schedule's own defaults.
-What the route cannot apply is refused with `CapabilityNotSupportedError`:
-`negative_prompt`, `guidance_scale`, `guidance_2`, an `fps` other than 24, and
-any `extra` key. Every number the backend checks (frame grid, canvas multiple,
-defaults) comes from MLX-Gen's capability row; `describe_routes()` returns it.
-Wan and the other backends refuse `soundscape`, `music`, `generate_audio` and
-`audio_shift`.
+Everything is checked before any weights load, against MLX-Gen's capability row
+and its own MiniMax-H3 planning code, and every refusal names the field:
+
+- What the route cannot apply, or a value outside what it accepts, raises
+  `CapabilityNotSupportedError`: `negative_prompt`, `guidance_scale`,
+  `guidance_2`, an `fps` other than 24, an `extra` key other than the progress
+  callbacks and `memory_mode`, a canvas off the multiple or outside the aspect
+  window, a frame count off the grid, `steps` below 1, a shift that is not
+  positive.
+- A value of the wrong type, or two fields that contradict each other, raises
+  `ValueError`: a width that is not an integer, `soundscape` or `music` that is
+  not a string, a non-boolean `generate_audio`, a prompt that already carries an
+  `overall_soundscape:` (or `non_diegetic_music:`) section together with
+  `soundscape=` (or `music=`), which MLX-Gen's own prompt composition refuses.
+- A first frame is opened and decoded first: empty or undecodable bytes raise
+  `ValueError` naming `image`. Wan routes check their values and keyframes the
+  same way, with the same error types.
+- `memory_mode="lowest"` with an adapter that trains the transformer's AdaLN
+  projections (checked with MLX-Gen's own adapter test) is refused, naming the
+  adapter: MLX-Gen must then hold the whole transformer in memory.
+
+Every number the backend checks comes from MLX-Gen (the capability row, its
+aspect window); `describe_routes()` returns the row. Wan and the other backends
+refuse `soundscape`, `music`, `generate_audio` and `audio_shift`. MiniMax-H3
+needs mlx-gen 0.40.1 or later (it checks the VAE files at every use); an older
+install is refused with `OptionalDependencyMissingError` before any load.
 
 The result is the MP4 with its AAC soundtrack. `GeneratedAsset.audio` is a
 `GeneratedAudioTrack` (`sample_rate`, `channels`, `duration_seconds`, `muxed`,
 `codec`); when MLX-Gen could not mux the track, `muxed` is false and `data`
-holds it as WAV bytes. `metadata` carries `prompt` (the composed prompt),
-`seed`, `steps`, `width`, `height`, `num_frames`, `requested_frames`,
-`duration_seconds`, the two shifts, `audio`, and `mlx_gen`: MLX-Gen's own
-metadata sidecar, including its audio mux facts and `runtime_memory` (the
-process's memory at the end of the save, peaks included).
+holds it as WAV bytes. `GeneratedAsset.audio_summary()` reports the soundtrack
+in the one shape every layer uses (None without one):
+
+```python
+{"present": True, "sample_rate": 32000, "channels": 2, "codec": "aac",
+ "muxed": True, "duration_seconds": 5.1667}
+```
+
+`codec` is the WAV's (`"pcm_s16le"`) when the track is not muxed, and the
+summary then adds `"wav"`: the WAV bytes on the asset, the stored WAV's artifact
+ref once stored. With a store, `VisionManager` stores such a WAV as an artifact
+of its own (tags `modality: audio`) and records the summary as `audio` in the
+video's stored metadata and in the returned ref. `metadata` carries `prompt`
+(the composed prompt), `seed`, `steps`, `width`, `height`, `num_frames`,
+`requested_frames`, `duration_seconds`, the two shifts, and `mlx_gen`: MLX-Gen's
+own metadata sidecar (`<clip>.metadata.json`), including its audio mux facts and
+`runtime_memory` (the process's memory at the end of the save, peaks included).
 
 Memory modes: `low` sets the 1 GB MLX cache and `release_transformer=True`
 (the transformer is freed before the decode and read again by the next run; the
-model stays loaded). `lowest` adds block streaming (`stream_blocks=True`): each
-transformer block is read from disk for the length of its call. It works from a
-prepared package or from the 16-bit source, and is refused with `quantize`.
-MLX-Gen's measured peaks for each package and mode are in the route row's
-`measured_runs`.
+model stays loaded, batch items included). `lowest` adds block streaming
+(`stream_blocks=True`): each transformer block is read from disk for the length
+of its call. It works from a prepared package or from the 16-bit source, and is
+refused with `quantize`. MLX-Gen's measured peaks for each package and mode are
+in the route row's `measured_runs`. When MLX-Gen's preflight finds that a run
+cannot fit, the backend raises `GpuOutOfMemoryError` naming the `memory_mode`
+the run used and the lower modes to try.
 
 The weights are never downloaded during generation, even with
 `allow_download=True`: the repositories are gated, and the MiniMax H3 Community
@@ -453,15 +492,28 @@ What an application embedding `VisionManager` can rely on:
   `metadata["mlx_gen"]` (image, edit, upscale and video routes).
 - **Cancellation.** Every request takes `cancel_event` (anything with `is_set()`,
   such as `threading.Event`). A set event stops an MLX-Gen run at its next
-  progress event, between denoising steps, and raises `GenerationCancelledError`;
-  the model stays loaded (in `memory_mode="low"` on image, edit and Wan routes it
-  was already being released). Other backends check the event before a run starts.
+  progress event, between denoising steps, and raises `GenerationCancelledError`.
+  What stays loaded after a cancelled run depends on the family:
+  - image, edit and Wan A14B keep the model in `"default"`;
+  - SeedVR2 and MiniMax-H3 keep it in every mode (a MiniMax-H3 transformer freed
+    before the decode is read again by the next run);
+  - Wan TI2V-5B always drops it (it releases its denoiser before the decode);
+  - image and edit runs in `"low"` drop it, a batch item included; Wan A14B runs
+    in `"low"` drop it, except on a batch item before the last.
+
+  Other backends check the event before a run starts.
   `get_capabilities().cancellation` is `"step"` or `"start"`.
 - **Load-time quantize.** `quantize` (bits) on generation requests.
   `get_capabilities().quantize_bits` lists the widths the configured model
   accepts: the route's `validated_quantization_bits`, else MLX-Gen's `--quantize`
-  choices. A prepared (already quantized) package, and every non-MLX-Gen backend,
-  refuse it.
+  choices (for MiniMax-H3, its own 8 and 4). A prepared (already quantized)
+  package, and every non-MLX-Gen backend, refuse it.
+- **Metadata without local paths.** MLX-Gen results report the model as its repo
+  id (a Hugging Face cache snapshot) or its directory name (another local path),
+  and adapters the same way (`org/name:file.safetensors`, or the file name), in
+  `metadata["model"]`, `metadata["lora_paths"]`, `requested_lora_adapters` and
+  `metadata["mlx_gen"]`; the paths of the temporary files AbstractVision wrote
+  for a run (`image_path`, `video_path`, `audio_sidecar_path`) are left out.
 - **Route rows.** `vm.describe_routes(model=None, task=None)` returns MLX-Gen's
   capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,
   audio, `supports_block_streaming`, `measured_runs`, quantization. Other
@@ -556,4 +608,4 @@ Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstrac
 - `GenerationCancelledError` (the request's `cancel_event` was set)
 - `UnknownModelError` (model id isn’t present in the registry)
 - `OptionalDependencyMissingError` (backend dependency is missing, e.g. Diffusers/Torch)
-- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback)
+- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen video routes, raised when MLX-Gen reports that a run cannot fit, naming the `memory_mode` it used and the lower ones)

@@ -195,6 +195,12 @@ def make_vision_tools(
     tools_memory_mode = _tools_memory_mode(vision_manager, memory_mode)
 
     def _task_param_value(task_name: str, param_name: str, fallback: Any = None) -> Any:
+        """The catalog's value for a parameter the tool call left unset.
+
+        Its `const` or `default`; None when the catalog lists the parameter without one, so the
+        backend applies the engine's own default (MiniMax-H3's schedule: 8 or 50 steps); the
+        tool's `fallback` only for a parameter the catalog does not list.
+        """
         try:
             task = reg.get(model_id).tasks.get(task_name)
         except Exception:
@@ -206,6 +212,7 @@ def make_vision_tools(
                 return spec.get("const")
             if spec.get("default") is not None:
                 return spec.get("default")
+            return None
         return fallback
 
     def _require_artifact_ref_output(name: str, output: Any) -> Dict[str, Any]:

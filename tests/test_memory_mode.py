@@ -285,9 +285,22 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
     """AbstractCore's HTTP server calls backends directly, so each backend enforces the contract."""
 
     def setUp(self):
+        from abstractvision.backends import base_backend
+
         self._env = patch.dict("os.environ", NO_ENV)
         self._env.start()
         self.addCleanup(self._env.stop)
+        base_backend._DEGRADED_PROCESS_MEMORY_MODES_LOGGED.clear()
+
+    def test_the_process_default_fallback_is_logged_once_per_process(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": "lowest"}):
+            with self.assertLogs("abstractvision.backends.base_backend", level="WARNING") as logs:
+                for _ in range(3):
+                    # A new backend per request, as the AbstractCore plugin and the CLI build them.
+                    _recording_backend(None).resolve_memory_request(ImageGenerationRequest(prompt="p"))
+        self.assertEqual(len(logs.output), 1)
 
     def test_base_helper_strips_the_keys_and_refuses_unlisted_modes(self):
         from abstractvision.errors import CapabilityNotSupportedError
@@ -319,7 +332,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
                 for _ in range(3):
                     _req, mode, _batch = narrow.resolve_memory_request(ImageGenerationRequest(prompt="p"))
                     self.assertEqual(mode, "default")
-            self.assertEqual(len(logs.output), 1)  # once per backend
+            self.assertEqual(len(logs.output), 1)  # once per process
             self.assertEqual(mlx_like.resolve_memory_request(ImageGenerationRequest(prompt="p"))[1], "low")
             self.assertEqual(mlx_like.process_memory_mode(), "low")
             # A value on the request keeps refusing.
