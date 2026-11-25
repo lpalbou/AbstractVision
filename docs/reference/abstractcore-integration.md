@@ -296,7 +296,8 @@ export OPENAI_IMAGE_MODEL=gpt-image-1
 # Local OpenAI-compatible HTTP server, for example AbstractCore Server.
 export ABSTRACTVISION_BACKEND=openai-compatible
 export OPENAI_BASE_URL=http://localhost:8000/v1
-export ABSTRACTVISION_MODEL_ID=server/default
+# No model id: each request runs the server's default for its task. To name one, use the id the
+# server routes, its `routed_model` in GET /v1/vision/models (for example mlx-gen/<repo>).
 ```
 
 ### Provider Catalog Discovery
@@ -314,9 +315,10 @@ The return value is a JSON-safe list of dictionaries serialized from `ProviderMo
 provider metadata is retained in a bounded `raw` field for diagnostics. This method is explicit
 inspection only: it does not mutate the configured backend or select a generation model.
 
-Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
-of returning a misleading empty catalog. When multiple backends are enabled, the plugin probes
-their catalogs concurrently so discovery waits for the slowest backend instead of the sum of
+Backends that do not implement provider catalog listing, and an OpenAI-compatible remote without a
+`GET /models` route, raise `CapabilityNotSupportedError` saying so instead of returning a misleading
+empty catalog; a backend without a catalog is skipped when another backend answers. When multiple
+backends are enabled, the plugin probes their catalogs concurrently so discovery waits for the slowest backend instead of the sum of
 serial scans. Local Diffusers and stable-diffusion.cpp model discovery
 remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate `~/models` download tree.

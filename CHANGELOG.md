@@ -117,7 +117,8 @@ except for the changes listed below.
   the Hub, so a file that nothing local refers to, such as one an interrupted download never started, can be
   missing from a snapshot shown as `cached`.
 - **OpenAI-compatible backend with AbstractCore's server.** A remote that lists `memory_modes` for the model in
-  `GET {base_url}/vision/models` receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
+  `GET {base_url}/vision/models` (the entry whose `routed_model` is the model sent, or `defaults[<task>]` when the
+  request names none) receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
   request with `cancel_event` runs there as a remote job, and setting the event cancels it (AbstractCore's server
   refuses such a job while another generation runs, which the backend raises as a `RuntimeError` saying so); a
   video response's `audio` fills `GeneratedAsset.audio`, and `metadata["memory_mode"]` holds the mode the
@@ -178,8 +179,14 @@ except for the changes listed below.
   timeout, answer reused for 30 s; never for the OpenAI API or an OpenAI image model); `get_capabilities()` reads
   the last answer without a request, and a request that sets none of them and carries no `extra` makes the same
   HTTP calls as before. A discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: a request
-  that needed it is refused with the reason. A remote HTTP 422 with the error code `capability_not_supported`
-  raises `CapabilityNotSupportedError` with the remote's message, `field` and `supported` instead of `RuntimeError`.
+  that needed it is refused with the reason. A remote HTTP 422 with the error code `capability_not_supported`, and
+  a remote job that fails with that `error_code`, raise `CapabilityNotSupportedError` with the remote's message,
+  `field` and `supported` instead of `RuntimeError`.
+- OpenAI-compatible backend: `list_provider_models()` against a remote that answers `GET /models` with HTTP 404, 405
+  or 501 raises `CapabilityNotSupportedError` (the remote has no model catalog) instead of `RuntimeError`. The
+  AbstractCore plugin's `list_provider_models()` raises it as it is when no backend has a catalog, as it does when
+  the selected backend cannot list models, instead of `AbstractVisionError`; a backend without one is skipped when
+  another answers.
 - OpenAI-compatible backend: the first request that carries `extra` (keys other than `model`) asks the remote once
   per backend, with `GET {base_url}/vision/models`, whether it serves the vision routes; a server that does
   receives `extra` nested (an `extra` object in JSON, an `extra_json` form field), and any other remote, or one whose
