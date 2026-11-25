@@ -15,6 +15,7 @@ import fnmatch
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from abstractvision import model_downloads as md
 
@@ -60,22 +61,28 @@ class GgufPresetsDownloadOneQuantTests(unittest.TestCase):
         except ImportError:  # pragma: no cover - huggingface_hub is a test-time dependency here
             self.skipTest("huggingface_hub not installed")
         listing = ["README.md", "old/sd_turbo-q8_0.gguf", "sd_turbo-f16-q8_0.gguf", "sd_turbo-f16.gguf"]
+        info = SimpleNamespace(
+            sha="abc",
+            gated=False,
+            siblings=[SimpleNamespace(rfilename=f, size=1, blob_id=f"b{i}", lfs=None) for i, f in enumerate(listing)],
+        )
+        api = SimpleNamespace(model_info=lambda *a, **k: info)
         captured = {}
 
         def fake_snapshot_download(**kw):
             captured.update(kw)
             raise RuntimeError("stop after the request")
 
-        unsized = md.HubDownloadPlan(
-            repo_id="Green-Sky/SD-Turbo-GGUF", cache_dir=Path("/tmp"), total_bytes=None, present_bytes=0, free_bytes=None
-        )
-        with patch.object(md, "ensure_hf_repo_snapshot", return_value=None), \
-             patch.object(md, "_plan_hf_download", return_value=unsized), \
+        with tempfile.TemporaryDirectory() as td, \
+             patch.dict("os.environ", {"HF_HUB_CACHE": td}), \
+             patch("huggingface_hub.HfApi", return_value=api), \
              patch("huggingface_hub.snapshot_download", side_effect=fake_snapshot_download):
+            plan = md.plan_model_preset_download(_preset("Green-Sky/SD-Turbo-GGUF"))
             with self.assertRaises(RuntimeError):
                 md.download_model_preset(_preset("Green-Sky/SD-Turbo-GGUF"))
+        self.assertEqual([f.name for f in plan.files], ["README.md", "sd_turbo-f16-q8_0.gguf"])
         got = list(filter_repo_objects(listing, allow_patterns=captured["allow_patterns"],
-                                       ignore_patterns=captured["ignore_patterns"]))
+                                       ignore_patterns=captured.get("ignore_patterns")))
         self.assertEqual(sorted(got), ["README.md", "sd_turbo-f16-q8_0.gguf"])
 
 
