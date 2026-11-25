@@ -2098,7 +2098,7 @@ class _AbstractVisionCapability:
             unload_now = self._retire_backend_locked(backend)
         self._unload_backend(unload_now)
         # Reported as listed now: a model a running request still holds stays listed until it ends.
-        held = self._note_load({**record, "backend_key": backend_key}, task=None, pinned=False, source=None)
+        held = self._note_load({**record, "backend_key": backend_key}, task=None, pinned=False, source="request")
         return held if held is not None else self._absent_record(record, task=task, state="unloaded")
 
     def _configured_binding_matching(self, filters: Mapping[str, Any]) -> Optional[Dict[str, Any]]:

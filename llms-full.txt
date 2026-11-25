@@ -5891,7 +5891,8 @@ except for the changes listed below.
     validated against the route (`get_capabilities().quantize_bits`) and refused on prepared packages and on the
     other local backends. MLX-Gen and a remote that advertises it read it by one integer rule: a bool, a non-integral
     number or a string that is not a decimal integer raises `ValueError` naming `quantize`, and the remote receives
-    the width as an integer (an upscale request reads `False` as an unquantized load, see Changed).
+    the width as an integer (an upscale request and a SeedVR2 preload read `False` and the other unquantized
+    spellings as an unquantized load, see Changed).
   - `VisionManager.describe_routes(model=..., task=...)` returns MLX-Gen's capability rows as JSON, so a host can
     build its controls and memory planning without importing MLX-Gen.
   - MLX-Gen results carry the engine's metadata under `metadata["mlx_gen"]` on every route, upscaling included.
@@ -6001,7 +6002,7 @@ except for the changes listed below.
   or a `cancel_event` (or runs under `ABSTRACTVISION_MEMORY_MODE`) also query `GET {base_url}/vision/models` (10 s
   timeout, answer reused for 30 s; never for the OpenAI API); `get_capabilities()` reads
   the last answer without a request, and a request that sets none of them, carries no `extra` and names its model
-  without an `openai/` or `openai-compatible/` prefix makes the same HTTP calls as before. A discovery request that fails (timeout, connection error, another HTTP 5xx) is not kept: the
+  without an `openai/` or `openai-compatible/` prefix makes the same HTTP calls as before. A discovery request that fails (timeout, connection error, an HTTP 5xx other than 501) is not kept: the
   previous answer stays in use, and without one a request that names a memory mode other than `default`,
   `quantize` or a soundtrack field is refused with the reason, and one with a `cancel_event` raises the
   `RuntimeError` of a failed request. A discovery answered with HTTP 501, like 404 and 405, is an answer. A remote HTTP 422 with the error code `capability_not_supported`, and
@@ -6050,6 +6051,8 @@ except for the changes listed below.
 
 ### Fixed
 
+- MLX-Gen reads the `base_model` of a model or adapter card that starts with a byte-order mark; such a card was read
+  as having no front matter.
 - Downloads of the Wan 2.2 A14B MLX-Gen packages fetch the low-noise expert (`transformer_2/`), and MLX-Gen package
   downloads fetch the chat-template files (`*.jinja`) the Qwen, ERNIE and Bonsai tokenizers load; both were left out.
   Running `download` again on a package downloaded by 0.3.36 fetches them.

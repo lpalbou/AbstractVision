@@ -90,14 +90,14 @@ def request_int(name: str, value: Any, *, label: str) -> int:
     """
     if isinstance(value, bool):
         raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
-    if isinstance(value, float):
-        if not value.is_integer():
-            raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
-        return int(value)
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
         raise ValueError(f"{label} {name} must be an integer, got {value!r}.") from None
+    # A number that is not whole (8.5 in any numeric type) is not an integer; a decimal string already failed above.
+    if not isinstance(value, str) and value != number:
+        raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
+    return number
 
 
 def raise_if_cancelled(cancel_event: Any) -> None:
