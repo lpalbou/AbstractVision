@@ -12,7 +12,8 @@ concurrency:
 jobs:
   test-base:
     name: Base tests Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    # The newest runner image that still provides Python 3.9, which the package supports.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
