@@ -343,7 +343,7 @@ asset_or_ref = vm.generate_video(
 | Diffusers on CUDA | Model CPU offload. | Sequential CPU offload. |
 | Diffusers on CPU or MPS | Refused. | Refused. |
 | stable-diffusion.cpp | CPU offload of the model parameters: `--offload-to-cpu` for `sd-cli`, `offload_params_to_cpu` for the Python binding. | Refused. |
-| OpenAI-compatible | Refused. | Refused. |
+| OpenAI-compatible | Sent to a remote that lists the mode for the model in `GET /vision/models` (AbstractCore's server); refused otherwise. | As `low`. |
 
 A mode named on the request that the backend cannot honour for its configured
 model and device raises `CapabilityNotSupportedError` before any model loads or
@@ -440,8 +440,11 @@ and its own MiniMax-H3 planning code, and every refusal names the field:
   adapter: MLX-Gen must then hold the whole transformer in memory.
 
 Every number the backend checks comes from MLX-Gen (the capability row, its
-aspect window); `describe_routes()` returns the row. Wan and the other backends
-refuse `soundscape`, `music`, `generate_audio` and `audio_shift`. MiniMax-H3
+aspect window); `describe_routes()` returns the row. Wan and the other local
+backends refuse `soundscape`, `music`, `generate_audio` and `audio_shift`; the
+OpenAI-compatible backend sends them to a remote that advertises them for its
+model and refuses them otherwise
+([backends](reference/backends.md#openai-compatible-http-backend)). MiniMax-H3
 needs mlx-gen 0.40.1 or later (it checks the VAE files at every use); an older
 install is refused with `OptionalDependencyMissingError` before any load.
 
@@ -507,13 +510,16 @@ What an application embedding `VisionManager` can rely on:
   - image and edit runs in `"low"` drop it, a batch item included; Wan A14B runs
     in `"low"` drop it, except on a batch item before the last.
 
-  Other backends check the event before a run starts.
+  Other backends check the event before a run starts; the OpenAI-compatible
+  backend also cancels its remote job on a remote that advertises the vision
+  routes.
   `get_capabilities().cancellation` is `"step"` or `"start"`.
 - **Load-time quantize.** `quantize` (bits) on generation requests.
   `get_capabilities().quantize_bits` lists the widths the configured model
   accepts: the route's `validated_quantization_bits`, else MLX-Gen's `--quantize`
   choices (for MiniMax-H3, its own 8 and 4). A prepared (already quantized)
-  package, and every non-MLX-Gen backend, refuse it.
+  package, and the other local backends, refuse it; the OpenAI-compatible backend
+  sends it to a remote that advertises it.
 - **Metadata without local paths.** MLX-Gen results report the model as its repo
   id (a Hugging Face cache snapshot) or its directory name (another local path),
   and adapters the same way (`org/name:file.safetensors`, or the file name), in

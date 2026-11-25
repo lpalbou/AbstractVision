@@ -62,6 +62,7 @@ Usage notes:
   - T2I: merged into the JSON request body
   - I2I: sent as a string field `extra_json` in the multipart form body
 - Model-specific request fixes happen in the backend/API layer, so the same normalization rules apply to the playground, CLI/REPL, and AbstractCore integration.
+- Generation and edit jobs pass `memory_mode`, `quantize` and, on video, `soundscape`, `music`, `generate_audio` and `audio_shift` (top level or in the extra JSON) to the backend, which refuses what the model cannot honour; model load does not take `memory_mode` or `quantize`.
 - Local video export requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for packaging.
 
 ## 3) stable-diffusion.cpp / GGUF notes

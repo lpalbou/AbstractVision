@@ -65,7 +65,7 @@ Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image`, `image_to_image`, `image_upscale`, and backend-dependent `text_to_video` / `image_to_video`.
 - Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, FLUX.2/Qwen multi-reference image edits, validated Qwen structured control and Qwen/FIBO masked edits, canonical SeedVR2 q8/q4 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`.
 - Wan video defaults live in one per-model table (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`): 832x480 for TI2V-5B (121 frames, 24 fps, 50 steps) and the A14B models (81 frames, 16 fps, 40 steps); explicit `width`/`height`/`num_frames`/`fps`/`steps` override them. The VAE decode is tiled by default (`extra={"vae_tiling": False}` / `--no-vae-tiling` to disable); measured memory per size is in `docs/faq.md`.
-- Every generation request takes `memory_mode` (`default`, `low`, `lowest`; CLI `--memory-mode`; AbstractCore keyword or `extra`; process default `ABSTRACTVISION_MEMORY_MODE`, which degrades to the closest mode a backend can honour, while a request value is refused; `make_vision_tools(..., memory_mode=...)` fixes it for all tool calls). MLX-Gen: `low` = its low-RAM mode per route, `lowest` = low-RAM plus block streaming, accepted where routes publish `supports_block_streaming`: MiniMax-H3, and no other current catalog model. Diffusers on CUDA: `low`/`lowest` = model/sequential CPU offload (the request only raises the configured `cpu_offload`). stable-diffusion.cpp: `low` = CPU offload of parameters. OpenAI-compatible: `default` only. Every backend refuses a mode it cannot honour with `CapabilityNotSupportedError`, also when called directly. Discovery: `get_capabilities().memory_modes`, MLX-Gen catalog `parameter_constraints["memory_mode"]` (also over HTTP), plugin `available_providers()` details (Python only).
+- Every generation request takes `memory_mode` (`default`, `low`, `lowest`; CLI `--memory-mode`; AbstractCore keyword or `extra`; process default `ABSTRACTVISION_MEMORY_MODE`, which degrades to the closest mode a backend can honour, while a request value is refused; `make_vision_tools(..., memory_mode=...)` fixes it for all tool calls). MLX-Gen: `low` = its low-RAM mode per route, `lowest` = low-RAM plus block streaming, accepted where routes publish `supports_block_streaming`: MiniMax-H3, and no other current catalog model. Diffusers on CUDA: `low`/`lowest` = model/sequential CPU offload (the request only raises the configured `cpu_offload`). stable-diffusion.cpp: `low` = CPU offload of parameters. OpenAI-compatible: the modes the remote lists for the model in `GET /vision/models` (AbstractCore's server), sent with `quantize` and the soundtrack fields; `default` only for a plain OpenAI endpoint. Every backend refuses a mode it cannot honour with `CapabilityNotSupportedError`, also when called directly. Discovery: `get_capabilities().memory_modes`, MLX-Gen catalog `parameter_constraints["memory_mode"]` (also over HTTP), plugin `available_providers()` details (Python only).
 - MiniMax-H3 (`MiniMaxAI/MiniMax-H3`, packages `AbstractFramework/minimax-h3-8bit|bf16|4bit`, gated, territorial licence, never downloaded during generation; `abstractvision download MiniMaxAI/MiniMax-H3 [--bits 4|16] [--base-model minimax-h3-turbo-544p]` fetches the recommended 8-bit package, or the width named, and the Turbo adapter of that schedule): video with a stereo soundtrack through MLX-Gen; `base_model` picks the schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`); typed `soundscape`, `music`, `generate_audio`, `audio_shift` (and `flow_shift` as the video shift); frame grid and defaults from MLX-Gen's capability row; result MP4 with AAC plus `GeneratedAsset.audio`; `memory_mode` low = 1 GB cache + transformer release, lowest = block streaming.
 - Downloads and listings: `download` checks free disk space against the Hub listing before it starts, resumes from cached files, and names the page and licence when a gated repository refuses; `--dry-run` prints the plan. `catalog`, `show-model` and `models --json` show per download its size, access (gated/open), cache state with size on disk, the memory modes this host can run and, for MLX-Gen packages with published measurements, the peak memory per mode and the smallest memory it was tested on (read from mlx-gen at run time).
 - Host contract: `cancel_event` on every request (`GenerationCancelledError`, between steps on MLX-Gen), typed load-time `quantize` (`get_capabilities().quantize_bits`), `VisionManager.describe_routes()` for MLX-Gen's schema-17 rows as JSON, engine metadata under `metadata["mlx_gen"]`, progress-callback errors logged without stopping the run.
@@ -2620,7 +2620,7 @@ asset_or_ref = vm.generate_video(
 | Diffusers on CUDA | Model CPU offload. | Sequential CPU offload. |
 | Diffusers on CPU or MPS | Refused. | Refused. |
 | stable-diffusion.cpp | CPU offload of the model parameters: `--offload-to-cpu` for `sd-cli`, `offload_params_to_cpu` for the Python binding. | Refused. |
-| OpenAI-compatible | Refused. | Refused. |
+| OpenAI-compatible | Sent to a remote that lists the mode for the model in `GET /vision/models` (AbstractCore's server); refused otherwise. | As `low`. |
 
 A mode named on the request that the backend cannot honour for its configured
 model and device raises `CapabilityNotSupportedError` before any model loads or
@@ -2717,8 +2717,11 @@ and its own MiniMax-H3 planning code, and every refusal names the field:
   adapter: MLX-Gen must then hold the whole transformer in memory.
 
 Every number the backend checks comes from MLX-Gen (the capability row, its
-aspect window); `describe_routes()` returns the row. Wan and the other backends
-refuse `soundscape`, `music`, `generate_audio` and `audio_shift`. MiniMax-H3
+aspect window); `describe_routes()` returns the row. Wan and the other local
+backends refuse `soundscape`, `music`, `generate_audio` and `audio_shift`; the
+OpenAI-compatible backend sends them to a remote that advertises them for its
+model and refuses them otherwise
+([backends](reference/backends.md#openai-compatible-http-backend)). MiniMax-H3
 needs mlx-gen 0.40.1 or later (it checks the VAE files at every use); an older
 install is refused with `OptionalDependencyMissingError` before any load.
 
@@ -2784,13 +2787,16 @@ What an application embedding `VisionManager` can rely on:
   - image and edit runs in `"low"` drop it, a batch item included; Wan A14B runs
     in `"low"` drop it, except on a batch item before the last.
 
-  Other backends check the event before a run starts.
+  Other backends check the event before a run starts; the OpenAI-compatible
+  backend also cancels its remote job on a remote that advertises the vision
+  routes.
   `get_capabilities().cancellation` is `"step"` or `"start"`.
 - **Load-time quantize.** `quantize` (bits) on generation requests.
   `get_capabilities().quantize_bits` lists the widths the configured model
   accepts: the route's `validated_quantization_bits`, else MLX-Gen's `--quantize`
   choices (for MiniMax-H3, its own 8 and 4). A prepared (already quantized)
-  package, and every non-MLX-Gen backend, refuse it.
+  package, and the other local backends, refuse it; the OpenAI-compatible backend
+  sends it to a remote that advertises it.
 - **Metadata without local paths.** MLX-Gen results report the model as its repo
   id (a Hugging Face cache snapshot) or its directory name (another local path),
   and adapters the same way (`org/name:file.safetensors`, or the file name), in
@@ -3379,6 +3385,15 @@ Request shape:
 - Unknown/local endpoints receive local extension fields when provided, including `steps`, `seed`, `guidance_scale`, `negative_prompt`, `width`, and `height`.
 - Real OpenAI-looking endpoints and known OpenAI image models use the narrower OpenAI request shape; GPT image models do not receive unsupported local-only fields such as `steps`, `seed`, or `guidance_scale`.
 
+Memory modes, `quantize` and sound:
+- The backend asks `GET {base_url}/vision/models` what the remote takes. AbstractCore's server answers it (the server side of these fields is AbstractCore's; see its vision endpoint documentation): an entry that lists `memory_modes` for the configured model (or, with no `model_id`, the remote's `active` model) advertises `memory_mode`, `quantize` and, when `supports_audio` is true, the fields in its `audio_fields` (`soundscape`, `music`, `generate_audio`, `audio_shift`).
+- For such a remote, `get_capabilities().memory_modes` lists its modes for the model, and the fields are sent at the top level of the request (form fields on multipart routes): `memory_mode` when the request or `$ABSTRACTVISION_MEMORY_MODE` names one, the others when set. Keys given in `extra` travel with `extra`.
+- The remote's HTTP 422 with the error code `capability_not_supported` is raised as `CapabilityNotSupportedError` with the remote's message.
+- A video response's `audio` object (`present`, `sample_rate`, `channels`, `codec`, and `wav` = `{"b64_json"}` or `{"url"}` when the soundtrack is not muxed into the MP4) fills `GeneratedAsset.audio` (`GeneratedAudioTrack`, with the WAV bytes in `data` when unmuxed); `metadata["memory_mode_used"]` holds the remote's `memory_mode_used`.
+- A request with `cancel_event` runs as a remote job (`POST {base_url}/vision/jobs/...`, polled); setting the event sends `POST {base_url}/vision/jobs/{id}/cancel` and raises `GenerationCancelledError`.
+- Without that route (a plain OpenAI image endpoint, and always for `api.openai.com`), only `default` is listed, a request that sets any of these fields (typed or in `extra`) is refused with `CapabilityNotSupportedError` before anything is sent, and none of them is ever sent.
+- The answer is reused for 30 seconds; `get_capabilities()`, `list_provider_models()` and every request that sets one of the fields refresh it. `list_provider_models()` adds `memory_modes`, `supports_audio` and `audio_fields` to the matching entries' `raw`.
+
 Provider model catalogs:
 - `OpenAICompatibleVisionBackend.list_provider_models(...)` queries `GET /models` by default.
 - `VisionManager.list_provider_models(...)` delegates to the configured backend.
@@ -3608,7 +3623,7 @@ Runtime behavior notes:
 - Edit strength is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter where the runtime supports it.
 - Local MLX-Gen video is implemented for `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`, and the task-specific Wan A14B packages `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. TI2V-5B should be run at `832x480` / `480x832` or above in practice. Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at `480x240`.
 - Local MLX-Gen also serves MiniMax-H3 (`MiniMaxAI/MiniMax-H3`; packages `AbstractFramework/minimax-h3-8bit`, `-bf16`, `-4bit`): a video with a synchronized stereo soundtrack, `text_to_video` and first-frame `image_to_video`. Set `base_model` to `minimax-h3-turbo-544p`, `minimax-h3-turbo` or `minimax-h3` to pick the schedule. Requests take `soundscape`, `music`, `generate_audio`, `flow_shift` (the video shift) and `audio_shift`; MLX-Gen's capability row and its own MiniMax-H3 planning code (aspect window, prompt composition, adapter check) decide what is accepted, and every value is checked before any weights load, with an error that names the field. Results are the MP4 with its AAC track plus `GeneratedAsset.audio` and `GeneratedAsset.audio_summary()`; a track MLX-Gen could not mux is kept as a WAV (a second artifact when a store is set). `preload()` loads the model without a warm-up run, as for Wan. MiniMax-H3 needs mlx-gen 0.40.1 or later. The weights are never downloaded during generation (gated; territorial licence). See [Video with sound](../api.md#video-with-sound-minimax-h3). `abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p` fetches the recommended package and the Turbo adapter.
-- Every MLX-Gen request takes `cancel_event` (stopped between steps, `GenerationCancelledError`; what stays loaded per family is listed under [Host integration](../api.md#host-integration)) and load-time `quantize` (validated against the route; refused on prepared packages); `describe_routes()` returns MLX-Gen's capability rows as JSON; progress callback errors are logged and never stop a run. The backend holds one model instance: a request with another model, adapter set, `quantize` or block streaming releases the loaded one (and clears the MLX cache) before the new one loads. Result metadata names models and adapters by repo id or file name, never by local path. Diffusers, stable-diffusion.cpp and OpenAI-compatible backends check `cancel_event` before a run and refuse `quantize` and the soundtrack options. See [Host integration](../api.md#host-integration).
+- Every MLX-Gen request takes `cancel_event` (stopped between steps, `GenerationCancelledError`; what stays loaded per family is listed under [Host integration](../api.md#host-integration)) and load-time `quantize` (validated against the route; refused on prepared packages); `describe_routes()` returns MLX-Gen's capability rows as JSON; progress callback errors are logged and never stop a run. The backend holds one model instance: a request with another model, adapter set, `quantize` or block streaming releases the loaded one (and clears the MLX cache) before the new one loads. Result metadata names models and adapters by repo id or file name, never by local path. Diffusers and stable-diffusion.cpp check `cancel_event` before a run and refuse `quantize` and the soundtrack options; the OpenAI-compatible backend sends them to a remote that advertises them, and cancels the remote job when `cancel_event` is set (see its section above). See [Host integration](../api.md#host-integration).
 - Task-specific Wan A14B uses two guidance controls. `guidance_scale` controls the primary/high-noise stage and `guidance_2` controls the second-stage/low-noise stage. `guidance_2` is a typed video request field, CLI/REPL flag `--guidance-2`, and registry parameter default; it is not passed through `extra`.
 - Wan requests can pass `max_sequence_length` through Python `extra={...}` or CLI/REPL `--max-sequence-length`.
 - Each Wan model has its own default size (`WAN_VIDEO_DEFAULT_CANVASES`): 832x480 for TI2V-5B (121 frames at 24 fps, 50 steps) and for the A14B models (81 frames at 16 fps, 40 steps). Explicit `width`, `height`, `num_frames`, `fps` and `steps` always win. The Wan VAE decode runs in overlapping spatial tiles by default; `extra={"vae_tiling": False}` / CLI `--no-vae-tiling` decodes whole frames. Measured memory per size: [FAQ](../faq.md#how-much-memory-does-wan-video-need).
@@ -4900,6 +4915,7 @@ Usage notes:
   - T2I: merged into the JSON request body
   - I2I: sent as a string field `extra_json` in the multipart form body
 - Model-specific request fixes happen in the backend/API layer, so the same normalization rules apply to the playground, CLI/REPL, and AbstractCore integration.
+- Generation and edit jobs pass `memory_mode`, `quantize` and, on video, `soundscape`, `music`, `generate_audio` and `audio_shift` (top level or in the extra JSON) to the backend, which refuses what the model cannot honour; model load does not take `memory_mode` or `quantize`.
 - Local video export requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for packaging.
 
 ## 3) stable-diffusion.cpp / GGUF notes
