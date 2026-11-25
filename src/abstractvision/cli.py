@@ -3585,8 +3585,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[2, 4, 8, 16],
         default=None,
         help=(
-            "Package width to pick when a model id names several packages "
-            "(e.g. `download MiniMaxAI/MiniMax-H3 --bits 4`). Without it, the recommended package is chosen."
+            "Select a package of this width, in any target of this host (e.g. `download MiniMaxAI/MiniMax-H3 "
+            "--bits 4`), or stop and list the widths there are. Without it, the recommended package is chosen."
         ),
     )
     dl.add_argument(

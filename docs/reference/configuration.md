@@ -142,20 +142,22 @@ Note:
 `abstractvision download` takes an exact package repo id (`AbstractFramework/minimax-h3-4bit`), its
 short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`), and selects one package:
 
-- A model with a single package selects it, whatever its width (`stabilityai/stable-diffusion-xl-base-1.0`
+- Without `--bits`, a model with a single package selects it, whatever its width (`stabilityai/stable-diffusion-xl-base-1.0`
   selects its Diffusers pipeline, `briaai/Fibo-Edit` its 16-bit MLX-Gen snapshot).
 - Across targets, the host's order decides (Apple silicon: `mlx`, `gguf`, `diffusers`, `hf-snapshot`;
   NVIDIA: `gguf`, `diffusers`, `hf-snapshot`; processor only: `diffusers`, `hf-snapshot`, `gguf`),
   preferring an 8-bit package. `--target` or `--provider` restricts the choice to one target or engine;
-  a name with no package for it is refused, with the packages it has. `--bits 2|4|8|16` keeps one width.
+  a name with no package for it is refused, with the packages it has. `--bits 2|4|8|16` selects among the
+  packages of that width only, in every target of the host, or stops saying none has it and listing the
+  widths there are.
 - Within the chosen target, several packages select the one the catalog marks as recommended (`*` in
-  `catalog`: MiniMax-H3's 8-bit package, and where 0.3.36 selected one package of several, that package:
-  Qwen-Image-2512's 4-bit MLX-Gen package, GGUF and Diffusers pipeline, FIBO's 4-bit package, SeedVR2's
-  8-bit packages). With several and no recommendation the command stops and lists them, whatever
+  `catalog`: MiniMax-H3's and SeedVR2's 8-bit packages, FIBO's 4-bit package, Qwen-Image-2512's 4-bit
+  MLX-Gen package, GGUF and Diffusers pipeline). With several and no recommendation the command stops and lists them, whatever
   `--bits`, `--provider` or `--allow-non-8bit` narrowed them to (`tencent/HunyuanVideo-1.5` lists its eight
   Diffusers pipelines; FLUX.2 [klein] its 4-bit and 8-bit packages): name one.
 - `--allow-non-8bit`, or naming the MLX-Gen engine (`--provider mlx-gen`), drops the 8-bit preference. A
-  repository named exactly then selects that repository instead of a package made from it, on every host
+  repository named exactly then selects that repository instead of a package made from it (when `--bits`
+  is its width or not given), on every host
   (`abstractvision download briaai/FIBO --provider mlx-gen` is the FIBO source repository): `abstractvision download
   MiniMaxAI/MiniMax-H3 --allow-non-8bit` fetches the MiniMax-H3 source repository, which the model id
   alone does not (it selects the recommended 8-bit package), and `stabilityai/sdxl-turbo` selects that

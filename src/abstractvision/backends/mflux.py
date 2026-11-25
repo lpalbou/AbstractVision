@@ -70,7 +70,7 @@ from ..types import (
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
-from .base_backend import SOUNDTRACK_REQUEST_FIELDS, VisionBackend, raise_if_cancelled
+from .base_backend import SOUNDTRACK_REQUEST_FIELDS, VisionBackend, raise_if_cancelled, request_int
 
 logger = logging.getLogger(__name__)
 
@@ -1377,20 +1377,6 @@ _PRELOAD_TASK_ORDER = ("text_to_image", "image_to_image", "text_to_video", "imag
 _MAX_SEED = 2**64 - 1
 
 
-def _request_int(name: str, value: Any, *, label: str) -> int:
-    """`value` as an int, or ValueError naming the field: ints, integral floats, decimal strings."""
-    if isinstance(value, bool):
-        raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
-    if isinstance(value, float):
-        if not value.is_integer():
-            raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
-        return int(value)
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        raise ValueError(f"{label} {name} must be an integer, got {value!r}.") from None
-
-
 def _request_number(name: str, value: Any, *, label: str) -> float:
     """`value` as a finite float, or ValueError naming the field."""
     if isinstance(value, bool):
@@ -1407,7 +1393,7 @@ def _request_number(name: str, value: Any, *, label: str) -> float:
 def _request_seed(value: Any, *, label: str) -> Optional[int]:
     if value is None:
         return None
-    seed = _request_int("seed", value, label=label)
+    seed = request_int("seed", value, label=label)
     if not 0 <= seed <= _MAX_SEED:
         raise ValueError(f"{label} seed must lie in [0, 2**64 - 1], got {seed}.")
     return seed
@@ -1953,7 +1939,7 @@ def _read_card_frontmatter(readme_path: Path) -> Dict[str, Any]:
     except ImportError:
         return {}
     try:
-        lines = readme_path.read_text(encoding="utf-8").splitlines()
+        lines = readme_path.read_text(encoding="utf-8-sig").splitlines()  # a byte-order mark is not the card
     except (OSError, UnicodeDecodeError):
         return {}
     if not lines or lines[0].strip() != "---":
@@ -3998,7 +3984,7 @@ class MFluxVisionBackend(VisionBackend):
 
         A bool or a non-integral number is a ValueError naming the field, as for every integer option.
         """
-        bits = _request_int("quantize", quantize, label="MLX-Gen")
+        bits = request_int("quantize", quantize, label="MLX-Gen")
         resolution = self._resolve()
         if resolution.prepared:
             raise CapabilityNotSupportedError(
@@ -4085,9 +4071,7 @@ class MFluxVisionBackend(VisionBackend):
         # the preloaded instance serves one request, and no warm-up runs.
         with self._memory_session(replace(plan, releases_model=False)):
             if model_def.family == "seedvr2-upscale":
-                self._ensure_seedvr2_model_impl(
-                    quantize=quantize if quantize is not None else self._default_upscale_quantize()
-                )
+                self._ensure_seedvr2_model_impl(quantize=self._upscale_load_quantize(quantize))
             else:
                 self._ensure_model_impl(
                     edit_variant=task == "image_to_image", stream_blocks=plan.stream_blocks, quantize=quantize
@@ -4307,7 +4291,7 @@ class MFluxVisionBackend(VisionBackend):
         )
         label = "Wan"
         steps = (
-            _request_int("steps", request.steps, label=label)
+            request_int("steps", request.steps, label=label)
             if request.steps is not None
             else int(adapter_defaults.get("steps") or model_def.default_steps)
         )
@@ -4319,19 +4303,19 @@ class MFluxVisionBackend(VisionBackend):
             else model_def.default_guidance
         )
         width = (
-            _request_int("width", request.width, label=label)
+            request_int("width", request.width, label=label)
             if request.width is not None
             else int(model_def.default_width)
         )
         height = (
-            _request_int("height", request.height, label=label)
+            request_int("height", request.height, label=label)
             if request.height is not None
             else int(model_def.default_height)
         )
         self._validate_wan_video_dimensions(model_def=model_def, width=width, height=height)
-        fps = _request_int("fps", request.fps, label=label) if request.fps is not None else int(model_def.default_fps)
+        fps = request_int("fps", request.fps, label=label) if request.fps is not None else int(model_def.default_fps)
         num_frames = (
-            _request_int("num_frames", request.num_frames, label=label)
+            request_int("num_frames", request.num_frames, label=label)
             if request.num_frames is not None
             else int(model_def.default_frames)
         )
@@ -4341,7 +4325,7 @@ class MFluxVisionBackend(VisionBackend):
             num_frames = 1
         if extra.get("max_sequence_length") is not None:
             extra["max_sequence_length"] = max(
-                1, _request_int("max_sequence_length", extra["max_sequence_length"], label=label)
+                1, request_int("max_sequence_length", extra["max_sequence_length"], label=label)
             )
         guidance_2 = (
             _request_number("guidance_2", request.guidance_2, label=label) if request.guidance_2 is not None else None
@@ -4443,8 +4427,8 @@ class MFluxVisionBackend(VisionBackend):
         if (request.width is None) != (request.height is None):
             raise ValueError("MiniMax-H3 width and height must be given together, or neither.")
         if request.width is not None:
-            width = _request_int("width", request.width, label=label)
-            height = _request_int("height", request.height, label=label)
+            width = request_int("width", request.width, label=label)
+            height = request_int("height", request.height, label=label)
             multiple = int(row.get("dimension_multiple") or 1)
             if width <= 0 or height <= 0 or width % multiple or height % multiple:
                 raise CapabilityNotSupportedError(
@@ -4454,7 +4438,7 @@ class MFluxVisionBackend(VisionBackend):
                 )
         num_frames = None
         if request.num_frames is not None:
-            num_frames = _request_int("num_frames", request.num_frames, label=label)
+            num_frames = request_int("num_frames", request.num_frames, label=label)
             accepted = _h3_frame_counts(row)
             aligned = _h3_aligned_frames(num_frames, row)
             if num_frames < 1 or aligned not in accepted:
@@ -4467,7 +4451,7 @@ class MFluxVisionBackend(VisionBackend):
                 )
         steps = None
         if request.steps is not None:
-            steps = _request_int("steps", request.steps, label=label)
+            steps = request_int("steps", request.steps, label=label)
             if steps < 1:
                 raise CapabilityNotSupportedError(
                     f"MiniMax-H3 steps must be at least 1, got {steps}.", field="steps"
@@ -4596,6 +4580,18 @@ class MFluxVisionBackend(VisionBackend):
             return True
         return bool(value)
 
+    def _upscale_load_quantize(self, quantize: Any) -> Any:
+        """The load-time quantize of an upscale request or of a SeedVR2 preload (None loads unquantized).
+
+        Unset: the model's default (8 on the source, none on a prepared package); an unquantized spelling:
+        None; any other value as given, to the load's one check (`_checked_load_quantize`).
+        """
+        if quantize is None:
+            return self._default_upscale_quantize()
+        if str(quantize).strip().lower() in _UPSCALE_UNQUANTIZED_SPELLINGS:
+            return None
+        return quantize
+
     def _default_upscale_quantize(self) -> Optional[int]:
         # A prepared package already stores its quantization; the 16-bit source is quantized to 8.
         resolution = self._resolve()
@@ -4637,15 +4633,8 @@ class MFluxVisionBackend(VisionBackend):
             softness_f = 0.0
         if softness_f > 1.0:
             softness_f = 1.0
-        # Unset: the model's default (8 on the source, none on a prepared package); an unquantized spelling: loaded
-        # unquantized; any other value goes as given to the load's one check (`_checked_load_quantize`).
         quantize_raw = request.quantize if request.quantize is not None else extra.pop("quantize", None)
-        if quantize_raw is None:
-            quantize_value = self._default_upscale_quantize()
-        elif str(quantize_raw).strip().lower() in _UPSCALE_UNQUANTIZED_SPELLINGS:
-            quantize_value = None
-        else:
-            quantize_value = quantize_raw
+        quantize_value = self._upscale_load_quantize(quantize_raw)
         vae_tiling_raw = request.vae_tiling if request.vae_tiling is not None else extra.pop("vae_tiling", None)
         vae_tiling_value = (
             None if vae_tiling_raw is None else self._normalize_upscale_bool(vae_tiling_raw, default=False)

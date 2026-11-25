@@ -4353,8 +4353,10 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 "preload (upscale)": (seedvr2, lambda b, q: b.preload(quantize=q)),
             }
             for name, (config, run) in runs.items():
-                # False is an unquantized spelling on the upscale route (`test_upscale_quantize_values_read_as_0_3_36_read_them`).
-                values = (True, 8.5, "8.5") if name.startswith("image_upscale") else (True, False, 8.5, "8.5")
+                # False is an unquantized spelling on the upscale route, requests and preload alike
+                # (`test_upscale_quantize_values_read_as_0_3_36_read_them`).
+                upscale = name.startswith("image_upscale") or name == "preload (upscale)"
+                values = (True, 8.5, "8.5") if upscale else (True, False, 8.5, "8.5")
                 for value in values:
                     with self.subTest(run=name, quantize=value):
                         backend = MFluxVisionBackend(config=config)
@@ -4426,13 +4428,21 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 source.upscale_image(ImageUpscaleRequest(image=PNG_1X1, quantize=value))
                 return _FakeSeedVR2.last_init["quantize"]
 
+            def preload(value):
+                # A preload reads `quantize` as an upscale request does, so that request reuses the instance.
+                backend = MFluxVisionBackend(config=source._cfg)
+                backend.preload(quantize=value)
+                return _FakeSeedVR2.last_init["quantize"]
+
             for value in table:
                 with self.subTest(quantize=value):
                     before, now = outcome(published, value), outcome(upscale, value)
                     key = next((k for k in intended if type(k) is type(value) and k == value), None)
                     self.assertEqual((before, now), intended[key] if key is not None else (before, before))
+                    self.assertEqual(outcome(preload, value), now)
             # Unset is the model's default: 8 on the source.
             self.assertEqual(upscale(None), 8)
+            self.assertEqual(preload(None), 8)
 
     def test_a_refused_preload_leaves_a_held_model_held(self):
         import contextlib
@@ -4502,6 +4512,20 @@ class TestMFluxVisionBackend(unittest.TestCase):
             )
             self.assertEqual((normalized.guidance_2, normalized.flow_shift), (3.0, 5.0))
             self.assertEqual(normalized.extra["max_sequence_length"], 1)
+
+
+
+class TestModelCardFrontMatter(unittest.TestCase):
+    @unittest.skipUnless(_YAML_INSTALLED, "PyYAML is not installed")
+    def test_a_card_that_starts_with_a_byte_order_mark_is_read(self):
+        from abstractvision.backends.mflux import _read_card_frontmatter
+
+        with tempfile.TemporaryDirectory() as td:
+            card = Path(td) / "README.md"
+            for prefix in (b"", b"\xef\xbb\xbf"):
+                with self.subTest(byte_order_mark=bool(prefix)):
+                    card.write_bytes(prefix + b"---\nbase_model: org/base\n---\n\n# adapter\n")
+                    self.assertEqual(_read_card_frontmatter(card), {"base_model": "org/base"})
 
 
 if __name__ == "__main__":

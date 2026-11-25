@@ -6,7 +6,7 @@ import os
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Set, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -30,8 +30,8 @@ from .base_backend import (
     REQUEST_OPTION_FIELDS,
     SOUNDTRACK_REQUEST_FIELDS,
     VisionBackend,
-    check_quantize,
     option_is_set,
+    request_int,
 )
 
 _INTERNAL_PROGRESS_EXTRA_KEYS = {
@@ -602,8 +602,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         """The remote's GET /vision/models answer, reused for a short while; None when it has none.
 
         Only an answer is kept: the catalog, or a response without one (a 200 that lists no models,
-        an HTTP 4xx: a plain OpenAI image endpoint). A request that failed (timeout, connection
-        error, 5xx) keeps the previous answer, records why in `_discovery_failure`, and is made
+        an HTTP 4xx or 501: a plain OpenAI image endpoint). A request that failed (timeout, connection
+        error, another 5xx) keeps the previous answer, records why in `_discovery_failure`, and is made
         again by the next request that needs it. A caller that refreshes while another is asking
         waits for that answer and reuses it.
         """
@@ -640,7 +640,9 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             answer = {}  # a 200 that is not a JSON object
         except Exception as e:
             cause = e.__cause__
-            if not (isinstance(cause, HTTPError) and int(cause.code) < 500):
+            # An HTTP 4xx, or 501 (a server without the route), is the remote's answer; anything else failed.
+            answered = isinstance(cause, HTTPError) and (int(cause.code) < 500 or int(cause.code) in _NO_ROUTE_STATUSES)
+            if not answered:
                 self._discovery_failure = str(e) or type(e).__name__
                 self._discovery_failed_at = time.monotonic()
                 return
@@ -751,15 +753,17 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         if getattr(request, "cancel_event", None) is not None and self._serves_vision_routes is None and (
             self._discovery_failure is not None
         ):
-            # Whether the remote can cancel a run is unknown: the request is not run uncancellable.
-            raise CapabilityNotSupportedError(
-                f"{type(self).__name__} cannot honour cancel_event: {self._unadvertised_reason()}.",
-                field="cancel_event",
+            # Whether the remote can cancel a run is unknown until it answers: the request is not run
+            # uncancellable. The remote could not be reached, as a failed request is raised.
+            raise RuntimeError(
+                f"OpenAI-compatible provider request failed: {type(self).__name__} cannot run a cancel_event "
+                f"request before the remote says whether it runs jobs: {self._unadvertised_reason()}."
             )
         if not advertised:
             return request, {}, False
         if option_is_set(getattr(request, "quantize", None)):
-            check_quantize(request.quantize)
+            # The integer rule MLX-Gen applies to the same field; the remote receives the width as an int.
+            request = replace(request, quantize=request_int("quantize", request.quantize, label="OpenAI-compatible"))
         fields: Dict[str, Any] = {}
         if named or mode != MEMORY_MODE_DEFAULT:
             fields["memory_mode"] = mode

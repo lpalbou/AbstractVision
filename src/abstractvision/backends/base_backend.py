@@ -82,10 +82,22 @@ def merge_request_option(name: str, value: Any, extra: Mapping[str, Any]) -> Any
     return value
 
 
-def check_quantize(value: Any) -> None:
-    """A load-time `quantize` is a whole bit width: a boolean or a fractional number raises ValueError."""
-    if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
-        raise ValueError(f"quantize must be an integer bit width (got {value!r}).")
+def request_int(name: str, value: Any, *, label: str) -> int:
+    """`value` as an int, or ValueError naming the field: ints, integral floats, decimal strings.
+
+    The one rule for an integer request option (a load-time `quantize` included) on every backend that
+    reads one; `label` names the backend in the message.
+    """
+    if isinstance(value, bool):
+        raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
+        return int(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} {name} must be an integer, got {value!r}.") from None
 
 
 def raise_if_cancelled(cancel_event: Any) -> None:

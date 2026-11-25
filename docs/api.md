@@ -537,9 +537,11 @@ What an application embedding `VisionManager` can rely on:
   The `GenerationCancelledError` an MLX-Gen run raises carries no traceback of
   the run, so a caller that keeps it holds none of the run's memory.
 
-  Other backends check the event before a run starts; the OpenAI-compatible
-  backend also cancels its remote job on a remote that advertises the vision
-  routes. Such a request runs there as a job, which AbstractCore's server refuses
+  Diffusers and stable-diffusion.cpp check the event before a run starts; the
+  OpenAI-compatible backend cancels its remote job on a remote that advertises
+  the vision routes for the model, and elsewhere (the OpenAI API, a remote
+  without those routes, a model the remote does not list) checks the event only
+  before sending. Such a request runs there as a job, which AbstractCore's server refuses
   while another generation runs (a request without `cancel_event` waits instead);
   the backend raises that as a `RuntimeError` saying so.
   `get_capabilities().cancellation` is `"step"` or `"start"`.

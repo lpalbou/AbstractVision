@@ -1144,7 +1144,7 @@ class _AbstractVisionCapability:
             "state": "resident" if pinned else "active",
             "resident": pinned,
             "loaded": True,
-            "source": "explicit_preload" if pinned else "request",
+            "source": facts["source"],
             "loaded_at": facts["loaded_at"],
             "last_used_at": facts["last_used_at"],
             "error": None,
@@ -1175,11 +1175,12 @@ class _AbstractVisionCapability:
         return record
 
     def _note_load(
-        self, binding: Mapping[str, Any], *, task: Optional[str], pinned: bool
+        self, binding: Mapping[str, Any], *, task: Optional[str], pinned: bool, source: Optional[str]
     ) -> Optional[Dict[str, Any]]:
         """Record the plugin's facts about a load of `binding` (a request for `task`, whatever its
         outcome, or a preload) when its backend holds a model now. Returns the load as listed, or
-        None when the backend holds none."""
+        None when the backend holds none. `source` is what loaded a model the plugin had not listed
+        (`request`, `explicit_preload`, or None when unknown); a pinning preload makes it `explicit_preload`."""
         now = time.time()
         backend_key = tuple(binding["backend_key"])
         with self._state_lock:
@@ -1198,12 +1199,15 @@ class _AbstractVisionCapability:
                     "task": None,
                     "tasks": set(),
                     "pinned": False,
+                    "source": source,
                     "loaded_at": now,
                 }
             if task:
                 facts["task"] = str(task)
                 facts["tasks"].add(str(task))
             facts["pinned"] = bool(facts["pinned"] or pinned)
+            if pinned:
+                facts["source"] = "explicit_preload"
             facts["last_used_at"] = now
             self._load_facts[backend_key] = facts
             return self._loaded_record(facts)
@@ -1211,7 +1215,7 @@ class _AbstractVisionCapability:
     def _record_request_run(self, binding: Mapping[str, Any], *, task: str) -> None:
         # After a request, whatever its outcome: the model its backend holds now is listed.
         if binding.get("local_control"):
-            self._note_load(binding, task=task, pinned=False)
+            self._note_load(binding, task=task, pinned=False, source="request")
 
     def _activate_request_backend(self, binding: Mapping[str, Any]) -> Any:
         backend = binding["backend"]
@@ -2028,9 +2032,9 @@ class _AbstractVisionCapability:
             binding["backend"].preload(**options)
         except BaseException:
             # What a failed preload leaves held is listed, unpinned.
-            self._note_load(binding, task=task, pinned=False)
+            self._note_load(binding, task=task, pinned=False, source="explicit_preload")
             raise
-        record = self._note_load(binding, task=task, pinned=True)
+        record = self._note_load(binding, task=task, pinned=True, source="explicit_preload")
         if record is None:
             record = self._absent_record(
                 binding, task=task, state="not_loaded", reason="this backend holds no model in this process"
@@ -2094,7 +2098,7 @@ class _AbstractVisionCapability:
             unload_now = self._retire_backend_locked(backend)
         self._unload_backend(unload_now)
         # Reported as listed now: a model a running request still holds stays listed until it ends.
-        held = self._note_load({**record, "backend_key": backend_key}, task=None, pinned=False)
+        held = self._note_load({**record, "backend_key": backend_key}, task=None, pinned=False, source=None)
         return held if held is not None else self._absent_record(record, task=task, state="unloaded")
 
     def _configured_binding_matching(self, filters: Mapping[str, Any]) -> Optional[Dict[str, Any]]:

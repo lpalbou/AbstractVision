@@ -147,9 +147,9 @@ Some models include a `downloads` list to document what AbstractVision considers
 - `repo_id`: Hugging Face repo id to download
 - optional `source`, `notes`
 - optional `recommended: true`: the package `download <name>` selects when several packages of one target
-  remain and no `--bits` is given; at most one per model and target (a test checks it). Besides MiniMax-H3's
-  8-bit package, it marks the package 0.3.36 selected where a name had several (Qwen-Image-2512, FIBO,
-  SeedVR2), and `catalog` shows it with `*` in `bits`
+  remain and no `--bits` is given; at most one per model and target (a test checks it). It marks
+  MiniMax-H3's and SeedVR2's 8-bit packages, FIBO's 4-bit package and Qwen-Image-2512's 4-bit MLX-Gen
+  package, GGUF and Diffusers pipeline, and `catalog` shows it with `*` in `bits`
 - optional `gated: true`: the Hugging Face repository is gated; downloading it needs its licence
   accepted on the repository page (the model's optional `license_name` names it in messages)
 - optional `explicit_download: true`: generation (MLX-Gen and Diffusers) never downloads this repository, even with

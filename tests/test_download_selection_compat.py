@@ -3,8 +3,10 @@
 The table is data: every catalog model id, package repo id, preset key and alias for which 0.3.36 (`eea267d`), run
 with no `--provider`, `--target`, `--bits` or `--allow-non-8bit`, selected one package, per host profile, recorded by
 running 0.3.36's download selection with the fetch replaced by a recorder. Names for which 0.3.36 fetched a whole
-repository unfiltered (`tencent/HunyuanVideo-1.5` and the like) are not in it: those now stop and list their packages.
-Where several packages of one target remain, the catalog marks the one 0.3.36 selected `recommended`.
+repository unfiltered are not in it: those with several packages in the chosen target and none recommended
+(`tencent/HunyuanVideo-1.5` and the like) stop and list them, and on Apple silicon `Qwen/Qwen-Image-2512`,
+`briaai/FIBO`, `ByteDance-Seed/SeedVR2-3B` and `-7B` select their recommended package. Where several packages of one
+target remain, the catalog marks the one 0.3.36 selected `recommended`.
 """
 
 from __future__ import annotations
@@ -483,6 +485,72 @@ class TestSelectionWithoutFlagsMatches036(unittest.TestCase):
                 for name, repo_id in table.items():
                     with self.subTest(profile=profile, name=name):
                         self.assertEqual(md.select_download_preset(name).repo_id, repo_id)
+
+
+class TestBitsSelectsThatWidth(unittest.TestCase):
+    """`--bits N` selects a package of width N, or stops saying none has that width and listing the widths."""
+
+    FLAG_SETS = (
+        {},
+        {"engine": "mlx-gen"},
+        {"target": "mlx"},
+        {"allow_non_8bit": True},
+        {"engine": "diffusers"},
+        {"target": "gguf"},
+    )
+
+    def test_every_name_flag_set_and_host_selects_the_width_asked_or_says_none_has_it(self):
+        names = set()
+        for preset in md._all_presets():
+            names |= {preset.key, preset.repo_id, *preset.aliases}
+            if preset.upstream_repo_id:
+                names.add(preset.upstream_repo_id)
+        for profile in ("apple-silicon", "cuda", "cpu"):
+            with patch.object(md, "local_model_profile", return_value=profile):
+                for name in sorted(names):
+                    for flags in self.FLAG_SETS:
+                        for bits in (4, 8, 16):
+                            try:
+                                preset = md.select_download_preset(name, bits=bits, **flags)
+                            except ValueError as refusal:
+                                message = str(refusal)
+                                with self.subTest(profile=profile, name=name, flags=flags, bits=bits):
+                                    # A package of another width named exactly, several of this width with
+                                    # none recommended, or none of this width (listed with their widths).
+                                    self.assertTrue(
+                                        f"No {bits}-bit" in message
+                                        or "-bit package; drop --bits" in message
+                                        or "the catalog recommends none of them" in message,
+                                        message,
+                                    )
+                                    if f"No {bits}-bit" in message:
+                                        self.assertIn("-bit)", message)
+                                continue
+                            if int(preset.quantization_bits or 0) != bits:
+                                with self.subTest(profile=profile, name=name, flags=flags, bits=bits):
+                                    self.fail(f"{preset.repo_id} is {preset.quantization_bits}-bit")
+
+    def test_the_reviewed_rows(self):
+        rows = (
+            ("apple-silicon", "MiniMaxAI/MiniMax-H3", {"engine": "mlx-gen", "bits": 4}, "AbstractFramework/minimax-h3-4bit"),
+            ("cuda", "MiniMaxAI/MiniMax-H3", {"engine": "mlx-gen", "bits": 4}, "AbstractFramework/minimax-h3-4bit"),
+            ("apple-silicon", "MiniMaxAI/MiniMax-H3", {"engine": "mlx-gen", "bits": 16}, "MiniMaxAI/MiniMax-H3"),
+            ("apple-silicon", "briaai/FIBO", {"target": "mlx", "bits": 4}, "AbstractFramework/fibo-4bit"),
+            ("apple-silicon", "briaai/FIBO", {"allow_non_8bit": True, "bits": 8}, "AbstractFramework/fibo-8bit"),
+            ("apple-silicon", "ByteDance-Seed/SeedVR2-3B", {"engine": "mlx-gen", "bits": 8}, "AbstractFramework/seedvr2-3b-8bit"),
+            ("apple-silicon", "Tongyi-MAI/Z-Image", {"bits": 16}, "Tongyi-MAI/Z-Image"),
+            ("cuda", "Tongyi-MAI/Z-Image", {"bits": 16}, "Tongyi-MAI/Z-Image"),
+            ("apple-silicon", "MiniMaxAI/MiniMax-H3", {"bits": 16}, "AbstractFramework/minimax-h3-bf16"),
+        )
+        for profile, name, kwargs, repo_id in rows:
+            with self.subTest(profile=profile, name=name, kwargs=kwargs), patch.object(
+                md, "local_model_profile", return_value=profile
+            ):
+                self.assertEqual(md.select_download_preset(name, **kwargs).repo_id, repo_id)
+        for profile in ("apple-silicon", "cuda", "cpu"):
+            with self.subTest(profile=profile), patch.object(md, "local_model_profile", return_value=profile):
+                with self.assertRaisesRegex(ValueError, r"No 4-bit package for 'briaai/Fibo-Edit'.*\(16-bit\)"):
+                    md.select_download_preset("briaai/Fibo-Edit", bits=4)
 
 
 class TestRecommendedPackages(unittest.TestCase):

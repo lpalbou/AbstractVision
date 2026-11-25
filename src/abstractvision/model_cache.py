@@ -146,6 +146,24 @@ def default_hf_cache_root() -> Path:
     return Path.home() / ".cache" / "huggingface" / "hub"
 
 
+def _hub_client_cache_root() -> Path:
+    """The cache huggingface_hub reads, by the precedence of its `constants.HF_HUB_CACHE` (0.x and 1.x).
+
+    Read from the environment when called, as the other roots are: the library's constant is fixed when
+    huggingface_hub is imported.
+    """
+
+    for key in ("HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE"):
+        value = os.environ.get(key)
+        if value:
+            return _expand_path(value)
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return _expand_path(hf_home) / "hub"
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    return (_expand_path(xdg_cache) if xdg_cache else Path.home() / ".cache") / "huggingface" / "hub"
+
+
 def hf_cache_roots(
     *,
     cache_dir: Optional[str] = None,
@@ -186,6 +204,7 @@ def hf_cache_roots(
     if hf_home:
         add("HF_HOME", _expand_path(hf_home) / "hub")
     add("default HF cache", default_hf_cache_root())
+    add("huggingface_hub cache", _hub_client_cache_root())
     for root in extra_roots or ():
         if isinstance(root, tuple) and len(root) == 2:
             label, value = root

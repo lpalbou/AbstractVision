@@ -288,8 +288,8 @@ class TestLoadedModelsAreDerivedFromTheBackends(unittest.TestCase):
         self.backend.preload = lambda: (_ for _ in ()).throw(GenerationCancelledError("stop"))
         with self.assertRaises(GenerationCancelledError):
             self._load()
-        (record,) = self.cap.list_loaded_models()  # still held: still listed, still unpinned
-        self.assertEqual((record["resident"], record["tasks"]), (False, ["text_to_image"]))
+        (record,) = self.cap.list_loaded_models()  # still held: still listed, still unpinned, loaded by the request
+        self.assertEqual((record["resident"], record["tasks"], record["source"]), (False, ["text_to_image"], "request"))
 
     def test_a_cancelled_run_is_listed_as_the_backend_left_it(self):
         from abstractvision.errors import GenerationCancelledError
@@ -346,7 +346,8 @@ class TestLoadedModelsAreDerivedFromTheBackends(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
             self._load()
         (record,) = self.cap.list_loaded_models()
-        self.assertEqual((record["state"], record["resident"]), ("active", False))
+        # The preload loaded it: that is its source, though it is not pinned.
+        self.assertEqual((record["state"], record["resident"], record["source"]), ("active", False, "explicit_preload"))
 
     def test_an_unload_during_a_first_request_reports_what_is_held_when_it_returns(self):
         started, finish = threading.Event(), threading.Event()
@@ -908,6 +909,8 @@ class TestTheEntryIsTheModelSent(unittest.TestCase):
                     raise HTTPError(req.full_url, 404, "status", {}, io.BytesIO(b"{}"))
                 if self.discovery == "down":
                     raise URLError("connection refused")
+                if isinstance(self.discovery, int):
+                    raise HTTPError(req.full_url, self.discovery, "status", {}, io.BytesIO(b"{}"))
                 return _Response(json.dumps(self.discovery).encode())
             self.posts.append(json.loads(req.data))
             return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
@@ -983,24 +986,51 @@ class TestTheEntryIsTheModelSent(unittest.TestCase):
         backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"sampler": "a"}))
         self.assertEqual((len(self.gets), self.posts[-1]["extra"]), (2, {"sampler": "a"}))
 
-    def test_cancel_event_is_refused_when_the_remote_s_kind_is_unknown(self):
+    def test_cancel_event_fails_as_a_failed_request_while_the_remote_s_kind_is_unknown(self):
         from abstractvision.errors import CapabilityNotSupportedError
         from abstractvision.types import ImageGenerationRequest
 
-        self.discovery = "down"
-        backend = self._backend("p/m")
-        with self.assertRaises(CapabilityNotSupportedError) as ctx:
-            backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
-        self.assertEqual(ctx.exception.field, "cancel_event")
-        self.assertIn("connection refused", str(ctx.exception))
-        self.assertEqual(self.posts, [])
-        # A remote known to be plain runs it, checking the event before it starts.
-        self.discovery = None
-        plain = self._backend("p/m")
-        plain.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
-        self.assertEqual(len(self.posts), 1)
+        for failure in ("down", 503):
+            with self.subTest(failure=failure):
+                self.discovery = failure
+                backend = self._backend("p/m")
+                with self.assertRaisesRegex(RuntimeError, "OpenAI-compatible provider request failed") as ctx:
+                    backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+                self.assertNotIsInstance(ctx.exception, CapabilityNotSupportedError)
+                self.assertIn("GET /vision/models failed", str(ctx.exception))
+                self.assertEqual(self.posts, [])
 
-    def test_a_boolean_or_fractional_quantize_is_not_a_bit_width(self):
+    def test_a_remote_that_answers_it_has_no_vision_routes_runs_cancel_event_as_a_plain_request(self):
+        from abstractvision.errors import GenerationCancelledError
+        from abstractvision.types import ImageGenerationRequest
+
+        # 404, 405 and 501 from the discovery route are answers, kept: the OpenAI API, a plain remote and a
+        # vision-route remote that does not list the model run the request plainly, the event checked before
+        # sending.
+        for answer in (None, 405, 501, {"models": [{"routed_model": "other/model", "memory_modes": ["default"]}]}):
+            with self.subTest(answer=answer):
+                self.discovery, self.gets[:], self.posts[:] = answer, [], []
+                backend = self._backend("p/m")
+                backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+                backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+                self.assertEqual(len(self.posts), 2)
+                if not isinstance(answer, dict):
+                    self.assertEqual(len(self.gets), 1)  # kept: not asked again
+                    self.assertFalse(backend._serves_vision_routes)
+                stopped = threading.Event()
+                stopped.set()
+                with self.assertRaises(GenerationCancelledError):
+                    backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=stopped))
+                self.assertEqual(len(self.posts), 2)
+        openai = self.oc.OpenAICompatibleVisionBackend(
+            config=self.oc.OpenAICompatibleBackendConfig(base_url="https://api.openai.com/v1", model_id="gpt-image-1")
+        )
+        self.gets[:], self.posts[:] = [], []
+        openai.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+        self.assertEqual((len(self.posts), self.gets), (1, []))
+
+    def test_quantize_is_read_by_the_integer_rule_mlx_gen_uses(self):
+        from abstractvision.backends.base_backend import request_int
         from abstractvision.types import ImageGenerationRequest
 
         self.discovery = {"models": [{"routed_model": "p/m", "memory_modes": ["default"]}]}
@@ -1008,15 +1038,20 @@ class TestTheEntryIsTheModelSent(unittest.TestCase):
         for request in (
             ImageGenerationRequest(prompt="fox", quantize=True),
             ImageGenerationRequest(prompt="fox", quantize=8.5),
+            ImageGenerationRequest(prompt="fox", quantize="x"),
+            ImageGenerationRequest(prompt="fox", quantize="none"),
             ImageGenerationRequest(prompt="fox", memory_mode="default", extra={"quantize": False}),
         ):
             with self.subTest(request=request.quantize or request.extra), self.assertRaisesRegex(
-                ValueError, "quantize must be an integer bit width"
+                ValueError, "quantize must be an integer"
             ):
                 backend.generate_image(request)
         self.assertEqual(self.posts, [])
-        backend.generate_image(ImageGenerationRequest(prompt="fox", quantize=8))
-        self.assertEqual(self.posts[-1]["quantize"], 8)
+        for value in (8, 8.0, "8", " 8 "):
+            with self.subTest(quantize=value):
+                backend.generate_image(ImageGenerationRequest(prompt="fox", quantize=value))
+                self.assertEqual(self.posts[-1]["quantize"], request_int("quantize", value, label="MLX-Gen"))
+                self.assertEqual(self.posts[-1]["quantize"], 8)
 
 
 class TestTheRemoteKindIsAskedOnce(unittest.TestCase):

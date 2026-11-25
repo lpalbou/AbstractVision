@@ -2397,6 +2397,7 @@ def find_model_preset(
             and (selected_engine is None or p.engine == selected_engine)
             and "/" in requested
             and requested == str(p.repo_id or "").strip().lower()
+            and (bits is None or int(p.quantization_bits or 0) == int(bits))
         ]
         if exact_non_abstractframework_matches and not require_8bit:
             return sorted(
@@ -2423,6 +2424,9 @@ def find_model_preset(
                     f"name the {int(bits)}-bit package."
                 )
             return chosen
+        # With --bits, only the packages of that width; when none has it, the general path below looks
+        # through every target of the host for one.
+        mlx_gen_matches = [p for p in mlx_gen_matches if bits is None or int(p.quantization_bits or 0) == int(bits)]
         if mlx_gen_matches and (bits is not None or any(p.recommended for p in mlx_gen_matches)):
             picked = _pick_package(name, mlx_gen_matches, bits=bits)
             if picked is not None:
@@ -2442,7 +2446,7 @@ def find_model_preset(
             )
             raise ValueError(
                 f"{name!r} names several MLX-Gen packages and the catalog recommends none of them: "
-                f"name one of {available}, or pass --bits{source}."
+                f"name one of {available}" + (", or pass --bits" if bits is None else "") + f"{source}."
             )
 
     def _sort_key(preset: VisionModelDownloadPreset) -> tuple[int, int, str]:
@@ -2501,16 +2505,22 @@ def find_model_preset(
         if len(possible_targets) == 1:
             fallback_target = possible_targets[0]
             fallback = [p for p in any_engine_matches if p.target == fallback_target]
-            packages = [p for p in fallback if _is_abstractframework_mlx_gen_preset(p)]
-            exact = [p for p in fallback if p.repo_id.lower() == requested]
-            if download_rule and not require_8bit and exact and bits is None:
+            of_width = [p for p in fallback if bits is None or int(p.quantization_bits or 0) == int(bits)]
+            packages = [p for p in of_width if _is_abstractframework_mlx_gen_preset(p)]
+            exact = [p for p in of_width if p.repo_id.lower() == requested]
+            if download_rule and not require_8bit and exact:
                 # As on a host whose targets include it: a repository named exactly is that repository.
                 return sorted(exact, key=_sort_key)[0]
             if packages and (bits is not None or any(p.recommended for p in packages)):
                 picked = _pick_package(name, packages, bits=bits)
                 if picked is not None:
                     return picked
-            if require_8bit:
+            if bits is not None:
+                if not of_width:
+                    available = ", ".join(sorted({f"{p.repo_id} ({p.quantization_bits}-bit)" for p in fallback}))
+                    raise ValueError(f"No {int(bits)}-bit package for {name!r}. Available: {available}")
+                fallback = of_width
+            elif require_8bit:
                 quantized = [p for p in fallback if _is_default_quantized_preset(p)]
                 if quantized:
                     fallback = quantized
@@ -2519,23 +2529,33 @@ def find_model_preset(
     if target_matches and bits is None and len({p.repo_id for p in target_matches}) == 1:
         # One repository: a model with a single package selects it, whatever its width.
         return sorted(target_matches, key=_sort_key)[0]
+    width = f"{int(bits)}-bit " if bits is not None else ("8-bit " if require_8bit else "")
+
+    def _listed(choices: Sequence[VisionModelDownloadPreset]) -> str:
+        return ", ".join(
+            sorted(
+                {
+                    f"{p.target}/{p.engine}:{p.repo_id}" + (f" ({p.quantization_bits}-bit)" if bits is not None else "")
+                    for p in choices
+                }
+            )
+        )
+
     if target_matches:
-        available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in target_matches}))
         engine_msg = f" and engine {selected_engine!r}" if selected_engine else ""
         raise ValueError(
-            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
-            f"Available target/repo choices: {available}"
+            f"No {width}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
+            f"Available target/repo choices: {_listed(target_matches)}"
         )
     if any_engine_matches:
-        available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
         if selected_engine:
             raise ValueError(
-                f"No {'8-bit ' if require_8bit else ''}preset for {name!r} with engine {selected_engine!r}. "
-                f"Available target/engine choices: {available}"
+                f"No {width}preset for {name!r} with engine {selected_engine!r}. "
+                f"Available target/engine choices: {_listed(any_engine_matches)}"
             )
         raise ValueError(
-            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}. "
-            f"Available target/engine choices: {available}"
+            f"No {width}preset for {name!r} on target {selected_target_label!r}. "
+            f"Available target/engine choices: {_listed(any_engine_matches)}"
         )
     raise ValueError(
         f"{name!r} is not in the AbstractVision catalog. `abstractvision catalog` lists its models "
@@ -2642,11 +2662,12 @@ def select_download_preset(
     `--allow-non-8bit`); ValueError says why there is none.
 
     A catalog model with a single package selects it; with several packages of one engine, the one the
-    catalog recommends, else `bits` picks by width and otherwise the packages are listed. Across
+    catalog recommends, else the packages are listed. `bits` selects among the packages of that width only,
+    in every target of the host, or ValueError says none has it and lists the widths there are. Across
     targets the host's order decides, preferring an 8-bit package unless `allow_non_8bit`; with
     `allow_non_8bit` a repository named exactly selects that repository instead of a package made from it.
     A Diffusers or snapshot target, or an MLX-Gen engine or target named explicitly, does not require 8 bits
-    (so `briaai/FIBO --provider mlx-gen` is that source repository, as in 0.3.36). A
+    (so `briaai/FIBO --provider mlx-gen` is that source repository). A
     Hugging Face `owner/name` the catalog does not name is the whole repository (`repository_preset`)."""
 
     raw_target = str(target or "auto").strip().lower()
