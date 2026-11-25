@@ -44,7 +44,8 @@ optional.
     OpenAI-compatible backends accept `default` only.
   - A mode named on a request that the backend cannot honour raises `CapabilityNotSupportedError` before any model
     loads or any request is sent, in `VisionManager` and in every backend. A process default the backend cannot
-    honour runs as the closest lower-memory mode the backend lists, with one warning.
+    honour runs as the nearest less aggressive mode the backend lists (`lowest` → `low` → `default`), with one
+    warning.
   - Image, edit and Wan models run in `low` are loaded again on the next request, and the AbstractCore plugin then
     removes their loaded-model record; batches keep the model until their last item. Overlapping runs share one
     process-wide MLX cache limit, and MLX-Gen's default cap is restored when the last one ends.

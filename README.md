@@ -278,8 +278,9 @@ sizes.
 Every generation request also takes `memory_mode` (CLI `--memory-mode`,
 process default `ABSTRACTVISION_MEMORY_MODE`): `"low"` runs MLX-Gen in its
 low-RAM mode, Diffusers on CUDA with model CPU offload and stable-diffusion.cpp
-with CPU offload of its parameters; `"lowest"` runs Diffusers on CUDA with
-sequential CPU offload. A mode the provider cannot honour is refused. See
+with CPU offload of its parameters; `"lowest"` runs MLX-Gen with block
+streaming (MiniMax-H3) and Diffusers on CUDA with sequential CPU offload. A mode
+the provider cannot honour is refused. See
 [docs/api.md](docs/api.md#memory-modes-memory_mode).
 
 ### Shared LoRA adapters

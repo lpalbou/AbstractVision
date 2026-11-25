@@ -199,8 +199,9 @@ Wan LoRA calls may also need `target_role` in each adapter spec. TI2V-5B uses
 To lower a run's memory peak, pass `memory_mode` (`"default"`, `"low"` or
 `"lowest"`) to `t2i`, `i2i`, `upscale_image`, `t2v`, `i2v` or their `_batch`
 variants; without it, `$ABSTRACTVISION_MEMORY_MODE` applies, else `"default"`
-(a backend that cannot honour the environment value runs the closest lower-memory
-mode it lists and logs it once; a value passed on the call is refused instead).
+(a backend that cannot honour the environment value runs the nearest less
+aggressive mode it lists, `lowest` → `low` → `default`, and logs it once; a value
+passed on the call is refused instead).
 MLX-Gen runs `"low"` in its low-RAM mode, Diffusers on CUDA runs `"low"` /
 `"lowest"` with model / sequential CPU offload, and stable-diffusion.cpp runs
 `"low"` with CPU offload of its parameters (see
