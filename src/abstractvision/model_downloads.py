@@ -5,16 +5,18 @@ import platform
 import shutil
 import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from .capability_assets import load_json_asset
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_cache import (
     default_hf_cache_root,
     default_legacy_model_root,
     ensure_hf_repo_snapshot,
+    hf_repo_dir,
     hf_snapshot_is_usable,
     resolve_hf_repo_snapshot,
 )
@@ -74,6 +76,13 @@ class VisionModelDownloadPreset:
     allow_patterns: Tuple[str, ...]
     notes: str = ""
     source_priority: int = 100
+    # Hugging Face facts from `assets/vision_model_hub_facts.json`: whether the repository is
+    # gated (access needs the licence accepted on its page) and how many bytes `download` fetches.
+    gated: bool = False
+    download_bytes: Optional[int] = None
+    # The package `download <model id>` picks when the model has several and no `--bits` is given.
+    recommended: bool = False
+    license_name: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         out = asdict(self)
@@ -100,6 +109,8 @@ class VisionModelDownloadPreset:
 # destination.
 DEFAULT_MODEL_DIR = Path("~/models")
 HF_TOKEN_SETTINGS_URL = "https://huggingface.co/settings/tokens"
+HUB_FACTS_ASSET_PATH = "assets/vision_model_hub_facts.json"
+HUB_FACTS_ENV_VAR = "ABSTRACTVISION_HUB_FACTS_PATH"
 
 
 _COMMON_MLX_PATTERNS = (
@@ -119,6 +130,13 @@ _COMMON_MLX_PATTERNS = (
     "vae/*",
     "text_encoder-mlx-4bit/*",
     "assets/*",
+    "*.jinja",
+    # Wan 2.2 A14B: the low-noise expert.
+    "transformer_2/*",
+    # MiniMax-H3: the soundtrack decoder and its schedule, and the licence notice.
+    "audio_vae/*",
+    "audio_scheduler/*",
+    "NOTICE*",
 )
 
 _COMMON_DIFFUSERS_PATTERNS = (
@@ -169,25 +187,94 @@ _STABLE_DIFFUSION_DIFFUSERS_PATTERNS = (
 
 
 class HuggingFaceAccessError(RuntimeError):
-    def __init__(self, repo_id: str, *, raw_message: str = "", status_code: Optional[int] = None):
+    def __init__(
+        self,
+        repo_id: str,
+        *,
+        raw_message: str = "",
+        status_code: Optional[int] = None,
+        license_name: str = "",
+    ):
         self.repo_id = str(repo_id)
         self.repo_url = f"https://huggingface.co/{self.repo_id}"
         self.token_url = HF_TOKEN_SETTINGS_URL
         self.raw_message = str(raw_message or "").strip()
         self.status_code = status_code
+        self.license_name = str(license_name or "").strip()
         detail = f" ({status_code})" if status_code else ""
+        terms = f"the {self.license_name}" if self.license_name else "the model terms"
         msg = (
-            f"Cannot access Hugging Face repo {self.repo_id!r}{detail}.\n"
-            f"1. Open {self.repo_url} and accept the model terms or request access.\n"
+            f"Cannot access Hugging Face repo {self.repo_id!r}{detail}: the repository is gated or your "
+            "account has no access to it.\n"
+            f"1. Open {self.repo_url} while logged in to Hugging Face and accept {terms} "
+            "(or request access).\n"
             f"2. Create or copy a Hugging Face read token at {self.token_url}.\n"
             "3. Retry with one of:\n"
             "   - `abstractvision download ... --token <HF_TOKEN>`\n"
             "   - `hf auth login` (or `huggingface-cli login`)\n"
             "   - `export HF_TOKEN=...` (or `export HUGGINGFACE_HUB_TOKEN=...`)\n"
         )
-        if self.raw_message:
-            msg += f"Upstream error: {self.raw_message}"
+        first_line = next((line.strip() for line in self.raw_message.splitlines() if line.strip()), "")
+        if first_line:
+            msg += f"Upstream error: {first_line}"
         super().__init__(msg)
+
+
+class InsufficientDiskSpaceError(RuntimeError):
+    """Raised before a download starts when the Hugging Face cache disk cannot hold it."""
+
+
+@dataclass(frozen=True)
+class HubDownloadPlan:
+    """What a download fetches, measured against the Hugging Face cache before it starts.
+
+    `total_bytes` is None when neither the Hub listing nor the packaged facts give a size (the
+    disk check is then skipped rather than guessed). `present_bytes` counts complete files and
+    partial `.incomplete` ones already in the cache: a download resumes from them."""
+
+    repo_id: str
+    cache_dir: Path
+    total_bytes: Optional[int]
+    present_bytes: int
+    free_bytes: Optional[int]
+    files: Tuple[str, ...] = ()
+    size_source: str = "unknown"
+
+    @property
+    def missing_bytes(self) -> Optional[int]:
+        if self.total_bytes is None:
+            return None
+        return max(0, int(self.total_bytes) - int(self.present_bytes))
+
+    @property
+    def resumes(self) -> bool:
+        return self.present_bytes > 0 and (self.missing_bytes or 0) > 0
+
+    def summary_lines(self) -> List[str]:
+        if self.total_bytes is None:
+            return [f"download size: unknown (the Hugging Face listing of {self.repo_id} is not available)"]
+        lines = [f"download size: {format_bytes(self.total_bytes)} into {self.cache_dir}"]
+        if self.missing_bytes == 0:
+            lines.append("cache: every file is already present")
+        elif self.resumes:
+            lines.append(
+                f"cache: resuming, {format_bytes(self.present_bytes)} already present, "
+                f"{format_bytes(self.missing_bytes or 0)} to fetch"
+            )
+        if self.free_bytes is not None:
+            lines.append(f"free disk space: {format_bytes(self.free_bytes)}")
+        return lines
+
+
+def format_bytes(value: Optional[int]) -> str:
+    if value is None:
+        return "unknown"
+    amount = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if amount < 1024.0 or unit == "GiB":
+            return f"{amount:.0f} {unit}" if unit == "B" else f"{amount:.1f} {unit}"
+        amount /= 1024.0
+    return f"{amount:.1f} GiB"
 
 
 _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
@@ -1682,12 +1769,20 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
     try:
         reg = VisionModelCapabilitiesRegistry()
     except Exception:
-        return tuple(sorted(out, key=lambda p: (p.key, p.source_priority, p.repo_id)))
+        return tuple(
+            sorted(
+                (_with_hub_facts(p, None) for p in out),
+                key=lambda p: (p.key, p.source_priority, p.repo_id),
+            )
+        )
 
+    recommended: set[tuple[str, str, str, str]] = set()
     for model_id in reg.list_models():
         spec = reg.get(model_id)
         for dl in spec.downloads:
             key = (dl.key, dl.engine, dl.target, dl.repo_id)
+            if dl.recommended:
+                recommended.add(key)
             if key in seen:
                 continue
             seen.add(key)
@@ -1731,7 +1826,54 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
                 )
             )
 
-    return tuple(sorted(out, key=lambda p: (p.key, p.source_priority, p.repo_id)))
+    enriched = [
+        replace(
+            _with_hub_facts(p, reg),
+            recommended=(p.key, p.engine, p.target, p.repo_id) in recommended,
+        )
+        for p in out
+    ]
+    return tuple(sorted(enriched, key=lambda p: (p.key, p.source_priority, p.repo_id)))
+
+
+@lru_cache(maxsize=1)
+def hub_facts() -> Dict[str, Dict[str, Any]]:
+    """Per-repository Hugging Face facts (gating, download size) packaged with AbstractVision.
+
+    Written by `scripts/refresh_hub_facts.py` from the Hub's public metadata API. Empty when the
+    asset cannot be read."""
+
+    try:
+        data = load_json_asset(
+            package="abstractvision",
+            default_asset_path=HUB_FACTS_ASSET_PATH,
+            env_var=HUB_FACTS_ENV_VAR,
+            label="Hub facts asset",
+        )
+    except Exception:
+        return {}
+    repos = data.get("repos") if isinstance(data, dict) else None
+    return {str(k): v for k, v in repos.items() if isinstance(v, dict)} if isinstance(repos, dict) else {}
+
+
+def _with_hub_facts(
+    preset: VisionModelDownloadPreset, reg: Optional[VisionModelCapabilitiesRegistry]
+) -> VisionModelDownloadPreset:
+    facts = hub_facts().get(str(preset.repo_id), {})
+    sizes = facts.get("download_bytes") if isinstance(facts.get("download_bytes"), dict) else {}
+    size = sizes.get(str(preset.target))
+    license_name = ""
+    if reg is not None:
+        try:
+            license_name = reg.get(str(preset.upstream_repo_id or preset.repo_id)).license_name
+        except Exception:
+            license_name = ""
+    return replace(
+        preset,
+        gated=facts.get("gated") is True,
+        download_bytes=int(size) if isinstance(size, int) and size > 0 else None,
+        license_name=license_name,
+    )
 
 
 @lru_cache(maxsize=1)
@@ -1919,12 +2061,36 @@ def _is_default_quantized_preset(preset: VisionModelDownloadPreset) -> bool:
     return bits == 8
 
 
+def _pick_package(
+    name: str, matches: Sequence[VisionModelDownloadPreset], *, bits: Optional[int]
+) -> Optional[VisionModelDownloadPreset]:
+    """One preset among several packages a model selector matches, or None when it stays ambiguous.
+
+    `bits` names the width; without it the package the catalog marks `recommended` is chosen."""
+
+    if bits is not None:
+        width = [p for p in matches if int(p.quantization_bits or 0) == int(bits)]
+        if not width:
+            available = ", ".join(
+                sorted({f"{p.repo_id} ({p.quantization_bits}-bit)" for p in matches})
+            )
+            raise ValueError(f"No {int(bits)}-bit package for {name!r}. Available: {available}")
+        matches = width
+    if len({p.repo_id for p in matches}) == 1:
+        return sorted(matches, key=lambda p: (p.source_priority, p.repo_id))[0]
+    flagged = [p for p in matches if p.recommended]
+    if len({p.repo_id for p in flagged}) == 1:
+        return flagged[0]
+    return None
+
+
 def find_model_preset(
     name: str,
     *,
     target: Optional[str] = "auto",
     engine: Optional[str] = None,
     require_8bit: bool = True,
+    bits: Optional[int] = None,
 ) -> VisionModelDownloadPreset:
     raw_target = str(target or "auto").strip().lower()
     requested = str(name or "").strip().lower()
@@ -1987,10 +2153,20 @@ def find_model_preset(
         ]
         exact_matches = [p for p in mlx_gen_matches if requested in _exact_repo_selectors(p)]
         if exact_matches:
-            return sorted(
+            chosen = sorted(
                 exact_matches,
                 key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
             )[0]
+            if bits is not None and int(chosen.quantization_bits or 0) != int(bits):
+                raise ValueError(
+                    f"{chosen.repo_id} is the {chosen.quantization_bits}-bit package; drop --bits or "
+                    f"name the {int(bits)}-bit package."
+                )
+            return chosen
+        if mlx_gen_matches and (bits is not None or any(p.recommended for p in mlx_gen_matches)):
+            picked = _pick_package(name, mlx_gen_matches, bits=bits)
+            if picked is not None:
+                return picked
         if mlx_gen_matches:
             if requested in {"seedvr2", "seedvr2-3b", "seedvr2-7b"}:
                 preferred = [
@@ -2013,7 +2189,7 @@ def find_model_preset(
             available = ", ".join(sorted({p.repo_id for p in mlx_gen_matches}))
             raise ValueError(
                 f"MLX-Gen model selector {name!r} is not an exact published model id. "
-                f"Use one of: {available}"
+                f"Use one of: {available} (or pass --bits)"
             )
 
     def _sort_key(preset: VisionModelDownloadPreset) -> tuple[int, int, str]:
@@ -2026,8 +2202,10 @@ def find_model_preset(
         and (selected_engine is None or p.engine == selected_engine)
         and matches(p)
     ]
-    if require_8bit:
+    if require_8bit and bits is None:
         candidates = [p for p in candidates if _is_default_quantized_preset(p)]
+    if bits is not None:
+        candidates = [p for p in candidates if int(p.quantization_bits or 0) == int(bits)]
     if candidates:
         return sorted(candidates, key=_sort_key)[0]
 
@@ -2060,6 +2238,11 @@ def find_model_preset(
         if len(possible_targets) == 1:
             fallback_target = possible_targets[0]
             fallback = [p for p in any_engine_matches if p.target == fallback_target]
+            packages = [p for p in fallback if _is_abstractframework_mlx_gen_preset(p)]
+            if packages and (bits is not None or any(p.recommended for p in packages)):
+                picked = _pick_package(name, packages, bits=bits)
+                if picked is not None:
+                    return picked
             if require_8bit:
                 quantized = [p for p in fallback if _is_default_quantized_preset(p)]
                 if quantized:
@@ -2091,6 +2274,30 @@ def find_model_preset(
             f"Available target/engine choices: {available}"
         )
     raise ValueError(f"Unknown vision model preset {name!r}. Known presets: {', '.join(known)}")
+
+
+def preset_for(repo_id: str, *, target: str, engine: str) -> Optional[VisionModelDownloadPreset]:
+    """The download preset for one repository, target and engine, or None."""
+
+    for preset in _all_presets():
+        if (preset.repo_id, preset.target, preset.engine) == (str(repo_id), str(target), str(engine)):
+            return preset
+    return None
+
+
+def catalog_names_model(name: str) -> bool:
+    """Whether `name` is a key, alias, repository or upstream model id of any download preset."""
+
+    requested = str(name or "").strip().lower()
+    if not requested:
+        return False
+    for preset in _all_presets():
+        names = {str(preset.key).lower(), str(preset.repo_id).lower(), *(a.lower() for a in preset.aliases)}
+        if preset.upstream_repo_id:
+            names.add(str(preset.upstream_repo_id).lower())
+        if requested in names:
+            return True
+    return False
 
 
 def default_download_root() -> Path:
@@ -2152,6 +2359,139 @@ def _snapshot_requirements_for_preset(
     return tuple(), False
 
 
+def _existing_parent(path: Path) -> Path:
+    current = Path(path).expanduser()
+    while not current.exists() and current != current.parent:
+        current = current.parent
+    return current
+
+
+def _blob_bytes_on_disk(repo_dir: Path) -> int:
+    """Bytes of the complete and partial (`.incomplete`) blobs a cached repository holds."""
+
+    total = 0
+    blobs = repo_dir / "blobs"
+    try:
+        for entry in blobs.iterdir():
+            if entry.is_file():
+                total += entry.stat().st_size
+    except Exception:
+        return total
+    return total
+
+
+def plan_hf_download(
+    repo_id: str,
+    *,
+    allow_patterns: Optional[Sequence[str]] = None,
+    ignore_patterns: Optional[Sequence[str]] = None,
+    token: Optional[str] = None,
+    revision: Optional[str] = None,
+    cache_dir: Optional[Path | str] = None,
+    fallback_total_bytes: Optional[int] = None,
+) -> HubDownloadPlan:
+    """Size a snapshot download against the cache before it starts.
+
+    The Hub listing (public metadata, readable for gated repositories too) gives the exact files
+    and sizes the patterns select; blobs already in the cache, complete or partial, count as
+    present. Without the listing, `fallback_total_bytes` (the packaged hub facts) stands in."""
+
+    cache_root = Path(cache_dir).expanduser() if cache_dir else default_hf_cache_root()
+    repo_dir = hf_repo_dir(str(repo_id), cache_dir=str(cache_root))
+    try:
+        free_bytes: Optional[int] = int(shutil.disk_usage(_existing_parent(cache_root)).free)
+    except Exception:
+        free_bytes = None
+
+    siblings = None
+    try:
+        from huggingface_hub import HfApi
+        from huggingface_hub.utils import filter_repo_objects
+
+        info = HfApi().model_info(
+            str(repo_id),
+            revision=str(revision) if revision else None,
+            files_metadata=True,
+            token=resolve_hf_token(token),
+        )
+        siblings = list(
+            filter_repo_objects(
+                items=list(info.siblings or []),
+                allow_patterns=list(allow_patterns) if allow_patterns else None,
+                ignore_patterns=list(ignore_patterns) if ignore_patterns else None,
+                key=lambda sibling: str(sibling.rfilename),
+            )
+        )
+    except Exception:
+        siblings = None
+
+    if siblings is None or any(getattr(s, "size", None) is None for s in siblings):
+        total = int(fallback_total_bytes) if fallback_total_bytes else None
+        present = _blob_bytes_on_disk(repo_dir)
+        if total is not None:
+            present = min(present, total)
+        return HubDownloadPlan(
+            repo_id=str(repo_id),
+            cache_dir=cache_root,
+            total_bytes=total,
+            present_bytes=present if total is not None else 0,
+            free_bytes=free_bytes,
+            size_source="hub facts" if total is not None else "unknown",
+        )
+
+    total = 0
+    present = 0
+    for sibling in siblings:
+        size = int(sibling.size or 0)
+        total += size
+        lfs = getattr(sibling, "lfs", None)
+        etag = str(getattr(lfs, "sha256", "") or getattr(sibling, "blob_id", "") or "")
+        if not etag:
+            continue
+        blob = repo_dir / "blobs" / etag
+        try:
+            if blob.is_file() and blob.stat().st_size == size:
+                present += size
+                continue
+            partial = blob.with_name(blob.name + ".incomplete")
+            if partial.is_file():
+                present += min(size, partial.stat().st_size)
+        except Exception:
+            continue
+    return HubDownloadPlan(
+        repo_id=str(repo_id),
+        cache_dir=cache_root,
+        total_bytes=total,
+        present_bytes=present,
+        free_bytes=free_bytes,
+        files=tuple(sorted(str(s.rfilename) for s in siblings)),
+        size_source="hub",
+    )
+
+
+def require_disk_space(plan: HubDownloadPlan) -> None:
+    missing = plan.missing_bytes
+    if missing is None or plan.free_bytes is None or missing <= plan.free_bytes:
+        return
+    fetched = f" ({format_bytes(missing)} still to fetch)" if plan.present_bytes else ""
+    raise InsufficientDiskSpaceError(
+        f"Not enough free disk space to download {plan.repo_id}: it is {format_bytes(plan.total_bytes)}"
+        f"{fetched} and {format_bytes(plan.free_bytes)} is free at {_existing_parent(plan.cache_dir)}. "
+        "Free some space, or point HF_HUB_CACHE (or HF_HOME) at a disk with room, then run the same "
+        "command again."
+    )
+
+
+def _require_planned_files(plan: HubDownloadPlan, snapshot: Path) -> None:
+    missing = [name for name in plan.files if not (snapshot / name).is_file()]
+    if missing:
+        raise RuntimeError(
+            f"The download of {plan.repo_id} is incomplete: {len(missing)} of {len(plan.files)} files are "
+            f"missing from {snapshot} (for example {missing[0]}). Run the same command again to resume; "
+            "the files already fetched stay in the cache."
+        )
+
+
 def download_hf_repo_snapshot(
     repo_id: str,
     *,
@@ -2159,11 +2499,14 @@ def download_hf_repo_snapshot(
     revision: Optional[str] = None,
     allow_patterns: Optional[Sequence[str]] = None,
     ignore_patterns: Optional[Sequence[str]] = None,
-    cache_dir: Optional[Path] = None,
+    cache_dir: Optional[Path | str] = None,
     local_files_only: bool = False,
     max_workers: int = 4,
 ) -> Path:
-    """Download (or resolve) a Hugging Face model repo snapshot into the HF cache."""
+    """Download (or resolve) a Hugging Face model repo snapshot into the HF cache.
+
+    Before a download starts, the free space of the cache disk is checked against what the
+    patterns select (`InsufficientDiskSpaceError`)."""
 
     try:
         from huggingface_hub import snapshot_download
@@ -2173,6 +2516,17 @@ def download_hf_repo_snapshot(
             'Install it with `pip install "abstractvision[models]"` or use the `hf download` CLI.'
         ) from e
 
+    if not local_files_only:
+        require_disk_space(
+            plan_hf_download(
+                str(repo_id),
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                token=token,
+                revision=revision,
+                cache_dir=cache_dir,
+            )
+        )
     try:
         resolved = snapshot_download(
             repo_id=str(repo_id),
@@ -2181,7 +2535,7 @@ def download_hf_repo_snapshot(
             token=resolve_hf_token(token),
             allow_patterns=list(allow_patterns) if allow_patterns else None,
             ignore_patterns=list(ignore_patterns) if ignore_patterns else None,
-            cache_dir=str(cache_dir.expanduser()) if cache_dir else None,
+            cache_dir=str(Path(cache_dir).expanduser()) if cache_dir else None,
             local_files_only=bool(local_files_only),
             max_workers=max(1, int(max_workers)),
         )
@@ -2292,6 +2646,47 @@ def _diffusers_preset_download_files(preset: VisionModelDownloadPreset, *, token
     return diffusers_download_files(allowed, components=components, variant=_diffusers_backend_variant())
 
 
+def _preset_download_patterns(
+    preset: VisionModelDownloadPreset, *, token: Optional[str], all_files: bool, trim: bool = True
+) -> Tuple[Optional[List[str]], Optional[List[str]]]:
+    """(allow, ignore) patterns a preset downloads with. `trim=False` skips the Diffusers file
+    selection, which reads the repository's model_index.json from the Hub."""
+
+    allow_patterns = list(preset.allow_patterns) or None
+    ignore_patterns = None
+    if trim and not all_files and preset.target == "diffusers" and preset.engine == "diffusers":
+        trimmed = _diffusers_preset_download_files(preset, token=resolve_hf_token(token))
+        if trimmed:
+            allow_patterns = trimmed
+    if preset.target == "gguf" and not any("/" in str(p) for p in (allow_patterns or ())):
+        # A GGUF artifact is a root file (the sd.cpp selection globs the snapshot root), and the
+        # hub's fnmatch lets `*` cross `/`: `*q8_0.gguf` also took Green-Sky/SD-Turbo-GGUF's
+        # `old/sd_turbo-q8_0.gguf`.
+        ignore_patterns = ["*/*"]
+    return allow_patterns, ignore_patterns
+
+
+def plan_model_preset_download(
+    preset: VisionModelDownloadPreset, *, token: Optional[str] = None, all_files: bool = False
+) -> HubDownloadPlan:
+    """The download plan of a preset without downloading anything (`download --dry-run`).
+
+    Diffusers presets are sized by their patterns here; the download itself then fetches only
+    the files the backend loads on this host, which can be less."""
+
+    allow_patterns, ignore_patterns = _preset_download_patterns(
+        preset, token=token, all_files=all_files, trim=False
+    )
+    return plan_hf_download(
+        preset.repo_id,
+        allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns,
+        token=token,
+        cache_dir=default_hf_cache_root(),
+        fallback_total_bytes=preset.download_bytes,
+    )
+
+
 def download_model_preset(
     preset: VisionModelDownloadPreset,
     *,
@@ -2299,6 +2694,7 @@ def download_model_preset(
     token: Optional[str] = None,
     max_workers: int = 4,
     all_files: bool = False,
+    report: Optional[Callable[[str], None]] = None,
 ) -> Path:
     """Download a curated preset into the Hugging Face cache.
 
@@ -2307,6 +2703,12 @@ def download_model_preset(
 
     A Diffusers preset downloads only what the Diffusers backend loads on this host
     (`diffusers_download_files`); `all_files=True` takes every file its patterns match.
+
+    Before fetching, the download is sized against the cache (`plan_hf_download`): `report`
+    receives that summary, a cache disk without room raises `InsufficientDiskSpaceError`, and
+    files already in the cache (complete or partial) are resumed rather than fetched again. A
+    gated repository the account cannot read raises `HuggingFaceAccessError`, naming the
+    licence to accept.
     """
 
     required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
@@ -2331,17 +2733,19 @@ def download_model_preset(
             "Downloading model presets requires `huggingface_hub`. Install it or use the `hf download` CLI."
         ) from e
 
-    allow_patterns = list(preset.allow_patterns) or None
-    ignore_patterns = None
-    if not all_files and preset.target == "diffusers" and preset.engine == "diffusers":
-        trimmed = _diffusers_preset_download_files(preset, token=resolve_hf_token(token))
-        if trimmed:
-            allow_patterns = trimmed
-    if preset.target == "gguf" and not any("/" in str(p) for p in (allow_patterns or ())):
-        # A GGUF artifact is a root file (the sd.cpp selection globs the snapshot root), and the
-        # hub's fnmatch lets `*` cross `/`: `*q8_0.gguf` also took Green-Sky/SD-Turbo-GGUF's
-        # `old/sd_turbo-q8_0.gguf`.
-        ignore_patterns = ["*/*"]
+    allow_patterns, ignore_patterns = _preset_download_patterns(preset, token=token, all_files=all_files)
+    plan = plan_hf_download(
+        preset.repo_id,
+        allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns,
+        token=token,
+        cache_dir=cache_root,
+        fallback_total_bytes=preset.download_bytes,
+    )
+    if report is not None:
+        for line in plan.summary_lines():
+            report(line)
+    require_disk_space(plan)
     try:
         snapshot = snapshot_download(
             repo_id=preset.repo_id,
@@ -2355,9 +2759,15 @@ def download_model_preset(
     except Exception as e:
         is_access_error, status_code = _is_hf_access_error(e)
         if is_access_error:
-            raise HuggingFaceAccessError(str(preset.repo_id), raw_message=str(e), status_code=status_code) from e
+            raise HuggingFaceAccessError(
+                str(preset.repo_id),
+                raw_message=str(e),
+                status_code=status_code,
+                license_name=preset.license_name,
+            ) from e
         raise
     resolved = Path(str(snapshot))
+    _require_planned_files(plan, resolved)
     if not hf_snapshot_is_usable(
         resolved,
         required_files=required_files,
@@ -2367,7 +2777,7 @@ def download_model_preset(
             f"Downloaded snapshot for {preset.repo_id!r} is incomplete or missing model weights: {resolved}\n"
             "This usually means the repository has no matching weight files, the download was interrupted, "
             "or access is gated. Check that the Hub repository is populated; if it is gated, accept its terms "
-            "first and authenticate with a Hugging Face token."
+            "first and authenticate with a Hugging Face token. Running the same command again resumes."
         )
     return resolved
 

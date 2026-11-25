@@ -435,15 +435,20 @@ model stays loaded). `lowest` adds block streaming (`stream_blocks=True`): each
 transformer block is read from disk for the length of its call. It works from a
 prepared package or from the 16-bit source, and is refused with `quantize`.
 MLX-Gen's measured peaks for each package and mode are in the route row's
-`measured_runs`.
+`measured_runs`; `abstractvision show-model MiniMaxAI/MiniMax-H3` prints them
+per package, with the smallest memory each mode was tested on.
 
 The weights are never downloaded during generation, even with
-`allow_download=True`: the repositories are gated, and the MiniMax H3 Community
-License's grant excludes the European Union, the United Kingdom, the Republic of
-Korea and the United States of America. Accept the licence on the model page
-and download explicitly; `mlxgen download --model AbstractFramework/minimax-h3-8bit
---base-model minimax-h3-turbo-544p` also caches the Turbo adapter the Turbo
-schedules load.
+`allow_download=True`: the AbstractFramework packages are gated, and the MiniMax
+H3 Community License's grant excludes the European Union, the United Kingdom, the
+Republic of Korea and the United States of America (the source repository
+`MiniMaxAI/MiniMax-H3` is not gated; the same licence applies). Accept the
+licence on the package page while logged in to Hugging Face and download
+explicitly: `abstractvision download MiniMaxAI/MiniMax-H3` fetches the
+recommended 8-bit package (`--bits 4` or `--bits 16` the others), and
+`--base-model minimax-h3-turbo-544p` (or `minimax-h3-turbo`) also caches the
+Turbo adapter that schedule loads. `minimax-h3` loads no adapter. See
+[Downloads](reference/configuration.md#downloads).
 
 ## Host integration
 
@@ -536,6 +541,44 @@ Optional gating:
 
 Important: the registry is *not* a guarantee that your configured backend can execute a task at runtime.
 Use [docs/reference/backends.md](reference/backends.md) for backend support.
+
+### Downloads and what is installed
+
+The download presets and their Hugging Face facts live in
+[`../src/abstractvision/model_downloads.py`](../src/abstractvision/model_downloads.py); the state of a
+preset on this host in [`../src/abstractvision/model_inventory.py`](../src/abstractvision/model_inventory.py).
+The CLI's `download`, `catalog`, `show-model` and `models --json` are built on them.
+
+```python
+from abstractvision.model_downloads import download_model_preset, find_model_preset, plan_model_preset_download
+from abstractvision.model_inventory import preset_status
+
+preset = find_model_preset("MiniMaxAI/MiniMax-H3")         # the recommended package: AbstractFramework/minimax-h3-8bit
+preset = find_model_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/minimax-h3-4bit
+print(preset.download_bytes, preset.gated, preset.license_name, preset.recommended)
+print(plan_model_preset_download(preset).summary_lines())  # size, files already cached, free disk space
+print(preset_status(preset))  # installed / installed_bytes / partial / memory_modes / memory_measurements
+snapshot_dir = download_model_preset(preset, report=print)
+```
+
+- `find_model_preset(name, *, target, engine, require_8bit, bits)`: an exact repo id selects that
+  package; a model id with several packages selects the width `bits` names, else the package the
+  catalog marks `recommended`, else raises `ValueError` listing the choices.
+- `download_model_preset(preset, *, token, max_workers, all_files, report)`: sizes the download from
+  the Hub listing before it starts and raises `InsufficientDiskSpaceError` (a `RuntimeError`) when the
+  cache disk cannot hold what is still missing; resumes from files already in the cache; raises
+  `HuggingFaceAccessError` naming the repository page and the licence when a gated repository refuses
+  the account; raises `RuntimeError` when files are missing after the download. `report` receives the
+  size and cache summary.
+- `preset_status(preset)`: `installed` and `installed_bytes` (the complete cached snapshot and its size
+  on disk), `partial`, `memory_modes` (what the backend serving the preset honours on this host; `None`
+  when that backend cannot run here) and, for MLX-Gen prepared packages whose capability rows publish
+  measured runs, `memory_measurements`: per mode the whole-process `peak_bytes` of the smallest measured
+  canvas, the run's `width`, `height`, `frames` and `steps`, and `smallest_tested_machine_gb` where
+  mlx-gen publishes it. The figures are read from the installed mlx-gen at run time.
+- `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`: the
+  adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA) and its cached path, or `None` when the
+  schedule loads none; `download=True` fetches it, as `abstractvision download --base-model` does.
 
 ## Artifacts and stores
 

@@ -4593,7 +4593,8 @@
     "MiniMaxAI/MiniMax-H3": {
       "provider": "huggingface",
       "license": "minimax-h3-community-license",
-      "notes": "MiniMax-H3 (gated; MiniMax H3 Community License, whose grant excludes the European Union, the United Kingdom, the Republic of Korea and the United States of America). Video with a synchronized stereo soundtrack, text-to-video and first-frame image-to-video, through the MLX-Gen MiniMax-H3 runtime on Apple Silicon. The packages hold the base weights; choose the schedule with base_model (vision_mflux_base_model / ABSTRACTVISION_MFLUX_BASE_MODEL): minimax-h3-turbo-544p (8 steps, 960x544), minimax-h3-turbo (8 steps, 1344x768) or minimax-h3 (base, 50 steps). The Turbo schedules need their lightx2v adapter cached: `mlxgen download --model AbstractFramework/minimax-h3-8bit --base-model minimax-h3-turbo-544p` fetches the package and the adapter. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation.",
+      "license_name": "MiniMax H3 Community License",
+      "notes": "MiniMax-H3 (MiniMax H3 Community License, whose grant excludes the European Union, the United Kingdom, the Republic of Korea and the United States of America). Video with a synchronized stereo soundtrack, text-to-video and first-frame image-to-video, through the MLX-Gen MiniMax-H3 runtime on Apple Silicon. The packages hold the base weights; choose the schedule with base_model (vision_mflux_base_model / ABSTRACTVISION_MFLUX_BASE_MODEL): minimax-h3-turbo-544p (8 steps, 960x544), minimax-h3-turbo (8 steps, 1344x768) or minimax-h3 (base, 50 steps). The Turbo schedules load a lightx2v adapter: `abstractvision download AbstractFramework/minimax-h3-8bit --base-model minimax-h3-turbo-544p` fetches the package and that adapter. The AbstractFramework packages are gated on Hugging Face: accept the licence on the package page while logged in, then download explicitly. AbstractVision never fetches these weights during generation.",
       "downloads": [
         {
           "key": "minimax-h3",
@@ -4602,7 +4603,8 @@
           "bits": 8,
           "repo_id": "AbstractFramework/minimax-h3-8bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen 8-bit package (64.3 GiB): 8-bit transformer and conditioner. Recommended. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation."
+          "notes": "AbstractFramework MLX-Gen 8-bit package: 8-bit transformer and conditioner. Recommended. Gated on Hugging Face: accept the MiniMax H3 Community License on the package page while logged in, then download explicitly.",
+          "recommended": true
         },
         {
           "key": "minimax-h3",
@@ -4611,7 +4613,7 @@
           "bits": 16,
           "repo_id": "AbstractFramework/minimax-h3-bf16",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen 16-bit package (115.1 GiB): the released weights, repacked. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation."
+          "notes": "AbstractFramework MLX-Gen 16-bit package: the released weights, repacked. Gated on Hugging Face: accept the MiniMax H3 Community License on the package page while logged in, then download explicitly."
         },
         {
           "key": "minimax-h3",
@@ -4620,7 +4622,7 @@
           "bits": 4,
           "repo_id": "AbstractFramework/minimax-h3-4bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen mixed package (44.9 GiB): 4-bit conditioner, 6-bit transformer. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation."
+          "notes": "AbstractFramework MLX-Gen mixed package: 4-bit conditioner, 6-bit transformer. Gated on Hugging Face: accept the MiniMax H3 Community License on the package page while logged in, then download explicitly."
         },
         {
           "key": "minimax-h3",
@@ -4629,7 +4631,7 @@
           "bits": 16,
           "repo_id": "MiniMaxAI/MiniMax-H3",
           "source": "official",
-          "notes": "Official MiniMax-H3 source snapshot consumed by MLX-Gen 0.40.0+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Gated on Hugging Face: accept the MiniMax H3 Community License on the model page and download explicitly; AbstractVision never fetches these weights during generation."
+          "notes": "Official MiniMax-H3 source repository, consumed by MLX-Gen 0.40.0+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Not gated; the MiniMax H3 Community License applies. `download` fetches the files MLX-Gen loads, not the whole repository."
         }
       ],
       "tasks": {

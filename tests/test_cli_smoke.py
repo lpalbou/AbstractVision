@@ -385,7 +385,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["repo_id"] = preset.repo_id
             calls["target"] = preset.target
             calls["bits"] = preset.quantization_bits
@@ -409,7 +409,7 @@ class TestCliSmoke(unittest.TestCase):
     def test_download_diffusers_qwen_edit_prints_curated_16bit_note(self):
         from abstractvision.cli import main
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             return (
                 Path("/tmp/hf-cache")
                 / f"models--{preset.repo_id.replace('/', '--')}"
@@ -432,7 +432,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["repo_id"] = preset.repo_id
             return (
                 Path("/tmp/hf-cache")
@@ -595,7 +595,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["repo_id"] = preset.repo_id
             calls["model_dir"] = model_dir
             calls["max_workers"] = max_workers
@@ -635,7 +635,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["repo_id"] = preset.repo_id
             calls["bits"] = preset.quantization_bits
             return (
@@ -668,7 +668,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["repo_id"] = preset.repo_id
             calls["bits"] = preset.quantization_bits
             return (
@@ -701,7 +701,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["repo_id"] = preset.repo_id
             calls["bits"] = preset.quantization_bits
             return (
@@ -770,7 +770,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["repo_id"] = preset.repo_id
             calls["local_dir_name"] = preset.local_dir_name
             calls["max_workers"] = max_workers
@@ -806,7 +806,7 @@ class TestCliSmoke(unittest.TestCase):
         from abstractvision.cli import main
         from abstractvision.model_downloads import SdcppModelSelection
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             return (
                 Path("/tmp/hf-cache")
                 / f"models--{preset.repo_id.replace('/', '--')}"
@@ -852,7 +852,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["repo_id"] = preset.repo_id
             calls["target"] = preset.target
             calls["engine"] = preset.engine
@@ -878,7 +878,7 @@ class TestCliSmoke(unittest.TestCase):
         from abstractvision.cli import main
         from abstractvision.model_downloads import HuggingFaceAccessError
 
-        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4, report=None):
             raise HuggingFaceAccessError(
                 "stabilityai/stable-diffusion-3.5-medium",
                 raw_message="403 Client Error: gated repo",
@@ -905,7 +905,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {"count": 0, "tokens": []}
 
-        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4):
+        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4, report=None):
             calls["count"] += 1
             calls["tokens"].append(token)
             if calls["count"] == 1:

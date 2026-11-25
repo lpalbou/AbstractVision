@@ -25,11 +25,13 @@ from .backends import (
 from .lora_adapters import resolve_request_lora_adapters
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_downloads import (
+    catalog_names_model,
     catalog_target_scope,
     default_model_target,
     download_hf_repo_snapshot,
     download_model_preset,
     find_model_preset,
+    format_bytes,
     format_model_preset_rows,
     HuggingFaceAccessError,
     local_model_profile,
@@ -37,11 +39,20 @@ from .model_downloads import (
     MacOSGGUFUnsupportedError,
     model_presets,
     normalize_model_engine,
+    plan_model_preset_download,
+    preset_for,
+    require_disk_space,
     resolve_hf_token,
     resolve_model_target_and_engine,
     resolve_sdcpp_model_selection,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
+from .model_inventory import (
+    describe_measurement,
+    install_label,
+    memory_modes_label,
+    preset_status,
+)
 from .types import (
     MEMORY_MODES,
     ImageEditRequest,
@@ -523,8 +534,47 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
     )
 
 
-def _cmd_models(_: argparse.Namespace) -> int:
+def _download_entry(dl: Any) -> Dict[str, Any]:
+    """One registry download with its Hub facts and its state on this host."""
+
+    entry: Dict[str, Any] = {
+        "key": dl.key,
+        "repo_id": dl.repo_id,
+        "engine": dl.engine,
+        "target": dl.target,
+        "bits": dl.bits,
+        "source": dl.source,
+        "recommended": bool(dl.recommended),
+        "notes": dl.notes,
+    }
+    preset = preset_for(dl.repo_id, target=dl.target, engine=dl.engine)
+    if preset is not None:
+        entry.update(
+            gated=preset.gated,
+            download_bytes=preset.download_bytes,
+            license_name=preset.license_name or None,
+        )
+        entry.update(preset_status(preset))
+    return entry
+
+
+def _model_entry(spec: Any) -> Dict[str, Any]:
+    return {
+        "model_id": spec.model_id,
+        "provider": spec.provider,
+        "license": spec.license,
+        "license_name": spec.license_name or None,
+        "tasks": sorted(spec.tasks.keys()),
+        "notes": spec.notes,
+        "downloads": [_download_entry(dl) for dl in spec.downloads],
+    }
+
+
+def _cmd_models(args: argparse.Namespace) -> int:
     reg = VisionModelCapabilitiesRegistry()
+    if bool(getattr(args, "json", False)):
+        _print_json([_model_entry(reg.get(mid)) for mid in reg.list_models()])
+        return 0
     for mid in reg.list_models():
         print(mid)
     return 0
@@ -547,6 +597,24 @@ def _cmd_tasks(_: argparse.Namespace) -> int:
 def _cmd_show_model(args: argparse.Namespace) -> int:
     reg = VisionModelCapabilitiesRegistry()
     spec = reg.get(str(args.model_id))
+    downloads = [_download_entry(dl) for dl in spec.downloads]
+    schedules = _model_schedules(spec)
+    if bool(getattr(args, "json", False)):
+        entry = _model_entry(spec)
+        entry["downloads"] = downloads
+        if schedules:
+            entry["schedules"] = schedules
+        entry["task_specs"] = {
+            task_name: {
+                "inputs": list(ts.inputs),
+                "outputs": list(ts.outputs),
+                "params": dict(ts.params),
+                "requires": dict(ts.requires) if isinstance(ts.requires, dict) else None,
+            }
+            for task_name, ts in sorted(spec.tasks.items())
+        }
+        _print_json(entry)
+        return 0
     runtime_route_specs = _mlx_gen_runtime_task_specs(
         [
             str(args.model_id),
@@ -565,14 +633,32 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
         print(f"notes: {spec.notes}")
     if spec.downloads:
         print("downloads:")
-        for dl in spec.downloads:
-            bits = str(dl.bits) if dl.bits is not None else "n/a"
-            line = f"  - {dl.key}  engine={dl.engine}  target={dl.target}  bits={bits}  repo={dl.repo_id}"
-            if dl.source:
-                line += f"  source={dl.source}"
+        for entry in downloads:
+            bits = str(entry["bits"]) if entry["bits"] is not None else "n/a"
+            line = (
+                f"  - {entry['key']}  engine={entry['engine']}  target={entry['target']}  bits={bits}  "
+                f"repo={entry['repo_id']}"
+            )
+            if entry["source"]:
+                line += f"  source={entry['source']}"
+            if entry["recommended"]:
+                line += "  (recommended)"
             print(line)
-            if dl.notes:
-                print(f"      notes: {dl.notes}")
+            for detail in _download_detail_lines(entry):
+                print(f"      {detail}")
+            if entry["notes"]:
+                print(f"      notes: {entry['notes']}")
+    if schedules:
+        print("schedules (base_model):")
+        for item in schedules:
+            if item["adapter"] is None:
+                print(f"  - {item['base_model']}: loads no adapter")
+                continue
+            state = f"cached at {item['adapter_path']}" if item["adapter_path"] else "not cached"
+            print(
+                f"  - {item['base_model']}: loads {item['adapter']} ({state}); "
+                f"`abstractvision download <package> --base-model {item['base_model']}` fetches it"
+            )
     print("tasks:")
     for task_name, ts in sorted(spec.tasks.items()):
         print(f"  - {task_name}")
@@ -625,6 +711,59 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
                         f"        lora_validation_profile: {task_spec.get('lora_validation_profile')}"
                     )
     return 0
+
+
+def _download_detail_lines(entry: Dict[str, Any]) -> List[str]:
+    lines: List[str] = []
+    facts = []
+    if entry.get("download_bytes"):
+        facts.append(f"size: {format_bytes(entry['download_bytes'])}")
+    if "gated" in entry:
+        if entry["gated"]:
+            terms = f"the {entry['license_name']}" if entry.get("license_name") else "its terms"
+            facts.append(
+                f"access: gated (accept {terms} at https://huggingface.co/{entry['repo_id']} while logged in)"
+            )
+        else:
+            facts.append("access: open")
+    if "installed" in entry:
+        facts.append(install_label(entry))
+    if facts:
+        lines.append("  ".join(facts))
+    if "memory_modes" in entry:
+        lines.append(f"memory modes on this host: {memory_modes_label(entry)}")
+    for mode, measurement in (entry.get("memory_measurements") or {}).items():
+        lines.append(f"memory ({mode}, measured by mlx-gen): {describe_measurement(measurement)}")
+    return lines
+
+
+def _model_schedules(spec: Any) -> List[Dict[str, Any]]:
+    """The MLX-Gen schedules (base_model values) of a model whose packages take several, with the
+    adapter each loads and whether it is cached. Empty without mlx-gen or for single-schedule models."""
+
+    mlx_gen = [dl for dl in spec.downloads if str(dl.engine) == "mlx-gen"]
+    if not mlx_gen:
+        return []
+    try:
+        from .backends.mflux import _MFLUX_MODELS, _infer_base_model, resolve_mlx_gen_schedule_adapter
+
+        key = _infer_base_model(spec.model_id, *(dl.repo_id for dl in mlx_gen))
+        family = _MFLUX_MODELS[key].family if key in _MFLUX_MODELS else None
+        if family is None:
+            return []
+        out: List[Dict[str, Any]] = []
+        for schedule in sorted(k for k, d in _MFLUX_MODELS.items() if d.family == family):
+            resolved = resolve_mlx_gen_schedule_adapter(schedule)
+            out.append(
+                {
+                    "base_model": schedule,
+                    "adapter": resolved[0] if resolved else None,
+                    "adapter_path": resolved[1] if resolved else None,
+                }
+            )
+        return out if any(item["adapter"] for item in out) else []
+    except Exception:
+        return []
 
 
 def _cmd_provider_models(args: argparse.Namespace) -> int:
@@ -912,6 +1051,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         presets = sorted(filtered, key=lambda p: (p.key, p.source_priority, p.repo_id))
 
     rows: List[Sequence[Any]] = []
+    statuses: Dict[str, Dict[str, Any]] = {}
     runtime_route_specs = _mlx_gen_runtime_task_specs(
         [
             (
@@ -970,12 +1110,18 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
             )
         else:
             lora_display = ""
+        status = statuses.setdefault(preset.repo_id + "|" + preset.target, preset_status(preset))
         rows.append(
             (
                 model_id,
                 preset.target,
                 preset.engine,
-                str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a",
+                (str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a")
+                + ("*" if preset.recommended else ""),
+                format_bytes(preset.download_bytes) if preset.download_bytes else "-",
+                "gated" if preset.gated else "open",
+                install_label(status) if status["installed"] or status["partial"] else "-",
+                memory_modes_label(status),
                 lora_display,
                 ",".join(lora_roles),
                 preset.repo_id,
@@ -1023,6 +1169,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                         model_id=model_id,
                         registry_tasks=sorted(spec.tasks.keys()) if spec else [],
                     ),
+                    **statuses.setdefault(p.repo_id + "|" + p.target, preset_status(p)),
                 }
                 for p in matching_presets
             ]
@@ -1091,13 +1238,140 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         "tip: MLX-Gen rows include route-level LoRA status and target roles when the local runtime exposes them"
     )
     print("tip: `abstractvision model-presets --all-targets --all` shows the raw preset table")
+    print(
+        "tip: bits* is the recommended package; size is what `download` fetches; gated repos need their "
+        "licence accepted on the Hugging Face page; memory modes are those this host can run "
+        "(`show-model` adds MLX-Gen's measured peaks)"
+    )
     print()
     for line in _format_table(
-        ("model_id", "target", "engine", "bits", "lora", "roles", "repo", "source", "tasks"),
+        (
+            "model_id",
+            "target",
+            "engine",
+            "bits",
+            "size",
+            "access",
+            "installed",
+            "memory_modes",
+            "lora",
+            "roles",
+            "repo",
+            "source",
+            "tasks",
+        ),
         rows,
     ):
         print(line)
     return 0
+
+
+def _download_dry_run(
+    preset: Any, args: argparse.Namespace, *, token: Optional[str], schedule: Optional[str], json_mode: bool
+) -> Dict[str, Any]:
+    """`download --dry-run`: what the download would fetch and whether it fits; nothing is written."""
+
+    plan = plan_model_preset_download(preset, token=token, **_all_files_kwargs(args))
+    status = preset_status(preset)
+    try:
+        require_disk_space(plan)
+        fits: Optional[str] = None
+    except RuntimeError as e:
+        fits = str(e)
+    item = preset.to_dict()
+    item.update(status)
+    item.update(
+        dry_run=True,
+        planned_bytes=plan.total_bytes,
+        present_bytes=plan.present_bytes,
+        missing_bytes=plan.missing_bytes,
+        free_bytes=plan.free_bytes,
+        size_source=plan.size_source,
+        disk_space_error=fits,
+    )
+    adapters: List[Tuple[str, str]] = []
+    if schedule is not None:
+        from .backends.mflux import resolve_mlx_gen_schedule_adapter
+
+        resolved = resolve_mlx_gen_schedule_adapter(schedule)
+        if resolved is not None:
+            item.update(base_model=schedule, adapter=resolved[0], adapter_path=resolved[1])
+            adapters.append((schedule, f"{resolved[0]} ({'cached at ' + resolved[1] if resolved[1] else 'would be fetched'})"))
+    if not json_mode:
+        print(f"installed: {install_label(status)}")
+        for line in plan.summary_lines():
+            print(line)
+        if preset.target == "diffusers":
+            print("note: Diffusers downloads take only the files the backend loads on this host, which can be less")
+        print(fits or "disk: enough free space")
+        for name, text in adapters:
+            print(f"adapter ({name}): {text}")
+        if schedule is None:
+            for hint in _schedule_adapter_hints(preset):
+                print(hint)
+        print("dry run: nothing was downloaded")
+    return item
+
+
+def _download_schedule(preset: Any, schedule: Optional[str]) -> Optional[str]:
+    """`download --base-model`: the MLX-Gen schedule whose adapter is fetched with the preset."""
+
+    if schedule is None:
+        return None
+    if str(preset.engine) != "mlx-gen":
+        raise SystemExit(f"--base-model names an MLX-Gen schedule; {preset.repo_id} is a {preset.engine} artifact.")
+    from .backends.mflux import _MFLUX_MODELS, _infer_base_model
+
+    key = _infer_base_model(schedule)
+    family = _MFLUX_MODELS[key].family if key in _MFLUX_MODELS else None
+    preset_key = _infer_base_model(preset.repo_id, preset.upstream_repo_id, preset.key)
+    preset_family = _MFLUX_MODELS[preset_key].family if preset_key in _MFLUX_MODELS else None
+    if family is None or family != preset_family:
+        choices = sorted(k for k, d in _MFLUX_MODELS.items() if preset_family and d.family == preset_family)
+        raise SystemExit(
+            f"--base-model {schedule!r} is not a schedule of {preset.repo_id}."
+            + (f" Choose one of: {', '.join(choices)}." if choices else "")
+        )
+    return str(key)
+
+
+def _download_schedule_adapter(schedule: str) -> Optional[Tuple[str, Optional[str]]]:
+    from .backends.mflux import resolve_mlx_gen_schedule_adapter
+
+    try:
+        return resolve_mlx_gen_schedule_adapter(schedule, download=True)
+    except KeyboardInterrupt:
+        raise SystemExit(f"Download of the {schedule} adapter interrupted; run the same command again.") from None
+    except Exception as e:
+        raise SystemExit(f"Could not fetch the adapter the {schedule} schedule loads: {e}") from e
+
+
+def _schedule_adapter_hints(preset: Any) -> List[str]:
+    """For a model with schedules that load an adapter, how to fetch it (and whether it is cached)."""
+
+    if str(preset.engine) != "mlx-gen":
+        return []
+    try:
+        from .backends.mflux import _MFLUX_MODELS, _infer_base_model, resolve_mlx_gen_schedule_adapter
+
+        preset_key = _infer_base_model(preset.repo_id, preset.upstream_repo_id, preset.key)
+        family = _MFLUX_MODELS[preset_key].family if preset_key in _MFLUX_MODELS else None
+        schedules = sorted(k for k, d in _MFLUX_MODELS.items() if family and d.family == family)
+        lines = []
+        for schedule in schedules:
+            resolved = resolve_mlx_gen_schedule_adapter(schedule)
+            if resolved is None:
+                continue
+            if resolved[1]:
+                lines.append(f"adapter ({schedule}): cached at {resolved[1]}")
+            else:
+                lines.append(
+                    f"adapter ({schedule}): not cached; fetch it with "
+                    f"`abstractvision download {preset.repo_id} --base-model {schedule}`"
+                )
+        return lines
+    except Exception:
+        return []
 
 
 def _cmd_download_model(args: argparse.Namespace) -> int:
@@ -1157,6 +1431,12 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
     if raw_target in {"diffusers", "hf-snapshot"} or raw_engine in {"diffusers", "transformers"}:
         # Diffusers targets are full pipeline snapshots; do not force an 8-bit-only policy.
         require_8bit = False
+    bits = getattr(args, "bits", None)
+    schedule = str(getattr(args, "base_model", None) or "").strip() or None
+
+    def _report(line: str) -> None:
+        if not json_mode:
+            print(line)
 
     for idx, name in enumerate(names):
         if not json_mode and len(names) > 1:
@@ -1169,6 +1449,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 target=target,
                 engine=engine,
                 require_8bit=require_8bit,
+                bits=bits,
             )
         except ValueError as e:
             mlx_gen_non_quantized_ok = raw_engine in {
@@ -1185,6 +1466,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                         target=target,
                         engine=engine,
                         require_8bit=False,
+                        bits=bits,
                     )
                 except ValueError:
                     preset = None
@@ -1199,6 +1481,10 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 preset = None
             if preset is not None:
                 pass
+            elif bits is not None or schedule is not None or catalog_names_model(name):
+                # A catalog model is never fetched as an unfiltered snapshot: the choice it
+                # needs (a width, a target, an exact package) is in the message.
+                raise SystemExit(str(e)) from e
             elif looks_like_hf_repo_id(name):
                 if not json_mode:
                     print(f"selected_repo_id: {name}")
@@ -1244,12 +1530,21 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
             else:
                 raise SystemExit(str(e)) from e
 
+        adapter_schedule = _download_schedule(preset, schedule)
         if not json_mode:
             print(f"selected: {preset.repo_id}")
             print(f"target: {selected_target}")
             print(
                 f"artifact: {preset.target}; bits: {preset.quantization_bits or 'n/a'}; provider/engine: {preset.engine}"
             )
+            if preset.download_bytes:
+                print(f"size: {format_bytes(preset.download_bytes)}")
+            if preset.gated:
+                terms = f"the {preset.license_name}" if preset.license_name else "its terms"
+                print(
+                    f"access: gated; accept {terms} at https://huggingface.co/{preset.repo_id} while logged in "
+                    "to Hugging Face (`hf auth login`, or --token)"
+                )
             if preset.upstream_repo_id and preset.source != "official":
                 print(
                     f"#FALLBACK: upstream source is {preset.upstream_repo_id}; using {preset.source} artifact for {selected_target}."
@@ -1264,6 +1559,10 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                     note = "Official curated Diffusers snapshot (16-bit)."
                 print(note)
 
+        if bool(getattr(args, "dry_run", False)):
+            results.append(_download_dry_run(preset, args, token=cli_token, schedule=adapter_schedule, json_mode=json_mode))
+            continue
+
         if preset.engine == "stable-diffusion.cpp":
             # Ensure the runtime exists (auto-installs `sd-cli` on Apple Silicon by default).
             try:
@@ -1274,35 +1573,53 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 raise SystemExit(str(e)) from e
 
         try:
-            path = download_model_preset(
-                preset,
-                model_dir=model_dir,
-                token=cli_token,
-                max_workers=int(getattr(args, "max_workers", 4) or 4),
-                **_all_files_kwargs(args),
-            )
-        except HuggingFaceAccessError as e:
-            retry_token = _interactive_hf_token_retry(
-                e, current_token=cli_token, json_mode=json_mode
-            )
-            if retry_token is None:
-                raise SystemExit(str(e)) from e
             try:
                 path = download_model_preset(
                     preset,
                     model_dir=model_dir,
-                    token=retry_token,
+                    token=cli_token,
                     max_workers=int(getattr(args, "max_workers", 4) or 4),
+                    report=_report,
                     **_all_files_kwargs(args),
                 )
-                cli_token = retry_token
-            except (HuggingFaceAccessError, RuntimeError) as e2:
-                raise SystemExit(str(e2)) from e2
-        except RuntimeError as e:
-            raise SystemExit(str(e)) from e
+            except HuggingFaceAccessError as e:
+                retry_token = _interactive_hf_token_retry(
+                    e, current_token=cli_token, json_mode=json_mode
+                )
+                if retry_token is None:
+                    raise SystemExit(str(e)) from e
+                try:
+                    path = download_model_preset(
+                        preset,
+                        model_dir=model_dir,
+                        token=retry_token,
+                        max_workers=int(getattr(args, "max_workers", 4) or 4),
+                        report=_report,
+                        **_all_files_kwargs(args),
+                    )
+                    cli_token = retry_token
+                except (HuggingFaceAccessError, RuntimeError) as e2:
+                    raise SystemExit(str(e2)) from e2
+            except RuntimeError as e:
+                raise SystemExit(str(e)) from e
+        except KeyboardInterrupt:
+            raise SystemExit(
+                f"Download of {preset.repo_id} interrupted. The files fetched so far stay in the Hugging Face "
+                f"cache ({default_hf_cache_root()}); run the same command again to resume."
+            ) from None
 
         item = preset.to_dict()
         item["snapshot_dir"] = str(path)
+        if adapter_schedule is not None:
+            adapter = _download_schedule_adapter(adapter_schedule)
+            if adapter is not None:
+                item["base_model"] = adapter_schedule
+                item["adapter"], item["adapter_path"] = adapter
+                if not json_mode:
+                    print(f"adapter ({adapter_schedule}): {adapter[1]}")
+        elif not json_mode:
+            for hint in _schedule_adapter_hints(preset):
+                print(hint)
         if preset.engine == "stable-diffusion.cpp":
             resolved = resolve_sdcpp_model_selection(
                 preset.key,
@@ -3094,9 +3411,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("models", help="List known model ids (from capability registry).").set_defaults(
-        _fn=_cmd_models
+    models_parser = sub.add_parser("models", help="List known model ids (from capability registry).")
+    models_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print each model with its downloads: size, access, cache state, memory modes on this host.",
     )
+    models_parser.set_defaults(_fn=_cmd_models)
     pm = sub.add_parser(
         "provider-models",
         aliases=["openai-models", "remote-models"],
@@ -3329,6 +3650,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Permit explicit fallback presets when no quantized artifact is curated.",
     )
     dl.add_argument(
+        "--bits",
+        type=int,
+        choices=[2, 4, 8, 16],
+        default=None,
+        help=(
+            "Package width to pick when a model id names several packages "
+            "(e.g. `download MiniMaxAI/MiniMax-H3 --bits 4`). Without it, the recommended package is chosen."
+        ),
+    )
+    dl.add_argument(
+        "--base-model",
+        default=None,
+        help=(
+            "MLX-Gen schedule to prepare: also fetches the adapter it loads, e.g. the MiniMax-H3 Turbo "
+            "schedules minimax-h3-turbo-544p and minimax-h3-turbo (minimax-h3 loads none)."
+        ),
+    )
+    dl.add_argument(
         "--all-files",
         action="store_true",
         help=(
@@ -3337,12 +3676,24 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     dl.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Resolve the selection and print what would be fetched (size, access, files already cached, free "
+            "disk space) without downloading. Reads the Hugging Face listing only."
+        ),
+    )
+    dl.add_argument(
         "--json", action="store_true", help="Print selected preset + snapshot path as JSON."
     )
     dl.set_defaults(_fn=_cmd_download_model)
 
-    sm = sub.add_parser("show-model", help="Show a model's supported tasks and params.")
+    sm = sub.add_parser(
+        "show-model",
+        help="Show a model's tasks, params and downloads (size, access, cache state, memory modes on this host).",
+    )
     sm.add_argument("model_id")
+    sm.add_argument("--json", action="store_true", help="Print the model as JSON.")
     sm.set_defaults(_fn=_cmd_show_model)
 
     repl = sub.add_parser(
