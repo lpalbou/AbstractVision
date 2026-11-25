@@ -4148,39 +4148,87 @@ class TestMFluxVisionBackend(unittest.TestCase):
             backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2))
             self.assertEqual(_FakeFlux2.last_init["model_path"], str(newer))
 
-    def test_an_mlx_below_the_floor_is_refused_when_the_runtime_is_first_imported(self):
+    def _installed(self, **versions):
+        # importlib.metadata.version for the given distributions ("mlx_gen" stands for mlx-gen); others absent.
+        from importlib import metadata
+
+        installed = {name.replace("_", "-"): version for name, version in versions.items()}
+
+        def version(distribution):
+            if distribution not in installed:
+                raise metadata.PackageNotFoundError(distribution)
+            return installed[distribution]
+
+        return patch("importlib.metadata.version", side_effect=version)
+
+    def test_runtime_versions_outside_the_pins_are_refused_when_the_runtime_is_first_imported(self):
         from abstractvision.backends import mflux
         from abstractvision.errors import OptionalDependencyMissingError
 
-        mflux._require_mlx_version_floor.cache_clear()
-        self.addCleanup(mflux._require_mlx_version_floor.cache_clear)
-        with patch.object(mflux.sys, "platform", "darwin"), patch("importlib.metadata.version", return_value="0.31.2"):
+        self.addCleanup(mflux._require_runtime_versions.cache_clear)
+        refused = {
+            "mlx-gen too old": ("darwin", {"mlx_gen": "0.38.0", "mlx": "0.32.5"}, "mlx-gen>=0.40.1,<0.41.0", "mlx-gen 0.38.0"),
+            "mlx-gen too new": ("linux", {"mlx_gen": "0.41.0"}, "mlx-gen>=0.40.1,<0.41.0", "mlx-gen 0.41.0"),
+            "mlx too old on macOS": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}, "mlx>=0.32.4 on macOS", "mlx 0.31.2"),
+        }
+        for case, (platform, versions, required, installed) in refused.items():
             for runtime_import in (mflux._lazy_import_mflux, mflux._lazy_import_mflux_seedvr2):
-                with self.assertRaises(OptionalDependencyMissingError) as caught:
-                    runtime_import()
-                message = str(caught.exception)
-                self.assertIn("mlx>=0.32.4", message)
-                self.assertIn("mlx 0.31.2 is installed", message)
-                self.assertIn('pip install -U "abstractvision[mlx-gen]"', message)
-        for platform, version in (("darwin", "0.32.4"), ("darwin", "0.33.0"), ("linux", "0.31.2")):
-            mflux._require_mlx_version_floor.cache_clear()
-            with patch.object(mflux.sys, "platform", platform), patch("importlib.metadata.version", return_value=version):
-                self.assertIsNone(mflux._require_mlx_version_floor(), (platform, version))
+                with self.subTest(case=case, runtime_import=runtime_import.__name__):
+                    mflux._require_runtime_versions.cache_clear()
+                    with patch.object(mflux.sys, "platform", platform), self._installed(**versions):
+                        with self.assertRaises(OptionalDependencyMissingError) as caught:
+                            runtime_import()
+                    message = str(caught.exception)
+                    self.assertIn(required, message)
+                    self.assertIn(f"{installed} is installed", message)
+                    self.assertIn('pip install -U "abstractvision[mlx-gen]"', message)
+        accepted = {
+            "in range": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.32.4"}),
+            "in range, later patch": ("darwin", {"mlx_gen": "0.40.9", "mlx": "0.33.0"}),
+            "old mlx off macOS": ("linux", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}),
+            "engine absent": ("darwin", {}),
+        }
+        for case, (platform, versions) in accepted.items():
+            with self.subTest(case=case):
+                mflux._require_runtime_versions.cache_clear()
+                with patch.object(mflux.sys, "platform", platform), self._installed(**versions):
+                    self.assertIsNone(mflux._require_runtime_versions())
 
-    def test_the_runtime_floors_are_the_ones_the_extras_require(self):
+    def test_a_catalog_read_needs_no_runtime_within_the_pins(self):
+        # The schedule's adapter is read from mlx-gen's catalog, which an out-of-range engine still answers.
+        import importlib
+
+        from abstractvision.backends import mflux
+
+        try:
+            importlib.import_module("mflux.models.common.config")
+        except Exception:
+            self.skipTest("mlx-gen is not installed")
+        self.addCleanup(mflux._require_runtime_versions.cache_clear)
+        mflux._require_runtime_versions.cache_clear()
+        with patch.object(mflux.sys, "platform", "darwin"), self._installed(mlx_gen="0.38.0", mlx="0.31.2"):
+            self.assertTrue(str(mflux._mlx_gen_schedule_adapter("minimax-h3-turbo")).startswith("hf:"))
+
+    def test_the_runtime_bounds_are_the_ones_the_extras_require(self):
         from abstractvision.backends import mflux
 
         pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
         block = pyproject[pyproject.index("\nmlx-gen = [") : ]
         block = block[: block.index("\n]")]
         requirements = [line.strip().strip(",").strip('"') for line in block.splitlines()[1:] if line.strip()]
-        floors = {
-            requirement.split(">=", 1)[0]: requirement.split(">=", 1)[1].split(",", 1)[0].split(";", 1)[0].strip()
-            for requirement in requirements
-            if ">=" in requirement
-        }
-        self.assertEqual(floors["mlx-gen"], mflux.MLX_GEN_VERSION_FLOOR)
-        self.assertEqual(floors["mlx"], mflux.MLX_VERSION_FLOOR)
+        bounds = {}
+        for requirement in requirements:
+            specifiers = requirement.split(";", 1)[0]
+            name = specifiers.split(">=", 1)[0].strip()
+            bounds[name] = {
+                operator: value.strip()
+                for part in specifiers[len(name):].split(",")
+                for operator in (">=", "<")
+                if part.strip().startswith(operator) and not part.strip().startswith("<=")
+                for value in (part.strip()[len(operator):],)
+            }
+        self.assertEqual(bounds["mlx-gen"], {">=": mflux.MLX_GEN_VERSION_FLOOR, "<": mflux.MLX_GEN_VERSION_CEILING})
+        self.assertEqual(bounds["mlx"], {">=": mflux.MLX_VERSION_FLOOR})
 
     def test_load_time_quantize_widths_are_the_engines_and_none_without_it(self):
         import sys

@@ -74,7 +74,9 @@ logger = logging.getLogger(__name__)
 
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
+# The mlx-gen releases this AbstractVision runs: >=MLX_GEN_VERSION_FLOOR, <MLX_GEN_VERSION_CEILING.
 MLX_GEN_VERSION_FLOOR = "0.40.1"
+MLX_GEN_VERSION_CEILING = "0.41.0"
 # On macOS: MLX 0.31.0 to 0.32.3 free a 3D convolution's padding buffer before the Metal command that reads it,
 # which can end a run with an "invalid resource" error during a decode.
 MLX_VERSION_FLOOR = "0.32.4"
@@ -1160,21 +1162,30 @@ class MFluxBackendConfig:
 
 
 @lru_cache(maxsize=1)
-def _require_mlx_version_floor() -> None:
-    """Refuse an MLX below MLX_VERSION_FLOOR on macOS; checked once, when the MLX-Gen runtime is first imported."""
-    if sys.platform != "darwin":
-        return
+def _require_runtime_versions() -> None:
+    """Refuse an installed mlx-gen outside [MLX_GEN_VERSION_FLOOR, MLX_GEN_VERSION_CEILING), and on macOS an MLX
+    below MLX_VERSION_FLOOR; checked once, when the MLX-Gen runtime is first imported.
+
+    A distribution that is not installed is not refused here: the runtime import that follows reports it.
+    """
     from importlib import metadata
 
-    try:
-        installed = metadata.version("mlx")
-    except metadata.PackageNotFoundError:
-        return  # The MLX-Gen import that follows reports the missing runtime.
-    if _release_numbers(installed) < _release_numbers(MLX_VERSION_FLOOR):
-        raise OptionalDependencyMissingError(
-            f"MLX-Gen needs mlx>={MLX_VERSION_FLOOR} on macOS; mlx {installed} is installed. "
-            'Upgrade it with `pip install -U "abstractvision[mlx-gen]"`.'
-        )
+    # (distribution, floor, exclusive ceiling or None, where the bound applies)
+    bounds = [("mlx-gen", MLX_GEN_VERSION_FLOOR, MLX_GEN_VERSION_CEILING, "")]
+    if sys.platform == "darwin":
+        bounds.append(("mlx", MLX_VERSION_FLOOR, None, " on macOS"))
+    for distribution, floor, ceiling, where in bounds:
+        try:
+            installed = metadata.version(distribution)
+        except metadata.PackageNotFoundError:
+            continue
+        release = _release_numbers(installed)
+        if release < _release_numbers(floor) or (ceiling is not None and release >= _release_numbers(ceiling)):
+            required = f"{distribution}>={floor}" + (f",<{ceiling}" if ceiling is not None else "")
+            raise OptionalDependencyMissingError(
+                f"The MLX-Gen backend needs {required}{where}; {distribution} {installed} is installed. "
+                'Install the matching versions with `pip install -U "abstractvision[mlx-gen]"`.'
+            )
 
 
 def _release_numbers(version: str) -> Tuple[int, ...]:
@@ -1183,7 +1194,7 @@ def _release_numbers(version: str) -> Tuple[int, ...]:
 
 
 def _lazy_import_mflux() -> Tuple[Any, Any, Any, Any, Any, Any]:
-    _require_mlx_version_floor()
+    _require_runtime_versions()
     try:
         import mlxgen as _mlxgen  # noqa: F401
 
@@ -1682,7 +1693,7 @@ def _lazy_import_mlx_gen_h3_planning() -> Any:
 
 
 def _lazy_import_mflux_seedvr2() -> Tuple[Any, Any, Any, Any]:
-    _require_mlx_version_floor()
+    _require_runtime_versions()
     try:
         from mflux.models.common.config import ModelConfig  # type: ignore
         from mflux.models.common.vae.tiling_config import TilingConfig  # type: ignore
