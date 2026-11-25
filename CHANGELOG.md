@@ -59,17 +59,20 @@ except for the changes listed below.
     configured `cpu_offload`, never lowers it. stable-diffusion.cpp: `low` offloads the model parameters to the CPU.
     OpenAI-compatible: the modes the remote lists for the model (see below), else `default` only.
   - A mode named on a request that the backend cannot honour raises `CapabilityNotSupportedError` before any model
-    loads or any request is sent, in `VisionManager` and in every backend. A process default the backend cannot
+    loads or any request is sent, in every backend; `VisionManager`, the plugin and the tools pass the value through
+    (`make_vision_tools` refuses only a value that is not a memory mode). A process default the backend cannot
     honour runs as the nearest less aggressive mode the backend lists (`lowest` → `low` → `default`), with one
     warning per process.
   - Image, edit and Wan models run in `low` are loaded again on the next request, and the AbstractCore plugin then
     removes their loaded-model record; batches keep the model until their last item. Overlapping runs share one
     process-wide MLX cache limit, and MLX-Gen's default cap is restored when the last one ends.
   - Discovery: `get_capabilities().memory_modes` and `supports_block_streaming`, `parameter_constraints["memory_mode"]`
-    on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()`.
+    on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()` (what
+    that provider's backend lists for its configured model and device, without loading a model or sending a
+    request).
 - **Downloads.**
   - `abstractvision download <model id>` selects the package the catalog marks as recommended (for MiniMax-H3, the
-    8-bit one); `--bits 4|8|16` selects another width.
+    8-bit one); `--bits 2|4|8|16` selects another width.
   - Before anything is fetched, the files the preset selects are sized from the Hugging Face listing and compared
     with the free space of the cache disk: a download that does not fit stops with its size and the free space
     (`InsufficientDiskSpaceError`). Files already in the cache, partial ones included, are resumed; an interrupted
@@ -91,9 +94,10 @@ except for the changes listed below.
   loads. `models --json` and `show-model --json` print the same as JSON.
 - **OpenAI-compatible backend with AbstractCore's server.** A remote that lists `memory_modes` for the model in
   `GET {base_url}/vision/models` receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
-  request with `cancel_event` runs there as a remote job, and setting the event cancels it; a video response's
-  `audio` fills `GeneratedAsset.audio`, and `metadata["memory_mode_used"]` holds the mode the remote ran. Any other
-  remote refuses these fields with `CapabilityNotSupportedError` before anything is sent.
+  request with `cancel_event` runs there as a remote job, and setting the event cancels it (AbstractCore's server
+  refuses such a job while another generation runs, which the backend raises as a `RuntimeError` saying so); a
+  video response's `audio` fills `GeneratedAsset.audio`, and `metadata["memory_mode_used"]` holds the mode the
+  remote ran. Any other remote refuses these fields with `CapabilityNotSupportedError` before anything is sent.
 - **Playground.** Generation and edit jobs take `memory_mode`, `quantize` and, on video, the soundtrack fields, at the
   top level or in the extra JSON; model load refuses `memory_mode` and `quantize`, which apply per request.
 - **For applications embedding AbstractVision.**
@@ -107,8 +111,9 @@ except for the changes listed below.
   - `VisionManager.describe_routes(model=..., task=...)` returns MLX-Gen's capability rows as JSON, so a host can
     build its controls and memory planning without importing MLX-Gen.
   - MLX-Gen results carry the engine's metadata under `metadata["mlx_gen"]` on every route, upscaling included.
-  - On MLX-Gen video routes (Wan, MiniMax-H3), a run MLX-Gen finds cannot fit in memory raises
-    `GpuOutOfMemoryError` naming the `memory_mode` it used and the lower ones to try.
+  - On MiniMax-H3, weights or a run that MLX-Gen's preflight finds cannot fit in memory raise
+    `GpuOutOfMemoryError` naming the `memory_mode` it used and the lower ones to try (MLX-Gen 0.40.1 has this
+    preflight for MiniMax-H3 only).
   - Importing AbstractVision and constructing a `VisionManager` write no files, set no environment variables and
     import neither AbstractCore nor an engine.
 
@@ -123,18 +128,21 @@ except for the changes listed below.
 - AbstractCore plugin: `guidance_2` on `t2i` or `i2i` raises `CapabilityNotSupportedError` (it raised `TypeError`), as
   do the soundtrack options on an image call. Every other unknown keyword stays a backend `extra` parameter.
 - MLX-Gen result metadata names the model and adapters by repo id (a Hugging Face cache snapshot) or by file or
-  directory name, never by local path: `metadata["model"]`, `metadata["lora_paths"]`, `requested_lora_adapters` and
-  `metadata["mlx_gen"]`. The paths of the temporary files written for a run are left out.
+  directory name, never by local path: every absolute path in the engine's metadata, whatever field carries it
+  (`model`, `lora_paths`, `lora_application_reports`, ...), in `metadata["mlx_gen"]` and its top-level copies, and
+  `requested_lora_adapters`. The paths of the temporary files written for a run are left out.
 - MLX-Gen video requests are type-checked: a width, height, frame count, fps or step count that is not an integer, or
   a seed outside `[0, 2**64 - 1]`, raises `ValueError` naming the field instead of being truncated; an image-to-video
   first frame that cannot be decoded raises `ValueError` naming `image`.
 - An exception raised in a progress callback is logged once and no longer ends the run; stop a run with
   `cancel_event`.
-- OpenAI-compatible backend: `get_capabilities()`, `list_provider_models()` and a request that sets a memory, sound
-  or `quantize` field or a `cancel_event` also query `GET {base_url}/vision/models` (10 s timeout, answer reused for
-  30 s; never for the OpenAI API or an OpenAI image model). A remote HTTP 422 with the error code
-  `capability_not_supported` raises `CapabilityNotSupportedError` with the remote's message instead of
-  `RuntimeError`.
+- OpenAI-compatible backend: `list_provider_models()` and a request that sets a memory, sound or `quantize` field
+  or a `cancel_event` (or runs under `ABSTRACTVISION_MEMORY_MODE`) also query `GET {base_url}/vision/models` (10 s
+  timeout, answer reused for 30 s; never for the OpenAI API or an OpenAI image model); `get_capabilities()` reads
+  the last answer without a request, and a request that sets none of them makes the same HTTP calls as before. A
+  discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: a request that needed it is
+  refused with the reason. A remote HTTP 422 with the error code `capability_not_supported` raises
+  `CapabilityNotSupportedError` with the remote's message instead of `RuntimeError`.
 - The `catalog` table has three more columns (`access`, `installed`, `memory_modes`).
 - `HuggingFaceAccessError` says that the repository is gated or not accessible to the account, names the licence
   when the catalog knows it, and keeps the first line of the upstream error.

@@ -55,11 +55,6 @@ def resolve_memory_mode_with_source(value: Any, extra: Any = None) -> Tuple[str,
     return normalize_memory_mode(value), False
 
 
-def resolve_memory_mode(value: Any, extra: Any = None) -> str:
-    """The mode a call asks for (see `resolve_memory_mode_with_source`)."""
-    return resolve_memory_mode_with_source(value, extra)[0]
-
-
 def highest_memory_mode_at_or_below(mode: str, supported: Sequence[str]) -> str:
     """The lowest-memory mode in `supported` that does not go below `mode` ("default" if none)."""
     rank = MEMORY_MODES.index(normalize_memory_mode(mode))
@@ -67,11 +62,6 @@ def highest_memory_mode_at_or_below(mode: str, supported: Sequence[str]) -> str:
         if candidate in supported:
             return candidate
     return MEMORY_MODE_DEFAULT
-
-
-def request_memory_mode(request: Any) -> str:
-    """The memory mode a request asks for (see `resolve_memory_mode`)."""
-    return resolve_memory_mode(getattr(request, "memory_mode", None), getattr(request, "extra", None))
 
 
 @dataclass(frozen=True)

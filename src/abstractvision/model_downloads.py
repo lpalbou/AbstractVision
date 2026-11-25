@@ -245,8 +245,16 @@ class HubDownloadPlan:
         return self.present_bytes > 0 and (self.missing_bytes or 0) > 0
 
     def summary_lines(self) -> List[str]:
+        """The size, cache and disk lines a download (or `--dry-run`) prints before it starts.
+
+        The disk line says whether the free space was checked; a download that does not fit gets
+        `disk_space_error()` instead.
+        """
         if self.total_bytes is None:
-            return [f"download size: unknown (the Hugging Face listing of {self.repo_id} is not available)"]
+            return [
+                f"download size: unknown (the Hugging Face listing of {self.repo_id} is not available)",
+                "disk: not checked, because the download size is unknown",
+            ]
         lines = [f"download size: {format_bytes(self.total_bytes)} into {self.cache_dir}"]
         if self.missing_bytes == 0:
             lines.append("cache: every file is already present")
@@ -255,8 +263,12 @@ class HubDownloadPlan:
                 f"cache: resuming, {format_bytes(self.present_bytes)} already present, "
                 f"{format_bytes(self.missing_bytes or 0)} to fetch"
             )
-        if self.free_bytes is not None:
+        if self.free_bytes is None:
+            lines.append("disk: not checked, because the free space is unknown")
+        else:
             lines.append(f"free disk space: {format_bytes(self.free_bytes)}")
+            if self.disk_space_error() is None:
+                lines.append("disk: enough free space")
         return lines
 
     def disk_space_error(self) -> Optional[str]:

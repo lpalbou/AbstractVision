@@ -1314,7 +1314,8 @@ def _download_dry_run(
             print(line)
         if preset.target == "diffusers":
             print("note: Diffusers downloads take only the files the backend loads on this host, which can be less")
-        print(fits or "disk: enough free space")
+        if fits:
+            print(fits)
         for name, text in adapters:
             print(f"adapter ({name}): {text}")
         if schedule is None:

@@ -285,12 +285,6 @@ class TestHostFacts(unittest.TestCase):
             # Unknown memory: the backend's cache ladder takes its floor instead of guessing.
             self.assertEqual(mflux._wan_video_mlx_cache_limit_bytes(), mflux.WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES)
 
-    def test_device_profile_has_one_entry_point(self):
-        from abstractvision import host
-
-        with patch("abstractvision.model_downloads.local_model_profile", return_value="cuda"):
-            self.assertEqual(host.local_device_profile(), "cuda")
-
 
 class TestEmbeddingHygiene(unittest.TestCase):
     def test_import_and_manager_without_abstractcore_write_nothing_and_change_nothing(self):

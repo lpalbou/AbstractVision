@@ -44,7 +44,7 @@ flowchart LR
 - Checked on Linux without a GPU, Linux with an NVIDIA card and Apple silicon; the measured generation times per model are in [docs/benchmark.md](docs/benchmark.md).
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
 - Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`; and supports MiniMax-H3, video with a synchronized stereo soundtrack (`text_to_video` and first-frame `image_to_video`, with `soundscape` / `music`), from the gated `AbstractFramework/minimax-h3-*` packages. See [docs/api.md](docs/api.md#video-with-sound-minimax-h3).
-- Local MLX-Gen `0.40.0+` exposes route-aware Qwen structured control on validated base-Qwen routes through `control_image` / `control_strength`, and route-aware masked edit on validated Qwen 2511 edit routes through `mask`.
+- Local MLX-Gen `0.40.1+` exposes route-aware Qwen structured control on validated base-Qwen routes through `control_image` / `control_strength`, and route-aware masked edit on validated Qwen 2511 edit routes through `mask`.
 - Local MLX-Gen exposes a shared `lora_adapters` contract across `text_to_image`, `image_to_image`, `text_to_video`, and `image_to_video`. Route-level LoRA truth stays backend-owned and is surfaced through provider catalogs as `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
@@ -226,7 +226,7 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen `0.40.0+` also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen `0.40.1+` also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, the prepared TI2V package

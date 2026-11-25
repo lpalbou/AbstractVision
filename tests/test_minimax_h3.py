@@ -111,6 +111,15 @@ class _FakeH3Video:
             "transformer_released": bool(self.kwargs.get("release_transformer")),
             "runtime_memory": {"process_peak_footprint_bytes": 123},
         }
+        if init.get("lora_paths"):
+            # As MLX-Gen 0.40.1 (LoRAFileReport.to_dict): the paths it was given and resolved.
+            metadata["lora_application_reports"] = [
+                {"requested_path": p, "resolved_path": p, "scale": 1.0, "role": "transformer", "applied_target_count": 2}
+                for p in init["lora_paths"]
+            ]
+            metadata["lora_applied_file_count"] = len(init["lora_paths"])
+            # A field a later MLX-Gen may add, nested: cleaned the same way without being named.
+            metadata["future_engine_field"] = {"inputs": [{"weights": init["lora_paths"][0]}]}
         if self.kwargs.get("generate_audio", True):
             metadata.update(
                 audio_present=True,
@@ -394,6 +403,21 @@ class TestMiniMaxH3Backend(unittest.TestCase):
             backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest", quantize=8))
         self.assertEqual(_FakeMiniMaxH3.instances, [])
 
+    def test_a_mode_the_route_does_not_list_is_refused_before_the_model_is_resolved(self):
+        from abstractvision import VisionManager
+        from abstractvision.backends.mflux import MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+
+        self.caps = _h3_capabilities(supports_block_streaming=False)
+        vm = VisionManager(backend=self._backend())
+        # Resolving the model may download it (allow_download): the refusal comes first.
+        with patch.object(MFluxVisionBackend, "_resolve_model", side_effect=AssertionError("resolved")):
+            with self.assertRaisesRegex(CapabilityNotSupportedError, "memory_mode='lowest'"):
+                vm.generate_video("A fox.", memory_mode="lowest")
+            with self.assertRaisesRegex(CapabilityNotSupportedError, "memory_mode='lowest'"):
+                vm.image_to_video(PNG_1X1, prompt="A fox.", extra={"memory_mode": "lowest"})
+        self.assertEqual(_FakeMiniMaxH3.instances, [])
+
     def test_load_time_quantize_is_validated_against_the_row(self):
         from abstractvision.errors import CapabilityNotSupportedError
         from abstractvision.types import VideoGenerationRequest
@@ -547,6 +571,19 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertTrue(backend.has_loaded_model())
         backend.preload()  # already loaded and warm: nothing more
         self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
+        self.assertNotIn("stream_blocks", _FakeMiniMaxH3.instances[0].init_kwargs)
+
+    def test_preload_under_the_lowest_process_mode_streams_blocks_and_the_first_request_reuses_it(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": "lowest"}):
+            backend = self._backend()
+            backend.preload()
+            self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
+            self.assertTrue(_FakeMiniMaxH3.instances[0].init_kwargs.get("stream_blocks"))
+            asset = backend.generate_video(VideoGenerationRequest(prompt="A fox."))
+        self.assertEqual(len(_FakeMiniMaxH3.instances), 1)  # not loaded again
+        self.assertEqual(asset.metadata["memory_mode"], "lowest")
 
     def test_a_failure_inside_preload_leaves_no_model_resident(self):
         from abstractvision.backends.mflux import MFluxVisionBackend
@@ -941,8 +978,22 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertEqual(asset.metadata["mlx_gen"]["model"], "minimax-h3-8bit")
         self.assertEqual(asset.metadata["mlx_gen"]["lora_paths"], ["style.safetensors"])
         self.assertEqual(asset.metadata["lora_paths"], ["style.safetensors"])
+        for reports in (asset.metadata["lora_application_reports"], asset.metadata["mlx_gen"]["lora_application_reports"]):
+            self.assertEqual(
+                [(r["requested_path"], r["resolved_path"], r["applied_target_count"]) for r in reports],
+                [("style.safetensors", "style.safetensors", 2)],
+            )
+        self.assertEqual(asset.metadata["mlx_gen"]["future_engine_field"], {"inputs": [{"weights": "style.safetensors"}]})
         for name in ("image_path", "video_path", "audio_sidecar_path"):
             self.assertNotIn(name, asset.metadata["mlx_gen"])
+
+    def test_the_users_text_is_kept_as_written_in_metadata(self):
+        from abstractvision.backends.mflux import _public_engine_metadata
+
+        cleaned = _public_engine_metadata(
+            {"prompt": "/imagine a fox in snow", "negative_prompt": "/blur", "model": str(self.tmp / "minimax-h3-8bit")}
+        )
+        self.assertEqual(cleaned, {"prompt": "/imagine a fox in snow", "negative_prompt": "/blur", "model": "minimax-h3-8bit"})
 
     def test_a_cached_package_is_reported_by_its_repo_id(self):
         from abstractvision.backends.mflux import _public_model_name

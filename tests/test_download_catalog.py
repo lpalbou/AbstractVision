@@ -379,6 +379,18 @@ class TestDownloadCommand(unittest.TestCase):
         self.assertIn("adapter (minimax-h3-turbo): hf:lightx2v/Minimax-h3-Turbo/turbo.safetensors (would be fetched)", out)
         self.assertIn("dry run: nothing was downloaded", out)
 
+    def test_an_unknown_size_says_the_disk_was_not_checked(self):
+        files = dict(H3_8BIT_FILES, **{"audio_vae/0.safetensors": None})  # the listing gives no size
+        for argv in (["--dry-run"], []):
+            with _Env(_FakeHub(files)):
+                rc, out = _run_cli(["download", "MiniMaxAI/MiniMax-H3", *argv])
+            self.assertEqual(rc, 0, argv)
+            self.assertIn("disk: not checked, because the download size is unknown", out, argv)
+            self.assertNotIn("enough free space", out, argv)
+        with _Env(_FakeHub(H3_8BIT_FILES)):
+            _rc, out = _run_cli(["download", "MiniMaxAI/MiniMax-H3", "--dry-run"])
+        self.assertIn("disk: enough free space", out)
+
     def test_repo_snapshot_accepts_a_string_cache_dir(self):
         hub = _FakeHub({"model.safetensors": 10, "config.json": 2})
         with _Env(hub) as env:

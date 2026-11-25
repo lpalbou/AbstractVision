@@ -28,6 +28,7 @@ def _recording_backend(memory_modes, *, uses_batch_marker=False):
         def __init__(self) -> None:
             self.uses_batch_marker = uses_batch_marker
             self.requests = []
+            self.modes = []
 
         def get_capabilities(self):
             if memory_modes is None:
@@ -38,7 +39,10 @@ def _recording_backend(memory_modes, *, uses_batch_marker=False):
             return tuple(memory_modes) if memory_modes else ("default",)
 
         def _record(self, request, media_type="image"):
+            # As every backend: the mode is resolved and checked before any work.
+            _request, mode, _batch = self.resolve_memory_request(request)
             self.requests.append(request)
+            self.modes.append(mode)
             return GeneratedAsset(media_type=media_type, data=b"x", mime_type="image/png", metadata={})
 
         def generate_image(self, request):
@@ -94,34 +98,23 @@ class TestMemoryModeTypes(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "memory_mode must be one of default, low, lowest"):
                 normalize_memory_mode(value)
 
-    def test_request_memory_mode_reads_the_field_then_extra(self):
-        from abstractvision.types import ImageGenerationRequest, request_memory_mode
+    def test_the_field_wins_then_extra_then_the_environment(self):
+        from abstractvision.types import resolve_memory_mode_with_source as resolve
 
         with patch.dict("os.environ", NO_ENV):
-            self.assertEqual(request_memory_mode(ImageGenerationRequest(prompt="p")), "default")
-            self.assertEqual(request_memory_mode(ImageGenerationRequest(prompt="p", memory_mode="low")), "low")
-            self.assertEqual(
-                request_memory_mode(ImageGenerationRequest(prompt="p", extra={"memory_mode": "lowest"})),
-                "lowest",
-            )
+            self.assertEqual(resolve(None), ("default", False))
+            self.assertEqual(resolve("low"), ("low", False))
+            self.assertEqual(resolve(None, {"memory_mode": "lowest"}), ("lowest", False))
             with self.assertRaisesRegex(ValueError, "disagree"):
-                request_memory_mode(
-                    ImageGenerationRequest(prompt="p", memory_mode="low", extra={"memory_mode": "lowest"})
-                )
-
-    def test_environment_default_applies_when_the_request_names_no_mode(self):
-        from abstractvision.types import resolve_memory_mode
-
+                resolve("low", {"memory_mode": "lowest"})
         with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": "low"}):
-            self.assertEqual(resolve_memory_mode(None), "low")
-            self.assertEqual(resolve_memory_mode(None, {"other": 1}), "low")
-            self.assertEqual(resolve_memory_mode("default"), "default")
-            self.assertEqual(resolve_memory_mode(None, {"memory_mode": "lowest"}), "lowest")
+            self.assertEqual(resolve(None), ("low", True))
+            self.assertEqual(resolve(None, {"other": 1}), ("low", True))
+            self.assertEqual(resolve("default"), ("default", False))
+            self.assertEqual(resolve(None, {"memory_mode": "lowest"}), ("lowest", False))
         with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": "tiny"}):
             with self.assertRaisesRegex(ValueError, "ABSTRACTVISION_MEMORY_MODE"):
-                resolve_memory_mode(None)
-        with patch.dict("os.environ", NO_ENV):
-            self.assertEqual(resolve_memory_mode(None), "default")
+                resolve(None)
 
     def test_every_generation_request_carries_memory_mode(self):
         from abstractvision import types as av_types
@@ -155,12 +148,11 @@ class TestVisionManagerMemoryMode(unittest.TestCase):
         vm.generate_video("p", memory_mode="low")
         vm.image_to_video(b"img", memory_mode="LOW")
 
-        self.assertEqual(
-            [request.memory_mode for request in backend.requests],
-            ["low", "lowest", "low", "low", "low"],
-        )
+        self.assertEqual(backend.modes, ["low", "lowest", "low", "low", "low"])
+        # VisionManager carries the value; the backend resolves and checks it.
+        self.assertEqual(backend.requests[-1].memory_mode, "LOW")
 
-    def test_extra_memory_mode_is_lifted_into_the_request_field(self):
+    def test_extra_memory_mode_reaches_the_backend(self):
         # AbstractCore's HTTP routes forward backend parameters through `extra`.
         from abstractvision import VisionManager
         from abstractvision.types import MEMORY_MODES
@@ -170,9 +162,9 @@ class TestVisionManagerMemoryMode(unittest.TestCase):
             "p", extra={"memory_mode": "low", "max_sequence_length": 256}
         )
 
-        request = backend.requests[0]
-        self.assertEqual(request.memory_mode, "low")
-        self.assertEqual(request.extra, {"max_sequence_length": 256})
+        self.assertEqual(backend.modes, ["low"])
+        request, _mode, _batch = backend.resolve_memory_request(backend.requests[0])
+        self.assertEqual((request.memory_mode, request.extra), ("low", {"max_sequence_length": 256}))
 
     def test_disagreeing_keyword_and_extra_are_refused(self):
         from abstractvision import VisionManager
@@ -182,7 +174,7 @@ class TestVisionManagerMemoryMode(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "disagree"):
             vm.generate_image("p", memory_mode="low", extra={"memory_mode": "lowest"})
 
-    def test_mode_a_backend_does_not_list_is_refused_before_the_backend_runs(self):
+    def test_mode_a_backend_does_not_list_is_refused_before_any_work(self):
         from abstractvision import VisionManager
         from abstractvision.errors import CapabilityNotSupportedError
 
@@ -632,9 +624,10 @@ class TestAbstractCorePluginMemoryMode(unittest.TestCase):
         cap.t2v("fox", memory_mode="low", num_frames=5)
         self.assertEqual(seen["request"].memory_mode, "low")
         self.assertNotIn("memory_mode", seen["request"].extra or {})
-        # The AbstractCore HTTP route nests backend parameters under `extra`.
+        # The AbstractCore HTTP route nests backend parameters under `extra`: passed through, the
+        # backend resolves it (`resolve_memory_request`).
         cap.t2i("fox", extra={"memory_mode": "lowest"})
-        self.assertEqual(seen["request"].memory_mode, "lowest")
+        self.assertEqual(seen["request"].extra["memory_mode"], "lowest")
 
     def test_record_is_dropped_when_the_run_released_the_model(self):
         from abstractvision.types import MEMORY_MODES, GeneratedAsset, VisionBackendCapabilities
@@ -697,51 +690,59 @@ class TestAbstractCorePluginMemoryMode(unittest.TestCase):
         self.assertEqual(cap.list_loaded_models(), [])
 
     def test_plugin_refuses_memory_mode_on_a_provider_that_cannot_honour_it(self):
-        import abstractvision.backends.huggingface_diffusers as diffusers_backend
+        from abstractvision.backends import huggingface_diffusers as hd
         from abstractvision.errors import CapabilityNotSupportedError
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
-        from abstractvision.types import GeneratedAsset, VisionBackendCapabilities
-
-        calls = []
-
-        class _FakeBackend:
-            def __init__(self, *, config):
-                pass
-
-            def get_capabilities(self):
-                return VisionBackendCapabilities(memory_modes=("default",))
-
-            def generate_image(self, request):  # pragma: no cover
-                calls.append(request)
-                return GeneratedAsset(media_type="image", data=b"png", mime_type="image/png", metadata={})
 
         class _DummyOwner:
-            config = {"vision_backend": "diffusers"}
+            config = {"vision_backend": "diffusers", "vision_model_id": "runwayml/stable-diffusion-v1-5", "vision_device": "cpu"}
 
-        with patch.object(diffusers_backend, "HuggingFaceDiffusersVisionBackend", _FakeBackend):
-            with patch.dict("os.environ", {}, clear=True):
-                cap = _AbstractVisionCapability(_DummyOwner())
-                with self.assertRaises(CapabilityNotSupportedError):
-                    cap.t2i("fox", memory_mode="low")
-        self.assertEqual(calls, [])
+        with patch.object(hd, "_lazy_import_torch", return_value=types.SimpleNamespace()), patch.object(
+            hd.HuggingFaceDiffusersVisionBackend, "_get_or_load_pipeline", side_effect=AssertionError("loaded")
+        ), patch.dict("os.environ", {}, clear=True):
+            cap = _AbstractVisionCapability(_DummyOwner())
+            with self.assertRaisesRegex(CapabilityNotSupportedError, "memory_mode='low'"):
+                cap.t2i("fox", memory_mode="low")
 
-    def test_available_providers_lists_the_modes_each_provider_can_honour(self):
+    def test_available_providers_asks_each_backend_without_loading_or_network(self):
+        from abstractvision.backends import huggingface_diffusers as hd
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
 
-        class _DummyOwner:
-            config = {}
+        class _Owner:
+            def __init__(self, config):
+                self.config = config
 
-        for profile, diffusers_modes in (("cpu", ["default"]), ("cuda", ["default", "low", "lowest"])):
-            with patch.dict("os.environ", {"ABSTRACTVISION_ASSUME_OFFLINE": "1"}, clear=True), patch(
-                "abstractvision.model_downloads.local_model_profile", return_value=profile
-            ):
-                details = _AbstractVisionCapability(_DummyOwner()).available_providers()["details"]
-            self.assertEqual(details["huggingface"]["memory_modes"], diffusers_modes, profile)
-            self.assertEqual(details["mlx-gen"]["memory_modes"], ["default", "low"])
-            self.assertEqual(details["mflux"]["memory_modes"], ["default", "low"])
-            self.assertEqual(details["sdcpp"]["memory_modes"], ["default", "low"])
-            for provider in ("openai", "openai-compatible"):
-                self.assertEqual(details[provider]["memory_modes"], ["default"], provider)
+        transport = []
+
+        def fake_urlopen(req, timeout=None):
+            transport.append(req.full_url)
+            if req.full_url.endswith("/vision/models"):
+                entry = {"id": "stand-in/h3", "memory_modes": ["default", "low"]}
+                return _FakeHTTPResponse(json.dumps({"models": [entry], "active": entry}).encode())
+            return _FakeHTTPResponse(json.dumps({"data": [{"id": "stand-in/h3"}]}).encode())
+
+        with patch.dict("os.environ", {"ABSTRACTVISION_ASSUME_OFFLINE": "1"}, clear=True), patch.object(
+            hd, "_lazy_import_torch", return_value=types.SimpleNamespace()
+        ), patch.object(hd.HuggingFaceDiffusersVisionBackend, "_get_or_load_pipeline", side_effect=AssertionError("loaded")), patch(
+            "abstractvision.backends.openai_compatible.urlopen", side_effect=fake_urlopen
+        ):
+            # Diffusers: what its configured device can run, whatever accelerator the host has.
+            for device, expected in (("cpu", ["default"]), ("cuda", ["default", "low", "lowest"])):
+                details = _AbstractVisionCapability(_Owner({"vision_device": device})).available_providers()["details"]
+                self.assertEqual(details["huggingface"]["memory_modes"], expected, device)
+                self.assertEqual(details["mlx-gen"]["memory_modes"], ["default", "low"])
+                self.assertEqual(details["mflux"]["memory_modes"], ["default", "low"])
+                self.assertEqual(details["openai"]["memory_modes"], ["default"])
+            # OpenAI-compatible: the remote's last discovery answer, else "default"; never a request.
+            cap = _AbstractVisionCapability(
+                _Owner({"vision_base_url": "http://127.0.0.1:9/v1", "vision_model_id": "stand-in/h3"})
+            )
+            self.assertEqual(cap.available_providers()["details"]["openai-compatible"]["memory_modes"], ["default"])
+            self.assertEqual(transport, [])
+            cap.list_provider_models()
+            sent = len(transport)
+            self.assertEqual(cap.available_providers()["details"]["openai-compatible"]["memory_modes"], ["default", "low"])
+            self.assertEqual(len(transport), sent)
 
 
 # The model-facing tool parameters, as on main before memory modes: memory_mode is not among them.
@@ -794,15 +795,17 @@ class TestVisionToolsMemoryMode(unittest.TestCase):
             tools["vision_text_to_image_batch"]("fox", count=2)
         self.assertEqual([request.memory_mode for request in backend.requests], ["low", "low", "low"])
 
-    def test_factory_refuses_a_mode_the_backend_does_not_list(self):
+    def test_factory_refuses_an_unknown_mode_and_the_backend_one_it_does_not_list(self):
         from abstractvision.errors import CapabilityNotSupportedError
 
-        with self.assertRaisesRegex(CapabilityNotSupportedError, "memory_mode='low'"):
-            self._tools(_recording_backend(("default",)), memory_mode="low")
         with self.assertRaises(ValueError):
             self._tools(None, memory_mode="tiny")
-        # Without a backend the listed modes are not knowable: accepted, checked per call.
-        self._tools(None, memory_mode="lowest")
+        backend = _recording_backend(("default",))
+        with patch.dict("os.environ", NO_ENV):
+            tools, _inspect = self._tools(backend, memory_mode="low")
+            with self.assertRaisesRegex(CapabilityNotSupportedError, "memory_mode='low'"):
+                tools["vision_text_to_image"]("fox")
+        self.assertEqual(backend.requests, [])
 
 
 class TestCliMemoryMode(unittest.TestCase):

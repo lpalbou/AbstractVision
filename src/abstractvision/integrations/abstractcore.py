@@ -4,18 +4,9 @@ import base64
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from ..artifacts import MediaStore, get_artifact_id, is_artifact_ref
-from ..errors import (
-    AbstractVisionError,
-    CapabilityNotSupportedError,
-    OptionalDependencyMissingError,
-)
+from ..errors import AbstractVisionError, OptionalDependencyMissingError
 from ..model_capabilities import VisionModelCapabilitiesRegistry
-from ..types import (
-    MEMORY_MODE_DEFAULT,
-    LoRAAdapterSpec,
-    ProviderAdapterInfo,
-    normalize_memory_mode,
-)
+from ..types import LoRAAdapterSpec, ProviderAdapterInfo, normalize_memory_mode
 from ..vision_manager import VisionManager
 
 
@@ -154,25 +145,6 @@ def _coerce_lora_adapters(value: Optional[Sequence[Dict[str, Any]]]) -> List[LoR
     return adapters
 
 
-def _tools_memory_mode(vision_manager: VisionManager, memory_mode: Optional[str]) -> Optional[str]:
-    """Validate the tools' memory mode once, against the backend's listed modes when it says."""
-    if memory_mode is None:
-        return None
-    mode = normalize_memory_mode(memory_mode)
-    if mode == MEMORY_MODE_DEFAULT:
-        return mode
-    try:
-        caps = vision_manager.backend.get_capabilities() if vision_manager.backend is not None else None
-    except Exception:
-        caps = None
-    listed = tuple(caps.memory_modes) if caps is not None and caps.memory_modes else None
-    if listed is not None and mode not in listed:
-        raise CapabilityNotSupportedError(
-            f"make_vision_tools(memory_mode={mode!r}): the backend supports {', '.join(listed)}."
-        )
-    return mode
-
-
 def make_vision_tools(
     *,
     vision_manager: VisionManager,
@@ -192,7 +164,8 @@ def make_vision_tools(
     model_id = str(model_id or "").strip()
     if not model_id:
         raise ValueError("model_id must be a non-empty string")
-    tools_memory_mode = _tools_memory_mode(vision_manager, memory_mode)
+    # The backend checks the mode against what it supports at each call.
+    tools_memory_mode = normalize_memory_mode(memory_mode) if memory_mode is not None else None
 
     def _task_param_value(task_name: str, param_name: str, fallback: Any = None) -> Any:
         """The catalog's value for a parameter the tool call left unset.

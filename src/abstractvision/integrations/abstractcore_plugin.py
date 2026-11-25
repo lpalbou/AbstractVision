@@ -20,8 +20,6 @@ from ..backends.base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend
 from ..errors import AbstractVisionError, CapabilityNotSupportedError
 from ..types import (
     MEMORY_MODE_DEFAULT,
-    MEMORY_MODE_LOW,
-    MEMORY_MODES,
     ImageEditRequest,
     ImageGenerationRequest,
     ImageToVideoRequest,
@@ -1903,21 +1901,6 @@ class _AbstractVisionCapability:
         order = ["openai", "openai-compatible", "huggingface", "mlx-gen", "mflux", "sdcpp"]
         available_sorted = [provider for provider in order if provider in available]  # provider ids are canonical
 
-        # Diffusers offloads to the CPU on CUDA only; sd.cpp offloads its parameters anywhere.
-        from ..host import local_device_profile
-
-        diffusers_modes = (
-            MEMORY_MODES if local_device_profile() == "cuda" else (MEMORY_MODE_DEFAULT,)
-        )
-        memory_modes_by_provider = {
-            "openai": (MEMORY_MODE_DEFAULT,),
-            "openai-compatible": (MEMORY_MODE_DEFAULT,),
-            "huggingface": diffusers_modes,
-            "mlx-gen": (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW),
-            "mflux": (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW),
-            "sdcpp": (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW),
-        }
-
         return {
             "task": task,
             "providers": list(known),
@@ -1930,10 +1913,10 @@ class _AbstractVisionCapability:
                     "weights_present": _mflux_weights_present() if provider in {"mlx-gen", "mflux"} else None,
                     "remote": provider in {"openai", "openai-compatible"},
                     "local": provider not in {"openai", "openai-compatible"},
-                    # Per-request `memory_mode` values the provider can honour on this host.
-                    # MLX-Gen lists "lowest" per model, in each catalog entry's
-                    # parameter_constraints["memory_mode"]["enum"].
-                    "memory_modes": list(memory_modes_by_provider[provider]),
+                    # Per-request `memory_mode` values the provider's backend can honour with its
+                    # configured model and device. MLX-Gen also lists them per model, in each
+                    # catalog entry's parameter_constraints["memory_mode"]["enum"].
+                    "memory_modes": self._provider_memory_modes(provider, task),
                     "reachable": (
                         openai_available
                         if provider == "openai"
@@ -1947,6 +1930,24 @@ class _AbstractVisionCapability:
             "base_url": base_url,
             "has_api_key": bool(str(api_key or "").strip()),
         }
+
+    def _provider_memory_modes(self, provider: str, task: Optional[str]) -> List[str]:
+        """`supported_memory_modes()` of the backend a request for `provider` runs on.
+
+        The configured backend when it is that provider's (requests that name no provider run on
+        it), else the one routed for the provider. Backends answer without loading a model or
+        sending a request; one that cannot be built answers "default".
+        """
+        try:
+            backend = self._get_backend()
+        except Exception:
+            backend = None
+        try:
+            if backend is None or _provider_id_for_backend(backend) != provider:
+                backend = self._resolve_backend_binding(provider=provider)["backend"]
+            return list(backend.supported_memory_modes(task))
+        except Exception:
+            return [MEMORY_MODE_DEFAULT]
 
     def list_available_providers(self, *, task: Optional[str] = None) -> Dict[str, Any]:
         return self.available_providers(task=task)

@@ -24,10 +24,3 @@ def total_physical_memory_bytes() -> Optional[int]:
     except (ValueError, OSError, TypeError):
         return None
     return total if total > 0 else None
-
-
-def local_device_profile() -> str:
-    """The accelerator profile of the host: "apple-silicon", "cuda", "macos" or "cpu"."""
-    from .model_downloads import local_model_profile
-
-    return local_model_profile()

@@ -1346,16 +1346,30 @@ def _public_model_name(value: Any) -> Optional[str]:
 
 # Engine metadata keys that name temporary files AbstractVision wrote and deleted.
 _TEMPORARY_PATH_METADATA_KEYS = ("image_path", "video_path", "audio_sidecar_path")
+# What the user wrote is kept as written, even when it starts with "/".
+_USER_TEXT_METADATA_KEYS = ("prompt", "negative_prompt")
 
 
 def _public_engine_metadata(metadata: Mapping[str, Any]) -> Dict[str, Any]:
-    """MLX-Gen's metadata without local paths: model and adapters by name, no temporaries."""
-    public = {key: value for key, value in metadata.items() if key not in _TEMPORARY_PATH_METADATA_KEYS}
-    if "model" in public:
-        public["model"] = _public_model_name(public["model"])
-    if isinstance(public.get("lora_paths"), (list, tuple)):
-        public["lora_paths"] = [_public_model_name(item) for item in public["lora_paths"]]
-    return public
+    """MLX-Gen's metadata without local paths and without the temporaries AbstractVision wrote.
+
+    Every string value at any depth that is an absolute path is replaced by `_public_model_name`,
+    whichever field carries it (`model`, `lora_paths`, `lora_application_reports`, a later one),
+    except the user's own text.
+    """
+
+    def public(value: Any) -> Any:
+        if isinstance(value, str):
+            return _public_model_name(value) if os.path.isabs(value) else value
+        if isinstance(value, Mapping):
+            return {
+                key: item if key in _USER_TEXT_METADATA_KEYS else public(item) for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [public(item) for item in value]
+        return value
+
+    return public({key: value for key, value in metadata.items() if key not in _TEMPORARY_PATH_METADATA_KEYS})
 
 
 def _public_lora_adapters(adapters: Sequence[Any]) -> List[Dict[str, Any]]:
@@ -3726,13 +3740,11 @@ class MFluxVisionBackend(VisionBackend):
             bits = int(quantize)
         except (TypeError, ValueError):
             raise ValueError(f"quantize must be an integer bit width (got {quantize!r}).") from None
-        configured = str(self._cfg.model or "").strip().lower()
+        # The package directory says so (bits in its name, or an MLX-Gen model card), or the width
+        # the catalog entry or the configured id gives is below 16 (a cache snapshot of a
+        # third-party package whose card does not name MLX-Gen, such as the 2-bit Bonsai).
         stored_bits = self._resolved_quantization_bits
-        if (
-            _is_prepared_mlx_gen_package(model_path)
-            or configured.startswith("abstractframework/")
-            or (stored_bits is not None and int(stored_bits) < 16)
-        ):
+        if _is_prepared_mlx_gen_package(model_path) or (stored_bits is not None and int(stored_bits) < 16):
             raise CapabilityNotSupportedError(
                 f"{model_path} is a prepared MLX-Gen package whose stored weights are its quantization; "
                 "load it without quantize, or quantize the source snapshot."
@@ -3813,11 +3825,15 @@ class MFluxVisionBackend(VisionBackend):
             self._ensure_seedvr2_model_impl(quantize=self._default_upscale_quantize())
             self._mark_preloaded()
             return
-        _model, model_def = self._ensure_model_impl()
+        # Loaded as the first request under the process memory mode loads it, so it is not loaded
+        # again: "lowest" streams the transformer blocks.
+        stream_blocks = self.process_memory_mode() == MEMORY_MODE_LOWEST
+        _model, model_def = self._ensure_model_impl(stream_blocks=stream_blocks)
         if self._model_key is not None and self._warmed_model_key == self._model_key:
             return
-        if model_def.family in _VIDEO_FAMILIES:
-            # A video model has no image warm-up; its first run compiles its own kernels.
+        if model_def.family in _VIDEO_FAMILIES or stream_blocks:
+            # A video model has no image warm-up; its first run compiles its own kernels. The
+            # warm-up runs in "default", which would load a streamed model again without streaming.
             self._mark_preloaded()
             return
         self._generate_impl(self._warmup_request(model_def))
@@ -3879,6 +3895,8 @@ class MFluxVisionBackend(VisionBackend):
         self,
         request: ImageGenerationRequest,
     ) -> ImageGenerationRequest:
+        # The mode and options are checked before the model is resolved, which may download it.
+        self.resolve_memory_request(request, task="text_to_image")
         model_def = self._resolved_model_def()
         adapter_defaults = recommended_lora_request_overrides(
             request.lora_adapters,
@@ -3932,6 +3950,8 @@ class MFluxVisionBackend(VisionBackend):
         self,
         request: ImageEditRequest,
     ) -> ImageEditRequest:
+        # The mode and options are checked before the model is resolved, which may download it.
+        self.resolve_memory_request(request, task="image_to_image")
         model_def = self._resolved_model_def()
         adapter_defaults = recommended_lora_request_overrides(
             request.lora_adapters,
@@ -3995,6 +4015,10 @@ class MFluxVisionBackend(VisionBackend):
     ) -> Dict[str, Any]:
         # A first frame is opened and decoded before anything else is checked.
         keyframe = _checked_keyframe_size(request.image) if isinstance(request, ImageToVideoRequest) else None
+        # The mode and options are checked before the model is resolved, which may download it.
+        self.resolve_memory_request(
+            request, task="image_to_video" if isinstance(request, ImageToVideoRequest) else "text_to_video"
+        )
         model_def = self._resolved_model_def()
         if model_def.family == "minimax-h3":
             return self._normalize_h3_request_values(request=request, keyframe=keyframe)
@@ -4310,6 +4334,8 @@ class MFluxVisionBackend(VisionBackend):
         self,
         request: ImageUpscaleRequest,
     ) -> ImageUpscaleRequest:
+        # The mode and options are checked before the model is resolved, which may download it.
+        self.resolve_memory_request(request, task="image_upscale")
         model_def = self._resolved_model_def()
         if model_def.family != "seedvr2-upscale":
             raise CapabilityNotSupportedError(

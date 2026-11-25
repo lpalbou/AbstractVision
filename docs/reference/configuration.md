@@ -142,7 +142,7 @@ Note:
 `abstractvision download` takes an exact package repo id (`AbstractFramework/minimax-h3-4bit`), its
 short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`). A model id with several
 packages selects the one the catalog marks as recommended (`*` in `catalog`), or the width
-`--bits 4|8|16` names; `--allow-non-8bit` selects a model's source snapshot. A model id with several
+`--bits 2|4|8|16` names; `--allow-non-8bit` selects a model's source snapshot. A model id with several
 packages and no recommendation asks for an exact repo id or `--bits`. On Apple silicon `--target auto`
 is `mlx` (MLX-Gen packages first).
 

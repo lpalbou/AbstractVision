@@ -68,24 +68,44 @@ class _ContractServer(_Handler):
 
     modes = ["default", "low", "lowest"]
     posts = []
+    gets = []
     jobs = {}
+    # Set by tests: an HTTP status for GET /vision/models, a status for job polls, a server busy
+    # with another generation, and jobs that succeed at their first poll.
+    discovery_status = None
+    poll_status = None
+    busy = False
+    jobs_succeed = False
 
     def do_GET(self):
         path = urlparse(self.path).path
-        if path == "/v1/vision/models":
+        self.gets.append(path)
+        if path == "/v1/vision/models" and self.discovery_status is not None:
+            self._reply(self.discovery_status, {"error": {"message": "stand-in status"}})
+        elif path == "/v1/vision/models":
             entry = {"id": "stand-in/h3", "memory_modes": list(self.modes), "supports_audio": True, "audio_fields": AUDIO_FIELDS}
             self._reply(200, {"models": [entry, {"id": "stand-in/image", "memory_modes": ["default"], "supports_audio": False, "audio_fields": []}], "active": None})
         elif path == "/v1/models":
             self._reply(200, {"data": [{"id": "stand-in/h3"}, {"id": "other"}]})
+        elif path.startswith("/v1/vision/jobs/") and self.poll_status is not None:
+            self._reply(self.poll_status, {"error": {"message": "stand-in poll failure"}})
         elif path.startswith("/v1/vision/jobs/"):
             job = self.jobs.get(path.rsplit("/", 1)[-1])
-            self._reply(200, dict(job) if job else {"state": "failed", "error": "unknown job"})
+            if job and self.jobs_succeed and job["state"] == "running":
+                job["state"] = "succeeded"
+                if "/videos/" in job["route"]:
+                    job["result"] = self._result(job["body"])
+                else:
+                    # As AbstractCore's image job routes: the mode on the job, not in its result.
+                    job["memory_mode_used"] = job["body"].get("memory_mode") or "default"
+                    job["result"] = {"created": 1, "data": [{"b64_json": _b64(PNG)}]}
+            self._reply(200, {k: v for k, v in job.items() if k not in {"route", "body"}} if job else {"state": "failed", "error": "unknown job"})
         else:
             self._reply(404, {"error": {"message": "not found", "type": "http_error"}})
 
     def _result(self, body):
         mode = body.get("memory_mode") or "default"
-        audio = {"present": True, "sample_rate": 48000, "channels": 2, "codec": "wav", "muxed": False,
+        audio = {"present": True, "sample_rate": 48000, "channels": 2, "codec": "pcm_s16le", "muxed": False,
                  "duration_seconds": 5.2, "wav": {"b64_json": _b64(WAV), "mime_type": "audio/wav"}}
         return {"created": 1, "memory_mode_used": mode, "audio": audio,
                 "data": [{"b64_json": _b64(MP4), "mime_type": "video/mp4", "audio": audio}]}
@@ -105,10 +125,12 @@ class _ContractServer(_Handler):
                 "type": "invalid_request_error", "code": "capability_not_supported",
                 "param": "memory_mode", "supported": list(self.modes)}})
             return
-        if path.startswith("/v1/vision/jobs/"):
+        if path.startswith("/v1/vision/jobs/") and self.busy:
+            self._reply(409, {"detail": "Another generation is already running; wait for it to finish."})
+        elif path.startswith("/v1/vision/jobs/"):
             job_id = uuid.uuid4().hex
-            # The job runs until it is cancelled.
-            self.jobs[job_id] = {"job_id": job_id, "state": "running"}
+            # The job runs until it is cancelled, unless jobs_succeed.
+            self.jobs[job_id] = {"job_id": job_id, "state": "running", "route": path, "body": body}
             self._reply(200, {"job_id": job_id})
         elif path.startswith("/v1/videos/"):
             self._reply(200, self._result(body))
@@ -141,7 +163,12 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
     def setUp(self):
         _ContractServer.modes = ["default", "low", "lowest"]
         _ContractServer.posts = []
+        _ContractServer.gets = []
         _ContractServer.jobs = {}
+        _ContractServer.discovery_status = None
+        _ContractServer.poll_status = None
+        _ContractServer.busy = False
+        _ContractServer.jobs_succeed = False
         self.root = _serve(_ContractServer, self)
         self.client = _client(
             self.root, model_id="stand-in/h3", text_to_video_path="/videos/generations", image_to_video_path="/videos/edits"
@@ -167,6 +194,12 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         self.assertEqual(asset.audio.data, WAV)
         self.assertEqual(asset.audio.mime_type, "audio/wav")
         self.assertEqual(asset.metadata["memory_mode_used"], "lowest")
+        # The same summary as a local backend gives: the codec is the remote's (the WAV's PCM format).
+        self.assertEqual(
+            asset.audio_summary(),
+            {"present": True, "sample_rate": 48000, "channels": 2, "codec": "pcm_s16le", "muxed": False,
+             "duration_seconds": 5.2, "wav": WAV},
+        )
 
     def test_multipart_image_to_video_sends_form_fields(self):
         from abstractvision.types import ImageToVideoRequest
@@ -176,22 +209,77 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         self.assertEqual((form["memory_mode"], form["generate_audio"], form["quantize"]), ("low", "false", "8"))
 
     def test_discovery_lists_modes_per_model(self):
+        models = {m.id: m for m in self.client.list_provider_models()}
+        self.assertEqual(models["stand-in/h3"].raw["memory_modes"], ["default", "low", "lowest"])
+        self.assertTrue(models["stand-in/h3"].raw["supports_audio"])
+        self.assertNotIn("memory_modes", models["other"].raw)
         caps = self.client.get_capabilities()
         self.assertEqual(tuple(caps.memory_modes), ("default", "low", "lowest"))
         self.assertTrue(caps.generates_audio)
         self.assertEqual(self.client.supported_request_options("text_to_video"), frozenset({"quantize", *AUDIO_FIELDS}))
         self.assertEqual(self.client.supported_request_options("text_to_image"), frozenset({"quantize"}))
-        models = {m.id: m for m in self.client.list_provider_models()}
-        self.assertEqual(models["stand-in/h3"].raw["memory_modes"], ["default", "low", "lowest"])
-        self.assertTrue(models["stand-in/h3"].raw["supports_audio"])
-        self.assertNotIn("memory_modes", models["other"].raw)
         image_client = _client(self.root, model_id="stand-in/image")
+        image_client.list_provider_models()
         self.assertEqual(tuple(image_client.get_capabilities().memory_modes), ("default",))
+
+    def test_plain_requests_make_no_discovery_request_and_one_that_sets_a_field_makes_one(self):
+        from abstractvision import VisionManager
+
+        vm = VisionManager(backend=self.client)
+        for _ in range(3):
+            vm.generate_image("a red cube", width=64, height=64)
+        self.client.get_capabilities()
+        self.assertEqual(_ContractServer.gets, [])
+        self.assertEqual([path for path, _body in _ContractServer.posts], ["/v1/images/generations"] * 3)
+        for _ in range(2):
+            vm.generate_image("a red cube", memory_mode="low")
+        self.assertEqual(_ContractServer.gets, ["/v1/vision/models"])  # then reused
+        self.assertEqual(_ContractServer.posts[-1][1]["memory_mode"], "low")
+
+    def test_a_failed_discovery_is_not_taken_for_a_plain_server(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        _ContractServer.discovery_status = 503
+        with self.assertRaisesRegex(CapabilityNotSupportedError, r"memory_mode='low'.*GET /vision/models failed.*503"):
+            self.client.generate_image(ImageGenerationRequest(prompt="fox", memory_mode="low"))
+        self.assertEqual(_ContractServer.posts, [])
+        _ContractServer.discovery_status = None  # the server answers now: asked again, not cached
+        self.client.generate_image(ImageGenerationRequest(prompt="fox", memory_mode="low"))
+        self.assertEqual(_ContractServer.posts[-1][1]["memory_mode"], "low")
+        self.assertEqual(_ContractServer.gets, ["/v1/vision/models"] * 2)
+
+    def test_a_definite_answer_without_modes_is_cached_as_a_plain_server(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        _ContractServer.discovery_status = 404
+        for _ in range(2):
+            with self.assertRaisesRegex(CapabilityNotSupportedError, r"supported: default\)"):
+                self.client.generate_image(ImageGenerationRequest(prompt="fox", memory_mode="low"))
+        self.assertEqual(_ContractServer.gets, ["/v1/vision/models"])
+
+    def test_job_results_carry_the_mode_used_from_the_result_or_the_job(self):
+        from abstractvision import VisionManager
+
+        _ContractServer.jobs_succeed = True
+        vm = VisionManager(backend=self.client)
+        image = vm.generate_image("fox", memory_mode="low", cancel_event=threading.Event())
+        self.assertEqual(_ContractServer.posts[-1][0], "/v1/vision/jobs/images/generations")
+        self.assertEqual(image.metadata["memory_mode_used"], "low")
+        video = vm.generate_video("fox", memory_mode="lowest", cancel_event=threading.Event())
+        self.assertEqual(video.metadata["memory_mode_used"], "lowest")
+        self.assertEqual(video.audio.codec, "pcm_s16le")
+
+    def test_a_server_busy_with_another_generation_is_named(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        _ContractServer.busy = True
+        with self.assertRaisesRegex(RuntimeError, "Another generation is running on the server"):
+            self.client.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
 
     def test_unsupported_values_are_capability_errors(self):
         from abstractvision.types import ImageGenerationRequest, VideoGenerationRequest
 
-        self.client.get_capabilities()
+        self.client.list_provider_models()
         # The remote stops offering "lowest" after the client read its list: its 422 comes back
         # as CapabilityNotSupportedError with the remote's message.
         _ContractServer.modes = ["default", "low"]
@@ -230,6 +318,42 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         job_id = next(iter(_ContractServer.jobs))
         self.assertEqual(_ContractServer.posts[-1][0], f"/v1/vision/jobs/{job_id}/cancel")
         self.assertEqual(_ContractServer.jobs[job_id]["state"], "cancelled")
+
+    def test_any_cancel_event_with_is_set_cancels_the_remote_job(self):
+        from types import SimpleNamespace
+
+        from abstractvision.types import VideoGenerationRequest
+
+        checks = iter([False, False, False])
+        flag = SimpleNamespace(is_set=lambda: next(checks, True))
+        with self.assertRaises(GenerationCancelledError):
+            self.client.generate_video(VideoGenerationRequest(prompt="fox", cancel_event=flag))
+        job_id = next(iter(_ContractServer.jobs))
+        self.assertEqual(_ContractServer.posts[-1][0], f"/v1/vision/jobs/{job_id}/cancel")
+
+    def test_polling_that_ends_abnormally_cancels_the_remote_job_once(self):
+        from types import SimpleNamespace
+
+        from abstractvision.types import VideoGenerationRequest
+
+        def interrupted():  # Ctrl-C once the job has been polled
+            if any(path.startswith("/v1/vision/jobs/") for path in _ContractServer.gets):
+                raise KeyboardInterrupt
+            return False
+
+        for cancel_event, status, error in (
+            (threading.Event(), 503, RuntimeError),  # a poll the server fails
+            (SimpleNamespace(is_set=interrupted), None, KeyboardInterrupt),
+        ):
+            _ContractServer.jobs = {}
+            _ContractServer.posts = []
+            _ContractServer.gets = []
+            _ContractServer.poll_status = status
+            with self.assertRaises(error):
+                self.client.generate_video(VideoGenerationRequest(prompt="fox", cancel_event=cancel_event))
+            job_id = next(iter(_ContractServer.jobs))
+            cancels = [path for path, _body in _ContractServer.posts if path.endswith("/cancel")]
+            self.assertEqual(cancels, [f"/v1/vision/jobs/{job_id}/cancel"], error)
 
 
 class TestOpenAICompatibleAgainstPlainEndpoint(unittest.TestCase):

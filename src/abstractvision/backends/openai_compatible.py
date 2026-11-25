@@ -24,7 +24,7 @@ from ..types import (
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
-from .base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend
+from .base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend, _option_is_set
 
 _INTERNAL_PROGRESS_EXTRA_KEYS = {
     "on_progress",
@@ -127,12 +127,6 @@ def _http_error(e: HTTPError) -> Exception:
     return RuntimeError(_format_http_error(e, body))
 
 
-def _option_is_set(value: Any) -> bool:
-    if value is None:
-        return False
-    return bool(value.strip()) if isinstance(value, str) else True
-
-
 def _form_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -175,7 +169,7 @@ def _audio_track(audio: Any, download: Any) -> Optional[GeneratedAudioTrack]:
         channels=int(audio.get("channels") or 0),
         duration_seconds=float(audio.get("duration_seconds") or 0.0),
         muxed=muxed,
-        codec=str(audio["codec"]) if muxed and audio.get("codec") else None,
+        codec=str(audio["codec"]) if audio.get("codec") else None,
         data=None if muxed else data,
         mime_type=None if muxed or data is None else "audio/wav",
     )
@@ -417,6 +411,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         self._catalog_lock = threading.Lock()
         self._catalog: Optional[Dict[str, Any]] = None
         self._catalog_at: Optional[float] = None
+        # Why the last GET /vision/models failed (timeout, connection error, 5xx); None after an answer.
+        self._discovery_failure: Optional[str] = None
 
     def get_capabilities(self) -> VisionBackendCapabilities:
         tasks = {"text_to_image", "image_to_image"}
@@ -424,7 +420,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             tasks.add("text_to_video")
         if self._cfg.image_to_video_path:
             tasks.add("image_to_video")
-        entry = self._remote_entry(refresh=True)
+        entry = self._remote_entry(refresh=False)
         return VisionBackendCapabilities(
             supported_tasks=sorted(tasks),
             supports_mask=True,
@@ -439,8 +435,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
     def supported_memory_modes(self, task: Optional[str] = None) -> Tuple[str, ...]:
         """The default mode plus the modes the remote lists for the configured model.
 
-        Read from the last GET /vision/models answer; `get_capabilities()`, `list_provider_models()`
-        and every request that sets one of the fields refresh it.
+        Read from the last GET /vision/models answer (no I/O here, nor in `get_capabilities()`);
+        `list_provider_models()` and a request that sets one of the fields refresh it.
         """
         _ = task
         entry = self._remote_entry(refresh=False) or {}
@@ -513,33 +509,50 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         return None
 
     def _remote_catalog(self, *, refresh: bool) -> Optional[Dict[str, Any]]:
-        """The remote's GET /vision/models answer, reused for a short while; None when it has none."""
+        """The remote's GET /vision/models answer, reused for a short while; None when it has none.
+
+        Only an answer is kept: the catalog, or a response without one (a 200 that lists no models,
+        an HTTP 4xx: a plain OpenAI image endpoint). A request that failed (timeout, connection
+        error, 5xx) keeps the previous answer, records why in `_discovery_failure`, and is made
+        again by the next request that needs it.
+        """
         if _looks_like_openai_api(self._cfg.base_url) or _model_family(self._cfg.model_id):
             return None
         with self._catalog_lock:
             fresh = self._catalog_at is not None and time.monotonic() - self._catalog_at < _DISCOVERY_TTL_S
             if fresh or not refresh:
                 return self._catalog
-        catalog: Optional[Dict[str, Any]] = None
+        timeout = self._control_timeout()
         try:
-            timeout = self._control_timeout()
             answer = self._get_json(
                 path=_VISION_MODELS_PATH,
                 timeout=_DISCOVERY_TIMEOUT_S if timeout is None else min(timeout, _DISCOVERY_TIMEOUT_S),
             )
-            if isinstance(answer.get("models"), list):
-                catalog = answer
-        except Exception:
-            # A plain OpenAI image endpoint has no such route.
-            catalog = None
+        except ValueError:
+            answer = {}  # a 200 that is not a JSON object
+        except Exception as e:
+            cause = e.__cause__
+            if not (isinstance(cause, HTTPError) and int(cause.code) < 500):
+                with self._catalog_lock:
+                    self._discovery_failure = str(e) or type(e).__name__
+                    return self._catalog
+            answer = {}
+        catalog = answer if isinstance(answer.get("models"), list) else None
         with self._catalog_lock:
             self._catalog = catalog
             self._catalog_at = time.monotonic()
+            self._discovery_failure = None
         return catalog
 
     def _remote_entry(self, *, refresh: bool) -> Optional[Dict[str, Any]]:
         catalog = self._remote_catalog(refresh=refresh)
         return _discovery_entry(catalog, self._cfg.model_id) if catalog is not None else None
+
+    def _unadvertised_reason(self) -> str:
+        failure = self._discovery_failure
+        if failure is not None:
+            return f"GET {_VISION_MODELS_PATH} failed, so what the remote takes is unknown: {failure}"
+        return f"the remote does not advertise them (no memory_modes for this model in GET {_VISION_MODELS_PATH})"
 
     @staticmethod
     def _extra_fields(request: Any) -> List[str]:
@@ -566,13 +579,18 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         )
         if needs_remote_entry:
             self._remote_entry(refresh=True)
-        request, mode, _batch = self.resolve_memory_request(request, task=task)
-        if self._remote_entry(refresh=False) is None:
+        advertised = self._remote_entry(refresh=False) is not None
+        try:
+            request, mode, _batch = self.resolve_memory_request(request, task=task)
+        except CapabilityNotSupportedError as e:
+            if advertised or self._discovery_failure is None:
+                raise
+            raise CapabilityNotSupportedError(f"{e} {self._unadvertised_reason()}.") from e
+        if not advertised:
             in_extra = self._extra_fields(request)
             if in_extra:
                 raise CapabilityNotSupportedError(
-                    f"{type(self).__name__} does not support {', '.join(in_extra)}: the remote does not "
-                    f"advertise them (no memory_modes for this model in GET {_VISION_MODELS_PATH})."
+                    f"{type(self).__name__} does not support {', '.join(in_extra)}: {self._unadvertised_reason()}."
                 )
             return request, {}, False
         fields: Dict[str, Any] = {}
@@ -616,38 +634,61 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         fields: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, Tuple[str, bytes, str]]] = None,
     ) -> Dict[str, Any]:
-        """Run the request as a remote job, polled until it ends; a set `cancel_event` cancels it."""
-        if payload is not None:
-            started = self._post_json(path=f"{_VISION_JOBS_PATH}/{route}", payload=payload)
-        else:
-            started = self._post_multipart(path=f"{_VISION_JOBS_PATH}/{route}", fields=fields or {}, files=files or {})
+        """Run the request as a remote job, polled until it ends; a set `cancel_event` cancels it.
+
+        Whatever ends the polling before the job ends (the event, a network error, an interrupt)
+        sends the job one best-effort cancel, so it does not keep the server busy. Returns the
+        job's result, with the job's `memory_mode_used` and `audio` where the result has none
+        (AbstractCore's image job routes record them on the job only).
+        """
+        path = f"{_VISION_JOBS_PATH}/{route}"
+        try:
+            if payload is not None:
+                started = self._post_json(path=path, payload=payload)
+            else:
+                started = self._post_multipart(path=path, fields=fields or {}, files=files or {})
+        except RuntimeError as e:
+            if isinstance(e.__cause__, HTTPError) and e.__cause__.code == 409:
+                raise RuntimeError(
+                    f"Another generation is running on the server ({self._cfg.base_url}): a request with "
+                    "cancel_event runs there as a job, which the server refuses until that generation ends."
+                ) from e
+            raise
         job_id = str(started.get("job_id") or "").strip()
         if not job_id:
             raise ValueError("Invalid response: the remote job route returned no job_id")
-        while True:
-            if cancel_event.is_set():
+        ended = False
+        try:
+            while True:
+                if cancel_event.is_set():
+                    raise GenerationCancelledError(
+                        f"The request was cancelled (cancel_event is set); remote job {job_id} was asked to cancel."
+                    )
+                snap = self._get_json(path=f"{_VISION_JOBS_PATH}/{job_id}?consume=1")
+                state = str(snap.get("state") or "")
+                ended = state in {"succeeded", "cancelled", "failed"}
+                if state == "succeeded":
+                    result = snap.get("result")
+                    if not isinstance(result, dict):
+                        raise ValueError("Invalid response: the remote job has no result")
+                    return {**{key: snap[key] for key in ("memory_mode_used", "audio") if key in snap}, **result}
+                if state == "cancelled":
+                    raise GenerationCancelledError(f"Remote job {job_id} was cancelled.")
+                if state == "failed":
+                    message = str(snap.get("error") or "unknown error")
+                    if snap.get("error_code") == "capability_not_supported":
+                        raise CapabilityNotSupportedError(message)
+                    raise RuntimeError(f"Remote job {job_id} failed: {message}")
+                time.sleep(_JOB_POLL_INTERVAL_S)
+        except BaseException:
+            if not ended:
                 try:
-                    self._post_json(path=f"{_VISION_JOBS_PATH}/{job_id}/cancel", payload={})
+                    self._post_json(
+                        path=f"{_VISION_JOBS_PATH}/{job_id}/cancel", payload={}, timeout=self._control_timeout()
+                    )
                 except Exception:
                     pass
-                raise GenerationCancelledError(
-                    f"The request was cancelled (cancel_event is set); remote job {job_id} was cancelled."
-                )
-            snap = self._get_json(path=f"{_VISION_JOBS_PATH}/{job_id}?consume=1")
-            state = str(snap.get("state") or "")
-            if state == "succeeded":
-                result = snap.get("result")
-                if not isinstance(result, dict):
-                    raise ValueError("Invalid response: the remote job has no result")
-                return result
-            if state == "cancelled":
-                raise GenerationCancelledError(f"Remote job {job_id} was cancelled.")
-            if state == "failed":
-                message = str(snap.get("error") or "unknown error")
-                if snap.get("error_code") == "capability_not_supported":
-                    raise CapabilityNotSupportedError(message)
-                raise RuntimeError(f"Remote job {job_id} failed: {message}")
-            cancel_event.wait(_JOB_POLL_INTERVAL_S)
+            raise
 
     def _get_json(self, *, path: str, timeout: Optional[float] = None) -> Dict[str, Any]:
         url = _join_url(self._cfg.base_url, path)
@@ -664,7 +705,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             raise ValueError("Invalid response: expected JSON object")
         return data
 
-    def _post_json(self, *, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_json(self, *, path: str, payload: Dict[str, Any], timeout: Optional[float] = None) -> Dict[str, Any]:
         url = _join_url(self._cfg.base_url, path)
         body = json.dumps(payload).encode("utf-8")
         req = Request(
@@ -674,7 +715,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             headers=self._headers(content_type="application/json"),
         )
         try:
-            with urlopen(req, timeout=self._generation_timeout()) as resp:
+            with urlopen(req, timeout=self._generation_timeout() if timeout is None else timeout) as resp:
                 raw = resp.read()
         except HTTPError as e:
             raise _http_error(e) from e

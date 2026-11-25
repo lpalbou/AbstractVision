@@ -149,7 +149,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen `0.40.0+` supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.40.1+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
@@ -510,7 +510,9 @@ What an application embedding `VisionManager` can rely on:
 
   Other backends check the event before a run starts; the OpenAI-compatible
   backend also cancels its remote job on a remote that advertises the vision
-  routes.
+  routes. Such a request runs there as a job, which AbstractCore's server refuses
+  while another generation runs (a request without `cancel_event` waits instead);
+  the backend raises that as a `RuntimeError` saying so.
   `get_capabilities().cancellation` is `"step"` or `"start"`.
 - **Load-time quantize.** `quantize` (bits) on generation requests.
   `get_capabilities().quantize_bits` lists the widths the configured model
@@ -520,9 +522,10 @@ What an application embedding `VisionManager` can rely on:
   sends it to a remote that advertises it.
 - **Metadata without local paths.** MLX-Gen results report the model as its repo
   id (a Hugging Face cache snapshot) or its directory name (another local path),
-  and adapters the same way (`org/name:file.safetensors`, or the file name), in
-  `metadata["model"]`, `metadata["lora_paths"]`, `requested_lora_adapters` and
-  `metadata["mlx_gen"]`; the paths of the temporary files AbstractVision wrote
+  and adapters the same way (`org/name:file.safetensors`, or the file name):
+  every absolute path in the engine's metadata, whatever field carries it
+  (`model`, `lora_paths`, `lora_application_reports`, ...), in `metadata["mlx_gen"]`
+  and its top-level copies, and `requested_lora_adapters`; the paths of the temporary files AbstractVision wrote
   for a run (`image_path`, `video_path`, `audio_sidecar_path`) are left out.
 - **Route rows.** `vm.describe_routes(model=None, task=None)` returns MLX-Gen's
   capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,
@@ -661,4 +664,4 @@ Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstrac
 - `GenerationCancelledError` (the request's `cancel_event` was set)
 - `UnknownModelError` (model id isn’t present in the registry)
 - `OptionalDependencyMissingError` (backend dependency is missing, e.g. Diffusers/Torch)
-- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen video routes, raised when MLX-Gen reports that a run cannot fit, naming the `memory_mode` it used and the lower ones)
+- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen MiniMax-H3 routes, raised when MLX-Gen's preflight reports that the weights or a run cannot fit, naming the `memory_mode` it used and the lower ones; MLX-Gen 0.40.1 reports this for MiniMax-H3 only)

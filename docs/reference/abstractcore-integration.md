@@ -268,7 +268,10 @@ Discovery, and where each part is visible:
   `parameter_constraints["memory_mode"]` = `{"enum": [...], "block_streaming": <bool>}`;
   `enum` holds the modes that model can honour.
 - `llm.vision.available_providers()["details"][<provider>]["memory_modes"]`
-  lists the modes each provider can honour on this host. It is a Python call
+  lists what the backend a request for that provider runs on reports with its
+  configured model and device (`supported_memory_modes()`; for an
+  OpenAI-compatible remote, the modes of its last discovery answer, else
+  `default`), without loading a model or sending a request. It is a Python call
   only: AbstractCore's HTTP server does not call `available_providers`.
 - With an `artifact_store`, the stored artifact's metadata records `memory_mode`
   (and `low_ram` / `stream_blocks` on MLX-Gen); without one the plugin returns
@@ -452,8 +455,8 @@ plugin surface:
   second artifact, under the ref's `audio["wav"]` (see the plugin section).
 - `make_vision_tools(..., memory_mode="low")` applies one memory mode to every
   generation call of the tools. It is not a tool parameter, so the model cannot
-  choose it; it is checked once against the backend's listed modes when the
-  backend declares them. Without it each call follows `$ABSTRACTVISION_MEMORY_MODE`.
+  choose it; a value that is not a memory mode raises `ValueError` when the tools
+  are made, and the backend checks it against the modes it supports at each call. Without it each call follows `$ABSTRACTVISION_MEMORY_MODE`.
 
 Important:
 - Tool outputs are designed to be **artifact refs**, so `VisionManager.store` must be set ([`../../src/abstractvision/integrations/abstractcore.py`](../../src/abstractvision/integrations/abstractcore.py)).
