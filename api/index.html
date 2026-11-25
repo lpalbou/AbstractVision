@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -478,6 +478,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#memory-modes-memory_mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory modes (memory_mode)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#video-with-sound-minimax-h3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video with sound (MiniMax-H3)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#shared-lora-adapters" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -507,6 +540,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Capability registry (what models can do)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#downloads-and-what-is-cached" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloads and what is cached
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -926,6 +976,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#memory-modes-memory_mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory modes (memory_mode)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#video-with-sound-minimax-h3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video with sound (MiniMax-H3)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#shared-lora-adapters" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -955,6 +1038,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Capability registry (what models can do)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#downloads-and-what-is-cached" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloads and what is cached
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1117,23 +1217,24 @@ AbstractVision.</p>
 </code></pre></div>
 <p>Note: <code>allow_download=False</code> is the default. Pre-download model weights separately, or set <code>allow_download=True</code> only when you want runtime downloads.</p>
 <p><code>upscale_image(...)</code>, <code>generate_video(...)</code>, and <code>image_to_video(...)</code> are part
-of the public API. MLX-Gen <code>0.38.0+</code> supports SeedVR2 <code>image_upscale</code>, Wan
+of the public API. MLX-Gen <code>0.40.1+</code> supports SeedVR2 <code>image_upscale</code>, Wan
 <code>text_to_video</code>, and first-frame <code>image_to_video</code>, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an <code>ffmpeg</code>
 executable on <code>PATH</code> whenever a backend returns frame sequences for local
 packaging.</p>
-<p>For MLX-Gen text-to-image, <code>ImageGenerationRequest</code> includes typed
-<code>control_image</code> and <code>control_strength</code> fields for the validated structured-control
-route <code>AbstractFramework/qwen-image-8bit</code>. The control image is a structure guide
-such as edges, sketch, or pose, not a source-image edit input. These are not
-generic cross-backend hints: unsupported backends reject them explicitly.</p>
+<p><code>ImageGenerationRequest</code> includes typed <code>control_image</code> and <code>control_strength</code>
+fields: a structure guide such as edges, sketch, or pose, not a source-image edit
+input. No built-in backend applies them; each one, MLX-Gen included, refuses a
+<code>control_image</code> with <code>CapabilityNotSupportedError</code> (<code>field="control_image"</code>). MLX-Gen
+also refuses a <code>control_strength</code> given alone (<code>field="control_strength"</code>); the other
+built-in backends do not use it.</p>
 <h3 id="local-example-mlx-gen-backend">Local example (MLX-Gen backend)<a class="headerlink" href="#local-example-mlx-gen-backend" title="Permanent link">&para;</a></h3>
 <p>Install <code>abstractvision[mlx-gen]</code> and pre-download the exact model repo first,
 for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">VisionManager</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">LoRAAdapterSpec</span><span class="p">,</span> <span class="n">VisionManager</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.backends</span><span class="w"> </span><span class="kn">import</span> <span class="n">MLXGenBackendConfig</span><span class="p">,</span> <span class="n">MLXGenVisionBackend</span>
 
 <span class="k">def</span><span class="w"> </span><span class="nf">on_progress</span><span class="p">(</span><span class="n">event</span><span class="p">):</span>
@@ -1267,6 +1368,318 @@ and denoise-step <code>progress</code>. Wan video events add <code>frame</code>,
 two-argument <code>(current, total)</code> callback for backend-agnostic progress bars.
 For MLX-Gen, that callback reports denoise step counts; use
 <code>on_progress(event)</code> when a UI also needs video frame context.</p>
+<h2 id="memory-modes-memory_mode">Memory modes (<code>memory_mode</code>)<a class="headerlink" href="#memory-modes-memory_mode" title="Permanent link">&para;</a></h2>
+<p>Every generation request (<code>generate_image</code>, <code>edit_image</code>, <code>upscale_image</code>,
+<code>generate_video</code>, <code>image_to_video</code> and their <code>_batch</code> variants) takes
+<code>memory_mode</code>: <code>"default"</code>, <code>"low"</code> or <code>"lowest"</code> (<code>MEMORY_MODES</code> in
+<a href="../src/abstractvision/types.py"><code>../src/abstractvision/types.py</code></a>). The lower
+modes trade speed for a lower memory peak. A request that names no mode uses
+<code>$ABSTRACTVISION_MEMORY_MODE</code>, else <code>"default"</code>; a request value always wins.
+The environment value is one setting for every backend in the process: a
+backend that cannot honour it runs the lowest-memory mode it lists that is not
+below it (<code>"lowest"</code> becomes <code>"low"</code> where <code>"low"</code> is listed, else <code>"default"</code>)
+and logs that once per process, while a mode passed on the request is refused.
+<code>backend.preload(memory_mode=None, quantize=None)</code> loads the model as a request
+carrying those values would, so the first such request reuses it: the values
+are checked by the same function as a request's, before anything loads, with
+the same refusals; <code>memory_mode=None</code> is the process default under the same rule.
+A backend that takes no load-time quantize refuses <code>quantize</code> there. On
+MLX-Gen, <code>preload()</code> loads the model as the first request with those values
+starts it (under the same 1 GB cache hold in <code>"low"</code> and <code>"lowest"</code>) into the
+instance that request reuses, so in a mode whose runs drop the model (<code>"low"</code>,
+<code>"lowest"</code>, and every mode on Wan TI2V-5B, which releases its denoiser before
+the decode) the preloaded instance serves one request. A text-to-image model loaded for a mode
+that keeps it also runs one image generation in that mode as its warm-up;
+edit-only, video (Wan, MiniMax-H3) and upscale (SeedVR2) models load without one.
+When anything in a preload fails, the model it loaded is dropped before the error
+is raised. A preload refused for its values, or one that fails after reusing the
+model already held, leaves that model held.</p>
+<div class="highlight"><pre><span></span><code><span class="n">asset_or_ref</span> <span class="o">=</span> <span class="n">vm</span><span class="o">.</span><span class="n">generate_video</span><span class="p">(</span>
+    <span class="s2">"a red fox trots through fresh snow"</span><span class="p">,</span>
+    <span class="n">memory_mode</span><span class="o">=</span><span class="s2">"low"</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Backend</th>
+<th><code>low</code></th>
+<th><code>lowest</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MLX-Gen, image and edit routes</td>
+<td>MLX-Gen low-RAM mode, as <code>mlxgen generate --low-ram</code>: a 1 GB MLX cache from before the model loads to the end of the run, and mlx-gen's <code>MemorySaver</code>, which tiles the VAE decode, frees the text encoders before the denoising loop and the transformer after it.</td>
+<td><code>low</code> plus transformer block streaming (<code>--stream-blocks</code>), on a model whose MLX-Gen routes stream transformer blocks: accepted for MiniMax-H3, refused on every other current catalog model.</td>
+</tr>
+<tr>
+<td>MLX-Gen, Wan video</td>
+<td>As <code>mlxgen generate --low-ram</code> on one seed: the 1 GB cache, the MLX cache cleared after every step and transformer block, the denoisers released before the decode and, on the A14B models, the inactive expert released.</td>
+<td>Refused on every current Wan route.</td>
+</tr>
+<tr>
+<td>MLX-Gen, MiniMax-H3</td>
+<td>The 1 GB cache and the transformer freed before the decode (<code>release_transformer=True</code>); the next request loads the model again.</td>
+<td><code>low</code> plus block streaming (<code>stream_blocks=True</code>). Refused with load-time <code>quantize</code>, and with an adapter that trains the AdaLN projections.</td>
+</tr>
+<tr>
+<td>MLX-Gen, SeedVR2 upscale</td>
+<td>As <code>mlxgen upscale --low-ram</code> on images: the 1 GB cache only. SeedVR2 keeps its own tiling and the loaded model.</td>
+<td>Refused (SeedVR2 has no block streaming).</td>
+</tr>
+<tr>
+<td>Diffusers on CUDA</td>
+<td>Model CPU offload.</td>
+<td>Sequential CPU offload.</td>
+</tr>
+<tr>
+<td>Diffusers on CPU or MPS</td>
+<td>Refused.</td>
+<td>Refused.</td>
+</tr>
+<tr>
+<td>stable-diffusion.cpp</td>
+<td>CPU offload of the model parameters: <code>--offload-to-cpu</code> for <code>sd-cli</code>, <code>offload_params_to_cpu</code> for the Python binding.</td>
+<td>Refused.</td>
+</tr>
+<tr>
+<td>OpenAI-compatible</td>
+<td>Sent to a remote that lists the mode for the model in <code>GET /vision/models</code> (AbstractCore's server); refused otherwise.</td>
+<td>As <code>low</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>A mode named on the request that the backend cannot honour for its configured
+model and device raises <code>CapabilityNotSupportedError</code> before any model loads or
+any request is sent,
+whether the call comes through <code>VisionManager</code>, the AbstractCore plugin or a
+direct backend call. <code>extra={"memory_mode": ...}</code> is read the same way as the
+keyword (on a backend that applies <code>quantize</code> or the soundtrack fields, so are
+those keys of <code>extra</code>; elsewhere they pass through <code>extra</code> unchanged); a keyword
+and an <code>extra</code> value that disagree raise <code>ValueError</code>.</p>
+<p>Placement is fixed when a model loads, so a request may only raise it. On
+Diffusers, the CPU offload that runs is the higher of the configured
+<code>cpu_offload</code> (or what <code>"auto"</code> picks) and the one the request needs; a loaded
+pipeline with less offload than a request needs is loaded again, and one with
+more offload keeps serving later requests until it is unloaded. stable-diffusion.cpp
+keeps an operator's <code>--offload-to-cpu</code> and loads the Python binding again
+with <code>offload_params_to_cpu</code> when a <code>low</code> request needs it.</p>
+<p>On MLX-Gen, <code>low</code> trades residency for memory: image, edit, Wan and MiniMax-H3
+runs free parts of the model, so the instance is dropped when the run ends,
+whatever its outcome, and the next request loads it again, a preloaded resident
+model included; MiniMax-H3 runs in <code>lowest</code> are dropped the same way. A batch
+(<code>generate_image_batch</code>, <code>generate_video_batch</code>, ...) is a series of such
+requests: each item loads the model, frees it and drops it, so every item peaks
+as one <code>low</code> run, at the cost of one load per item (building the instance took
+1.3 to 3.1 s for MiniMax-H3 8-bit, 0.5 to 2.5 s for FLUX.2 [klein] 9B 8-bit and
+1.4 to 2.7 s for Wan 2.2 T2V-A14B 8-bit; the weights are then read during the
+run). SeedVR2's <code>low</code> is the cache limit alone, and it keeps its instance. <code>low</code> and <code>lowest</code> hold a 1 GB MLX cache limit for the run, never
+above a limit already in force; <code>default</code> runs leave the limit to MLX-Gen. MLX-Gen holds one instance at a time: a request
+whose model, adapters, <code>quantize</code> or block streaming differ from the loaded
+instance's releases it, and clears the MLX cache, before the new one loads.</p>
+<p>Discovery: <code>backend.get_capabilities().memory_modes</code> lists the modes a backend
+can honour for its configured model and device; Diffusers with <code>device="auto"</code>
+lists <code>"default"</code> on macOS (no CUDA) without importing torch, and elsewhere
+asks torch, importing it once. Each MLX-Gen provider catalog
+entry carries <code>raw["parameter_constraints"]["memory_mode"]</code> = <code>{"enum": [...]}</code>,
+where <code>enum</code> holds the modes that model can honour. The result metadata records
+the mode a run used as <code>memory_mode</code>, <code>"default"</code> included: Diffusers,
+stable-diffusion.cpp and MLX-Gen on every run (MLX-Gen also
+records <code>low_ram</code> and <code>stream_blocks</code>; stable-diffusion.cpp records
+<code>offload_to_cpu</code>; Diffusers records <code>cpu_offload</code>), and the OpenAI-compatible
+backend when the remote reports it.</p>
+<h2 id="video-with-sound-minimax-h3">Video with sound (MiniMax-H3)<a class="headerlink" href="#video-with-sound-minimax-h3" title="Permanent link">&para;</a></h2>
+<p>The MLX-Gen backend serves MiniMax-H3, which generates a video with a synchronized
+stereo soundtrack: <code>text_to_video</code>, and <code>image_to_video</code> from a first frame. The
+catalog entry is <code>MiniMaxAI/MiniMax-H3</code>; the published packages are
+<code>AbstractFramework/minimax-h3-8bit</code> (64.3 GiB, recommended),
+<code>AbstractFramework/minimax-h3-bf16</code> (115.1 GiB) and the mixed
+<code>AbstractFramework/minimax-h3-4bit</code> (44.9 GiB). The packages hold the base
+weights; <code>base_model</code> picks the schedule: <code>minimax-h3-turbo-544p</code> (8 steps,
+960x544), <code>minimax-h3-turbo</code> (8 steps, 1344x768) or <code>minimax-h3</code> (50 steps).</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">VisionManager</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.backends.mflux</span><span class="w"> </span><span class="kn">import</span> <span class="n">MLXGenBackendConfig</span><span class="p">,</span> <span class="n">MLXGenVisionBackend</span>
+
+<span class="n">backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/minimax-h3-8bit"</span><span class="p">,</span> <span class="n">base_model</span><span class="o">=</span><span class="s2">"minimax-h3-turbo-544p"</span><span class="p">))</span>
+<span class="n">clip</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">)</span><span class="o">.</span><span class="n">generate_video</span><span class="p">(</span>
+    <span class="s2">"A red fox trots through fresh snow at dawn."</span><span class="p">,</span>
+    <span class="n">soundscape</span><span class="o">=</span><span class="s2">"Soft crunch of paws in dry snow, faint wind."</span><span class="p">,</span> <span class="n">music</span><span class="o">=</span><span class="s2">"Sparse piano."</span><span class="p">,</span>
+    <span class="n">width</span><span class="o">=</span><span class="mi">640</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">352</span><span class="p">,</span> <span class="n">num_frames</span><span class="o">=</span><span class="mi">124</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span> <span class="n">memory_mode</span><span class="o">=</span><span class="s2">"low"</span><span class="p">)</span>
+</code></pre></div>
+<p>Request fields (on <code>VideoGenerationRequest</code> and <code>ImageToVideoRequest</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prompt</code></td>
+<td>The visual description, or a complete structured prompt with its section labels. Passed to MLX-Gen unchanged; MLX-Gen composes the structured prompt (and, for a first frame, its picture reference).</td>
+</tr>
+<tr>
+<td><code>soundscape</code>, <code>music</code></td>
+<td>The <code>overall_soundscape</code> and <code>non_diegetic_music</code> sections.</td>
+</tr>
+<tr>
+<td><code>generate_audio</code></td>
+<td><code>False</code> writes a silent clip. Default: the soundtrack is generated. A boolean: any other type, the string <code>"false"</code> included, is refused.</td>
+</tr>
+<tr>
+<td><code>flow_shift</code>, <code>audio_shift</code></td>
+<td>The video and audio schedule shifts (MLX-Gen <code>video_shift</code> / <code>audio_shift</code>), positive numbers.</td>
+</tr>
+<tr>
+<td><code>width</code>, <code>height</code></td>
+<td>Given together; positive multiples of the route's <code>dimension_multiple</code> (32), with an aspect ratio inside MLX-Gen's window (1:4 to 4:1). Unset: the schedule's canvas, or for a first frame MiniMax-H3's own mapping of the keyframe's aspect ratio, which must then lie in the same window.</td>
+</tr>
+<tr>
+<td><code>num_frames</code></td>
+<td>Rounded up by MLX-Gen to the next count of its grid (<code>17n+5</code> at 24 fps, <code>124</code> to <code>345</code>): <code>125</code> runs as <code>141</code>. A count that rounds outside that range (below <code>108</code>, or above <code>345</code>) is refused before any weights load.</td>
+</tr>
+<tr>
+<td><code>steps</code>, <code>seed</code>, <code>quantize</code>, <code>memory_mode</code>, <code>cancel_event</code></td>
+<td>As for other routes; <code>steps</code> is at least 1 and <code>seed</code> lies in <code>[0, 2**64 - 1]</code> (MLX's random key). <code>quantize</code> applies to the source snapshot only (8 or 4, the row's <code>validated_quantization_bits</code>).</td>
+</tr>
+<tr>
+<td><code>lora_adapters</code></td>
+<td>Adapters on the <code>transformer</code> role (the row's <code>lora_target_roles</code>). As in MLX-Gen, the list replaces the Turbo adapter a Turbo schedule attaches: include the Turbo file to keep the 8-step schedule.</td>
+</tr>
+</tbody>
+</table>
+<p>Values left unset stay unset, so MLX-Gen applies the schedule's own defaults.
+Everything is checked before any weights load, against MLX-Gen's capability row
+and its own MiniMax-H3 planning code, and a refusal about one field names it
+(a refusal about two fields together, such as <code>lowest</code> with <code>quantize</code>, leaves
+<code>field</code> None):</p>
+<ul>
+<li>What the route cannot apply, or a value outside what it accepts, raises
+  <code>CapabilityNotSupportedError</code>: <code>negative_prompt</code>, <code>guidance_scale</code>,
+  <code>guidance_2</code>, an <code>fps</code> other than 24, an <code>extra</code> key other than the progress
+  callbacks and <code>memory_mode</code>, a canvas off the multiple or outside the aspect
+  window, a frame count that rounds outside <code>124</code> to <code>345</code> (a count inside is
+  rounded up to the grid, not refused), <code>steps</code> below 1, a shift that is not
+  positive.</li>
+<li>A value of the wrong type, or two fields that contradict each other, raises
+  <code>ValueError</code>: a width that is not an integer, <code>soundscape</code> or <code>music</code> that is
+  not a string, a non-boolean <code>generate_audio</code>, a prompt that already carries an
+  <code>overall_soundscape:</code> (or <code>non_diegetic_music:</code>) section together with
+  <code>soundscape=</code> (or <code>music=</code>), which MLX-Gen's own prompt composition refuses.</li>
+<li>A first frame is opened and decoded first: empty or undecodable bytes raise
+  <code>ValueError</code> naming <code>image</code>. Wan routes check their values and keyframes the
+  same way, with the same error types.</li>
+<li><code>memory_mode="lowest"</code> with an adapter that trains the transformer's AdaLN
+  projections (checked with MLX-Gen's own adapter test) is refused, naming the
+  adapter: MLX-Gen must then hold the whole transformer in memory.</li>
+</ul>
+<p>Every number the backend checks comes from MLX-Gen (the capability row, its
+aspect window); <code>describe_routes()</code> returns the row. Wan and the other local
+backends refuse <code>soundscape</code>, <code>music</code>, <code>generate_audio</code> and <code>audio_shift</code>; the
+OpenAI-compatible backend sends them to a remote that advertises them for its
+model and refuses them otherwise
+(<a href="../reference/backends/#openai-compatible-http-backend">backends</a>).</p>
+<p>The result is the MP4 with its AAC soundtrack. <code>GeneratedAsset.audio</code> is a
+<code>GeneratedAudioTrack</code> (<code>sample_rate</code>, <code>channels</code>, <code>duration_seconds</code>, <code>muxed</code>,
+<code>codec</code>); when MLX-Gen could not mux the track, <code>muxed</code> is false and <code>data</code>
+holds it as WAV bytes. <code>GeneratedAsset.audio_summary()</code> reports the soundtrack
+in the one shape every layer uses (None without one):</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="s2">"present"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">"sample_rate"</span><span class="p">:</span> <span class="mi">32000</span><span class="p">,</span> <span class="s2">"channels"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">"codec"</span><span class="p">:</span> <span class="s2">"aac"</span><span class="p">,</span>
+ <span class="s2">"muxed"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">"duration_seconds"</span><span class="p">:</span> <span class="mf">5.1667</span><span class="p">}</span>
+</code></pre></div>
+<p><code>codec</code> is the WAV's (<code>"pcm_s16le"</code>) when the track is not muxed, and the
+summary then adds <code>"wav"</code>: the WAV bytes on the asset, the stored WAV's artifact
+ref once stored. With a store, <code>VisionManager</code> stores such a WAV as an artifact
+of its own (tags <code>modality: audio</code>) and records the summary as <code>audio</code> in the
+video's stored metadata and in the returned ref. <code>metadata</code> carries <code>prompt</code>
+(the composed prompt), <code>seed</code>, <code>steps</code>, <code>width</code>, <code>height</code>, <code>num_frames</code>,
+<code>requested_frames</code>, <code>duration_seconds</code>, the two shifts, and <code>mlx_gen</code>: MLX-Gen's
+own metadata sidecar (<code>&lt;clip&gt;.metadata.json</code>), including its audio mux facts and
+<code>runtime_memory</code> (the process's memory at the end of the save, peaks included).</p>
+<p>Memory modes: <code>low</code> sets the 1 GB MLX cache and <code>release_transformer=True</code>: the
+transformer is freed before the decode, the model is dropped when the run ends,
+and the next request, a batch item included, loads it again. Every <code>low</code> clip
+then peaks the same: 24.7 GiB for a 640x352, 124-frame clip with the 8-bit
+package, alone, in sequence or in a batch. <code>lowest</code> adds block streaming
+(<code>stream_blocks=True</code>): each transformer block is read from disk for the length
+of its call (10.6 GiB on the same clip), and the next request also loads
+the model again. It works from a
+prepared package or from the 16-bit source, and is
+refused with <code>quantize</code>. MLX-Gen's measured peaks for each package and mode are
+in the route row's <code>measured_runs</code>; <code>abstractvision show-model MiniMaxAI/MiniMax-H3</code>
+prints them per package, with the smallest memory each mode was tested on. When
+MLX-Gen's preflight finds that a run cannot fit, the backend raises
+<code>GpuOutOfMemoryError</code> naming the <code>memory_mode</code> the run used and the lower modes
+to try.</p>
+<p>The weights are never downloaded during generation, even with
+<code>allow_download=True</code>: the catalog marks the downloads that only an explicit
+download fetches (<code>explicit_download: true</code>), today the three AbstractFramework
+packages and the source repository <code>MiniMaxAI/MiniMax-H3</code>. The packages are gated,
+and the MiniMax H3 Community License's grant excludes the European Union, the
+United Kingdom, the Republic of Korea and the United States of America (the
+source repository is not gated; the same licence applies). Accept the
+licence on the package page while logged in to Hugging Face and download
+explicitly: <code>abstractvision download MiniMaxAI/MiniMax-H3</code> fetches the
+recommended 8-bit package (<code>--bits 4</code> or <code>--bits 16</code> the others), and
+<code>--base-model minimax-h3-turbo-544p</code> (or <code>minimax-h3-turbo</code>) also caches the
+Turbo adapter that schedule loads. <code>minimax-h3</code> loads no adapter. See
+<a href="../reference/configuration/#downloads">Downloads</a>.</p>
+<h2 id="host-integration">Host integration<a class="headerlink" href="#host-integration" title="Permanent link">&para;</a></h2>
+<p>What an application embedding <code>VisionManager</code> can rely on:</p>
+<ul>
+<li><strong>Engine metadata.</strong> MLX-Gen results carry the engine's metadata under
+  <code>metadata["mlx_gen"]</code> (image, edit, upscale and video routes).</li>
+<li><strong>Cancellation.</strong> Every request takes <code>cancel_event</code> (anything with <code>is_set()</code>,
+  such as <code>threading.Event</code>). A set event stops an MLX-Gen run at its next
+  progress event, between denoising steps, and raises <code>GenerationCancelledError</code>.
+  What stays loaded after a cancelled run depends on the family:</li>
+<li>image, edit, Wan A14B and MiniMax-H3 keep the model in <code>"default"</code>, and
+    SeedVR2 in every mode;</li>
+<li>Wan TI2V-5B always drops it (it releases its denoiser before the decode);</li>
+<li>image, edit, Wan A14B and MiniMax-H3 runs in <code>"low"</code> (MiniMax-H3 in
+    <code>"lowest"</code> too) drop it, a batch item included.</li>
+</ul>
+<p>The <code>GenerationCancelledError</code> an MLX-Gen run raises carries no traceback of
+  the run, so a caller that keeps it holds none of the run's memory.</p>
+<p>Diffusers and stable-diffusion.cpp check the event before a run starts; the
+  OpenAI-compatible backend cancels its remote job on a remote that advertises
+  the vision routes for the model, and elsewhere (the OpenAI API, a remote
+  without those routes, a model the remote does not list) checks the event only
+  before sending. Such a request runs there as a job, which AbstractCore's server refuses
+  while another generation runs (a request without <code>cancel_event</code> waits instead);
+  the backend raises that as a <code>RuntimeError</code> saying so.
+  <code>get_capabilities().cancellation</code> is <code>"step"</code> or <code>"start"</code>.
+- <strong>Load-time quantize.</strong> <code>quantize</code> (bits) on generation requests.
+  <code>get_capabilities().quantize_bits</code> lists the widths the configured model
+  accepts: the route's <code>validated_quantization_bits</code>, else MLX-Gen's <code>--quantize</code>
+  choices (for MiniMax-H3, its own 8 and 4). A prepared package (its shards carry
+  MLX-Gen's metadata, or the catalog lists it as a prepared or sub-16-bit package)
+  lists none and refuses it, as do the other local backends; the OpenAI-compatible
+  backend sends it to a remote that advertises it.
+- <strong>Metadata without local paths.</strong> MLX-Gen results report the model as its repo
+  id (a Hugging Face cache snapshot) or its directory name (another local path),
+  and adapters the same way (<code>org/name:file.safetensors</code>, or the file name):
+  every field of the engine's metadata that holds a path (<code>model</code>, <code>lora_paths</code>,
+  <code>lora_application_reports</code>, the file <code>video_health</code> checked, the <code>original_*</code>
+  fields an upscale copies from its input), in <code>metadata["mlx_gen"]</code> and its
+  top-level copies, and <code>requested_lora_adapters</code>; the fields naming the files
+  AbstractVision wrote for a run (<code>image_path</code>, <code>image_paths</code>, <code>masked_image_path</code>,
+  <code>video_path</code>, <code>audio_sidecar_path</code>) are left out.
+- <strong>Route rows.</strong> <code>vm.describe_routes(model=None, task=None)</code> returns MLX-Gen's
+  capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,
+  audio, memory (<code>measured_runs</code>, peaks), quantization. Other
+  backends return <code>[]</code>.
+- <strong>Progress.</strong> <code>on_progress(event)</code> receives <code>VideoProgressEvent</code> with <code>phase</code>,
+  <code>step</code>, <code>total_steps</code> (and <code>frame</code>, <code>total_frames</code> on video) as MLX-Gen emits
+  them. An exception raised in a progress callback is logged once per run and
+  does not stop the run; use <code>cancel_event</code> to stop one.
+- <strong>Embedding.</strong> <code>import abstractvision</code> and constructing a <code>VisionManager</code> write
+  no files, set no environment variables, configure no loggers and import neither
+  AbstractCore nor an engine. MLX-Gen is imported at the first capability lookup
+  or model load; its own import sets <code>TOKENIZERS_PARALLELISM=false</code> when unset.</p>
 <h2 id="shared-lora-adapters">Shared LoRA adapters<a class="headerlink" href="#shared-lora-adapters" title="Permanent link">&para;</a></h2>
 <p>AbstractVision exposes a typed LoRA contract across Python, CLI, and the
 AbstractCore plugin through <code>LoRAAdapterSpec</code> plus the request field
@@ -1315,6 +1728,94 @@ no longer the preferred public contract.</p>
 - If you construct <code>VisionManager(model_id=..., registry=...)</code>, the manager will fail fast on unsupported tasks before calling a backend (<a href="../src/abstractvision/vision_manager.py"><code>../src/abstractvision/vision_manager.py</code></a>).</p>
 <p>Important: the registry is <em>not</em> a guarantee that your configured backend can execute a task at runtime.
 Use <a href="../reference/backends/">docs/reference/backends.md</a> for backend support.</p>
+<h3 id="downloads-and-what-is-cached">Downloads and what is cached<a class="headerlink" href="#downloads-and-what-is-cached" title="Permanent link">&para;</a></h3>
+<p>The download presets live in
+<a href="../src/abstractvision/model_downloads.py"><code>../src/abstractvision/model_downloads.py</code></a>; the state of a
+preset on this host in <a href="../src/abstractvision/model_inventory.py"><code>../src/abstractvision/model_inventory.py</code></a>.
+The CLI's <code>download</code>, <code>catalog</code>, <code>show-model</code> and <code>models --json</code> are built on them.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.model_downloads</span><span class="w"> </span><span class="kn">import</span> <span class="n">download_model_preset</span><span class="p">,</span> <span class="n">plan_model_preset_download</span><span class="p">,</span> <span class="n">select_download_preset</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision.model_inventory</span><span class="w"> </span><span class="kn">import</span> <span class="n">preset_status</span>
+
+<span class="n">preset</span> <span class="o">=</span> <span class="n">select_download_preset</span><span class="p">(</span><span class="s2">"MiniMaxAI/MiniMax-H3"</span><span class="p">)</span>          <span class="c1"># the recommended package: AbstractFramework/minimax-h3-8bit</span>
+<span class="n">preset</span> <span class="o">=</span> <span class="n">select_download_preset</span><span class="p">(</span><span class="s2">"MiniMaxAI/MiniMax-H3"</span><span class="p">,</span> <span class="n">bits</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>  <span class="c1"># AbstractFramework/minimax-h3-4bit</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">preset</span><span class="o">.</span><span class="n">gated</span><span class="p">,</span> <span class="n">preset</span><span class="o">.</span><span class="n">license_name</span><span class="p">,</span> <span class="n">preset</span><span class="o">.</span><span class="n">recommended</span><span class="p">)</span>  <span class="c1"># from the catalog</span>
+<span class="n">plan</span> <span class="o">=</span> <span class="n">plan_model_preset_download</span><span class="p">(</span><span class="n">preset</span><span class="p">,</span> <span class="n">base_model</span><span class="o">=</span><span class="s2">"minimax-h3-turbo-544p"</span><span class="p">)</span>  <span class="c1"># reads the Hub listings; downloads nothing</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">summary_lines</span><span class="p">(),</span> <span class="n">plan</span><span class="o">.</span><span class="n">disk_space_error</span><span class="p">())</span>  <span class="c1"># access, sizes, files complete / to fetch, free disk space</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">preset_status</span><span class="p">(</span><span class="n">preset</span><span class="p">))</span>  <span class="c1"># cache / cache_bytes / cache_gaps / snapshot_dir / memory_modes / memory_peaks</span>
+<span class="n">snapshot_dir</span> <span class="o">=</span> <span class="n">download_model_preset</span><span class="p">(</span><span class="n">preset</span><span class="p">,</span> <span class="n">base_model</span><span class="o">=</span><span class="s2">"minimax-h3-turbo-544p"</span><span class="p">,</span> <span class="n">report</span><span class="o">=</span><span class="nb">print</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li><code>select_download_preset(name, *, target, engine, bits, allow_non_8bit)</code>: the preset <code>abstractvision
+  download</code> fetches, with its flags. The host's order picks the target, preferring an 8-bit package
+  unless <code>allow_non_8bit</code> or an MLX-Gen engine or target is named (<code>target</code> or <code>engine</code> restricts it;
+  <code>bits</code> keeps one width). Within that target
+  a single package is selected, and several select the one the catalog marks <code>recommended</code>; with none
+  recommended, <code>ValueError</code> lists them, whatever the flags narrowed them to. Without the 8-bit preference a
+  repository named exactly selects that repository instead of a package made from it, on every host. A
+  Hugging Face <code>owner/name</code> the catalog does not name is the whole repository (<code>repository_preset</code>).
+  <code>find_model_preset(name, *, target, engine, require_8bit, bits, download_rule=False)</code> is the catalog
+  lookup it is built on; without <code>download_rule</code> (as the backends resolve a configured model), several
+  packages with none recommended resolve by the catalog's own order (<code>qwen-image</code> to Qwen-Image-2512).</li>
+<li><code>download_command(repo_id, *, engine=None, base_model=None)</code>: the <code>abstractvision download</code> command
+  that selects exactly <code>repo_id</code> on this host, checked with <code>select_download_preset</code>:
+  <code>abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit</code> for the MiniMax-H3 source repository,
+  <code>abstractvision download AbstractFramework/minimax-h3-8bit</code> for a package; <code>ValueError</code> when no form
+  of the command selects it, or when the catalog lists the repository but not for <code>engine</code> (a repository
+  outside the catalog is fetched whole, whatever the engine).</li>
+<li><code>plan_model_preset_download(preset, *, base_model, model_dir, token, all_files)</code>: a <code>DownloadPlan</code>,
+  read from the Hub listings without writing anything. <code>parts</code> are the repositories the download fetches
+  from (<code>DownloadPart</code>: <code>role</code>, <code>plan</code>): the package, a stable-diffusion.cpp bundle's companions (<code>vae</code>,
+  <code>llm</code>), and the adapter of the MLX-Gen schedule <code>base_model</code> unless mlx-gen finds it cached
+  (<code>adapter</code>, <code>adapter_path</code>). Each part's <code>plan</code> is a <code>HubDownloadPlan</code>: <code>files</code> (each a <code>HubFile</code> with
+  <code>name</code>, <code>size</code>, <code>complete</code> (its snapshot link or blob is in the cache, huggingface_hub's own test) and
+  <code>partial</code> (the bytes its <code>.incomplete</code> file holds)), <code>complete_files</code>, <code>fetch_files</code>, <code>total_bytes</code>,
+  <code>complete_bytes</code>, <code>fetch_bytes</code>, <code>partial_bytes</code>, <code>required_bytes</code>, <code>free_bytes</code>, <code>commit</code> (the commit
+  the listing named, which the fetch takes), <code>gated</code>, <code>listing_error</code> (why there is no listing; the byte
+  counts are then None). The <code>DownloadPlan</code> adds the totals, <code>legacy_import</code> / <code>legacy_remove</code> (a legacy
+  tree), <code>summary_lines()</code>, <code>disk_space_error()</code> (the message when the files to fetch do not fit under
+  <code>DISK_RULE</code>, else None) and <code>to_dict()</code>. <code>download --dry-run</code> prints it. Raises
+  <code>HuggingFaceAccessError</code> when the Hub refuses a repository, <code>ValueError</code> when <code>base_model</code> is not a
+  schedule of the package, and <code>OptionalDependencyMissingError</code> when the adapter can only be named by
+  mlx-gen and mlx-gen cannot be imported.</li>
+<li><code>DISK_RULE</code>: the files to fetch count at their full size, less what their partial <code>.incomplete</code> files
+  already hold, because huggingface_hub writes each file into that same file (continuing it over plain
+  HTTP, rewriting it from the start over Xet).</li>
+<li><code>download_model_preset(preset, *, base_model, model_dir, token, max_workers, all_files, report)</code>: plans
+  first and passes the summary to <code>report</code>. A legacy <code>&lt;model_dir&gt;/&lt;preset.local_dir_name&gt;</code> tree
+  (<code>legacy_model_tree</code>) is moved into the cache and used as the package as it is (<code>report</code> says it was
+  not compared with the Hub). Raises <code>InsufficientDiskSpaceError</code> (a <code>RuntimeError</code>) before anything is
+  written when the files to fetch do not fit; fetches exactly the files to fetch of every part (none
+  when every file is complete), from the commit each listing named, and records that commit as the
+  repository's <code>main</code>; raises <code>HuggingFaceAccessError</code> when the Hub refuses a repository (naming the
+  licence when the catalog marks it gated) and <code>RuntimeError</code> when files are missing after the download.
+  Without a listing it uses what a local look finds in the cache as it is when it finds every part, else
+  raises <code>RuntimeError</code> saying why there is no listing and what to do. Returns the package snapshot.</li>
+<li><code>repository_preset(repo_id)</code>: a repository the catalog does not list, downloaded whole through the same
+  plan.</li>
+<li><code>local_cache_state(preset)</code>: the local look the listings use, offline: <code>snapshot_dir</code>, <code>files</code>,
+  <code>bytes</code>, <code>gaps</code> (what it can see is missing: partial files, links without content, weight files an
+  index names, components <code>model_index.json</code> names whose folder the preset's patterns name, no weight
+  file) and <code>state</code> (<code>cached</code>, <code>incomplete</code>
+  or <code>absent</code>). No gap does not prove the snapshot holds every file the package selects; only the plan
+  can tell.</li>
+<li><code>preset_status(preset)</code>: <code>cache</code>, <code>cache_bytes</code>, <code>cache_gaps</code> and <code>snapshot_dir</code> (from
+  <code>local_cache_state</code>), <code>memory_modes</code> (what the backend serving the preset honours on this host; <code>None</code>
+  when that backend cannot run here) and, for MLX-Gen prepared packages whose capability rows publish
+  measured runs, <code>memory_peaks</code> (below) and <code>smallest_tested_memory_gb</code> (per mode, the smallest unified
+  memory mlx-gen completed a run of that width on, where it publishes it). The figures are read from the
+  installed mlx-gen at run time.</li>
+<li><code>memory_peaks(repo_id)</code>: MLX-Gen's measured runs for one catalog package, as JSON rows
+  <code>{task, memory_mode, width, height, frames, steps, peak_bytes, machine_total_ram_bytes}</code> (<code>peak_bytes</code> is
+  the whole-process footprint, <code>machine_total_ram_bytes</code> the memory of the Mac it ran on), kept to the
+  package's stored width. A run names its canvas, frames and steps but not the schedule it ran with, and
+  mlx-gen 0.40.1 publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
+  per package, not per schedule. Empty for a repository that is not a prepared MLX-Gen package of the
+  catalog, or when mlx-gen is not installed or publishes nothing; no model is built.</li>
+<li><code>abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)</code>: the
+  adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA) and where mlx-gen finds it, or <code>None</code>
+  when the schedule loads none. <code>abstractvision download --base-model</code> fetches the adapter through its
+  plan (into huggingface_hub's cache, where mlx-gen looks), not with <code>download=True</code>.</li>
+</ul>
 <h2 id="artifacts-and-stores">Artifacts and stores<a class="headerlink" href="#artifacts-and-stores" title="Permanent link">&para;</a></h2>
 <p>Artifact helpers and store implementations live in <a href="../src/abstractvision/artifacts.py"><code>../src/abstractvision/artifacts.py</code></a>:</p>
 <ul>
@@ -1327,10 +1828,11 @@ Use <a href="../reference/backends/">docs/reference/backends.md</a> for backend 
 <p>Common exceptions (defined in <a href="../src/abstractvision/errors.py"><code>../src/abstractvision/errors.py</code></a>):</p>
 <ul>
 <li><code>BackendNotConfiguredError</code> (calling <code>VisionManager</code> without a backend)</li>
-<li><code>CapabilityNotSupportedError</code> (task isn’t supported by the model registry or backend)</li>
+<li><code>CapabilityNotSupportedError</code> (task isn’t supported by the model registry or backend, or the backend does not accept the requested <code>memory_mode</code> or another typed option)</li>
+<li><code>GenerationCancelledError</code> (the request's <code>cancel_event</code> was set)</li>
 <li><code>UnknownModelError</code> (model id isn’t present in the registry)</li>
 <li><code>OptionalDependencyMissingError</code> (backend dependency is missing, e.g. Diffusers/Torch)</li>
-<li><code>GpuOutOfMemoryError</code> (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback)</li>
+<li><code>GpuOutOfMemoryError</code> (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen MiniMax-H3 routes, raised when MLX-Gen's preflight reports that the weights or a run cannot fit, naming the <code>memory_mode</code> it used and the lower ones; MLX-Gen 0.40.1 reports this for MiniMax-H3 only)</li>
 </ul>
 
 

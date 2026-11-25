@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -875,7 +875,9 @@
 </code></pre></div>
 <p>Per-call routing can select the same backend/model ids used by the
 <code>abstractvision</code> shell commands. For MLX-Gen, pass the exact published model
-repo id; there is no separate quantization parameter.</p>
+repo id: a prepared package carries its own width. <code>quantize=&lt;bits&gt;</code> quantizes a
+source model at load, on the routes that accept it (<code>get_capabilities().quantize_bits</code>),
+and is refused on prepared packages and on the other local backends.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">abstractcore</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_llm</span>
@@ -965,9 +967,11 @@ include diffusion-step progress; Wan video events use diffusion-step
 <p>For task-specific Wan A14B video models, <code>guidance_2</code> is a typed request
 parameter for the second-stage/low-noise guidance path. Pass it directly to
 <code>t2v(...)</code> / <code>i2v(...)</code>; do not wrap it in <code>extra</code>.</p>
-<p>For MLX-Gen base-Qwen structured control, pass <code>control_image=&lt;bytes&gt;</code> and
-optional <code>control_strength=&lt;float&gt;</code> directly to <code>t2i(...)</code>. Unsupported
-backends reject those fields explicitly instead of silently ignoring them.</p>
+<p><code>control_image=&lt;bytes&gt;</code> and <code>control_strength=&lt;float&gt;</code> reach the request as
+typed fields, but in this release every built-in backend, MLX-Gen included,
+refuses a <code>control_image</code> with <code>CapabilityNotSupportedError</code>
+(<code>field="control_image"</code>) instead of ignoring it; MLX-Gen also refuses a
+<code>control_strength</code> given alone, which the other built-in backends do not use.</p>
 <p>The same applies to LoRA adapters. Prefer the shared typed contract:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">LoRAAdapterSpec</span>
 
@@ -986,6 +990,95 @@ backends reject those fields explicitly instead of silently ignoring them.</p>
 <p>Wan LoRA calls may also need <code>target_role</code> in each adapter spec. TI2V-5B uses
 <code>transformer</code>. A14B routes require explicit
 <code>high_noise_transformer</code> / <code>low_noise_transformer</code> roles.</p>
+<p>To lower a run's memory peak, pass <code>memory_mode</code> (<code>"default"</code>, <code>"low"</code> or
+<code>"lowest"</code>) to <code>t2i</code>, <code>i2i</code>, <code>upscale_image</code>, <code>t2v</code>, <code>i2v</code> or their <code>_batch</code>
+variants; without it, <code>$ABSTRACTVISION_MEMORY_MODE</code> applies, else <code>"default"</code>
+(a backend that cannot honour the environment value runs the nearest less
+aggressive mode it lists, <code>lowest</code> → <code>low</code> → <code>default</code>, and logs it once per
+process; a value passed on the call is refused instead).
+MLX-Gen runs <code>"low"</code> in its low-RAM mode, Diffusers on CUDA runs <code>"low"</code> /
+<code>"lowest"</code> with model / sequential CPU offload, and stable-diffusion.cpp runs
+<code>"low"</code> with CPU offload of its parameters (see
+<a href="../../api/#memory-modes-memory_mode">Memory modes</a>). A mode the selected
+backend cannot honour, passed on the call, raises <code>CapabilityNotSupportedError</code> before any model
+loads: <code>"lowest"</code>, for example, is accepted for MiniMax-H3 and refused on every
+other current MLX-Gen catalog model.</p>
+<div class="highlight"><pre><span></span><code><span class="n">mp4</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2v</span><span class="p">(</span>
+    <span class="s2">"A red fox trots through fresh snow"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"</span><span class="p">,</span>
+    <span class="n">memory_mode</span><span class="o">=</span><span class="s2">"low"</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>AbstractCore's HTTP vision routes take <code>memory_mode</code> and <code>quantize</code> as request
+fields (JSON bodies and forms; the video routes take the soundtrack fields too).
+The server builds AbstractVision backends and calls them directly, and every
+backend reads and checks the value itself, so the same refusal applies there.</p>
+<p>On MLX-Gen, a <code>"low"</code> run frees parts of the model and drops the instance (a
+MiniMax-H3 <code>"lowest"</code> run drops it too), so the plugin no longer lists the model
+as loaded, a resident one included, whether the run succeeded or failed; the
+next request loads the model again, unpinned. The same
+holds after every Wan TI2V-5B run, which releases its denoiser before the decode.</p>
+<p>A batch, through <code>llm.vision.t2i_batch(...)</code> and the other <code>_batch</code> methods or
+through the AbstractCore server's HTTP batch routes, is a series of requests:
+with <code>"low"</code> each item loads the model again.</p>
+<p>The current AbstractCore server's residency records are its own and independent
+of what this plugin lists as loaded.</p>
+<p>The facade forwards every typed field of the request a method builds, under the
+same name: <code>control_image</code> / <code>control_strength</code> on <code>t2i</code> (which every built-in
+backend refuses in this release), <code>soundscape</code>, <code>music</code>,
+<code>generate_audio</code>, <code>audio_shift</code> on <code>t2v</code> / <code>i2v</code>, and <code>quantize</code>, <code>memory_mode</code>
+and <code>cancel_event</code> on all of them. Two kinds of keyword are refused with
+<code>CapabilityNotSupportedError</code>: <code>guidance_2</code> on <code>t2i</code> / <code>i2i</code>, and the soundtrack
+options (<code>soundscape</code>, <code>music</code>, <code>generate_audio</code>, <code>audio_shift</code>) on a call whose
+request has none. Every other unknown keyword remains a backend-specific <code>extra</code>
+parameter:
+<code>t2v(..., vae_tiling=False)</code> reaches Wan as <code>extra["vae_tiling"]</code>, and
+<code>t2i(..., fps=24)</code> lands in <code>extra</code> too.</p>
+<p>With an <code>artifact_store</code>, a MiniMax-H3 clip whose soundtrack MLX-Gen could not
+mux into the MP4 comes back with its WAV stored as a second artifact: the
+returned ref carries <code>audio</code> (the <code>GeneratedAsset.audio_summary()</code> shape:
+<code>present</code>, <code>sample_rate</code>, <code>channels</code>, <code>codec</code>, <code>muxed</code>, <code>duration_seconds</code>, and
+<code>wav</code>, the WAV's artifact ref, when <code>muxed</code> is false), and the stored metadata
+records the same object. Without a store the facade returns the MP4 bytes only
+and logs a warning when the soundtrack is not in them.</p>
+<p><code>load_resident_model(...)</code> / <code>load_model(...)</code> preload the backend, with the
+request's <code>memory_mode</code> and <code>quantize</code> when it carries them (checked as a
+generation request's are, before anything loads), so that requests with those
+values reuse the model; on MLX-Gen a video model (Wan, MiniMax-H3) is loaded
+without a warm-up run. When the preload
+fails, the backend drops what it loaded and the plugin does not list it; a
+preload refused for its values, or one that fails after reusing the model
+already held, leaves that model held (and listed).</p>
+<p>Discovery, and where each part is visible:</p>
+<ul>
+<li>Every MLX-Gen entry of <code>llm.vision.list_provider_models(...)</code>, which the
+  AbstractCore HTTP model listing also returns, carries
+  <code>parameter_constraints["memory_mode"]</code> = <code>{"enum": [...]}</code>; <code>enum</code> holds the
+  modes that model can honour.</li>
+<li><code>llm.vision.available_providers()["details"][&lt;provider&gt;]["memory_modes"]</code>
+  lists what the backend a request for that provider runs on reports with its
+  configured model and device (<code>supported_memory_modes()</code>; for an
+  OpenAI-compatible remote, the modes of its last discovery answer, else
+  <code>default</code>), without loading a model or sending a request. Diffusers with
+  <code>device="auto"</code> lists <code>default</code> on macOS (no CUDA) without importing torch,
+  and elsewhere asks torch, importing it once. AbstractCore's HTTP server
+  reads it for <code>GET /v1/vision/providers/</code> and for the <code>memory_modes</code> of the
+  entries of <code>GET /v1/vision/models</code>.</li>
+<li><code>llm.vision.memory_peaks(model)</code> returns MLX-Gen's measured memory peaks for
+  one catalog package as JSON rows <code>{task, memory_mode, width, height, frames,
+  steps, peak_bytes, machine_total_ram_bytes}</code>, with <code>task</code> in AbstractVision's
+  form (<code>text_to_video</code>) and <code>memory_mode</code> one of its modes. The rows are
+  already kept to that package's stored width, so a host relays them as they
+  are. They are per package, not per schedule: a run names its canvas, frames
+  and steps but not the schedule it ran with, and mlx-gen publishes the same
+  runs on every MiniMax-H3 schedule. The list is empty when the model is not a prepared
+  MLX-Gen package of the catalog or when mlx-gen is not installed or publishes
+  nothing, and the call builds no model and reads no weights.</li>
+<li>With an <code>artifact_store</code>, the stored artifact's metadata records <code>memory_mode</code>
+  (and <code>low_ram</code> / <code>stream_blocks</code> on MLX-Gen); without one the plugin returns
+  bytes only.</li>
+</ul>
 <div class="highlight"><pre><span></span><code><span class="c1"># OpenAI API.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>...
 <span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_IMAGE_MODEL</span><span class="o">=</span>gpt-image-1
@@ -993,7 +1086,8 @@ backends reject those fields explicitly instead of silently ignoring them.</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Local OpenAI-compatible HTTP server, for example AbstractCore Server.</span>
 <span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_BACKEND</span><span class="o">=</span>openai-compatible
 <span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_BASE_URL</span><span class="o">=</span>http://localhost:8000/v1
-<span class="nb">export</span><span class="w"> </span><span class="nv">ABSTRACTVISION_MODEL_ID</span><span class="o">=</span>server/default
+<span class="c1"># No model id: each request runs the server's default for its task. To name one, use the id the</span>
+<span class="c1"># server routes, its `routed_model` in GET /v1/vision/models (for example mlx-gen/&lt;repo&gt;).</span>
 </code></pre></div>
 <h3 id="provider-catalog-discovery">Provider Catalog Discovery<a class="headerlink" href="#provider-catalog-discovery" title="Permanent link">&para;</a></h3>
 <p>Core/Gateway hosts can inspect provider-advertised model catalogs through the same capability
@@ -1005,9 +1099,10 @@ object used for generation:</p>
 <p>The return value is a JSON-safe list of dictionaries serialized from <code>ProviderModelInfo</code>. Raw
 provider metadata is retained in a bounded <code>raw</code> field for diagnostics. This method is explicit
 inspection only: it does not mutate the configured backend or select a generation model.</p>
-<p>Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
-of returning a misleading empty catalog. When multiple backends are enabled, the plugin probes
-their catalogs concurrently so discovery waits for the slowest backend instead of the sum of
+<p>Backends that do not implement provider catalog listing, and an OpenAI-compatible remote without a
+<code>GET /models</code> route, raise <code>CapabilityNotSupportedError</code> saying so instead of returning a misleading
+empty catalog; a backend without a catalog is skipped when another backend answers. When multiple
+backends are enabled, the plugin probes their catalogs concurrently so discovery waits for the slowest backend instead of the sum of
 serial scans. Local Diffusers and stable-diffusion.cpp model discovery
 remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate <code>~/models</code> download tree.</p>
@@ -1036,7 +1131,9 @@ methods:</p>
 <p>These methods use the same typed request contract as the singular calls:
 stacked <code>lora_adapters=[...]</code>, explicit <code>seeds=[...]</code>, optional base <code>seed</code>
 expansion, and typed video controls such as <code>guidance_2</code> / <code>flow_shift</code>.</p>
-<div class="highlight"><pre><span></span><code><span class="n">videos</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2v_batch</span><span class="p">(</span>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">LoRAAdapterSpec</span>
+
+<span class="n">videos</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">t2v_batch</span><span class="p">(</span>
     <span class="s2">"A compact silver spaceship lifts off from an icy canyon at dawn."</span><span class="p">,</span>
     <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
     <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"</span><span class="p">,</span>
@@ -1078,12 +1175,20 @@ object:</p>
 </ul>
 <p><code>list_loaded_models()</code> reports both explicitly preloaded resident models and transient currently
 loaded local models from recent generation requests. <code>list_resident_models()</code>
-returns the explicit pinned subset.</p>
+returns the explicit pinned subset. Both ask each backend, when called, whether it holds its model
+(<code>VisionBackend.has_loaded_model()</code>): a model a run, a failed preload or an unload released is not
+listed, and its next load starts unpinned.</p>
 <p>Each loaded-model entry includes stable routing metadata such as <code>load_id</code>, <code>backend_kind</code>,
 <code>resident</code>, and a <code>tasks</code> list of observed task aliases using that loaded backend.</p>
+<p>A request's model is listed when its backend holds it after the run, whatever the run's outcome (a
+failed or cancelled first request included), and <code>unload_resident_model()</code> calls the backend's
+<code>unload()</code> whenever it resolves one, listed or not, then reports from the listing.</p>
 <p><code>load_resident_model()</code> returns the same entry plus <code>loaded_new</code>: <code>true</code> when that call loaded the
 model, <code>false</code> when it was already in memory. AbstractCore and AbstractRuntime use it to report the
-load as <code>loaded</code> or <code>already_loaded</code>.</p>
+load as <code>loaded</code> or <code>already_loaded</code>. When the backend holds no model after the preload (<code>sd-cli</code>,
+or a backend that keeps the default <code>has_loaded_model()</code>), it returns <code>state: "not_loaded"</code>,
+<code>resident: false</code>, <code>loaded_new: false</code> and <code>reason: "this backend holds no model in this process"</code>,
+and nothing is listed or pinned.</p>
 <p>For deterministic unload behavior, prefer:</p>
 <ul>
 <li><code>load_id</code>, or</li>
@@ -1123,6 +1228,18 @@ plugin surface:</p>
   artifact ref dict or a <code>{"b64": "..."}</code> payload.</li>
 <li><code>vision_list_adapters(task=...)</code> returns the currently discovered compatible
   adapter inventory for the selected model.</li>
+<li>A parameter the tool call leaves unset takes the catalog's <code>default</code> (or
+  <code>const</code>) for the model and task; one the catalog lists without a default stays
+  unset, so the backend applies the engine's own default (MiniMax-H3: the
+  schedule's 8 steps on the Turbo entries, 50 on the base model). A tool's
+  built-in step count applies only to a model whose catalog entry does not list
+  <code>steps</code>.</li>
+<li>Generated videos with a soundtrack that is not in the MP4 return its WAV as a
+  second artifact, under the ref's <code>audio["wav"]</code> (see the plugin section).</li>
+<li><code>make_vision_tools(..., memory_mode="low")</code> applies one memory mode to every
+  generation call of the tools. It is not a tool parameter, so the model cannot
+  choose it; a value that is not a memory mode raises <code>ValueError</code> when the tools
+  are made, and the backend checks it against the modes it supports at each call. Without it each call follows <code>$ABSTRACTVISION_MEMORY_MODE</code>.</li>
 </ul>
 <p>Important:
 - Tool outputs are designed to be <strong>artifact refs</strong>, so <code>VisionManager.store</code> must be set (<a href="../../src/abstractvision/integrations/abstractcore.py"><code>../../src/abstractvision/integrations/abstractcore.py</code></a>).

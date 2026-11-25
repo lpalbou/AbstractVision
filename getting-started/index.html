@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -1875,9 +1875,6 @@ after generation, or <code>--store-dir &lt;dir&gt;</code> to select the store di
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-2512-4bit<span class="w"> </span><span class="s2">"a studio product photo of a white ceramic mug with the AbstractFramework logo"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
 abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>prism-ml/bonsai-image-ternary-4B-mlx-2bit<span class="w"> </span><span class="s2">"a bonsai tree in a quiet ceramic studio"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">4</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--open
 </code></pre></div>
-<p>Structured control from the shell:</p>
-<div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-8bit<span class="w"> </span>--control-image<span class="w"> </span>./pose.png<span class="w"> </span>--control-strength<span class="w"> </span><span class="m">0</span>.85<span class="w"> </span><span class="s2">"fashion editorial portrait, same pose, soft daylight, neutral studio backdrop"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
-</code></pre></div>
 <p>Image-to-image/edit from the shell:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>AbstractFramework/qwen-image-edit-2511-4bit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">"replace the background with a clean white studio setup"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">2</span>.5<span class="w"> </span>--strength<span class="w"> </span><span class="m">0</span>.75<span class="w"> </span>--open
 abstractvision<span class="w"> </span>i2i<span class="w"> </span>--provider<span class="w"> </span>mlx-gen<span class="w"> </span>--model<span class="w"> </span>briaai/Fibo-Edit<span class="w"> </span>--image<span class="w"> </span>./input.png<span class="w"> </span><span class="s2">"remove the background and keep the object edges clean"</span><span class="w"> </span>--steps<span class="w"> </span><span class="m">20</span><span class="w"> </span>--guidance-scale<span class="w"> </span><span class="m">4</span>.0<span class="w"> </span>--open
@@ -1898,9 +1895,8 @@ Leave out <code>--width/--height/--frames/--fps/--steps</code> to use each model
 (832x480 for every Wan model; 121 frames at 24 fps for TI2V-5B, 81 frames at
 16 fps for A14B). The measured memory per size is in
 <a href="../faq/#how-much-memory-does-wan-video-need">docs/faq.md</a>.
-For MLX-Gen Qwen structured control, use the validated base route
-<code>AbstractFramework/qwen-image-8bit</code> and pass <code>--control-image</code> plus optional
-<code>--control-strength</code>. For masked edits, use the validated Qwen edit route
+<code>--control-image</code> is accepted by <code>t2i</code> but refused by every built-in backend in
+this release, MLX-Gen included. For masked edits, use the validated Qwen edit route
 <code>AbstractFramework/qwen-image-edit-2511-8bit</code> (or FIBO Edit) and pass
 <code>--mask</code>.</p>
 <p>Shared LoRA adapters:</p>

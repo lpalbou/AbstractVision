@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="assets/images/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -835,7 +835,7 @@
 - <code>generate_angles</code> (<code>multi_view_image</code>) (API exists; no built-in backend implements it yet)</p>
 <p>Built-in backends implement:
 - <strong>Images</strong>: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP (<a href="../src/abstractvision/backends/"><code>../src/abstractvision/backends/</code></a>)
-- <strong>Current local policy</strong>: MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. MLX-Gen is validated on Apple Silicon; the explicit <code>mlx-gen</code> extra also installs on Linux, where it is not validated yet (see <a href="backlog/planned/030_gpu_parity_with_mlx_gen/">backlog 030</a>), and the NVIDIA/Linux <code>gpu</code> / <code>all-gpu</code> profiles do not include it. Local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
+- <strong>Current local policy</strong>: MLX-Gen supports curated q4/q8 image presets, Qwen/FIBO masked edits (structured control images are refused), official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. MLX-Gen is validated on Apple Silicon; the explicit <code>mlx-gen</code> extra also installs on Linux, where it is not validated yet (see <a href="backlog/planned/030_gpu_parity_with_mlx_gen/">backlog 030</a>), and the NVIDIA/Linux <code>gpu</code> / <code>all-gpu</code> profiles do not include it. Local Diffusers <code>text_to_video</code> is experimental and temporarily disabled from normal local surfaces.
 - <strong>Video</strong>:
   - MLX-Gen for Wan 2.2 local <code>text_to_video</code> and first-frame <code>image_to_video</code>
   - OpenAI-compatible HTTP for optional <code>text_to_video</code> / <code>image_to_video</code> when endpoints are configured (<a href="../src/abstractvision/backends/openai_compatible.py"><code>openai_compatible.py</code></a>)</p>

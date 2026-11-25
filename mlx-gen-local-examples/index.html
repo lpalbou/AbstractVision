@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -988,16 +988,16 @@ AbstractVision.</p>
   <code>lora_status</code>, <code>lora_target_roles</code>, and <code>lora_validation_profile</code>.</li>
 <li>Installed adapter discovery is backend-owned and lists optional overlays only;
   full-model component files are excluded from the adapter inventory.</li>
-<li>The MLX-Gen surface exposes route-aware Qwen masked edit and
-  structured control through typed request fields instead of <code>extra</code>-only
-  escape hatches.</li>
+<li>The MLX-Gen surface exposes route-aware Qwen masked edit through a typed
+  request field instead of an <code>extra</code>-only escape hatch; it refuses structured
+  control images (<code>control_image</code>) in this release.</li>
 <li>The public TI2V-5B visual proofs in this bundle use <code>832x480</code>.</li>
 <li>The public task-specific Wan A14B proofs in this bundle use <code>480x240</code>.</li>
 <li>The LoRA-heavy proof runs on this page use curated 8-bit MLX-Gen routes. For
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.</li>
 <li>The current AbstractVision MLX runtime floor is
-  <code>mlx-gen&gt;=0.38.0,&lt;0.39.0</code>.</li>
+  <code>mlx-gen&gt;=0.40.1,&lt;0.41.0</code>, with <code>mlx&gt;=0.32.4</code> on macOS.</li>
 </ul>
 <p>MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
 Apple validations. The explicit <code>mlx-gen</code> extra also installs on Linux (upstream
@@ -1039,18 +1039,15 @@ artifacts. Reference:
 <li><a href="../assets/mlx-gen-lora-examples/summary.json">summary.json</a></li>
 </ul>
 <h2 id="route-aware-qwen-extras">Route-aware Qwen extras<a class="headerlink" href="#route-aware-qwen-extras" title="Permanent link">&para;</a></h2>
-<p>The public request surface exposes the validated Qwen MLX-Gen
-extras directly:</p>
+<p>The public request surface exposes the validated Qwen MLX-Gen masked edit
+directly:</p>
 <ul>
 <li>masked edit:
   <code>abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --image ./input.png --mask ./mask.png "repair the marked area"</code></li>
-<li>structured control:
-  <code>abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ./edges.png --control-strength 0.9 "pagoda at sunrise"</code></li>
 </ul>
-<p>Those inputs fail closed when the selected route does not advertise the matching
-runtime capability. <code>0.85</code> is the packaged default when
-<code>--control-strength</code> is omitted; <code>0.9</code> above matches the current upstream proof
-setting rather than the default.</p>
+<p>A mask fails closed when the selected route does not advertise the matching
+runtime capability. A structured control image (<code>--control-image</code>) is refused by
+MLX-Gen, as by every built-in backend in this release.</p>
 <h2 id="shared-adapter-contract">Shared adapter contract<a class="headerlink" href="#shared-adapter-contract" title="Permanent link">&para;</a></h2>
 <p>In Python, use the typed request surface:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">LoRAAdapterSpec</span><span class="p">,</span> <span class="n">VisionManager</span>

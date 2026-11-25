@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -869,7 +869,7 @@
 <ul>
 <li><code>vision_model_capabilities.json</code> is the curated package view of model-family tasks, downloadable variants, and model-level defaults.</li>
 <li><code>vision_adapter_capabilities.json</code> is the curated package view of adapter families, compatible base-model aliases, and adapter default/recommended parameters.</li>
-<li>Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports <code>mask</code>, <code>control_image</code>, or LoRA target roles at runtime.</li>
+<li>Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports <code>mask</code> or LoRA target roles at runtime (it refuses <code>control_image</code> on every route in this release).</li>
 </ul>
 <h2 id="what-the-registry-is-used-for">What the registry is used for<a class="headerlink" href="#what-the-registry-is-used-for" title="Permanent link">&para;</a></h2>
 <ul>
@@ -947,6 +947,7 @@ curated model/adapter metadata independently.</p>
 <li>Each model entry includes:</li>
 <li><code>provider</code> (string)</li>
 <li><code>license</code> (string; informational)</li>
+<li>optional <code>license_name</code> (the licence's display name, used where access requires accepting it)</li>
 <li>optional <code>downloads</code> (list of downloadable artifacts; informational metadata used by <code>abstractvision show-model</code>)</li>
 <li><code>tasks</code> (map of task name → task spec)</li>
 <li>Each task spec includes:</li>
@@ -970,7 +971,18 @@ curated model/adapter metadata independently.</p>
 <li><code>bits</code>: typically <code>8</code> (quantized) or <code>16</code> (full snapshot)</li>
 <li><code>repo_id</code>: Hugging Face repo id to download</li>
 <li>optional <code>source</code>, <code>notes</code></li>
+<li>optional <code>recommended: true</code>: the package <code>download &lt;name&gt;</code> selects when several packages of one target
+  remain and no <code>--bits</code> is given; at most one per model and target (a test checks it). It marks
+  MiniMax-H3's and SeedVR2's 8-bit packages, FIBO's 4-bit package and Qwen-Image-2512's 4-bit MLX-Gen
+  package, GGUF and Diffusers pipeline, and <code>catalog</code> shows it with <code>*</code> in <code>bits</code></li>
+<li>optional <code>gated: true</code>: the Hugging Face repository is gated; downloading it needs its licence
+  accepted on the repository page (the model's optional <code>license_name</code> names it in messages)</li>
+<li>optional <code>explicit_download: true</code>: generation (MLX-Gen and Diffusers) never downloads this repository, even with
+  <code>allow_download</code> (<code>ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1</code>, <code>ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1</code>); it is fetched only by an explicit
+  <code>abstractvision download</code>, and the refusal names that command. Today the four MiniMax-H3 repositories
+  carry it. <code>gated</code> says only whether the Hub asks for the licence to be accepted.</li>
 </ul>
+<p>Download sizes are not stored: <code>download</code> and <code>download --dry-run</code> read them from the Hub listing.</p>
 <p>This metadata is descriptive, but in this repo it is maintained to align with the curated
 download surfaces exposed by <code>abstractvision catalog</code>, <code>abstractvision model-presets</code>, and
 <code>abstractvision download</code>.</p>
