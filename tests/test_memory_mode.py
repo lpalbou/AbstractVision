@@ -20,13 +20,12 @@ PNG_1X1 = base64.b64decode(
 NO_ENV = {"ABSTRACTVISION_MEMORY_MODE": ""}
 
 
-def _recording_backend(memory_modes, *, uses_batch_marker=False):
+def _recording_backend(memory_modes):
     from abstractvision.backends import VisionBackend
     from abstractvision.types import GeneratedAsset, VisionBackendCapabilities
 
     class RecordingBackend(VisionBackend):
         def __init__(self) -> None:
-            self.uses_batch_marker = uses_batch_marker
             self.requests = []
             self.modes = []
 
@@ -40,7 +39,7 @@ def _recording_backend(memory_modes, *, uses_batch_marker=False):
 
         def _record(self, request, media_type="image"):
             # As every backend: the mode is resolved and checked before any work.
-            _request, mode, _batch = self.resolve_memory_request(request)
+            _request, mode = self.resolve_memory_request(request)
             self.requests.append(request)
             self.modes.append(mode)
             return GeneratedAsset(media_type=media_type, data=b"x", mime_type="image/png", metadata={})
@@ -163,7 +162,7 @@ class TestVisionManagerMemoryMode(unittest.TestCase):
         )
 
         self.assertEqual(backend.modes, ["low"])
-        request, _mode, _batch = backend.resolve_memory_request(backend.requests[0])
+        request, _mode = backend.resolve_memory_request(backend.requests[0])
         self.assertEqual((request.memory_mode, request.extra), ("low", {"max_sequence_length": 256}))
 
     def test_disagreeing_keyword_and_extra_are_refused(self):
@@ -226,51 +225,15 @@ class TestVisionManagerMemoryMode(unittest.TestCase):
         with self.assertRaises(ValueError):
             vm.generate_image("p", memory_mode="tiny")
 
-    def test_batch_items_carry_one_batch_id_and_mark_the_last(self):
+    def test_batch_items_are_runs_like_any_other(self):
         from abstractvision import VisionManager
-        from abstractvision.types import BATCH_EXTRA_KEY, MEMORY_MODES
+        from abstractvision.types import MEMORY_MODES
 
-        backend = _recording_backend(MEMORY_MODES, uses_batch_marker=True)
-        VisionManager(backend=backend).generate_image_batch("p", count=3, seed=1, memory_mode="low")
-
-        markers = [request.extra[BATCH_EXTRA_KEY] for request in backend.requests]
-        self.assertEqual(len({marker["id"] for marker in markers}), 1)
-        self.assertEqual([marker["last"] for marker in markers], [False, False, True])
+        backend = _recording_backend(MEMORY_MODES)
+        VisionManager(backend=backend).generate_image_batch("p", count=3, seed=1, memory_mode="low", extra={"k": 1})
         self.assertEqual([request.seed for request in backend.requests], [1, 2, 3])
-
-    def test_batch_marker_reaches_only_backends_that_declare_they_use_it(self):
-        from abstractvision import VisionManager
-        from abstractvision.backends import VisionBackend
-        from abstractvision.backends.mflux import MFluxVisionBackend
-        from abstractvision.types import BATCH_EXTRA_KEY, GeneratedAsset
-
-        class ThirdPartyBackend(VisionBackend):
-            # Written against the VisionBackend interface only: no memory helper, no marker use.
-            def __init__(self):
-                self.extras = []
-
-            def generate_image(self, request):
-                self.extras.append(dict(request.extra or {}))
-                return GeneratedAsset(media_type="image", data=b"x", mime_type="image/png", metadata={})
-
-            def edit_image(self, request):  # pragma: no cover
-                raise NotImplementedError
-
-            def generate_angles(self, request):  # pragma: no cover
-                raise NotImplementedError
-
-            def generate_video(self, request):  # pragma: no cover
-                raise NotImplementedError
-
-            def image_to_video(self, request):  # pragma: no cover
-                raise NotImplementedError
-
-        backend = ThirdPartyBackend()
-        VisionManager(backend=backend).generate_image_batch("p", count=2, extra={"k": 1})
-        self.assertEqual(backend.extras, [{"k": 1}, {"k": 1}])
-        self.assertFalse(VisionBackend.uses_batch_marker)
-        self.assertTrue(MFluxVisionBackend.uses_batch_marker)
-        self.assertNotIn(BATCH_EXTRA_KEY, backend.extras[0])
+        self.assertEqual([request.extra for request in backend.requests], [{"k": 1}] * 3)
+        self.assertEqual(backend.modes, ["low"] * 3)
 
 
 class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
@@ -296,15 +259,13 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
 
     def test_base_helper_strips_the_keys_and_refuses_unlisted_modes(self):
         from abstractvision.errors import CapabilityNotSupportedError
-        from abstractvision.types import BATCH_EXTRA_KEY, ImageGenerationRequest
+        from abstractvision.types import ImageGenerationRequest
 
         backend = _recording_backend(None)
-        request, mode, batch = backend.resolve_memory_request(
-            ImageGenerationRequest(
-                prompt="p", extra={"memory_mode": "default", BATCH_EXTRA_KEY: {"id": "b", "last": True}, "k": 1}
-            )
+        request, mode = backend.resolve_memory_request(
+            ImageGenerationRequest(prompt="p", extra={"memory_mode": "default", "k": 1})
         )
-        self.assertEqual((mode, batch, request.memory_mode, request.extra), ("default", {"id": "b", "last": True}, "default", {"k": 1}))
+        self.assertEqual((mode, request.memory_mode, request.extra), ("default", "default", {"k": 1}))
         with self.assertRaisesRegex(CapabilityNotSupportedError, "cannot honour memory_mode='low'"):
             backend.resolve_memory_request(ImageGenerationRequest(prompt="p", extra={"memory_mode": "low"}))
 
@@ -322,7 +283,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
         with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": "lowest"}):
             with self.assertLogs("abstractvision.backends.base_backend", level="WARNING") as logs:
                 for _ in range(3):
-                    _req, mode, _batch = narrow.resolve_memory_request(ImageGenerationRequest(prompt="p"))
+                    _req, mode = narrow.resolve_memory_request(ImageGenerationRequest(prompt="p"))
                     self.assertEqual(mode, "default")
             self.assertEqual(len(logs.output), 1)  # once per process
             self.assertEqual(mlx_like.resolve_memory_request(ImageGenerationRequest(prompt="p"))[1], "low")
@@ -370,7 +331,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
             OpenAICompatibleVisionBackend,
         )
         from abstractvision.errors import CapabilityNotSupportedError
-        from abstractvision.types import BATCH_EXTRA_KEY, ImageGenerationRequest, VideoGenerationRequest
+        from abstractvision.types import ImageGenerationRequest, VideoGenerationRequest
 
         sent = []
 
@@ -393,13 +354,8 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
                 with self.assertRaises(CapabilityNotSupportedError):
                     getattr(backend, "generate_image" if isinstance(request, ImageGenerationRequest) else "generate_video")(request)
             self.assertEqual(sent, [])
-            backend.generate_image(
-                ImageGenerationRequest(
-                    prompt="p", extra={"memory_mode": "default", BATCH_EXTRA_KEY: {"id": "b", "last": True}}
-                )
-            )
+            backend.generate_image(ImageGenerationRequest(prompt="p", extra={"memory_mode": "default"}))
         self.assertNotIn("memory_mode", sent[0])
-        self.assertNotIn(BATCH_EXTRA_KEY, sent[0])
 
     def test_diffusers_lists_offload_modes_on_cuda_only_and_refuses_elsewhere(self):
         from abstractvision.backends import huggingface_diffusers as hd
@@ -501,7 +457,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
 
     def test_sdcpp_cli_maps_low_to_offload_to_cpu_and_never_forwards_the_key(self):
         from abstractvision.errors import CapabilityNotSupportedError
-        from abstractvision.types import BATCH_EXTRA_KEY, ImageEditRequest, ImageGenerationRequest
+        from abstractvision.types import ImageEditRequest, ImageGenerationRequest
 
         commands = []
 
@@ -514,9 +470,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
         with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"), patch(
             "abstractvision.backends.stable_diffusion_cpp.subprocess.run", side_effect=fake_run
         ):
-            low = backend.generate_image(
-                ImageGenerationRequest(prompt="p", extra={"memory_mode": "low", BATCH_EXTRA_KEY: {"id": "b", "last": True}})
-            )
+            low = backend.generate_image(ImageGenerationRequest(prompt="p", extra={"memory_mode": "low"}))
             backend.edit_image(ImageEditRequest(prompt="p", image=PNG_1X1, memory_mode="low"))
             backend.generate_image(ImageGenerationRequest(prompt="p"))
             with self.assertRaises(CapabilityNotSupportedError):
@@ -525,7 +479,6 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
         self.assertEqual(len(commands), 3)
         for cmd in commands:
             self.assertNotIn("--memory-mode", cmd)
-            self.assertFalse(any("abstractvision-batch" in part or "_abstractvision_batch" in part for part in cmd))
         self.assertEqual([cmd.count("--offload-to-cpu") for cmd in commands], [1, 1, 0])
         self.assertEqual(low.metadata["memory_mode"], "low")
 

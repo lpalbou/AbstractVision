@@ -338,7 +338,7 @@ asset_or_ref = vm.generate_video(
 | --- | --- | --- |
 | MLX-Gen, image and edit routes | MLX-Gen low-RAM mode, as `mlxgen generate --low-ram`: a 1 GB MLX cache from before the model loads to the end of the run, and mlx-gen's `MemorySaver`, which tiles the VAE decode, frees the text encoders before the denoising loop and the transformer after it. | `low` plus transformer block streaming (`--stream-blocks`), on a model whose MLX-Gen routes publish `supports_block_streaming`: accepted for MiniMax-H3, refused on every other current catalog model. |
 | MLX-Gen, Wan video | As `mlxgen generate --low-ram` on one seed: the 1 GB cache, the MLX cache cleared after every step and transformer block, the denoisers released before the decode and, on the A14B models, the inactive expert released. | Refused on every current Wan route. |
-| MLX-Gen, MiniMax-H3 | The 1 GB cache and the transformer freed before the decode (`release_transformer=True`); the model stays loaded. | `low` plus block streaming (`stream_blocks=True`). Refused with load-time `quantize`, and with an adapter that trains the AdaLN projections. |
+| MLX-Gen, MiniMax-H3 | The 1 GB cache and the transformer freed before the decode (`release_transformer=True`); the next request loads the model again. | `low` plus block streaming (`stream_blocks=True`). Refused with load-time `quantize`, and with an adapter that trains the AdaLN projections. |
 | MLX-Gen, SeedVR2 upscale | As `mlxgen upscale --low-ram` on images: the 1 GB cache only. SeedVR2 keeps its own tiling and the loaded model. | Refused (SeedVR2 has no block streaming). |
 | Diffusers on CUDA | Model CPU offload. | Sequential CPU offload. |
 | Diffusers on CPU or MPS | Refused. | Refused. |
@@ -360,15 +360,17 @@ more offload keeps serving later requests until it is unloaded. stable-diffusion
 keeps an operator's `--offload-to-cpu` and loads the Python binding again
 with `offload_params_to_cpu` when a `low` request needs it.
 
-On MLX-Gen, `low` trades residency for memory: image, edit and Wan runs free
-parts of the model, so the instance is dropped after the run and the next
-request loads it again, a preloaded resident model included. Batches
-(`generate_image_batch`, `generate_video_batch`, ...) keep the instance until
-their last item, as mlx-gen does for several seeds (VisionManager marks batch
-items only for backends whose `uses_batch_marker` is true; MLX-Gen is the one
-built-in); FIBO, which mlx-gen does not
-run in low-RAM mode with several seeds, runs each item as its own low-RAM run.
-SeedVR2 keeps its instance. MLX-Gen holds one instance at a time: a request
+On MLX-Gen, `low` trades residency for memory: image, edit, Wan and MiniMax-H3
+runs free parts of the model, so the instance is dropped when the run ends,
+whatever its outcome, and the next request loads it again, a preloaded resident
+model included; MiniMax-H3 runs in `lowest` are dropped the same way. A batch
+(`generate_image_batch`, `generate_video_batch`, ...) is a series of such
+requests: each item loads the model, frees it and drops it, so every item peaks
+as one `low` run, at the cost of one load per item (building the instance took
+2.1 to 3.1 s for MiniMax-H3 8-bit, 0.5 to 1.9 s for FLUX.2 [klein] 9B 8-bit and
+1.4 to 2.7 s for Wan 2.2 T2V-A14B 8-bit; the weights are then read during the
+run). SeedVR2's `low` is the cache limit alone, and it keeps its instance. `low` and `lowest` hold a 1 GB MLX cache limit for the run, never
+above a limit already in force; `default` runs leave the limit to MLX-Gen. MLX-Gen holds one instance at a time: a request
 whose model, adapters, `quantize` or block streaming differ from the loaded
 instance's releases it, and clears the MLX cache, before the new one loads.
 
@@ -467,11 +469,15 @@ video's stored metadata and in the returned ref. `metadata` carries `prompt`
 own metadata sidecar (`<clip>.metadata.json`), including its audio mux facts and
 `runtime_memory` (the process's memory at the end of the save, peaks included).
 
-Memory modes: `low` sets the 1 GB MLX cache and `release_transformer=True`
-(the transformer is freed before the decode and read again by the next run; the
-model stays loaded, batch items included). `lowest` adds block streaming
+Memory modes: `low` sets the 1 GB MLX cache and `release_transformer=True`: the
+transformer is freed before the decode, the model is dropped when the run ends,
+and the next request, a batch item included, loads it again. Every `low` clip
+then peaks the same: 24.7 GiB for a 640x352, 124-frame clip with the 8-bit
+package, alone, in sequence or in a batch. `lowest` adds block streaming
 (`stream_blocks=True`): each transformer block is read from disk for the length
-of its call. It works from a prepared package or from the 16-bit source, and is
+of its call (10.6 GiB on the same clip), and the next request also loads
+the model again. It works from a
+prepared package or from the 16-bit source, and is
 refused with `quantize`. MLX-Gen's measured peaks for each package and mode are
 in the route row's `measured_runs`; `abstractvision show-model MiniMaxAI/MiniMax-H3`
 prints them per package, with the smallest memory each mode was tested on. When
@@ -501,12 +507,11 @@ What an application embedding `VisionManager` can rely on:
   such as `threading.Event`). A set event stops an MLX-Gen run at its next
   progress event, between denoising steps, and raises `GenerationCancelledError`.
   What stays loaded after a cancelled run depends on the family:
-  - image, edit and Wan A14B keep the model in `"default"`;
-  - SeedVR2 and MiniMax-H3 keep it in every mode (a MiniMax-H3 transformer freed
-    before the decode is read again by the next run);
+  - image, edit, Wan A14B and MiniMax-H3 keep the model in `"default"`, and
+    SeedVR2 in every mode;
   - Wan TI2V-5B always drops it (it releases its denoiser before the decode);
-  - image and edit runs in `"low"` drop it, a batch item included; Wan A14B runs
-    in `"low"` drop it, except on a batch item before the last.
+  - image, edit, Wan A14B and MiniMax-H3 runs in `"low"` (MiniMax-H3 in
+    `"lowest"` too) drop it, a batch item included.
 
   Other backends check the event before a run starts; the OpenAI-compatible
   backend also cancels its remote job on a remote that advertises the vision

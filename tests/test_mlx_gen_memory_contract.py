@@ -62,29 +62,33 @@ class TestMlxGenMemoryContract(unittest.TestCase):
         expected = RuntimeMemory.default_cache_limit_bytes()
         saved_state = RuntimeMemory._cache_limit_state
         saved_limit = mx.set_cache_limit(total)
+        low = backend_module.LOW_RAM_MLX_CACHE_LIMIT_BYTES
         try:
             observed = {}
-            for name, limit in (
-                ("low", backend_module.LOW_RAM_MLX_CACHE_LIMIT_BYTES),
-                ("wan_default", backend_module._wan_video_mlx_cache_limit_bytes()),
-            ):
-                # A fresh process: MLX's library default (about the machine's RAM), mlx-gen's
-                # once-per-process hook not applied yet.
-                RuntimeMemory._cache_limit_state = "unset"
-                mx.set_cache_limit(total)
-                token = backend_module._acquire_mlx_cache_limit(limit)
-                observed[f"{name}_inside"] = mx.set_cache_limit(limit)
-                backend_module._release_mlx_cache_limit(token)
-                observed[f"{name}_after"] = mx.set_cache_limit(expected)
-                # The next model load leaves mlx-gen's cap in place.
-                RuntimeMemory.apply_default_cache_limit_once()
-                observed[f"{name}_after_next_load"] = mx.set_cache_limit(expected)
+            # A fresh process: MLX's library default (about the machine's RAM), mlx-gen's
+            # once-per-process hook not applied yet.
+            RuntimeMemory._cache_limit_state = "unset"
+            mx.set_cache_limit(total)
+            token = backend_module._acquire_mlx_cache_limit(low)
+            observed["low_inside"] = mx.set_cache_limit(low)
+            backend_module._release_mlx_cache_limit(token)
+            observed["low_after"] = mx.set_cache_limit(expected)
+            # The next model load leaves mlx-gen's cap in place.
+            RuntimeMemory.apply_default_cache_limit_once()
+            observed["low_after_next_load"] = mx.set_cache_limit(expected)
+            # A cap the operator set below the low-RAM limit is never raised, and is restored.
+            operator = low // 2
+            mx.set_cache_limit(operator)
+            token = backend_module._acquire_mlx_cache_limit(low)
+            observed["operator_inside"] = mx.set_cache_limit(operator)
+            backend_module._release_mlx_cache_limit(token)
+            observed["operator_after"] = mx.set_cache_limit(operator)
             print(f"\ncache limits observed (total RAM {total}): default cap {expected}, {observed}")
-            self.assertEqual(observed["low_inside"], backend_module.LOW_RAM_MLX_CACHE_LIMIT_BYTES)
-            for name in ("low", "wan_default"):
-                self.assertEqual(observed[f"{name}_after"], expected, name)
-                self.assertEqual(observed[f"{name}_after_next_load"], expected, name)
-                self.assertLess(observed[f"{name}_after"], total, name)
+            self.assertEqual(observed["low_inside"], low)
+            self.assertEqual(observed["low_after"], expected)
+            self.assertEqual(observed["low_after_next_load"], expected)
+            self.assertLess(observed["low_after"], total)
+            self.assertEqual((observed["operator_inside"], observed["operator_after"]), (operator, operator))
         finally:
             RuntimeMemory._cache_limit_state = saved_state
             mx.set_cache_limit(saved_limit)

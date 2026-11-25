@@ -37,8 +37,11 @@ except for the changes listed below.
     `VisionManager` stores a soundtrack that could not be muxed as a WAV artifact of its own and records the summary
     as `audio` on the video's ref and metadata; without a store, the AbstractCore plugin returns the MP4 bytes and
     logs that the soundtrack is not in them.
-  - `memory_mode="low"` frees the transformer before the decode; `"lowest"` adds transformer block streaming and is
-    refused with load-time `quantize` and with an adapter that trains the AdaLN projections.
+  - `memory_mode="low"` frees the transformer before the decode, and the next request, a batch item included, loads
+    the model again: with the 8-bit package, a 640x352, 124-frame clip peaked at 24.7 GiB alone, in sequence and
+    in a batch, and building the instance again took 2.1 to 3.1 s per clip. `"lowest"` adds transformer block streaming (10.6 GiB on the
+    same clip; the next request also loads the model again) and is refused with load-time `quantize` and with an
+    adapter that trains the AdaLN projections.
   - The AbstractFramework packages are gated on Hugging Face, and the MiniMax H3 Community License's grant excludes
     the European Union, the United Kingdom, the Republic of Korea and the United States of America. AbstractVision
     never downloads these weights or the Turbo adapters during generation, even with `allow_download`; download them
@@ -63,9 +66,16 @@ except for the changes listed below.
     (`make_vision_tools` refuses only a value that is not a memory mode). A process default the backend cannot
     honour runs as the nearest less aggressive mode the backend lists (`lowest` → `low` → `default`), with one
     warning per process.
-  - Image, edit and Wan models run in `low` are loaded again on the next request, and the AbstractCore plugin then
-    removes their loaded-model record; batches keep the model until their last item. Overlapping runs share one
-    process-wide MLX cache limit, and MLX-Gen's default cap is restored when the last one ends.
+  - Image, edit, Wan and MiniMax-H3 models run in `low` (MiniMax-H3 in `lowest` too) free part of the model, which
+    is dropped when the run ends, whatever its outcome; the next request loads it again, and the AbstractCore plugin
+    removes its loaded-model record. A batch is a series of such requests: each item loads the model and drops it,
+    so every item peaks as one `low` run and under 1.3 GiB stays held between items. Measured per item of a `low`
+    batch: FLUX.2 [klein] 9B 8-bit at 1024x1024, 4 steps, 13.2 to 15.4 GiB and 0.5 to 1.9 s to build the instance;
+    Wan 2.2 T2V-A14B 8-bit at 480x240, 17 frames, 4 steps, 29.0 to 29.5 GiB and 1.4 to 2.7 s (the weights are then
+    read during the run). SeedVR2's `low` is the cache limit alone and keeps its model.
+  - `low` and `lowest` hold MLX-Gen's 1 GB MLX cache limit from before the model loads to the end of the run, never
+    above a limit already in force; overlapping runs share it, and the limit found before is restored when the last
+    one ends. `default` runs set no limit: MLX-Gen applies its own (RAM/8, 1 to 8 GiB) and keeps one the host set.
   - Discovery: `get_capabilities().memory_modes` and `supports_block_streaming`, `parameter_constraints["memory_mode"]`
     on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()` (what
     that provider's backend lists for its configured model and device, without loading a model or sending a
@@ -130,7 +140,9 @@ except for the changes listed below.
 - MLX-Gen result metadata names the model and adapters by repo id (a Hugging Face cache snapshot) or by file or
   directory name, never by local path: every absolute path in the engine's metadata, whatever field carries it
   (`model`, `lora_paths`, `lora_application_reports`, ...), in `metadata["mlx_gen"]` and its top-level copies, and
-  `requested_lora_adapters`. The paths of the temporary files written for a run are left out.
+  `requested_lora_adapters`. The paths of the temporary files written for a run are left out. The refusals of a
+  prepared package given `quantize`, of a model path that does not exist and of an adapter `lowest` cannot stream
+  name the model or adapter the same way.
 - MLX-Gen video requests are type-checked: a width, height, frame count, fps or step count that is not an integer, or
   a seed outside `[0, 2**64 - 1]`, raises `ValueError` naming the field instead of being truncated; an image-to-video
   first frame that cannot be decoded raises `ValueError` naming `image`.

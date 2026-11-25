@@ -2078,7 +2078,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         return (MEMORY_MODE_DEFAULT,)
 
     def _begin_memory_request(self, request: Any, *, task: str) -> Tuple[Any, str]:
-        request, mode, _batch = self.resolve_memory_request(request, task=task)
+        request, mode = self.resolve_memory_request(request, task=task)
         self._offload_floor = _MEMORY_MODE_OFFLOAD_FLOOR[mode]
         return request, mode
 

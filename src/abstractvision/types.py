@@ -14,9 +14,6 @@ MEMORY_MODE_LOWEST = "lowest"
 MEMORY_MODES: Tuple[str, ...] = (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW, MEMORY_MODE_LOWEST)
 # Process default for requests that do not name a mode; a request value wins.
 MEMORY_MODE_ENV_VAR = "ABSTRACTVISION_MEMORY_MODE"
-# Set by VisionManager on the items of a batch: {"id": <batch id>, "last": <bool>}. Backends that
-# release a model after a low-memory run keep it until the last item, as mlx-gen does for seeds.
-BATCH_EXTRA_KEY = "_abstractvision_batch"
 
 
 def normalize_memory_mode(value: Any) -> str:

@@ -258,7 +258,7 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.stack.enter_context(
             patch(
                 "abstractvision.backends.mflux._set_mlx_cache_limit",
-                side_effect=lambda value: self.limits.append(value) or 555,
+                side_effect=lambda value: self.limits.append(value) or 8 * 1024**3,
             )
         )
         self.stack.enter_context(patch("abstractvision.backends.mflux._apply_mlx_gen_default_cache_limit"))
@@ -384,8 +384,8 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         low = backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low"))
         self.assertIs(_FakeMiniMaxH3.instances[0].generate_calls[0]["release_transformer"], True)
         self.assertEqual(self.limits[0], LOW_RAM_MLX_CACHE_LIMIT_BYTES)
-        # The instance stays loaded: MLX-Gen reads the transformer again on the next run.
-        self.assertTrue(backend.has_loaded_model())
+        # The run freed the transformer: the instance is dropped, as on every other family.
+        self.assertFalse(backend.has_loaded_model())
         self.assertEqual(low.metadata["memory_mode"], "low")
 
         lowest = backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest"))
@@ -393,6 +393,22 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertIs(streamed.init_kwargs.get("stream_blocks"), True)
         self.assertIs(streamed.generate_calls[0]["release_transformer"], True)
         self.assertTrue(lowest.metadata["stream_blocks"])
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_an_instance_a_low_run_freed_is_never_asked_to_generate_again(self):
+        from abstractvision import VisionManager
+        from abstractvision.types import VideoGenerationRequest
+
+        backend = self._backend()
+        for mode in ("low", "low", "lowest", "low", "default", "default"):
+            backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode=mode))
+        VisionManager(backend=backend).generate_video_batch("A fox.", count=2, memory_mode="low")
+        # Every request after a low or lowest one builds its own instance; the one the default
+        # requests loaded freed nothing, so it serves them and the batch's first low item, which
+        # frees it. No instance ever reads its transformer a second time.
+        self.assertEqual([len(model.generate_calls) for model in _FakeMiniMaxH3.instances], [1, 1, 1, 1, 3, 1])
+        self.assertEqual([model.transformer_loads for model in _FakeMiniMaxH3.instances], [1] * 6)
+        self.assertFalse(backend.has_loaded_model())
 
     def test_lowest_with_load_time_quantize_is_refused(self):
         from abstractvision.errors import CapabilityNotSupportedError
@@ -431,6 +447,27 @@ class TestMiniMaxH3Backend(unittest.TestCase):
             source.generate_video(VideoGenerationRequest(prompt="fox", quantize=6))
         with self.assertRaisesRegex(CapabilityNotSupportedError, "prepared MLX-Gen package"):
             self._backend().generate_video(VideoGenerationRequest(prompt="fox", quantize=8))
+
+    def test_refusals_name_no_absolute_local_path(self):
+        from abstractvision.types import LoRAAdapterSpec, VideoGenerationRequest
+
+        adaln = self.tmp / "motion-adaln.safetensors"
+        adaln.write_bytes(b"adaln")
+        missing = self.tmp / "not-there" / "minimax-h3"
+        cases = {
+            "prepared package with quantize": (self._backend(), VideoGenerationRequest(prompt="fox", quantize=8)),
+            "model path that does not exist": (self._backend(path=missing), VideoGenerationRequest(prompt="fox")),
+            "lowest with an AdaLN adapter": (
+                self._backend(),
+                VideoGenerationRequest(prompt="fox", memory_mode="lowest", lora_adapters=(LoRAAdapterSpec(source=str(adaln)),)),
+            ),
+        }
+        for case, (backend, request) in cases.items():
+            with self.subTest(case=case):
+                with self.assertRaises(Exception) as caught:
+                    backend.generate_video(request)
+                self.assertNotIn(str(self.tmp), str(caught.exception))
+                self.assertNotIn(str(self.tmp.resolve()), str(caught.exception))
 
     def test_an_unmuxed_soundtrack_is_returned_as_wav_bytes(self):
         from abstractvision.types import VideoGenerationRequest
@@ -476,13 +513,12 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         with self.assertRaises(GenerationCancelledError):
             backend.generate_video(VideoGenerationRequest(prompt="fox", cancel_event=cancel))
         self.assertTrue(backend.has_loaded_model())
-        # The run's cache-limit hold is released and the limit found before it is set back.
+        # A default-mode run holds no cache limit.
         from abstractvision.backends import mflux
 
         self.assertEqual(mflux._MLX_CACHE_LIMIT_HOLDS, {})
         self.assertIsNone(mflux._mlx_cache_limit_before_holds)
-        self.assertEqual(len(self.limits), 2)
-        self.assertEqual(self.limits[-1], 555)
+        self.assertEqual(self.limits, [])
         # A request whose event is already set never starts.
         with self.assertRaises(GenerationCancelledError):
             backend.generate_video(VideoGenerationRequest(prompt="fox", cancel_event=cancel))
@@ -629,9 +665,30 @@ class TestMiniMaxH3Backend(unittest.TestCase):
             self.assertFalse(backend.has_loaded_model())
             self.assertEqual(cap.list_loaded_models(), [])
 
+    def test_plugin_record_follows_the_instance_a_low_run_drops(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        owner = SimpleNamespace(
+            config={
+                "vision_backend": "mflux",
+                "vision_mflux_model": str(self.package),
+                "vision_mlx_gen_base_model": "minimax-h3-turbo-544p",
+            }
+        )
+        with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": ""}, clear=True):
+            cap = _AbstractVisionCapability(owner)
+            cap.t2v("A fox.")
+            self.assertEqual(len(cap.list_loaded_models()), 1)
+            for call in (lambda: cap.t2v("A fox.", memory_mode="low"), lambda: cap.t2v_batch("A fox.", count=2, memory_mode="low")):
+                call()
+                self.assertEqual(cap.list_loaded_models(), [])
+                self.assertFalse(cap._get_backend().has_loaded_model())
+        # One instance for the default request and the first low run, then one per batch item.
+        self.assertEqual([model.transformer_loads for model in _FakeMiniMaxH3.instances], [1, 1, 1])
+
     # --- batches through VisionManager ---------------------------------------------------------
 
-    def test_batches_through_vision_manager_keep_one_instance_until_the_last_item(self):
+    def test_batch_items_are_runs_like_any_other(self):
         from abstractvision import VisionManager
 
         for task in ("text_to_video", "image_to_video"):
@@ -646,14 +703,14 @@ class TestMiniMaxH3Backend(unittest.TestCase):
                     else:
                         assets = vm.image_to_video_batch(PNG_1X1, prompt="The fox turns.", count=3, **kwargs)
                     self.assertEqual(len(assets), 3)
-                    self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
-                    calls = _FakeMiniMaxH3.instances[0].generate_calls
+                    calls = [call for model in _FakeMiniMaxH3.instances for call in model.generate_calls]
                     self.assertEqual([call["seed"] for call in calls], [1, 2, 3])
-                    # As `mlxgen generate --low-ram` with several seeds: each run frees the transformer
-                    # before its decode and the next one reads it again; the instance stays.
+                    # In low, each item frees the transformer before its decode and its instance is
+                    # dropped; in default, one instance serves all three.
                     self.assertEqual([call["release_transformer"] for call in calls], [mode == "low"] * 3)
-                    self.assertTrue(backend.has_loaded_model())
-                    self.assertIsNone(backend._low_ram_batch_id)
+                    self.assertEqual(len(_FakeMiniMaxH3.instances), 3 if mode == "low" else 1)
+                    self.assertEqual({model.transformer_loads for model in _FakeMiniMaxH3.instances}, {1})
+                    self.assertEqual(backend.has_loaded_model(), mode is None)
                     self.assertEqual([asset.metadata["task"] for asset in assets], [task] * 3)
 
     def test_memory_mode_in_extra_is_accepted_on_direct_backend_calls(self):
@@ -662,7 +719,10 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         backend = self._backend()
         backend.generate_video(VideoGenerationRequest(prompt="fox", extra={"memory_mode": "low"}))
         backend.image_to_video(ImageToVideoRequest(image=PNG_1X1, prompt="fox", extra={"memory_mode": "low"}))
-        self.assertEqual([call["release_transformer"] for call in _FakeMiniMaxH3.instances[0].generate_calls], [True, True])
+        self.assertEqual(
+            [call["release_transformer"] for model in _FakeMiniMaxH3.instances for call in model.generate_calls],
+            [True, True],
+        )
 
     def test_tools_leave_unset_values_to_the_schedule(self):
         import sys
@@ -709,7 +769,7 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertEqual(len(_FakeMiniMaxH3.instances), 2)
         self.assertTrue(seen[1][0], "the default instance was still held while the lowest one was built")
         self.assertGreater(seen[1][1], clears_after_first, "the MLX cache was not cleared before the build")
-        self.assertIs(backend._model, _FakeMiniMaxH3.instances[1])
+        self.assertIs(_FakeMiniMaxH3.instances[1].init_kwargs.get("stream_blocks"), True)
 
     def test_lowest_on_weights_that_cannot_stream_is_refused_and_leaves_no_model(self):
         from abstractvision.errors import CapabilityNotSupportedError
@@ -1032,22 +1092,28 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertGreater(len(self.cache_clears), before)
         self.assertTrue(backend.has_loaded_model())
 
-    def test_cancel_in_low_mode_after_the_transformer_is_released_keeps_a_usable_model(self):
+    def test_cancel_in_low_mode_drops_the_model_whatever_was_freed(self):
+        from abstractvision import VisionManager
         from abstractvision.errors import GenerationCancelledError
         from abstractvision.types import VideoGenerationRequest
 
-        cancel = threading.Event()
-        _FakeMiniMaxH3.during_step = lambda step: cancel.set() if step == "decode" else None
         backend = self._backend()
+        for when in ("decode", 1):
+            cancel = threading.Event()
+            _FakeMiniMaxH3.during_step = lambda step, when=when, cancel=cancel: cancel.set() if step == when else None
+            with self.assertRaises(GenerationCancelledError):
+                backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low", cancel_event=cancel))
+            self.assertFalse(backend.has_loaded_model())
+        # A batch item is a run like any other.
+        cancel = threading.Event()
+        _FakeMiniMaxH3.during_step = lambda step: cancel.set() if step == 1 else None
         with self.assertRaises(GenerationCancelledError):
-            backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low", cancel_event=cancel))
-        model = _FakeMiniMaxH3.instances[0]
-        self.assertIsNone(model.transformer)  # released before the decode, as MLX-Gen does
-        self.assertTrue(backend.has_loaded_model())
+            VisionManager(backend=backend).generate_video_batch("A fox.", count=2, memory_mode="low", cancel_event=cancel)
+        self.assertFalse(backend.has_loaded_model())
         _FakeMiniMaxH3.during_step = None
         backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low"))
-        self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
-        self.assertEqual(model.transformer_loads, 2)
+        self.assertEqual(len(_FakeMiniMaxH3.instances), 4)
+        self.assertEqual([model.transformer_loads for model in _FakeMiniMaxH3.instances], [1] * 4)
 
     def test_mlx_gen_memory_errors_become_the_out_of_memory_error_naming_memory_mode(self):
         from abstractvision.errors import GpuOutOfMemoryError

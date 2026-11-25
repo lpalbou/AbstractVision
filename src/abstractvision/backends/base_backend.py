@@ -7,7 +7,6 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence, Tuple, TypeVar
 
 from ..types import (
-    BATCH_EXTRA_KEY,
     MEMORY_MODE_DEFAULT,
     MEMORY_MODE_ENV_VAR,
     GeneratedAsset,
@@ -67,10 +66,6 @@ def raise_if_cancelled(cancel_event: Any) -> None:
 class VisionBackend(ABC):
     """Backend interface for generative vision tasks."""
 
-    # True on backends that read VisionManager's batch marker (BATCH_EXTRA_KEY in `extra`);
-    # VisionManager sends it to no other backend.
-    uses_batch_marker = False
-
     def supported_memory_modes(self, task: Optional[str] = None) -> Tuple[str, ...]:
         """Memory modes this backend can honour for its configured model and device."""
         _ = task
@@ -112,12 +107,11 @@ class VisionBackend(ABC):
 
     def resolve_memory_request(
         self, request: _Request, *, task: Optional[str] = None
-    ) -> Tuple[_Request, str, Optional[Dict[str, Any]]]:
+    ) -> Tuple[_Request, str]:
         """Resolve, check and strip a request's memory mode; every backend entry point calls it.
 
-        Returns the request with `memory_mode` set and `memory_mode` / the batch marker removed
-        from `extra` (so no backend forwards them as engine flags or HTTP fields), the mode, and
-        the batch marker set by VisionManager (None outside a batch). A mode the backend does not
+        Returns the request with `memory_mode` set and removed from `extra` (so no backend
+        forwards it as an engine flag or HTTP field), and the mode. A mode the backend does not
         list in `supported_memory_modes(task)` raises CapabilityNotSupportedError before any work
         when the request named it; a mode from $ABSTRACTVISION_MEMORY_MODE (one value for every
         backend of the process) runs as the lowest-memory listed mode that is not below it.
@@ -149,10 +143,9 @@ class VisionBackend(ABC):
             )
         raise_if_cancelled(getattr(request, "cancel_event", None))
         extra.pop("memory_mode", None)
-        batch = extra.pop(BATCH_EXTRA_KEY, None)
         if hasattr(request, "memory_mode"):
             request = replace(request, memory_mode=mode, extra=extra)  # type: ignore[type-var]
-        return request, mode, batch if isinstance(batch, dict) else None
+        return request, mode
 
     def normalize_image_generation_request(
         self,

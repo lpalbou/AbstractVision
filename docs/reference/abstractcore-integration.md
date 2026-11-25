@@ -224,19 +224,18 @@ in the request's `extra` object (`"extra": {"memory_mode": "low"}`). The server
 builds AbstractVision backends and calls them directly, and every backend reads
 and checks the value itself, so the same refusal applies there.
 
-On MLX-Gen, a `"low"` run frees parts of the model and drops the instance, so
+On MLX-Gen, a `"low"` run frees parts of the model and drops the instance (a
+MiniMax-H3 `"lowest"` run drops it too), so
 the plugin removes its loaded-model record, a resident one included, whether
 the run succeeded or failed; the next request loads the model again. The same
 holds after every Wan TI2V-5B run, which releases its denoiser before the decode.
 
-Two facts about the current AbstractCore server, which this plugin does not change:
+A batch, through `llm.vision.t2i_batch(...)` and the other `_batch` methods or
+through the AbstractCore server's HTTP batch routes, is a series of requests:
+with `"low"` each item loads the model again.
 
-- Its HTTP batch routes send the items of a batch one by one, without the batch
-  marker `VisionManager` adds, so with `"low"` each item of an HTTP batch loads
-  the model again. Python batches through `llm.vision.t2i_batch(...)` and the
-  other `_batch` methods of this plugin keep the model until their last item.
-- Its server-side residency records are its own and independent of this plugin's
-  loaded-model records.
+The current AbstractCore server's residency records are its own and independent
+of this plugin's loaded-model records.
 
 The facade forwards every typed field of the request a method builds, under the
 same name: `control_image` / `control_strength` on `t2i`, `soundscape`, `music`,

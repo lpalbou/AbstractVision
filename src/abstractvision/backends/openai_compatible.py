@@ -581,7 +581,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             self._remote_entry(refresh=True)
         advertised = self._remote_entry(refresh=False) is not None
         try:
-            request, mode, _batch = self.resolve_memory_request(request, task=task)
+            request, mode = self.resolve_memory_request(request, task=task)
         except CapabilityNotSupportedError as e:
             if advertised or self._discovery_failure is None:
                 raise

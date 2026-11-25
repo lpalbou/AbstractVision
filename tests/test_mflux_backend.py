@@ -482,6 +482,8 @@ class _RegisteringCallbackRegistry(_FakeCallbackRegistry):
         self.registered.append(callback)
 
 
+# The MLX cache limit in force before a run (mlx-gen's RAM/8 default on a 64 GiB or larger Mac).
+_CAP_IN_FORCE = 8 * 1024**3
 _MEMORY_EVENTS = []
 
 
@@ -1713,7 +1715,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         active_limit = [None]
 
         def fake_set_limit(limit_bytes):
-            previous = active_limit[0] if active_limit[0] is not None else 999
+            previous = active_limit[0] if active_limit[0] is not None else _CAP_IN_FORCE
             active_limit[0] = int(limit_bytes)
             events.append(("set_limit", int(limit_bytes)))
             return previous
@@ -1750,10 +1752,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ), patch(
                     "abstractvision.backends.mflux._set_mlx_cache_limit",
                     side_effect=fake_set_limit,
-                ), patch("abstractvision.backends.mflux._apply_mlx_gen_default_cache_limit"), patch(
-                    "abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes",
-                    return_value=8 * 1024**3,
-                ):
+                ), patch("abstractvision.backends.mflux._apply_mlx_gen_default_cache_limit"):
                     for request in requests:
                         assets.append(
                             request(backend) if callable(request) else backend.generate_video(request)
@@ -1780,7 +1779,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(assets[1].metadata["base_model"], "wan2.2-ti2v-5b")
         self.assertEqual(assets[1].metadata["seed"], 2)
 
-    def test_wan_video_decode_runs_under_mlx_cache_ceiling_then_restores(self):
+    def test_a_default_wan_run_leaves_the_cache_limit_to_mlx_gen(self):
         from abstractvision.types import VideoGenerationRequest
 
         _backend, _assets, events, _wan_cls = self._run_wan_videos_recording_memory_policy(
@@ -1789,13 +1788,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
             [VideoGenerationRequest(prompt="fox", width=832, height=480, num_frames=5, steps=2, seed=1)],
         )
 
-        limit = 8 * 1024**3
-        # Generation AND save (where mlx-gen streams the VAE decode) run capped,
-        # and the host's previous limit is restored afterwards.
-        self.assertIn(("generate", limit), events)
-        self.assertIn(("save", limit), events)
-        set_calls = [value for kind, value in events if kind == "set_limit"]
-        self.assertEqual(set_calls, [limit, 999])
+        # mlx-gen caps the cache itself at its first weight load (RAM/8, 1-8 GiB) and keeps a
+        # cap the host set; a default-mode run never sets one, so it never raises the operator's.
+        self.assertEqual([value for kind, value in events if kind == "set_limit"], [])
 
     def test_wan_a14b_keeps_its_denoisers_between_requests(self):
         from abstractvision.types import VideoGenerationRequest
@@ -1809,9 +1804,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertNotIn("release_denoisers_before_decode", _FakeWan.last_generate)
         self.assertEqual(wan_cls.instances, 1)
         self.assertIsNotNone(backend._model)
-        self.assertIn(("save", 8 * 1024**3), events)
+        self.assertNotIn("set_limit", [kind for kind, _value in events])
 
-    def test_wan_ti2v_failed_decode_still_drops_released_model_and_restores_limit(self):
+    def test_wan_ti2v_failed_decode_still_drops_released_model(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import VideoGenerationRequest
 
@@ -1841,9 +1836,6 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ), patch(
                     "abstractvision.backends.mflux._set_mlx_cache_limit",
                     side_effect=lambda value: limits.append(value) or 777,
-                ), patch(
-                    "abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes",
-                    return_value=8 * 1024**3,
                 ):
                     with self.assertRaisesRegex(RuntimeError, "decode failed"):
                         backend.generate_video(
@@ -1854,18 +1846,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertIsNone(backend._model)
         self.assertIsNone(backend._model_key)
-        self.assertEqual(limits, [8 * 1024**3, 777])
-
-    def test_wan_video_mlx_cache_limit_follows_machine_ram(self):
-        from abstractvision.backends import mflux as mflux_mod
-
-        gib = 1024**3
-        for total, expected in ((128 * gib, 8 * gib), (32 * gib, 4 * gib), (4 * gib, 1 * gib)):
-            with patch.object(mflux_mod.os, "sysconf", side_effect=lambda name, t=total: {
-                "SC_PAGE_SIZE": 16384,
-                "SC_PHYS_PAGES": t // 16384,
-            }[name]):
-                self.assertEqual(mflux_mod._wan_video_mlx_cache_limit_bytes(), expected)
+        self.assertEqual(limits, [])
 
     def test_wan_a14b_text_to_video_accepts_explicit_guidance_2(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -3571,7 +3552,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         _LowRamFlux2.during_generate = None
         _FakeMemorySaver.instances = []
         _MEMORY_EVENTS.clear()
-        limit = [555]
+        limit = [_CAP_IN_FORCE]
 
         def fake_set_limit(value):
             previous, limit[0] = limit[0], int(value)
@@ -3646,7 +3627,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         # As `mlxgen generate --low-ram` (flux2_generate.py): the 1 GB cache is set before the
         # model loads, then one MemorySaver frees the text encoders and, for one seed, the transformer.
         self.assertEqual(
-            _MEMORY_EVENTS[:3], [("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES), ("init", None), ("limit", 555)]
+            _MEMORY_EVENTS[:3], [("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES), ("init", None), ("limit", _CAP_IN_FORCE)]
         )
         self.assertEqual(len(_FakeMemorySaver.instances), 1)
         saver = _FakeMemorySaver.instances[0]
@@ -3722,7 +3703,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             )
         # The failed instance carried a MemorySaver: it must not be reused.
         self.assertEqual(len(_FakeMemorySaver.instances), 1)
-        self.assertEqual(_MEMORY_EVENTS[-1], ("limit", 555))
+        self.assertEqual(_MEMORY_EVENTS[-1], ("limit", _CAP_IN_FORCE))
         self.assertEqual(_MEMORY_EVENTS[0], ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES))
         self.assertFalse(self._last_low_ram_backend.has_loaded_model())
 
@@ -3736,9 +3717,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 flux_cls=_NoCallbacksFlux2,
             )
         self.assertEqual(_FakeMemorySaver.instances, [])
-        self.assertEqual(_MEMORY_EVENTS[-1], ("limit", 555))
+        self.assertEqual(_MEMORY_EVENTS[-1], ("limit", _CAP_IN_FORCE))
 
-    def test_memory_mode_low_batch_keeps_the_model_until_the_last_item(self):
+    def test_memory_mode_low_batch_items_are_runs_like_any_other(self):
         from abstractvision import VisionManager
 
         def batch(backend):
@@ -3748,51 +3729,42 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         backend, assets, _caps = self._run_flux2_with_memory_modes([batch])
 
-        # mlx-gen keeps the transformer for several seeds (callback_manager.py:88): one load,
-        # one MemorySaver that frees the transformer after the last seed only.
-        self.assertEqual(len(_LowRamFlux2.instances), 1)
-        self.assertEqual(len(_FakeMemorySaver.instances), 1)
-        self.assertFalse(_FakeMemorySaver.instances[0].keep_transformer)
+        # Each item is `mlxgen generate --low-ram` for one seed: its own load, a MemorySaver that
+        # frees the text encoders and the transformer, and the instance dropped after it.
+        self.assertEqual(len(_LowRamFlux2.instances), 3)
+        self.assertEqual([saver.keep_transformer for saver in _FakeMemorySaver.instances], [False] * 3)
+        self.assertEqual([model.callbacks.registered for model in _LowRamFlux2.instances],
+                         [[saver] for saver in _FakeMemorySaver.instances])
         self.assertEqual(len(assets[0]), 3)
         self.assertFalse(backend.has_loaded_model())
 
-    def test_memory_mode_low_batch_releases_before_an_interleaved_request(self):
-        from abstractvision.types import BATCH_EXTRA_KEY, ImageGenerationRequest
-
-        backend, _assets, _caps = self._run_flux2_with_memory_modes(
-            [
-                ImageGenerationRequest(
-                    prompt="fox", steps=4, memory_mode="low", extra={BATCH_EXTRA_KEY: {"id": "b1", "last": False}}
-                ),
-                # Another caller's request on the same backend between two items of the batch.
-                ImageGenerationRequest(prompt="a different prompt", steps=4),
-            ]
-        )
-
-        self.assertTrue(_FakeMemorySaver.instances[0].keep_transformer)
-        # The kept instance had its text encoders freed: it is dropped, not reused.
-        self.assertEqual(len(_LowRamFlux2.instances), 2)
-        self.assertEqual(_LowRamFlux2.instances[1].callbacks.registered, [])
-        self.assertTrue(backend.has_loaded_model())
-
-    def test_memory_mode_low_fibo_batch_items_each_release(self):
+    def test_one_release_rule_for_every_family(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
-        from abstractvision.types import BATCH_EXTRA_KEY, ImageGenerationRequest
+        from abstractvision.types import ImageGenerationRequest
 
-        with tempfile.TemporaryDirectory() as cache_td:
-            self._make_cache_snapshot(Path(cache_td), "briaai/FIBO")
-            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="briaai/FIBO"))
-            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td, "ABSTRACTVISION_MEMORY_MODE": ""}, clear=True):
-                _request, plan = backend._memory_plan(
-                    ImageGenerationRequest(
-                        prompt="fox", memory_mode="low", extra={BATCH_EXTRA_KEY: {"id": "b", "last": False}}
-                    ),
-                    task="text_to_image",
-                )
-        # mlx-gen refuses `--low-ram` with several seeds for FIBO (parsers.py:721); each item
-        # here is its own low-RAM run instead.
-        self.assertTrue(plan.low_ram)
-        self.assertFalse(plan.keep_model)
+        # (base model, mode) -> the run frees part of the instance, which is then dropped
+        cases = {
+            ("flux2-klein-4b", "default"): False,
+            ("flux2-klein-4b", "low"): True,
+            ("fibo", "low"): True,
+            ("wan2.2-t2v-a14b", "default"): False,
+            ("wan2.2-t2v-a14b", "low"): True,
+            ("wan2.2-ti2v-5b", "default"): True,
+            ("minimax-h3-turbo-544p", "default"): False,
+            ("minimax-h3-turbo-544p", "low"): True,
+            ("minimax-h3-turbo-544p", "lowest"): True,
+            ("seedvr2-3b", "low"): False,
+        }
+        for (base_model, mode), expected in cases.items():
+            with self.subTest(base_model=base_model, mode=mode):
+                backend = MFluxVisionBackend(config=MFluxBackendConfig(model=base_model, base_model=base_model))
+                with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": ""}), patch.object(
+                    MFluxVisionBackend, "supported_memory_modes", return_value=("default", "low", "lowest")
+                ):
+                    _request, plan = backend._memory_plan(
+                        ImageGenerationRequest(prompt="fox", memory_mode=mode), task="text_to_image"
+                    )
+                self.assertEqual(plan.releases_model, expected)
 
     def test_preload_warmup_ignores_a_process_low_memory_default(self):
         import contextlib
@@ -3826,23 +3798,23 @@ class TestMFluxVisionBackend(unittest.TestCase):
             video_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers"))
             limit = self._memory_patches(stack, cache_td, caps=_route_capabilities("text-to-image"))
             stack.enter_context(patch("abstractvision.backends.mflux._lazy_import_mflux_wan", return_value=_FakeWan))
-            stack.enter_context(
-                patch("abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes", return_value=8 * 1024**3)
-            )
 
-            def default_video_run_inside_the_low_image_run():
-                # A default Wan run (8 GiB ladder) on another backend thread starts and ends while
-                # the low-RAM image run holds 1 GB: the tighter limit stays until both end.
+            def runs_inside_the_low_image_run():
+                # On another backend thread, a default Wan run (which holds no limit) and a low one
+                # start and end while the low-RAM image run holds 1 GB: it stays until both end.
                 video_backend.generate_video(VideoGenerationRequest(prompt="fox", seed=1))
+                video_backend.generate_video(VideoGenerationRequest(prompt="fox", seed=2, memory_mode="low"))
                 seen["after_video"] = limit[0]
 
-            _LowRamFlux2.during_generate = default_video_run_inside_the_low_image_run
+            _LowRamFlux2.during_generate = runs_inside_the_low_image_run
             image_backend.generate_image(ImageGenerationRequest(prompt="fox", steps=4, memory_mode="low"))
             seen["after_both"] = limit[0]
 
         self.assertEqual(seen["after_video"], LOW_RAM_MLX_CACHE_LIMIT_BYTES)
-        self.assertEqual(seen["after_both"], 555)
-        self.assertNotIn(("limit", 8 * 1024**3), _MEMORY_EVENTS)
+        self.assertEqual(seen["after_both"], _CAP_IN_FORCE)
+        limits = [value for kind, value in _MEMORY_EVENTS if kind == "limit"]
+        self.assertEqual(limits[-1], _CAP_IN_FORCE)
+        self.assertTrue(all(value <= LOW_RAM_MLX_CACHE_LIMIT_BYTES for value in limits[:-1]), limits)
 
     def test_memory_mode_low_on_wan_a14b_matches_the_single_seed_cli(self):
         from abstractvision.backends.mflux import LOW_RAM_MLX_CACHE_LIMIT_BYTES
@@ -3872,7 +3844,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(assets[0].metadata["memory_mode"], "low")
         self.assertFalse(backend.has_loaded_model())
 
-    def test_memory_mode_low_wan_batch_releases_on_the_last_item_only(self):
+    def test_memory_mode_low_wan_batch_items_each_release(self):
         from abstractvision import VisionManager
 
         class _BatchWan(_FakeWan):
@@ -3893,14 +3865,13 @@ class TestMFluxVisionBackend(unittest.TestCase):
             "Wan-AI/Wan2.2-T2V-A14B-Diffusers", _BatchWan, [batch]
         )
 
-        first, last = _BatchWan.calls
-        # wan_generate.py:75 releases the denoisers only for a single seed; the clear flags stay.
-        self.assertNotIn("release_denoisers_before_decode", first)
-        self.assertNotIn("release_inactive_denoiser", first)
-        self.assertIs(first.get("clear_cache_each_step"), True)
-        self.assertIs(last.get("release_denoisers_before_decode"), True)
-        self.assertIs(last.get("release_inactive_denoiser"), True)
-        self.assertEqual(wan_cls.instances, 1)
+        # Each item is `mlxgen generate --low-ram` for one seed (wan_generate.py:75): both release
+        # the denoisers (and the inactive expert), and each runs on its own instance.
+        for call in _BatchWan.calls:
+            self.assertIs(call.get("release_denoisers_before_decode"), True)
+            self.assertIs(call.get("release_inactive_denoiser"), True)
+            self.assertIs(call.get("clear_cache_each_step"), True)
+        self.assertEqual(wan_cls.instances, 2)
         self.assertFalse(backend.has_loaded_model())
 
     def test_memory_mode_low_on_wan_ti2v_has_no_inactive_expert_to_release(self):
@@ -3953,9 +3924,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
             [
                 ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES),
                 ("init", None),
-                ("limit", 555),
+                ("limit", _CAP_IN_FORCE),
                 ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES),
-                ("limit", 555),
+                ("limit", _CAP_IN_FORCE),
             ],
         )
         self.assertEqual(first.metadata["memory_mode"], "low")

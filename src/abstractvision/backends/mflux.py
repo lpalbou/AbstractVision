@@ -22,7 +22,6 @@ from ..errors import (
     GpuOutOfMemoryError,
     OptionalDependencyMissingError,
 )
-from ..host import total_physical_memory_bytes
 from ..lora_adapters import (
     adapter_source_for_mlx_gen,
     known_lora_adapter_profile,
@@ -50,7 +49,6 @@ from ..model_cache import (
     resolve_hf_repo_snapshot,
 )
 from ..types import (
-    BATCH_EXTRA_KEY,
     MEMORY_MODE_DEFAULT,
     MEMORY_MODE_LOW,
     MEMORY_MODE_LOWEST,
@@ -126,21 +124,11 @@ WAN_TI2V_PRACTICAL_MIN_WIDTH = 832
 WAN_TI2V_PRACTICAL_MIN_HEIGHT = 480
 WAN_A14B_PROOF_WIDTH = 480
 WAN_A14B_PROOF_HEIGHT = 240
-# MLX allocator cache ceiling held while a Wan video is generated and decoded.
-# Without it the cache keeps every freed VAE-decode buffer: at 1280x704x121 the
-# process footprint reached 103.6 GiB for a 60.8 GiB MLX active peak (mlx-gen
-# 0.38.0, M5 Max). Mirrors mlx-gen's own default policy (RAM/8, 1-8 GiB), which
-# its Wan Python-API path never applies.
-WAN_VIDEO_MLX_CACHE_LIMIT_CEILING_BYTES = 8 * 1024**3
-WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES = 1 * 1024**3
 # The MLX cache limit of mlx-gen's low-RAM mode (`--low-ram`,
 # RuntimeMemory.DEFAULT_LOW_RAM_CACHE_LIMIT_BYTES), held for the length of a
-# memory_mode="low" or "lowest" run, model load included, and restored afterwards.
+# memory_mode="low" or "lowest" run, model load included, and restored afterwards;
+# never above a limit already in force.
 LOW_RAM_MLX_CACHE_LIMIT_BYTES = 1000**3
-# Families whose low-RAM text-encoder release cannot be reused for the next seed:
-# mlx-gen refuses `--low-ram` with several seeds for FIBO, so each batch item is
-# its own low-RAM run here.
-_LOW_RAM_SINGLE_SEED_FAMILIES = frozenset({"fibo", "fibo-edit"})
 
 
 @dataclass(frozen=True)
@@ -148,15 +136,17 @@ class _MemoryPlan:
     """How one request runs for its memory_mode (see `MFluxVisionBackend._memory_plan`).
 
     "low" is mlx-gen's low-RAM mode (`--low-ram`) as each route's mlx-gen CLI applies
-    it; "lowest" adds block streaming (`--stream-blocks`) and is only accepted on routes
-    that publish `supports_block_streaming`. `keep_model` is set on batch items before the
-    last one, which keep the instance as mlx-gen does for its seeds.
+    it for one seed; "lowest" adds block streaming (`--stream-blocks`) and is only accepted
+    on routes that publish `supports_block_streaming`. `releases_model` is the one rule for
+    every family: the run frees part of the instance, which is then dropped when the run
+    ends, whatever its outcome, and the next request loads the model again. A batch item is
+    a run like any other.
     """
 
     mode: str
     low_ram: bool
     stream_blocks: bool
-    keep_model: bool = False
+    releases_model: bool = False
 
     def metadata(self) -> Dict[str, Any]:
         if self.mode == MEMORY_MODE_DEFAULT:
@@ -169,8 +159,9 @@ class _MemoryPlan:
 
 
 # MLX's cache limit is process-wide while every backend instance runs on its own
-# thread. Each run that needs a limit holds a token; the tightest held limit applies
-# and the limit found before the first token is restored when the last one ends.
+# thread. Each low-RAM run holds a token; the tightest held limit applies, never above
+# the limit found before the first token (an operator's cap is kept), which is
+# restored when the last one ends.
 _MLX_CACHE_LIMIT_LOCK = threading.Lock()
 _MLX_CACHE_LIMIT_HOLDS: Dict[int, int] = {}
 _MLX_CACHE_LIMIT_TOKENS = itertools.count(1)
@@ -197,10 +188,26 @@ def _acquire_mlx_cache_limit(limit_bytes: int) -> int:
         if first:
             _apply_mlx_gen_default_cache_limit()
         _MLX_CACHE_LIMIT_HOLDS[token] = int(limit_bytes)
-        previous = _set_mlx_cache_limit(min(_MLX_CACHE_LIMIT_HOLDS.values()))
+        held = min(_MLX_CACHE_LIMIT_HOLDS.values())
+        previous = _set_mlx_cache_limit(held)
         if first:
+            # MLX's setter returns the limit in force: it is restored at the end, and never raised.
             _mlx_cache_limit_before_holds = previous
+        if _tightest_mlx_cache_limit() < held:
+            _set_mlx_cache_limit(_tightest_mlx_cache_limit())
         return token
+
+
+def _tightest_mlx_cache_limit() -> int:
+    limits = list(_MLX_CACHE_LIMIT_HOLDS.values())
+    if _mlx_cache_limit_before_holds is not None:
+        limits.append(_mlx_cache_limit_before_holds)
+    return min(limits)
+
+
+def _held_mlx_cache_limit() -> int:
+    with _MLX_CACHE_LIMIT_LOCK:
+        return _tightest_mlx_cache_limit() if _MLX_CACHE_LIMIT_HOLDS else LOW_RAM_MLX_CACHE_LIMIT_BYTES
 
 
 def _release_mlx_cache_limit(token: int) -> None:
@@ -209,20 +216,10 @@ def _release_mlx_cache_limit(token: int) -> None:
         if _MLX_CACHE_LIMIT_HOLDS.pop(token, None) is None:
             return
         if _MLX_CACHE_LIMIT_HOLDS:
-            _set_mlx_cache_limit(min(_MLX_CACHE_LIMIT_HOLDS.values()))
+            _set_mlx_cache_limit(_tightest_mlx_cache_limit())
         elif _mlx_cache_limit_before_holds is not None:
             _set_mlx_cache_limit(_mlx_cache_limit_before_holds)
             _mlx_cache_limit_before_holds = None
-
-
-def _wan_video_mlx_cache_limit_bytes() -> int:
-    total = total_physical_memory_bytes() or 0
-    if total <= 0:
-        return WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES
-    return max(
-        WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES,
-        min(WAN_VIDEO_MLX_CACHE_LIMIT_CEILING_BYTES, total // 8),
-    )
 
 
 def _set_mlx_cache_limit(limit_bytes: int) -> Optional[int]:
@@ -1248,8 +1245,8 @@ _PROGRESS_EXTRA_KEYS = frozenset(
     {"on_progress", "progress_event_callback", "progress_callback", "_step_progress_callback"}
 )
 # `extra` keys every route accepts: the progress callbacks, and what `resolve_memory_request`
-# reads and strips (the memory mode and VisionManager's batch marker).
-_ROUTING_EXTRA_KEYS = _PROGRESS_EXTRA_KEYS | {"memory_mode", BATCH_EXTRA_KEY}
+# reads and strips (the memory mode).
+_ROUTING_EXTRA_KEYS = _PROGRESS_EXTRA_KEYS | {"memory_mode"}
 _VIDEO_FAMILIES = frozenset({"wan-video", "minimax-h3"})
 # MLX's random key is a 64-bit unsigned seed.
 _MAX_SEED = 2**64 - 1
@@ -2444,9 +2441,6 @@ def _preset_snapshot_dir(
 class MFluxVisionBackend(VisionBackend):
     """Compatibility class for the local MLX-Gen image and video backend."""
 
-    # Low-RAM batches keep the instance until their last item (see _memory_plan).
-    uses_batch_marker = True
-
     def __init__(self, *, config: MFluxBackendConfig):
         self._cfg = config
         self._model: Any = None
@@ -2459,10 +2453,6 @@ class MFluxVisionBackend(VisionBackend):
         self._runtime_queue: Optional[queue.Queue[Any]] = None
         self._runtime_thread: Optional[threading.Thread] = None
         self._runtime_thread_id: Optional[int] = None
-        # The low-RAM MemorySaver registered on the current instance, and the batch it is
-        # kept for (memory_mode="low" batches keep the instance until their last item).
-        self._low_ram_saver: Any = None
-        self._low_ram_batch_id: Optional[str] = None
 
     def _ensure_runtime_thread(self) -> queue.Queue[Any]:
         existing = self._runtime_queue
@@ -2514,8 +2504,6 @@ class MFluxVisionBackend(VisionBackend):
         self._model = None
         self._model_key = None
         self._warmed_model_key = None
-        self._low_ram_saver = None
-        self._low_ram_batch_id = None
         self._resolved_model_path = None
         self._resolved_base_model = None
         self._resolved_quantization_bits = None
@@ -2535,23 +2523,15 @@ class MFluxVisionBackend(VisionBackend):
         except Exception:
             pass
 
-    def _drop_released_model(self) -> None:
-        # The instance released its transformer (Wan release_denoisers_before_decode,
-        # or mlx-gen's low-RAM MemorySaver, which also drops the text encoders) and
-        # mlx-gen refuses to generate with it again. Forget it so the next request
-        # builds a fresh one. The resolved model path/base/bits stay: they describe
-        # the request just served.
-        self._release_model()
-        self._low_ram_batch_id = None
-
     def _release_model(self) -> None:
-        # Forget the held instance and return its memory, before anything else is loaded: also
-        # when it is replaced (another model key: stream_blocks, quantize, adapters, variant), so
-        # two instances are never in memory together. A batch keeping the instance is unchanged.
+        # Forget the held instance and return its memory: when a run freed part of it (see
+        # _MemoryPlan.releases_model), and before anything else is loaded when it is replaced
+        # (another model key: stream_blocks, quantize, adapters, variant), so two instances are
+        # never in memory together. The resolved model path/base/bits stay: they describe the
+        # request just served.
         self._model = None
         self._model_key = None
         self._warmed_model_key = None
-        self._low_ram_saver = None
         import gc
 
         gc.collect()
@@ -2838,63 +2818,44 @@ class MFluxVisionBackend(VisionBackend):
         return (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW)
 
     def _memory_plan(self, request: Any, *, task: str) -> Tuple[Any, _MemoryPlan]:
-        request, mode, batch = self.resolve_memory_request(request, task=task)
-        batch_id = str(batch.get("id")) if batch and batch.get("id") is not None else None
-        if self._low_ram_batch_id is not None and batch_id != self._low_ram_batch_id:
-            # The instance was kept for another batch's next item; it no longer serves this one.
-            self._drop_released_model()
+        request, mode = self.resolve_memory_request(request, task=task)
         low_ram = mode != MEMORY_MODE_DEFAULT
-        keep_model = bool(low_ram and batch_id is not None and not batch.get("last", True))
-        if keep_model:
-            try:
-                family = self._resolved_model_def().family
-            except Exception:
-                family = ""
-            keep_model = family not in _LOW_RAM_SINGLE_SEED_FAMILIES
-        self._low_ram_batch_id = batch_id if keep_model else None
+        model_def = self._configured_model_def()
+        # The run frees part of the instance: a low-RAM run on every family but SeedVR2 (whose
+        # low-RAM mode is the cache limit alone), and every Wan TI2V-5B run (its denoiser,
+        # released before the decode, which mlx-gen cannot read again).
+        releases_model = (low_ram and getattr(model_def, "family", "") != "seedvr2-upscale") or (
+            getattr(model_def, "key", "") == WAN_TI2V_MODEL_KEY
+        )
         plan = _MemoryPlan(
             mode=mode,
             low_ram=low_ram,
             stream_blocks=mode == MEMORY_MODE_LOWEST,
-            keep_model=keep_model,
+            releases_model=releases_model,
         )
         return request, plan
 
     @contextmanager
-    def _memory_session(
-        self, plan: _MemoryPlan, *, cache_limit_bytes: Optional[int] = None, releases_model: bool
-    ) -> Iterator[None]:
-        """Hold the run's MLX cache limit from before the model loads until the run ends.
+    def _memory_session(self, plan: _MemoryPlan) -> Iterator[None]:
+        """Hold low-RAM mode's MLX cache limit from before the model loads until the run ends.
 
-        `releases_model`: the run frees parts of the instance in low-RAM mode (MemorySaver), so
-        it is dropped afterwards, except on a batch item that keeps it; after a failure it is
-        always dropped.
+        When the run ends, an instance the run freed part of is dropped, whatever the outcome.
         """
-        if plan.low_ram:
-            cache_limit_bytes = LOW_RAM_MLX_CACHE_LIMIT_BYTES
-        token = _acquire_mlx_cache_limit(cache_limit_bytes) if cache_limit_bytes else None
-        completed = False
+        token = _acquire_mlx_cache_limit(LOW_RAM_MLX_CACHE_LIMIT_BYTES) if plan.low_ram else None
         try:
             yield
-            completed = True
         finally:
             if token is not None:
                 _release_mlx_cache_limit(token)
-            if plan.low_ram and releases_model and (not completed or not plan.keep_model):
-                self._drop_released_model()
-            elif not completed and self._low_ram_batch_id is not None:
-                self._low_ram_batch_id = None
+            if plan.releases_model:
+                self._release_model()
 
-    def _attach_low_ram_saver(self, model: Any, plan: _MemoryPlan) -> None:
+    def _attach_low_ram_saver(self, model: Any) -> None:
         """Register mlx-gen's low-RAM MemorySaver, as `mlxgen generate --low-ram` does on image routes.
 
-        It tiles the VAE, frees the text encoders before the denoising loop and, unless a batch
-        keeps the instance for its next seed, the transformer after it.
+        It tiles the VAE, frees the text encoders before the denoising loop and the transformer
+        after it.
         """
-        saver = self._low_ram_saver
-        if saver is not None and getattr(saver, "model", None) is model:
-            saver.keep_transformer = plan.keep_model
-            return
         register = getattr(getattr(model, "callbacks", None), "register", None)
         if not callable(register):
             raise CapabilityNotSupportedError(
@@ -2903,13 +2864,8 @@ class MFluxVisionBackend(VisionBackend):
                 "or upgrade mlx-gen."
             )
         MemorySaver = _lazy_import_mlx_gen_memory_saver()
-        saver = MemorySaver(
-            model=model,
-            keep_transformer=plan.keep_model,
-            cache_limit_bytes=LOW_RAM_MLX_CACHE_LIMIT_BYTES,
-        )
-        register(saver)
-        self._low_ram_saver = saver
+        # MemorySaver sets the cache limit it is given: the one this run holds.
+        register(MemorySaver(model=model, keep_transformer=False, cache_limit_bytes=_held_mlx_cache_limit()))
 
     def _config_lora_adapters(self) -> Tuple[Any, ...]:
         paths = [str(path).strip() for path in (self._cfg.lora_paths or ()) if str(path).strip()]
@@ -3510,7 +3466,7 @@ class MFluxVisionBackend(VisionBackend):
 
             if _looks_like_path(configured_model):
                 raise OptionalDependencyMissingError(
-                    f"MLX-Gen model path does not exist: {configured_model}"
+                    f"MLX-Gen model path does not exist: {_public_model_name(configured_model)}"
                 )
             if looks_like_hf_repo_id(configured_model):
                 cached = resolve_hf_repo_snapshot(
@@ -3729,11 +3685,15 @@ class MFluxVisionBackend(VisionBackend):
         return _mlx_gen_quantize_choices()
 
     def _configured_family(self) -> Optional[str]:
+        model_def = self._configured_model_def()
+        return model_def.family if model_def is not None else None
+
+    def _configured_model_def(self) -> Optional[_MFluxModelDef]:
+        # The configured (or last resolved) model, without resolving it: no cache scan, no download.
         base_model = str(
             self._resolved_base_model or _infer_base_model(self._cfg.base_model, self._cfg.model) or ""
         )
-        model_def = _MFLUX_MODELS.get(base_model)
-        return model_def.family if model_def is not None else None
+        return _MFLUX_MODELS.get(base_model)
 
     def _checked_load_quantize(self, quantize: Any, *, model_path: str) -> int:
         try:
@@ -3746,8 +3706,8 @@ class MFluxVisionBackend(VisionBackend):
         stored_bits = self._resolved_quantization_bits
         if _is_prepared_mlx_gen_package(model_path) or (stored_bits is not None and int(stored_bits) < 16):
             raise CapabilityNotSupportedError(
-                f"{model_path} is a prepared MLX-Gen package whose stored weights are its quantization; "
-                "load it without quantize, or quantize the source snapshot."
+                f"{_public_model_name(model_path)} is a prepared MLX-Gen package whose stored weights are its "
+                "quantization; load it without quantize, or quantize the source snapshot."
             )
         allowed = self.quantize_bits()
         if bits not in allowed:
@@ -3818,8 +3778,6 @@ class MFluxVisionBackend(VisionBackend):
             raise
 
     def _preload_model(self) -> None:
-        if self._low_ram_batch_id is not None:
-            self._drop_released_model()
         model_def = self._resolved_model_def()
         if model_def.family == "seedvr2-upscale":
             self._ensure_seedvr2_model_impl(quantize=self._default_upscale_quantize())
@@ -4424,10 +4382,7 @@ class MFluxVisionBackend(VisionBackend):
         subscribe = getattr(callbacks, "subscribe_progress", None)
         if not callable(subscribe):
             return lambda: None
-        try:
-            unsubscribe = subscribe(callback, task=task) if task is not None else subscribe(callback, task=None)
-        except TypeError:
-            unsubscribe = subscribe(callback)
+        unsubscribe = subscribe(callback, task=task)
         if callable(unsubscribe):
             return unsubscribe
         return lambda: None
@@ -4617,7 +4572,7 @@ class MFluxVisionBackend(VisionBackend):
         request, memory_plan = self._memory_plan(
             request, task="image_to_image" if image_path is not None else "text_to_image"
         )
-        with self._memory_session(memory_plan, releases_model=True):
+        with self._memory_session(memory_plan):
             return self._generate_run(
                 request, memory_plan, image_path=image_path, image_strength=image_strength
             )
@@ -4701,7 +4656,7 @@ class MFluxVisionBackend(VisionBackend):
         relay = _ProgressRelay(extra, task=default_task, cancel_event=request.cancel_event)
 
         if memory_plan.low_ram:
-            self._attach_low_ram_saver(model, memory_plan)
+            self._attach_low_ram_saver(model)
         unsubscribe = (
             self._subscribe_progress(model, relay, task=progress_task)
             if relay.active
@@ -4788,7 +4743,7 @@ class MFluxVisionBackend(VisionBackend):
 
     def _edit_image_impl(self, request: ImageEditRequest) -> GeneratedAsset:
         request, memory_plan = self._memory_plan(request, task="image_to_image")
-        with self._memory_session(memory_plan, releases_model=True):
+        with self._memory_session(memory_plan):
             return self._edit_image_run(request, memory_plan)
 
     def _edit_image_run(self, request: ImageEditRequest, memory_plan: _MemoryPlan) -> GeneratedAsset:
@@ -4922,7 +4877,7 @@ class MFluxVisionBackend(VisionBackend):
                 task_name = "image-to-image"
 
                 if memory_plan.low_ram:
-                    self._attach_low_ram_saver(_model, memory_plan)
+                    self._attach_low_ram_saver(_model)
                 unsubscribe: Callable[[], None] = lambda: None  # noqa: E731
                 try:
                     if relay.active:
@@ -5008,7 +4963,7 @@ class MFluxVisionBackend(VisionBackend):
         request, memory_plan = self._memory_plan(request, task="image_upscale")
         # `mlxgen upscale --low-ram` on images sets the 1 GB MLX cache and nothing else: it
         # registers no MemorySaver and keeps SeedVR2's own tiling. The instance stays loaded.
-        with self._memory_session(memory_plan, releases_model=False):
+        with self._memory_session(memory_plan):
             return self._upscale_image_run(request, memory_plan)
 
     def _upscale_image_run(
@@ -5125,10 +5080,7 @@ class MFluxVisionBackend(VisionBackend):
             raise RuntimeError("MLX-Gen video result does not expose a callable save(...) method.")
         with tempfile.TemporaryDirectory(prefix="abstractvision-video-") as tmp_dir:
             tmp_path = Path(tmp_dir) / "video.mp4"
-            try:
-                saved_path = save(path=tmp_path, export_json_metadata=True, overwrite=True)
-            except TypeError:
-                saved_path = save(tmp_path)
+            saved_path = save(path=tmp_path, export_json_metadata=True, overwrite=True)
             video_path = Path(saved_path) if isinstance(saved_path, (str, Path)) else tmp_path
             if not video_path.is_file():
                 video_path = tmp_path
@@ -5173,11 +5125,7 @@ class MFluxVisionBackend(VisionBackend):
         request, memory_plan = self._memory_plan(request, task=task)
         # The cache limit holds from before the model loads through the decode: 1 GB in
         # low-RAM mode (as `mlxgen generate --low-ram`), else the machine ladder (RAM/8, 1-8 GiB).
-        with self._memory_session(
-            memory_plan,
-            cache_limit_bytes=_wan_video_mlx_cache_limit_bytes(),
-            releases_model=False,
-        ):
+        with self._memory_session(memory_plan):
             return self._generate_video_run(
                 request,
                 memory_plan,
@@ -5262,20 +5210,17 @@ class MFluxVisionBackend(VisionBackend):
         # TI2V-5B's single denoiser (9.3 GiB at BF16 runtime) is dead weight while
         # the VAE decodes, and the decode is the run's peak. Releasing it before
         # decode lowered the measured MLX peak from 60.8 to 50.6 GiB at
-        # 1280x704x121. mlx-gen cannot reload a released TI2V denoiser, so the
-        # instance is dropped after the run and rebuilt on the next request
-        # (about a minute, measured, against a run of several minutes).
+        # 1280x704x121 (the plan frees it in every mode; the instance is then
+        # rebuilt on the next request, about a minute against a run of several).
         # Low-RAM mode is `mlxgen generate --low-ram` on a Wan route (wan_generate.py):
         # the MLX cache is cleared after every step and transformer block; a single-seed
         # run releases the denoisers before the decode and, on the dual-expert A14B
         # models, the inactive expert. A batch item that is not the last keeps both, as
-        # the CLI does for several seeds. A released instance is rebuilt on the next request.
-        release_for_low_ram = memory_plan.low_ram and not memory_plan.keep_model
-        release_denoisers = model_def.key == WAN_TI2V_MODEL_KEY or release_for_low_ram
-        if release_denoisers:
+        # the CLI does for several seeds.
+        if memory_plan.releases_model:
             kwargs["release_denoisers_before_decode"] = True
-        if release_for_low_ram and model_def.key in {WAN_T2V_A14B_MODEL_KEY, WAN_I2V_A14B_MODEL_KEY}:
-            kwargs["release_inactive_denoiser"] = True
+            if memory_plan.low_ram and model_def.key in {WAN_T2V_A14B_MODEL_KEY, WAN_I2V_A14B_MODEL_KEY}:
+                kwargs["release_inactive_denoiser"] = True
         if memory_plan.low_ram:
             kwargs["clear_cache_each_step"] = True
             kwargs["clear_cache_each_transformer_block"] = True
@@ -5304,11 +5249,8 @@ class MFluxVisionBackend(VisionBackend):
         finally:
             if restore_decode is not None:
                 restore_decode()
-            if release_denoisers:
-                self._drop_released_model()
-            else:
-                _clear_mlx_cache()
-        if not release_denoisers and self._model_key is not None:
+            _clear_mlx_cache()
+        if self._model_key is not None:
             self._warmed_model_key = self._model_key
         requested_loras = _public_lora_adapters(effective_loras)
         return GeneratedAsset(
@@ -5358,8 +5300,8 @@ class MFluxVisionBackend(VisionBackend):
 
         The prompt is passed unchanged: MLX-Gen composes the structured prompt (and, for a
         keyframe, its picture reference) from `prompt`, `soundscape` and `music`. Low-RAM mode is
-        the 1 GB cache (held by the session) plus `release_transformer=True`; the instance stays
-        loaded and reads the transformer again on its next run, as the CLI does for several seeds.
+        the 1 GB cache (held by the session) plus `release_transformer=True`, except on a batch
+        item before the last; the session then drops the instance, as for every other family.
         """
         effective_loras = self._effective_request_lora_adapters(request)
         row = self._h3_route_row(task)
@@ -5392,7 +5334,7 @@ class MFluxVisionBackend(VisionBackend):
             "seed": seed,
             "prompt": str(request.prompt or ""),
             "generate_audio": True if request.generate_audio is None else bool(request.generate_audio),
-            "release_transformer": bool(memory_plan.low_ram),
+            "release_transformer": memory_plan.releases_model,
         }
         for name, value in (
             ("width", request.width),

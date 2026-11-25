@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import random
-import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -10,7 +9,6 @@ from .backends.base_backend import VisionBackend
 from .errors import BackendNotConfiguredError, CapabilityNotSupportedError
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .types import (
-    BATCH_EXTRA_KEY,
     GeneratedAsset,
     ImageEditRequest,
     ImageGenerationRequest,
@@ -116,25 +114,6 @@ class VisionManager:
         if merged_extra:
             kwargs["extra"] = merged_extra
 
-    @staticmethod
-    def _batch_item_kwargs(
-        kwargs: Dict[str, Any],
-        *,
-        batch_id: str,
-        seed: Optional[int],
-        last: bool,
-        marks_batches: bool,
-    ) -> Dict[str, Any]:
-        call_kwargs = dict(kwargs)
-        call_kwargs["seed"] = seed
-        if not marks_batches:
-            return call_kwargs
-        extra = call_kwargs.get("extra")
-        extra = dict(extra) if isinstance(extra, dict) else {}
-        extra[BATCH_EXTRA_KEY] = {"id": batch_id, "last": bool(last)}
-        call_kwargs["extra"] = extra
-        return call_kwargs
-
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
         """List models advertised by the configured provider backend, if supported."""
         backend = self._require_backend()
@@ -217,16 +196,9 @@ class VisionManager:
         **kwargs,
     ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
-        batch_id = uuid.uuid4().hex
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
-        for index, planned_seed in enumerate(planned_seeds):
-            call_kwargs = self._batch_item_kwargs(
-                kwargs,
-                batch_id=batch_id,
-                seed=planned_seed,
-                last=index == len(planned_seeds) - 1,
-                marks_batches=bool(getattr(self.backend, "uses_batch_marker", False)),
-            )
+        for planned_seed in planned_seeds:
+            call_kwargs = {**kwargs, "seed": planned_seed}
             out.append(self.generate_image(prompt, **call_kwargs))
         return out
 
@@ -262,16 +234,9 @@ class VisionManager:
         **kwargs,
     ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
-        batch_id = uuid.uuid4().hex
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
-        for index, planned_seed in enumerate(planned_seeds):
-            call_kwargs = self._batch_item_kwargs(
-                kwargs,
-                batch_id=batch_id,
-                seed=planned_seed,
-                last=index == len(planned_seeds) - 1,
-                marks_batches=bool(getattr(self.backend, "uses_batch_marker", False)),
-            )
+        for planned_seed in planned_seeds:
+            call_kwargs = {**kwargs, "seed": planned_seed}
             out.append(self.edit_image(prompt, image=image, **call_kwargs))
         return out
 
@@ -323,16 +288,9 @@ class VisionManager:
         **kwargs,
     ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
-        batch_id = uuid.uuid4().hex
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
-        for index, planned_seed in enumerate(planned_seeds):
-            call_kwargs = self._batch_item_kwargs(
-                kwargs,
-                batch_id=batch_id,
-                seed=planned_seed,
-                last=index == len(planned_seeds) - 1,
-                marks_batches=bool(getattr(self.backend, "uses_batch_marker", False)),
-            )
+        for planned_seed in planned_seeds:
+            call_kwargs = {**kwargs, "seed": planned_seed}
             out.append(self.generate_video(prompt, **call_kwargs))
         return out
 
@@ -359,15 +317,8 @@ class VisionManager:
         **kwargs,
     ) -> List[Union[GeneratedAsset, Dict[str, Any]]]:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
-        batch_id = uuid.uuid4().hex
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
-        for index, planned_seed in enumerate(planned_seeds):
-            call_kwargs = self._batch_item_kwargs(
-                kwargs,
-                batch_id=batch_id,
-                seed=planned_seed,
-                last=index == len(planned_seeds) - 1,
-                marks_batches=bool(getattr(self.backend, "uses_batch_marker", False)),
-            )
+        for planned_seed in planned_seeds:
+            call_kwargs = {**kwargs, "seed": planned_seed}
             out.append(self.image_to_video(image, **call_kwargs))
         return out

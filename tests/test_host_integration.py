@@ -276,14 +276,11 @@ class TestAbstractCoreFacadeTypedOptions(unittest.TestCase):
 class TestHostFacts(unittest.TestCase):
     def test_memory_size_is_reported_or_unavailable_never_guessed(self):
         from abstractvision import host
-        from abstractvision.backends import mflux
 
         with patch.object(host.os, "sysconf", side_effect=lambda name: {"SC_PAGE_SIZE": 16384, "SC_PHYS_PAGES": 2**21}[name], create=True):
             self.assertEqual(host.total_physical_memory_bytes(), 16384 * 2**21)
         with patch.object(host, "os", SimpleNamespace()):  # a platform without POSIX sysconf
             self.assertIsNone(host.total_physical_memory_bytes())
-            # Unknown memory: the backend's cache ladder takes its floor instead of guessing.
-            self.assertEqual(mflux._wan_video_mlx_cache_limit_bytes(), mflux.WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES)
 
 
 class TestEmbeddingHygiene(unittest.TestCase):

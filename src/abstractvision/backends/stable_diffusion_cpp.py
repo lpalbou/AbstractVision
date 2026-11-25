@@ -1243,7 +1243,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         request: ImageGenerationRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
-        request, memory_mode, _batch = self.resolve_memory_request(request, task="text_to_image")
+        request, memory_mode = self.resolve_memory_request(request, task="text_to_image")
         offload = memory_mode == MEMORY_MODE_LOW
         request = self._with_catalog_defaults(request, "text_to_image")
         self._validate_macos_gguf_supported()
@@ -1302,7 +1302,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         request: ImageEditRequest,
         progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
     ) -> GeneratedAsset:
-        request, memory_mode, _batch = self.resolve_memory_request(request, task="image_to_image")
+        request, memory_mode = self.resolve_memory_request(request, task="image_to_image")
         offload = memory_mode == MEMORY_MODE_LOW
         request = self._with_catalog_defaults(request, "image_to_image")
         self._validate_macos_gguf_supported()
