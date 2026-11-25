@@ -17,7 +17,9 @@ except for the changes listed below.
   Pillow 13, and publishes capability schema 17. The calls AbstractVision makes for FLUX.2, Z-Image, Qwen, ERNIE,
   FIBO, Bonsai, SeedVR2 and Wan are unchanged. On macOS the same extras require `mlx>=0.32.4`: MLX 0.31.0 to 0.32.3
   can end the process with a Metal "invalid resource" error during a MiniMax-H3 decode when the MLX cache is small,
-  and MLX 0.32.4 fixed it. Upgrade with `pip install -U "abstractvision[mlx-gen]"`.
+  and MLX 0.32.4 fixed it. Upgrade with `pip install -U "abstractvision[mlx-gen]"`. An upgrade without the extra
+  keeps the installed MLX, so on macOS MLX-Gen refuses to run on an older one: the first model load raises
+  `OptionalDependencyMissingError` naming the installed version and that command.
 - **MiniMax-H3: video with a synchronized stereo soundtrack**, `text_to_video` and first-frame `image_to_video`,
   through the MLX-Gen backend. The catalog entry `MiniMaxAI/MiniMax-H3` lists the packages
   `AbstractFramework/minimax-h3-8bit` (recommended), `AbstractFramework/minimax-h3-bf16` and
@@ -144,13 +146,15 @@ except for the changes listed below.
     in the API guide; the error carries no traceback of the run, so a caller that keeps it holds none of its memory.
   - Load-time `quantize` (bits) on generation requests, as `--quantize` and as an AbstractCore plugin keyword,
     validated against the route (`get_capabilities().quantize_bits`) and refused on prepared packages and on the
-    other local backends.
+    other local backends. SeedVR2 upscaling goes through the same check: a prepared package refuses `quantize`
+    (on `upscale_image` and `preload`), and its source accepts MLX-Gen's widths.
   - `VisionManager.describe_routes(model=..., task=...)` returns MLX-Gen's capability rows as JSON, so a host can
     build its controls and memory planning without importing MLX-Gen.
   - MLX-Gen results carry the engine's metadata under `metadata["mlx_gen"]` on every route, upscaling included.
   - On MiniMax-H3, weights or a run that MLX-Gen's preflight finds cannot fit in memory raise
     `GpuOutOfMemoryError` naming the `memory_mode` it used and the lower ones to try (MLX-Gen 0.40.1 has this
-    preflight for MiniMax-H3 only).
+    preflight for MiniMax-H3 only). On Wan, a `MemoryError` raised while the model loads or runs is raised as the
+    same `GpuOutOfMemoryError`.
   - Importing AbstractVision and constructing a `VisionManager` write no files, set no environment variables and
     import neither AbstractCore nor an engine.
   - `extra["memory_mode"]` is the memory mode on every backend; `extra["quantize"]` and the soundtrack keys are the
@@ -163,7 +167,10 @@ except for the changes listed below.
   - `preload(memory_mode=None, quantize=None)` on every backend: the values are checked as a request's are, before
     anything loads, and the model loads as a request carrying them loads it, so that request reuses it; a backend
     that takes no load-time quantize refuses it. The AbstractCore plugin's `load_resident_model(...)` passes a
-    request's `memory_mode` and `quantize`.
+    request's `memory_mode` and `quantize`. On MLX-Gen the load runs under that request's cache hold; in a mode
+    whose runs drop the model (`low`, `lowest`), the preloaded instance serves one request and no warm-up runs.
+    Only a text-to-image model kept by its mode runs one warm-up generation, in that mode; an edit-only model is
+    loaded for edits.
   - MLX-Gen records `memory_mode` (with `low_ram` and `stream_blocks`) in every result's metadata, `"default"`
     included.
   - MLX-Gen checks a request once, on its own thread: `VisionManager` still calls the backend's `normalize_*`
@@ -189,14 +196,22 @@ except for the changes listed below.
   do the soundtrack options on an image call. Every other unknown keyword stays a backend `extra` parameter.
 - MLX-Gen result metadata names the model and adapters by repo id (a Hugging Face cache snapshot) or by file or
   directory name, never by local path: every field of the engine's metadata that holds a path (`model`,
-  `lora_paths`, `lora_application_reports`, the reference, mask and control image paths, the video file checked by
-  `video_health`, and the `original_*` fields an upscale copies from its input), in `metadata["mlx_gen"]` and its
-  top-level copies, and `requested_lora_adapters`. The paths of the temporary files written for a run are left out.
+  `lora_paths`, `lora_application_reports`, the video file checked by `video_health`, and the `original_*` fields an
+  upscale copies from its input), in `metadata["mlx_gen"]` and its top-level copies, and `requested_lora_adapters`.
+  The fields naming the files written for a run (the source image or first frame, an edit's image list and mask, the
+  clip and its audio sidecar) are left out.
   The refusals of a prepared package given `quantize`, of a model path that does not exist and of an adapter
   `lowest` cannot stream name the model or adapter the same way.
-- MLX-Gen video requests are type-checked: a width, height, frame count, fps or step count that is not an integer, or
-  a seed outside `[0, 2**64 - 1]`, raises `ValueError` naming the field instead of being truncated; an image-to-video
-  first frame that cannot be decoded raises `ValueError` naming `image`.
+- MLX-Gen video requests are type-checked: a width, height, frame count, fps or step count that is not an integer, a
+  guidance scale or shift that is not a finite number (NaN, infinity), or a seed outside `[0, 2**64 - 1]`, raises
+  `ValueError` naming the field instead of being truncated or passed on; an image-to-video first frame that cannot
+  be decoded raises `ValueError` naming `image`.
+- MLX-Gen Wan results carry, under `metadata["mlx_gen"]`, the metadata MLX-Gen's save writes beside the clip (as
+  MiniMax-H3 results do), which adds what only the save knows (video health, the process's peak memory).
+- MLX-Gen refuses `control_image` with `CapabilityNotSupportedError` (`field="control_image"`) before anything
+  loads, and `get_capabilities().supports_control_image` is `False`: MLX-Gen runs structured control through its
+  Qwen ControlNet variant and a ControlNet sidecar repository, which AbstractVision does not load. The catalog no
+  longer lists `control_image` and `control_strength` for Qwen Image.
 - An exception raised in a progress callback is logged once and no longer ends the run; stop a run with
   `cancel_event`.
 - OpenAI-compatible backend: `list_provider_models()` and a request that sets a memory, sound or `quantize` field
@@ -233,7 +248,8 @@ except for the changes listed below.
   adapter set): two instances are never in memory together.
 - A failed MLX-Gen `preload()` drops the model it loaded before raising, and the AbstractCore plugin does not list
   it as loaded.
-- AbstractCore plugin: `control_image` and `control_strength` reach `t2i` (they were dropped).
+- AbstractCore plugin: `control_image` and `control_strength` reach `t2i` (they were dropped), where a backend that
+  cannot apply them refuses them.
 
 ## 0.3.36 - 2026-11-11
 

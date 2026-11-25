@@ -1167,7 +1167,6 @@ class TestMiniMaxH3Backend(unittest.TestCase):
 
     def test_memory_modes_flags_and_route_tasks_come_from_the_module_rule(self):
         from abstractvision.backends import mflux
-        from abstractvision.types import VideoGenerationRequest
 
         backend = self._backend()
         with patch.object(mflux, "mlx_gen_memory_modes", return_value=("default",)) as modes:
@@ -1175,7 +1174,7 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertEqual(modes.call_args.kwargs["family"], "minimax-h3")
         streamed_low = mflux.MlxGenMemoryFlags(low_ram=True, stream_blocks=True, engine_mode="low_ram")
         with patch.dict(mflux.MLX_GEN_MEMORY_MODE_FLAGS, {"low": streamed_low}):
-            self.assertTrue(backend._memory_plan(VideoGenerationRequest(prompt="fox", memory_mode="low")).stream_blocks)
+            self.assertTrue(backend._memory_plan("low").stream_blocks)
         with patch.object(mflux, "mlx_gen_route_task", return_value="renamed_task"):
             self.assertEqual(set(backend._route_capabilities_for_model("MiniMaxAI/MiniMax-H3")), {"renamed_task"})
 
@@ -1349,11 +1348,15 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         backend = MFluxVisionBackend(config=MFluxBackendConfig(model="seedvr2-3b", base_model="seedvr2-3b"))
-        with patch.object(MFluxVisionBackend, "_resolve_model", return_value=("/m/seedvr2-3b-8bit", "seedvr2-3b")):
+        model_path = str(self.tmp)
+        with patch.object(MFluxVisionBackend, "_find_configured_model", return_value=(model_path, "seedvr2-3b", 8)):
             for prepared, expected in ((True, None), (False, 8)):
+                backend.unload()
                 with patch.object(mflux, "_is_prepared_mlx_gen_package", return_value=prepared) as check:
                     self.assertEqual(backend._default_upscale_quantize(), expected)
-                check.assert_called_with("/m/seedvr2-3b-8bit", "seedvr2-3b")
+                    self.assertEqual(backend._default_upscale_quantize(), expected)
+                # Read once per resolution.
+                check.assert_called_once_with(model_path, "seedvr2-3b")
 
     def test_a_cancelled_run_hands_the_caller_no_frame_of_the_run(self):
         from abstractvision.errors import GenerationCancelledError

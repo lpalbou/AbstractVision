@@ -35,7 +35,7 @@ class TestMlxGenMemoryContract(unittest.TestCase):
         params = inspect.signature(_lazy_import_mlx_gen_memory_saver()).parameters
         for name in ("model", "keep_transformer", "cache_limit_bytes"):
             self.assertIn(name, params)
-        # A batch flips keep_transformer on the registered saver before its last item.
+        # keep_transformer=False, as the backend passes it, frees the transformer after the loop.
         source = inspect.getsource(_lazy_import_mlx_gen_memory_saver())
         self.assertIn("self.keep_transformer = keep_transformer", source)
         self.assertIn("if not self.keep_transformer:", source)

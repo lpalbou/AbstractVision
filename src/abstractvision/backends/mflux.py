@@ -5,6 +5,7 @@ import logging
 import math
 import random
 import os
+import sys
 import tempfile
 import queue
 import threading
@@ -15,7 +16,7 @@ from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Mapping, NamedTuple, Optional, Sequence, Tuple, Union
 
 from ..errors import (
     CapabilityNotSupportedError,
@@ -74,6 +75,9 @@ logger = logging.getLogger(__name__)
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
 MLX_GEN_VERSION_FLOOR = "0.40.1"
+# On macOS: MLX 0.31.0 to 0.32.3 free a 3D convolution's padding buffer before the Metal command that reads it,
+# which can end a run with an "invalid resource" error during a decode.
+MLX_VERSION_FLOOR = "0.32.4"
 WAN_TI2V_MODEL_KEY = "wan2.2-ti2v-5b"
 WAN_T2V_A14B_MODEL_KEY = "wan2.2-t2v-a14b"
 WAN_I2V_A14B_MODEL_KEY = "wan2.2-i2v-a14b"
@@ -1155,7 +1159,31 @@ class MFluxBackendConfig:
     default_height: int = 1024
 
 
+@lru_cache(maxsize=1)
+def _require_mlx_version_floor() -> None:
+    """Refuse an MLX below MLX_VERSION_FLOOR on macOS; checked once, when the MLX-Gen runtime is first imported."""
+    if sys.platform != "darwin":
+        return
+    from importlib import metadata
+
+    try:
+        installed = metadata.version("mlx")
+    except metadata.PackageNotFoundError:
+        return  # The MLX-Gen import that follows reports the missing runtime.
+    if _release_numbers(installed) < _release_numbers(MLX_VERSION_FLOOR):
+        raise OptionalDependencyMissingError(
+            f"MLX-Gen needs mlx>={MLX_VERSION_FLOOR} on macOS; mlx {installed} is installed. "
+            'Upgrade it with `pip install -U "abstractvision[mlx-gen]"`.'
+        )
+
+
+def _release_numbers(version: str) -> Tuple[int, ...]:
+    # The release segment of a version ("0.32.4rc1" -> (0, 32, 4)).
+    return tuple(int("".join(itertools.takewhile(str.isdigit, part)) or 0) for part in version.split(".")[:3])
+
+
 def _lazy_import_mflux() -> Tuple[Any, Any, Any, Any, Any, Any]:
+    _require_mlx_version_floor()
     try:
         import mlxgen as _mlxgen  # noqa: F401
 
@@ -1243,10 +1271,11 @@ def _lazy_import_mflux_wan() -> Any:
 def _mlx_gen_quantize_choices() -> Tuple[int, ...]:
     try:
         from mflux.cli.defaults import defaults  # type: ignore
-
-        return tuple(sorted(int(value) for value in defaults.QUANTIZE_CHOICES))
-    except Exception:
-        return (3, 4, 5, 6, 8)
+    except ImportError as e:
+        raise OptionalDependencyMissingError(
+            'Load-time quantize needs the MLX-Gen runtime: `pip install "abstractvision[mlx-gen]"`.'
+        ) from e
+    return tuple(sorted(int(value) for value in defaults.QUANTIZE_CHOICES))
 
 
 # The catalog `source` of the packages AbstractFramework prepares with MLX-Gen.
@@ -1335,7 +1364,7 @@ _PROGRESS_EXTRA_KEYS = frozenset(
 # `extra` keys every route accepts: the progress callbacks, and what `resolve_memory_request`
 # reads and strips (the memory mode).
 _ROUTING_EXTRA_KEYS = _PROGRESS_EXTRA_KEYS | {"memory_mode"}
-_VIDEO_FAMILIES = frozenset({"wan-video", "minimax-h3"})
+_PRELOAD_TASK_ORDER = ("text_to_image", "image_to_image", "text_to_video", "image_to_video", "image_upscale")
 # MLX's random key is a 64-bit unsigned seed.
 _MAX_SEED = 2**64 - 1
 
@@ -1377,15 +1406,17 @@ def _request_seed(value: Any, *, label: str) -> Optional[int]:
 
 
 def _checked_keyframe_size(image: Any) -> Tuple[int, int]:
-    """Open and decode a conditioning image before any weights load; its (width, height)."""
-    if not isinstance(image, (bytes, bytearray)):
-        raise ValueError(f"image must be the image file's bytes, got {type(image).__name__}.")
-    if not image:
+    """Open and decode a conditioning image (any bytes-like object) before any weights load; its (width, height)."""
+    try:
+        data = memoryview(image).tobytes()
+    except TypeError:
+        raise ValueError(f"image must be the image file's bytes, got {type(image).__name__}.") from None
+    if not data:
         raise ValueError("image is empty (0 bytes).")
     from PIL import Image, UnidentifiedImageError
 
     try:
-        with Image.open(BytesIO(bytes(image))) as img:
+        with Image.open(BytesIO(data)) as img:
             img.load()
             return int(img.width), int(img.height)
     except UnidentifiedImageError:
@@ -1429,8 +1460,10 @@ def _public_model_name(value: Any) -> Optional[str]:
     return path.name
 
 
-# Engine metadata keys that name temporary files AbstractVision wrote and deleted.
-_TEMPORARY_PATH_METADATA_KEYS = ("image_path", "video_path", "audio_sidecar_path")
+# Engine metadata keys naming files AbstractVision writes for one run and deletes after it: the source image or
+# first frame, an edit's image list (a reference given as a path is listed with them), the mask, the clip and its
+# audio sidecar.
+_TEMPORARY_PATH_METADATA_KEYS = ("image_path", "image_paths", "masked_image_path", "video_path", "audio_sidecar_path")
 # The fields that carry a local path in the metadata mlx-gen 0.40.1 writes on the routes
 # AbstractVision runs (GeneratedImage._get_metadata, GeneratedVideo.build_metadata, LoRAFileReport,
 # VideoUtil's video_health, and the `original_*` copies an upscale takes from its input's
@@ -1440,9 +1473,6 @@ _PATH_METADATA_FIELDS = (
     ("lora_paths", "[]"),
     ("lora_application_reports", "[]", "requested_path"),
     ("lora_application_reports", "[]", "resolved_path"),
-    ("image_paths", "[]"),
-    ("controlnet_image_path",),
-    ("masked_image_path",),
     ("original_model",),
     ("original_lora_paths", "[]"),
     ("original_lora_application_reports", "[]", "requested_path"),
@@ -1574,12 +1604,14 @@ def _mlx_gen_schedule_adapter(base_model: str) -> Optional[str]:
         )
     if _MFLUX_MODELS[key].family != "minimax-h3":
         return None
-    ModelConfig = _lazy_import_mflux()[0]
     try:
-        overrides = getattr(ModelConfig.from_name(key), "transformer_overrides", None) or {}
-    except Exception:
-        return None
-    adapter = overrides.get("turbo_lora") if isinstance(overrides, Mapping) else None
+        from mflux.models.common.config import ModelConfig  # type: ignore
+    except ImportError as e:
+        raise OptionalDependencyMissingError(
+            f"Reading the {key} schedule requires mlx-gen>={MLX_GEN_VERSION_FLOOR}. "
+            'Install it with `pip install "abstractvision[mlx-gen]"`.'
+        ) from e
+    adapter = ModelConfig.from_name(key).transformer_overrides.get("turbo_lora")
     return str(adapter) if adapter else None
 
 
@@ -1650,6 +1682,7 @@ def _lazy_import_mlx_gen_h3_planning() -> Any:
 
 
 def _lazy_import_mflux_seedvr2() -> Tuple[Any, Any, Any, Any]:
+    _require_mlx_version_floor()
     try:
         from mflux.models.common.config import ModelConfig  # type: ignore
         from mflux.models.common.vae.tiling_config import TilingConfig  # type: ignore
@@ -1837,7 +1870,7 @@ def _candidate_repo_ids_for_preset(preset: Any) -> Tuple[str, ...]:
         str(getattr(preset, "target", "") or "").strip().lower() == "mlx"
         and str(getattr(preset, "engine", "") or "").strip().lower().replace("_", "-")
         in {"mlx-gen", "mflux"}
-        and str(getattr(preset, "source", "") or "").strip().lower() == "abstractframework-mlx-gen"
+        and str(getattr(preset, "source", "") or "").strip().lower() == _ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
     ):
         repo_id = str(getattr(preset, "repo_id", "") or "").strip()
         return (repo_id,) if looks_like_hf_repo_id(repo_id) else ()
@@ -1905,44 +1938,28 @@ def _adapter_repo_snapshot_dirs(repo_dir: Path) -> List[Path]:
 
 
 def _read_card_frontmatter(readme_path: Path) -> Dict[str, Any]:
+    """The top-level keys of a model card's YAML front matter; empty without one, or without PyYAML.
+
+    PyYAML comes with huggingface_hub, which every MLX-Gen install has.
+    """
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        return {}
     try:
         lines = readme_path.read_text(encoding="utf-8").splitlines()
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         return {}
     if not lines or lines[0].strip() != "---":
         return {}
-    payload: Dict[str, Any] = {}
-    index = 1
-    while index < len(lines):
-        raw = lines[index]
-        stripped = raw.strip()
-        index += 1
-        if stripped == "---":
-            break
-        if not stripped or ":" not in raw:
-            continue
-        key, value = raw.split(":", 1)
-        key = str(key or "").strip()
-        if not key:
-            continue
-        text = str(value or "").strip()
-        if text:
-            payload[key] = text.strip("'\"")
-            continue
-        items: List[str] = []
-        while index < len(lines):
-            child = lines[index].strip()
-            if child == "---":
-                break
-            if child.startswith("- "):
-                items.append(child[2:].strip().strip("'\""))
-                index += 1
-                continue
-            if child:
-                break
-            index += 1
-        payload[key] = items
-    return payload
+    end = next((index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"), None)
+    if end is None:
+        return {}
+    try:
+        payload = yaml.safe_load("\n".join(lines[1:end]))
+    except yaml.YAMLError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _frontmatter_list(payload: Mapping[str, Any], key: str) -> Tuple[str, ...]:
@@ -2192,7 +2209,7 @@ def _ambiguous_mlx_gen_selector_choices(selector: Any) -> Tuple[str, ...]:
             for preset in model_presets(
                 target="mlx", engine="mlx-gen", include_non_8bit=True, include_all_targets=True
             ):
-                if getattr(preset, "source", "") == "abstractframework-mlx-gen":
+                if getattr(preset, "source", "") == _ABSTRACTFRAMEWORK_MLX_GEN_SOURCE:
                     continue
                 if requested_n == _norm(getattr(preset, "repo_id", None)):
                     return ()
@@ -2204,7 +2221,7 @@ def _ambiguous_mlx_gen_selector_choices(selector: Any) -> Tuple[str, ...]:
     for preset in model_presets(
         target="mlx", engine="mlx-gen", include_non_8bit=True, include_all_targets=True
     ):
-        if getattr(preset, "source", "") != "abstractframework-mlx-gen":
+        if getattr(preset, "source", "") != _ABSTRACTFRAMEWORK_MLX_GEN_SOURCE:
             continue
         if getattr(preset, "quantization_bits", None) not in {4, 8}:
             continue
@@ -2477,7 +2494,7 @@ def _infer_base_model(*values: Any) -> Optional[str]:
     Exact identification is tried on every value before anything else: the value as an alias,
     then the repo id of a Hugging Face cache snapshot path or the last path component as an alias,
     then a local package's own card (`base_model`). A parent directory never decides. Name matching
-    is the last resort, for the families 0.3.36 resolved that way (`_legacy_base_model_match`).
+    is the last resort (`_legacy_base_model_match`).
     """
     for identify in (_exact_base_model, _card_base_model, _legacy_base_model_match):
         for value in values:
@@ -2521,8 +2538,7 @@ def _card_base_model(value: Any) -> Optional[str]:
 
 
 def _legacy_base_model_match(value: Any) -> Optional[str]:
-    # Name matching over the whole value, as 0.3.36 resolved these families; MiniMax-H3 (new in
-    # 0.3.37) is identified only exactly or by its card.
+    # Name matching over the whole value; MiniMax-H3 is identified only exactly or by its card.
     s = _norm(value)
     if not s:
         return None
@@ -2646,17 +2662,38 @@ def _preset_snapshot_dir(
         )
 
 
+@dataclass(frozen=True)
+class _Resolution:
+    """The model a backend's configuration resolved to (see `MFluxVisionBackend._resolve`)."""
+
+    source: Tuple[Any, ...]  # what it was resolved from: configuration and cache locations
+    model_path: str
+    base_model: str
+    stored_bits: Optional[int]  # the width its stored weights carry, when the catalog or its name says
+    prepared: bool  # a prepared package: MLX-Gen loads its weights as stored and takes no load-time quantize
+
+
+class _ModelKey(NamedTuple):
+    """What the held instance was built from; a request whose key differs builds another."""
+
+    model_path: str
+    base_model: str
+    variant: str
+    lora_paths: Tuple[str, ...] = ()
+    lora_scales: Tuple[float, ...] = ()
+    lora_target_roles: Tuple[str, ...] = ()
+    stream_blocks: bool = False
+    quantize: Optional[int] = None
+
+
 class MFluxVisionBackend(VisionBackend):
     """Compatibility class for the local MLX-Gen image and video backend."""
 
     def __init__(self, *, config: MFluxBackendConfig):
         self._cfg = config
         self._model: Any = None
-        self._model_key: Optional[Tuple[Any, ...]] = None
-        self._warmed_model_key: Optional[Tuple[Any, ...]] = None
-        self._resolved_model_path: Optional[str] = None
-        self._resolved_base_model: Optional[str] = None
-        self._resolved_quantization_bits: Optional[int] = None
+        self._model_key: Optional[_ModelKey] = None
+        self._warmed_model_key: Optional[_ModelKey] = None
         self._runtime_lock = threading.Lock()
         self._runtime_queue: Optional[queue.Queue[Any]] = None
         self._runtime_thread: Optional[threading.Thread] = None
@@ -2664,9 +2701,8 @@ class MFluxVisionBackend(VisionBackend):
         # Requests this backend normalized, by identity: one VisionManager normalized
         # (`normalize_*`) reaches the entry point as that object and is not normalized again.
         self._normalized_requests: weakref.WeakValueDictionary[int, Any] = weakref.WeakValueDictionary()
-        # The last resolution of the configured model: (what it was resolved from, (path, base model),
-        # the stored bits it inferred). See `_resolve_model`.
-        self._resolution: Optional[Tuple[Tuple[Any, ...], Tuple[str, str], Optional[int]]] = None
+        # The configured model as last resolved, until `unload()`. See `_resolve_model`.
+        self._resolution: Optional[_Resolution] = None
 
     def _ensure_runtime_thread(self) -> queue.Queue[Any]:
         existing = self._runtime_queue
@@ -2731,9 +2767,8 @@ class MFluxVisionBackend(VisionBackend):
         self._model = None
         self._model_key = None
         self._warmed_model_key = None
-        self._resolved_model_path = None
-        self._resolved_base_model = None
-        self._resolved_quantization_bits = None
+        # The next request resolves the configuration again (a newer snapshot, one that lost its weights).
+        self._resolution = None
         try:
             import gc
 
@@ -2754,8 +2789,7 @@ class MFluxVisionBackend(VisionBackend):
         # Forget the held instance and return its memory: when a run freed part of it (see
         # _MemoryPlan.releases_model), and before anything else is loaded when it is replaced
         # (another model key: stream_blocks, quantize, adapters, variant), so two instances are
-        # never in memory together. The resolved model path/base/bits stay: they describe the
-        # request just served.
+        # never in memory together. The resolution stays.
         self._model = None
         self._model_key = None
         self._warmed_model_key = None
@@ -2767,6 +2801,20 @@ class MFluxVisionBackend(VisionBackend):
     def has_loaded_model(self) -> bool:
         """Whether a model instance is held; False after a run that released it."""
         return self._model is not None
+
+    @property
+    def _resolved_model_path(self) -> Optional[str]:
+        return self._resolution.model_path if self._resolution is not None else None
+
+    @property
+    def _resolved_base_model(self) -> Optional[str]:
+        return self._resolution.base_model if self._resolution is not None else None
+
+    def _quantization_bits(self) -> Optional[int]:
+        # The width the held instance runs at: the load-time quantize it was built with, else its stored width.
+        if self._model_key is not None and self._model_key.quantize is not None:
+            return self._model_key.quantize
+        return self._resolution.stored_bits if self._resolution is not None else None
 
     def unload(self) -> None:
         if self._runtime_queue is None and self._runtime_thread is None:
@@ -2936,11 +2984,6 @@ class MFluxVisionBackend(VisionBackend):
                         "fibo-edit",
                         "fibo-edit-rmbg",
                     }
-            elif parameter == "control_image":
-                if package_support is False:
-                    result = False
-                else:
-                    result = resolved_base == "qwen-image"
             else:
                 result = package_support
 
@@ -3013,11 +3056,9 @@ class MFluxVisionBackend(VisionBackend):
                 parameter="mask",
                 route_field="supports_mask",
             ),
-            supports_control_image=self._effective_option_support(
-                "text_to_image",
-                parameter="control_image",
-                route_field="supports_control_image",
-            ),
+            # MLX-Gen runs structured control through its Qwen ControlNet variant and a ControlNet sidecar
+            # repository, neither of which this backend loads.
+            supports_control_image=False,
             memory_modes=self.supported_memory_modes(),
             quantize_bits=self.quantize_bits(),
             cancellation="step",
@@ -3044,6 +3085,24 @@ class MFluxVisionBackend(VisionBackend):
         self._normalized_requests[id(normalized)] = normalized
         return normalized
 
+    def _normalized_with_step_progress(
+        self,
+        request: Any,
+        progress_callback: Callable[[int, Optional[int]], None],
+        normalize: Callable[[Any], Any],
+        *,
+        task: str,
+    ) -> Any:
+        """`request` normalized once for `task`, carrying `progress_callback` for its run.
+
+        The copy holds the same checked values plus a progress callback (routing data no check
+        reads), so it is recorded as normalized and its entry point does not check it again.
+        """
+        normalized = self._normalize_once(request, normalize, task=task)
+        carrying = replace(normalized, extra={**(normalized.extra or {}), "_step_progress_callback": progress_callback})
+        self._normalized_requests[id(carrying)] = carrying
+        return carrying
+
     def _refuse_a_task_the_model_lacks(self, task: str) -> None:
         # Before anything is read or loaded: the configured model's family has no such route (an
         # image task on MiniMax-H3, a video task on FLUX.2, ...). A model chosen from the cache at
@@ -3058,18 +3117,15 @@ class MFluxVisionBackend(VisionBackend):
                 f"its tasks: {', '.join(tasks) or 'none'}."
             )
 
-    def _memory_plan(self, request: Any) -> _MemoryPlan:
-        # `request` is normalized: `resolve_memory_request` set its memory_mode.
-        mode = str(request.memory_mode)
+    def _memory_plan(self, mode: str) -> _MemoryPlan:
+        # `mode` is a checked memory_mode (`resolve_memory_request`); the model is the resolved one.
         flags = MLX_GEN_MEMORY_MODE_FLAGS[mode]
         low_ram = flags.low_ram
-        model_def = self._configured_model_def()
+        model_def = self._resolved_model_def()
         # The run frees part of the instance: a low-RAM run on every family but SeedVR2 (whose
         # low-RAM mode is the cache limit alone), and every Wan TI2V-5B run (its denoiser,
         # released before the decode, which mlx-gen cannot read again).
-        releases_model = (low_ram and getattr(model_def, "family", "") != "seedvr2-upscale") or (
-            getattr(model_def, "key", "") == WAN_TI2V_MODEL_KEY
-        )
+        releases_model = (low_ram and model_def.family != "seedvr2-upscale") or model_def.key == WAN_TI2V_MODEL_KEY
         return _MemoryPlan(
             mode=mode,
             low_ram=low_ram,
@@ -3098,17 +3154,11 @@ class MFluxVisionBackend(VisionBackend):
         It tiles the VAE, frees the text encoders before the denoising loop and the transformer
         after it.
         """
-        register = getattr(getattr(model, "callbacks", None), "register", None)
-        if not callable(register):
-            raise CapabilityNotSupportedError(
-                f"memory_mode='low' needs an MLX-Gen model with a callback registry; "
-                f"{type(model).__name__} has none. Run with memory_mode='default' "
-                "or upgrade mlx-gen.",
-                field="memory_mode",
-            )
         MemorySaver = _lazy_import_mlx_gen_memory_saver()
         # MemorySaver sets the cache limit it is given: the one this run holds.
-        register(MemorySaver(model=model, keep_transformer=False, cache_limit_bytes=_held_mlx_cache_limit()))
+        model.callbacks.register(
+            MemorySaver(model=model, keep_transformer=False, cache_limit_bytes=_held_mlx_cache_limit())
+        )
 
     def _config_lora_adapters(self) -> Tuple[Any, ...]:
         paths = [str(path).strip() for path in (self._cfg.lora_paths or ()) if str(path).strip()]
@@ -3306,29 +3356,6 @@ class MFluxVisionBackend(VisionBackend):
                         (row for row in route_rows if bool(row.get("default_for_task"))),
                         route_rows[0],
                     )
-                    params = dict(task_spec.get("params") or {})
-                    if any(bool(row.get("supports_control_image")) for row in route_rows):
-                        params.setdefault(
-                            "control_image",
-                            {
-                                "required": False,
-                                "description": (
-                                    "Structured control image for validated MLX-Gen routes."
-                                ),
-                            },
-                        )
-                        params.setdefault(
-                            "control_strength",
-                            {
-                                "required": False,
-                                "default": 0.85,
-                                "description": (
-                                    "Structured control strength for validated MLX-Gen routes."
-                                ),
-                            },
-                        )
-                    if params:
-                        task_spec["params"] = params
                     lora_states = {
                         str(row.get("lora_status") or "unsupported")
                         for row in route_rows
@@ -3629,18 +3656,30 @@ class MFluxVisionBackend(VisionBackend):
         return out
 
     def _resolve_model(self) -> Tuple[str, str]:
-        # Resolved once per configuration and cache location, and again only when the resolved
-        # directory is gone: finding a model scans the caches.
-        key = (self._cfg, str(_cache_root(self._cfg.cache_dir)), tuple(str(r) for r in framework_hf_cache_roots()))
-        cached = self._resolution
-        if cached is not None and cached[0] == key and Path(cached[1][0]).exists():
-            self._resolved_quantization_bits = cached[2]
-            return cached[1]
-        resolved = self._find_configured_model()
-        self._resolution = (key, resolved, self._resolved_quantization_bits)
-        return resolved
+        """(model directory, base model) of the configured model; `_resolve` holds the whole record."""
+        resolution = self._resolve()
+        return resolution.model_path, resolution.base_model
 
-    def _find_configured_model(self) -> Tuple[str, str]:
+    def _resolve(self) -> _Resolution:
+        # Resolved once per configuration and cache location until `unload()`, and again when the
+        # resolved directory is gone: finding a model scans the caches, and whether it is a prepared
+        # package reads its shard headers.
+        source = (self._cfg, str(_cache_root(self._cfg.cache_dir)), tuple(str(r) for r in framework_hf_cache_roots()))
+        cached = self._resolution
+        if cached is not None and cached.source == source and Path(cached.model_path).exists():
+            return cached
+        model_path, base_model, stored_bits = self._find_configured_model()
+        self._resolution = _Resolution(
+            source=source,
+            model_path=model_path,
+            base_model=base_model,
+            stored_bits=stored_bits,
+            prepared=_is_prepared_mlx_gen_package(model_path, self._cfg.model),
+        )
+        return self._resolution
+
+    def _find_configured_model(self) -> Tuple[str, str, Optional[int]]:
+        """(model directory, base model, stored width) of the configured model, else of a cached one."""
         configured_model = str(self._cfg.model or "").strip()
         configured_base = _infer_base_model(self._cfg.base_model)
         cache_root = _cache_root(self._cfg.cache_dir)
@@ -3667,8 +3706,7 @@ class MFluxVisionBackend(VisionBackend):
                         "Set vision_mflux_base_model / ABSTRACTVISION_MFLUX_BASE_MODEL "
                         "to the matching base family for that local path."
                     )
-                self._resolved_quantization_bits = _infer_bits_from_text(configured_model)
-                return str(expanded), base
+                return str(expanded), base, _infer_bits_from_text(configured_model)
 
             preset = _preset_for(configured_model)
             if preset is not None:
@@ -3684,14 +3722,12 @@ class MFluxVisionBackend(VisionBackend):
                 snapshot_dir = (
                     discovered_model.snapshot_dir if discovered_model is not None else None
                 )
+                preset_bits = int(preset.quantization_bits) if preset.quantization_bits is not None else None
                 if snapshot_dir is not None and _has_model_files(snapshot_dir):
-                    self._resolved_quantization_bits = (
-                        int(preset.quantization_bits)
-                        if preset.quantization_bits is not None
-                        else None
-                    )
-                    return str(snapshot_dir), _base_model_for_preset(
-                        configured_base, configured_model, preset
+                    return (
+                        str(snapshot_dir),
+                        _base_model_for_preset(configured_base, configured_model, preset),
+                        preset_bits,
                     )
                 explicit_note = _explicit_download_note(
                     preset.repo_id,
@@ -3712,11 +3748,10 @@ class MFluxVisionBackend(VisionBackend):
                     )
                 except RuntimeError as e:
                     raise OptionalDependencyMissingError(str(e)) from e
-                self._resolved_quantization_bits = (
-                    int(preset.quantization_bits) if preset.quantization_bits is not None else None
-                )
-                return str(downloaded), _base_model_for_preset(
-                    configured_base, configured_model, preset
+                return (
+                    str(downloaded),
+                    _base_model_for_preset(configured_base, configured_model, preset),
+                    preset_bits,
                 )
 
             if _looks_like_path(configured_model):
@@ -3736,8 +3771,7 @@ class MFluxVisionBackend(VisionBackend):
                             "Could not infer MLX-Gen base model. Set vision_mflux_base_model / "
                             "ABSTRACTVISION_MFLUX_BASE_MODEL."
                         )
-                    self._resolved_quantization_bits = _infer_bits_from_text(configured_model)
-                    return str(cached), base
+                    return str(cached), base, _infer_bits_from_text(configured_model)
                 if not self._cfg.allow_download:
                     raise OptionalDependencyMissingError(
                         f"MLX-Gen model repo {configured_model!r} is not cached locally. "
@@ -3763,8 +3797,7 @@ class MFluxVisionBackend(VisionBackend):
                     )
                 except RuntimeError as e:
                     raise OptionalDependencyMissingError(str(e)) from e
-                self._resolved_quantization_bits = _infer_bits_from_text(configured_model)
-                return str(downloaded), base
+                return str(downloaded), base, _infer_bits_from_text(configured_model)
 
             if not self._cfg.allow_download:
                 other = _first_other_engine_preset(configured_model)
@@ -3807,8 +3840,11 @@ class MFluxVisionBackend(VisionBackend):
         ):
             discovered_model = discovered.get(key)
             if discovered_model is not None:
-                self._resolved_quantization_bits = _infer_bits_from_text(discovered_model.repo_id)
-                return str(discovered_model.snapshot_dir), configured_base or key
+                return (
+                    str(discovered_model.snapshot_dir),
+                    configured_base or key,
+                    _infer_bits_from_text(discovered_model.repo_id),
+                )
 
         raise OptionalDependencyMissingError(
             "MLX-Gen backend is not configured and no downloaded MLX-Gen preset was found. "
@@ -3824,15 +3860,13 @@ class MFluxVisionBackend(VisionBackend):
         stream_blocks: bool = False,
         quantize: Optional[int] = None,
     ) -> Tuple[Any, _MFluxModelDef]:
-        model_path, base_model = self._resolve_model()
-        if base_model not in _MFLUX_MODELS:
-            raise OptionalDependencyMissingError(
-                f"Unsupported MLX-Gen base model {base_model!r}. "
-                f"Supported: {', '.join(sorted(_MFLUX_MODELS))}"
+        model_def = self._resolved_model_def()
+        model_path, _base_model = self._resolve_model()
+        ModelConfig, _DownloadRequiredError, Flux2Klein, _Flux2KleinEdit, ZImage, ZImageTurbo = (
+            _lazy_import_mflux()
         )
-        model_def = _MFLUX_MODELS[base_model]
         if quantize is not None:
-            quantize = self._checked_load_quantize(quantize, model_path=model_path)
+            quantize = self._checked_load_quantize(quantize)
             if stream_blocks:
                 raise CapabilityNotSupportedError(
                     "memory_mode='lowest' streams the stored weights from disk, which load-time "
@@ -3843,23 +3877,20 @@ class MFluxVisionBackend(VisionBackend):
         lora_init_kwargs = self._mlx_gen_lora_init_kwargs(effective_lora_adapters)
         if model_def.family != "wan-video":
             lora_init_kwargs.pop("lora_target_roles", None)
-        key = (
-            model_path,
-            base_model,
-            model_variant,
-            tuple(lora_init_kwargs.get("lora_paths") or ()),
-            tuple(lora_init_kwargs.get("lora_scales") or ()),
-            tuple(lora_init_kwargs.get("lora_target_roles") or ()),
-            bool(stream_blocks),
-            quantize,
+        key = _ModelKey(
+            model_path=model_path,
+            base_model=model_def.key,
+            variant=model_variant,
+            lora_paths=tuple(lora_init_kwargs.get("lora_paths") or ()),
+            lora_scales=tuple(lora_init_kwargs.get("lora_scales") or ()),
+            lora_target_roles=tuple(lora_init_kwargs.get("lora_target_roles") or ()),
+            stream_blocks=bool(stream_blocks),
+            quantize=quantize,
         )
         if self._model is not None and self._model_key == key:
             return self._model, model_def
         self._release_model()
 
-        ModelConfig, _DownloadRequiredError, Flux2Klein, _Flux2KleinEdit, ZImage, ZImageTurbo = (
-            _lazy_import_mflux()
-        )
         model_config = self._model_config_for_definition(ModelConfig, model_def, model_path=model_path)
         if model_def.family == "flux2":
             cls = _Flux2KleinEdit if model_variant == "flux2-edit" else Flux2Klein
@@ -3915,20 +3946,22 @@ class MFluxVisionBackend(VisionBackend):
             )
         self._model_key = key
         self._warmed_model_key = None
-        self._resolved_model_path = model_path
-        self._resolved_base_model = base_model
-        if quantize is not None:
-            self._resolved_quantization_bits = int(quantize)
         return self._model, model_def
 
     def quantize_bits(self, task: Optional[str] = None) -> Tuple[int, ...]:
         """Load-time `quantize` widths the configured model accepts (empty: refused).
 
         A route that publishes `validated_quantization_bits` accepts those; other routes accept
-        MLX-Gen's `--quantize` choices. A prepared package accepts none.
+        MLX-Gen's `--quantize` choices. A prepared package accepts none, nor does a host without the
+        MLX-Gen runtime.
         """
-        location = self._resolved_model_path or self._cfg.model
-        if _is_prepared_mlx_gen_package(location, self._cfg.model):
+        resolution = self._resolution
+        prepared = (
+            resolution.prepared
+            if resolution is not None
+            else _is_prepared_mlx_gen_package(self._cfg.model, self._cfg.model)
+        )
+        if prepared:
             return ()
         rows = self._route_rows(task)
         validated = sorted(
@@ -3936,13 +3969,13 @@ class MFluxVisionBackend(VisionBackend):
         )
         if validated:
             return tuple(validated)
-        if self._configured_family() == "minimax-h3":
-            # Without rows, MiniMax-H3's own quantization policies (never the generic choices).
-            try:
+        try:
+            if self._configured_family() == "minimax-h3":
+                # Without rows, MiniMax-H3's own quantization policies (never the generic choices).
                 return tuple(sorted(_lazy_import_mlx_gen_h3_planning().quantization_bits))
-            except OptionalDependencyMissingError:
-                return ()
-        return _mlx_gen_quantize_choices()
+            return _mlx_gen_quantize_choices()
+        except OptionalDependencyMissingError:
+            return ()
 
     def _configured_family(self) -> Optional[str]:
         model_def = self._configured_model_def()
@@ -3955,15 +3988,16 @@ class MFluxVisionBackend(VisionBackend):
         )
         return _MFLUX_MODELS.get(base_model)
 
-    def _checked_load_quantize(self, quantize: Any, *, model_path: str) -> int:
+    def _checked_load_quantize(self, quantize: Any) -> int:
+        """The one check of a load-time `quantize`, for every family, against the resolved model."""
         try:
             bits = int(quantize)
         except (TypeError, ValueError):
             raise ValueError(f"quantize must be an integer bit width (got {quantize!r}).") from None
-        # The same answer quantize_bits() reports, from the directory about to load.
-        if _is_prepared_mlx_gen_package(model_path, self._cfg.model):
+        resolution = self._resolve()
+        if resolution.prepared:
             raise CapabilityNotSupportedError(
-                f"{_public_model_name(model_path)} is a prepared MLX-Gen package whose stored weights are its "
+                f"{_public_model_name(resolution.model_path)} is a prepared MLX-Gen package whose stored weights are its "
                 "quantization; load it without quantize, or quantize the source snapshot.",
                 field="quantize", supported=(),
             )
@@ -3981,24 +4015,21 @@ class MFluxVisionBackend(VisionBackend):
         *,
         quantize: Optional[int],
     ) -> Tuple[Any, _MFluxModelDef]:
-        model_path, base_model = self._resolve_model()
-        if base_model not in _MFLUX_MODELS:
-            raise OptionalDependencyMissingError(
-                f"Unsupported MLX-Gen base model {base_model!r}. "
-                f"Supported: {', '.join(sorted(_MFLUX_MODELS))}"
-            )
-        model_def = _MFLUX_MODELS[base_model]
+        model_def = self._resolved_model_def()
+        model_path, _base_model = self._resolve_model()
         if model_def.family != "seedvr2-upscale":
             raise CapabilityNotSupportedError(
                 "MLX-Gen image_upscale is implemented for SeedVR2 models today "
                 f"(got {model_def.family!r})."
             )
-        key = (model_path, base_model, "seedvr2-upscale", quantize)
+        ModelConfig, SeedVR2, _ScaleFactor, _TilingConfig = _lazy_import_mflux_seedvr2()
+        if quantize is not None:
+            quantize = self._checked_load_quantize(quantize)
+        key = _ModelKey(model_path=model_path, base_model=model_def.key, variant="seedvr2-upscale", quantize=quantize)
         if self._model is not None and self._model_key == key:
             return self._model, model_def
         self._release_model()
 
-        ModelConfig, SeedVR2, _ScaleFactor, _TilingConfig = _lazy_import_mflux_seedvr2()
         model_config = self._model_config_for_definition(ModelConfig, model_def)
         try:
             self._model = SeedVR2(
@@ -4012,15 +4043,13 @@ class MFluxVisionBackend(VisionBackend):
             raise
         self._model_key = key
         self._warmed_model_key = None
-        self._resolved_model_path = model_path
-        self._resolved_base_model = base_model
-        self._resolved_quantization_bits = quantize or _infer_bits_from_text(model_path)
         return self._model, model_def
 
-    def _warmup_request(self, model_def: _MFluxModelDef, quantize: Optional[int]) -> ImageGenerationRequest:
+    def _warmup_request(
+        self, model_def: _MFluxModelDef, mode: str, quantize: Optional[int]
+    ) -> ImageGenerationRequest:
         return ImageGenerationRequest(
-            # Explicit: a process-wide ABSTRACTVISION_MEMORY_MODE must not release the preloaded model.
-            memory_mode=MEMORY_MODE_DEFAULT,
+            memory_mode=mode,
             prompt="abstractvision preload warmup",
             steps=int(model_def.default_steps),
             guidance_scale=model_def.default_guidance,
@@ -4038,32 +4067,37 @@ class MFluxVisionBackend(VisionBackend):
             raise
 
     def _preload_model(self, memory_mode: Optional[str], quantize: Optional[int]) -> None:
-        # Checked as a request carrying them is, before anything is resolved or loaded; then loaded
-        # as such a request loads it, so that request reuses the instance.
-        family = self._configured_family()
-        task = (
-            "image_upscale"
-            if family == "seedvr2-upscale"
-            else ("text_to_video" if family in _VIDEO_FAMILIES else "text_to_image")
-        )
-        mode, quantize = self._resolve_preload_options(memory_mode, quantize, task=task)
+        # The values are checked as a request of the model's task carrying them is, before the
+        # model is resolved (which may download it).
+        mode, quantize = self._resolve_preload_options(memory_mode, quantize, task=self._preload_task())
         model_def = self._resolved_model_def()
-        if model_def.family == "seedvr2-upscale":
-            self._ensure_seedvr2_model_impl(
-                quantize=quantize if quantize is not None else self._default_upscale_quantize()
-            )
-            self._mark_preloaded()
-            return
-        stream_blocks = MLX_GEN_MEMORY_MODE_FLAGS[mode].stream_blocks
-        _model, model_def = self._ensure_model_impl(stream_blocks=stream_blocks, quantize=quantize)
+        task = self._preload_task()
+        plan = self._memory_plan(mode)
+        # Loaded as the first request with these values starts, under the same cache hold, into the
+        # instance that request reuses. In a mode whose runs drop the model, that request drops it:
+        # the preloaded instance serves one request, and no warm-up runs.
+        with self._memory_session(replace(plan, releases_model=False)):
+            if model_def.family == "seedvr2-upscale":
+                self._ensure_seedvr2_model_impl(
+                    quantize=quantize if quantize is not None else self._default_upscale_quantize()
+                )
+            else:
+                self._ensure_model_impl(
+                    edit_variant=task == "image_to_image", stream_blocks=plan.stream_blocks, quantize=quantize
+                )
         if self._model_key is not None and self._warmed_model_key == self._model_key:
             return
-        if model_def.family in _VIDEO_FAMILIES or stream_blocks:
-            # A video model has no image warm-up; its first run compiles its own kernels. The
-            # warm-up runs in "default", which would load a streamed model again without streaming.
+        if task != "text_to_image" or plan.releases_model:
+            # Only a text-to-image model has a warm-up (one image generation); a video, edit-only or
+            # upscale model's first run compiles its own kernels.
             self._mark_preloaded()
             return
-        self._generate_impl(self._warmup_request(model_def, quantize))
+        self._generate_impl(self._warmup_request(model_def, mode, quantize))
+
+    def _preload_task(self) -> str:
+        # The task whose requests a preload serves: the first of these the model has a route for.
+        tasks = self._supported_task_names()
+        return next((task for task in _PRELOAD_TASK_ORDER if task in tasks), "text_to_image")
 
     def _mark_preloaded(self) -> None:
         self._warmed_model_key = self._model_key
@@ -4127,6 +4161,12 @@ class MFluxVisionBackend(VisionBackend):
         )
 
     def _normalize_image_generation(self, request: ImageGenerationRequest) -> ImageGenerationRequest:
+        if request.control_image is not None or (request.extra or {}).get("control_image") is not None:
+            raise CapabilityNotSupportedError(
+                "The MLX-Gen backend does not support structured control images (control_image).",
+                field="control_image",
+                supported=(),
+            )
         # The mode and options are checked before the model is resolved, which may download it.
         request, _mode = self.resolve_memory_request(request, task="text_to_image")
         model_def = self._resolved_model_def()
@@ -4156,26 +4196,11 @@ class MFluxVisionBackend(VisionBackend):
         negative_prompt = request.negative_prompt
         if negative_prompt and not model_def.supports_negative_prompt:
             negative_prompt = None
-        extra = dict(request.extra or {})
-        control_image = request.control_image
-        if control_image is None and extra.get("control_image") is not None:
-            raw_control_image = extra.pop("control_image")
-            if isinstance(raw_control_image, (bytes, bytearray)):
-                control_image = bytes(raw_control_image)
-        control_strength = request.control_strength
-        if control_strength is None and extra.get("control_strength") is not None:
-            try:
-                control_strength = float(extra.get("control_strength"))
-            except Exception:
-                control_strength = None
         return replace(
             request,
             steps=steps,
             guidance_scale=guidance,
             negative_prompt=negative_prompt,
-            control_image=control_image,
-            control_strength=control_strength,
-            extra=extra,
         )
 
     def normalize_image_edit_request(
@@ -4574,21 +4599,16 @@ class MFluxVisionBackend(VisionBackend):
         if text in {"", "0", "none", "false", "off", "no"}:
             return None
         try:
-            quantize = int(value)
-        except Exception as exc:
-            raise ValueError("image_upscale quantize must be 3, 4, 5, 6, 8, or none.") from exc
-        if quantize not in {3, 4, 5, 6, 8}:
-            raise ValueError("image_upscale quantize must be 3, 4, 5, 6, 8, or none.")
-        return quantize
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"image_upscale quantize must be a bit width or none (got {value!r}).") from None
 
     def _default_upscale_quantize(self) -> Optional[int]:
         # A prepared package already stores its quantization; the 16-bit source is quantized to 8.
-        model_path, base_model = self._resolve_model()
-        if getattr(_MFLUX_MODELS.get(base_model), "family", None) != "seedvr2-upscale":
+        resolution = self._resolve()
+        if getattr(_MFLUX_MODELS.get(resolution.base_model), "family", None) != "seedvr2-upscale":
             return None
-        if _is_prepared_mlx_gen_package(model_path, self._cfg.model):
-            return None
-        return 8
+        return None if resolution.prepared else 8
 
     def normalize_image_upscale_request(
         self,
@@ -4869,20 +4889,11 @@ class MFluxVisionBackend(VisionBackend):
                     break
         return None
 
-    def _generate_impl(
-        self,
-        request: ImageGenerationRequest,
-        *,
-        image_path: Optional[Path] = None,
-        image_strength: Optional[float] = None,
-    ) -> GeneratedAsset:
-        task = "image_to_image" if image_path is not None else "text_to_image"
-        request = self._normalize_once(request, self._normalize_image_generation, task=task)
-        memory_plan = self._memory_plan(request)
+    def _generate_impl(self, request: ImageGenerationRequest) -> GeneratedAsset:
+        request = self._normalize_once(request, self._normalize_image_generation, task="text_to_image")
+        memory_plan = self._memory_plan(request.memory_mode)
         with self._memory_session(memory_plan):
-            return self._generate_run(
-                request, memory_plan, image_path=image_path, image_strength=image_strength
-            )
+            return self._generate_run(request, memory_plan)
 
     def _generate_run(
         self,
@@ -4902,11 +4913,6 @@ class MFluxVisionBackend(VisionBackend):
             quantize=request.quantize,
         )
         extra = dict(request.extra or {})
-        if image_path is not None and request.control_image is not None:
-            raise CapabilityNotSupportedError(
-                "MLX-Gen structured control images are only available for text-to-image requests.",
-                field="control_image",
-            )
         seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
         steps = int(request.steps) if request.steps is not None else model_def.default_steps
         width = int(request.width) if request.width is not None else int(self._cfg.default_width)
@@ -4937,30 +4943,6 @@ class MFluxVisionBackend(VisionBackend):
             kwargs["image_path"] = image_path
             kwargs["image_strength"] = float(
                 image_strength if image_strength is not None else extra.pop("image_strength", 0.4)
-            )
-        control_image = request.control_image if image_path is None else None
-        control_strength = request.control_strength
-        tmp_control_path: Optional[Path] = None
-        if control_image is not None:
-            self._require_route_option_support_if_known(
-                "text_to_image",
-                route_field="supports_control_image",
-                field="control_image",
-                error_message=(
-                    "MLX-Gen structured control is not available for the selected model route. "
-                    "Inspect `abstractvision show-model <model-id>`; the current validated route "
-                    "is `AbstractFramework/qwen-image-8bit`."
-                ),
-            )
-            control_suffix = self._sniff_image_suffix(control_image)
-            with tempfile.NamedTemporaryFile(
-                mode="wb", suffix=control_suffix, delete=False
-            ) as control_fp:
-                tmp_control_path = Path(control_fp.name)
-                control_fp.write(control_image)
-            kwargs["controlnet_image_path"] = str(tmp_control_path)
-            kwargs["controlnet_strength"] = float(
-                control_strength if control_strength is not None else 0.85
             )
         progress_task = "image-to-image" if image_path is not None else "text-to-image"
         default_task = "image_to_image" if image_path is not None else "text_to_image"
@@ -4993,9 +4975,6 @@ class MFluxVisionBackend(VisionBackend):
             pil_image.save(buf, format="PNG")
             data = buf.getvalue()
             image_strength_used = kwargs.get("image_strength") if image_path is not None else None
-            control_strength_used = (
-                kwargs.get("controlnet_strength") if tmp_control_path is not None else None
-            )
             requested_loras = _public_lora_adapters(effective_loras)
             return GeneratedAsset(
                 media_type="image",
@@ -5008,7 +4987,7 @@ class MFluxVisionBackend(VisionBackend):
                     "runtime_package": MLX_GEN_RUNTIME,
                     "model": _public_model_name(self._resolved_model_path),
                     "base_model": self._resolved_base_model,
-                    "quantization_bits": self._resolved_quantization_bits,
+                    "quantization_bits": self._quantization_bits(),
                     "seed": seed,
                     "steps": steps,
                     "width": width,
@@ -5021,22 +5000,11 @@ class MFluxVisionBackend(VisionBackend):
                         if image_strength_used is not None
                         else {}
                     ),
-                    **({"control_image": True} if tmp_control_path is not None else {}),
-                    **(
-                        {"control_strength": control_strength_used}
-                        if control_strength_used is not None
-                        else {}
-                    ),
                     **memory_plan.metadata(),
                 },
             )
         finally:
             unsubscribe()
-            if tmp_control_path is not None:
-                try:
-                    tmp_control_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
         return self._run_on_runtime_thread(self._generate_impl, request)
@@ -5048,13 +5016,15 @@ class MFluxVisionBackend(VisionBackend):
     ) -> GeneratedAsset:
         if progress_callback is None:
             return self.generate_image(request)
-        extra = dict(request.extra or {})
-        extra["_step_progress_callback"] = progress_callback
-        return self.generate_image(replace(request, extra=extra))
+        return self.generate_image(
+            self._run_on_runtime_thread(
+                self._normalized_with_step_progress, request, progress_callback, self._normalize_image_generation, task="text_to_image"
+            )
+        )
 
     def _edit_image_impl(self, request: ImageEditRequest) -> GeneratedAsset:
         request = self._normalize_once(request, self._normalize_image_edit, task="image_to_image")
-        memory_plan = self._memory_plan(request)
+        memory_plan = self._memory_plan(request.memory_mode)
         with self._memory_session(memory_plan):
             return self._edit_image_run(request, memory_plan)
 
@@ -5222,7 +5192,7 @@ class MFluxVisionBackend(VisionBackend):
                         "runtime_package": MLX_GEN_RUNTIME,
                         "model": _public_model_name(self._resolved_model_path),
                         "base_model": self._resolved_base_model,
-                        "quantization_bits": self._resolved_quantization_bits,
+                        "quantization_bits": self._quantization_bits(),
                         "seed": seed,
                         "steps": steps,
                         "reference_image_count": len(image_paths),
@@ -5268,13 +5238,15 @@ class MFluxVisionBackend(VisionBackend):
     ) -> GeneratedAsset:
         if progress_callback is None:
             return self.edit_image(request)
-        extra = dict(request.extra or {})
-        extra["_step_progress_callback"] = progress_callback
-        return self.edit_image(replace(request, extra=extra))
+        return self.edit_image(
+            self._run_on_runtime_thread(
+                self._normalized_with_step_progress, request, progress_callback, self._normalize_image_edit, task="image_to_image"
+            )
+        )
 
     def _upscale_image_impl(self, request: ImageUpscaleRequest) -> GeneratedAsset:
         request = self._normalize_once(request, self._normalize_image_upscale, task="image_upscale")
-        memory_plan = self._memory_plan(request)
+        memory_plan = self._memory_plan(request.memory_mode)
         # `mlxgen upscale --low-ram` on images sets the 1 GB MLX cache and nothing else: it
         # registers no MemorySaver and keeps SeedVR2's own tiling. The instance stays loaded.
         with self._memory_session(memory_plan):
@@ -5348,7 +5320,7 @@ class MFluxVisionBackend(VisionBackend):
                 "task": "image_upscale",
                 "model": _public_model_name(self._resolved_model_path),
                 "base_model": self._resolved_base_model,
-                "quantization_bits": self._resolved_quantization_bits,
+                "quantization_bits": self._quantization_bits(),
                 "seed": seed,
                 "steps": 1,
                 "resolution": resolution_meta,
@@ -5371,9 +5343,11 @@ class MFluxVisionBackend(VisionBackend):
     ) -> GeneratedAsset:
         if progress_callback is None:
             return self.upscale_image(request)
-        extra = dict(request.extra or {})
-        extra["_step_progress_callback"] = progress_callback
-        return self.upscale_image(replace(request, extra=extra))
+        return self.upscale_image(
+            self._run_on_runtime_thread(
+                self._normalized_with_step_progress, request, progress_callback, self._normalize_image_upscale, task="image_upscale"
+            )
+        )
 
     def generate_angles(self, request: MultiAngleRequest) -> list[GeneratedAsset]:
         raise CapabilityNotSupportedError(
@@ -5437,7 +5411,7 @@ class MFluxVisionBackend(VisionBackend):
         task = "text_to_video" if isinstance(request, VideoGenerationRequest) else "image_to_video"
         # Free for an image-to-video request, which `_image_to_video_impl` normalized.
         request = self._normalize_once(request, self._normalize_video, task=task)
-        memory_plan = self._memory_plan(request)
+        memory_plan = self._memory_plan(request.memory_mode)
         # In low-RAM mode the 1 GB cache limit holds from before the model loads through the decode.
         with self._memory_session(memory_plan):
             return self._generate_video_run(
@@ -5523,11 +5497,9 @@ class MFluxVisionBackend(VisionBackend):
         # decode lowered the measured MLX peak from 60.8 to 50.6 GiB at
         # 1280x704x121 (the plan frees it in every mode; the instance is then
         # rebuilt on the next request, about a minute against a run of several).
-        # Low-RAM mode is `mlxgen generate --low-ram` on a Wan route (wan_generate.py):
-        # the MLX cache is cleared after every step and transformer block; a single-seed
-        # run releases the denoisers before the decode and, on the dual-expert A14B
-        # models, the inactive expert. A batch item that is not the last keeps both, as
-        # the CLI does for several seeds.
+        # Low-RAM mode is `mlxgen generate --low-ram` on a Wan route for one seed (wan_generate.py):
+        # the MLX cache is cleared after every step and transformer block, and the run releases
+        # the denoisers before the decode and, on the dual-expert A14B models, the inactive expert.
         if memory_plan.releases_model:
             kwargs["release_denoisers_before_decode"] = True
             if memory_plan.low_ram and model_def.key in {WAN_T2V_A14B_MODEL_KEY, WAN_I2V_A14B_MODEL_KEY}:
@@ -5576,7 +5548,7 @@ class MFluxVisionBackend(VisionBackend):
                 "task": task,
                 "model": _public_model_name(self._resolved_model_path),
                 "base_model": self._resolved_base_model,
-                "quantization_bits": self._resolved_quantization_bits,
+                "quantization_bits": self._quantization_bits(),
                 "seed": seed,
                 "steps": steps,
                 "width": width,
@@ -5611,8 +5583,8 @@ class MFluxVisionBackend(VisionBackend):
 
         The prompt is passed unchanged: MLX-Gen composes the structured prompt (and, for a
         keyframe, its picture reference) from `prompt`, `soundscape` and `music`. Low-RAM mode is
-        the 1 GB cache (held by the session) plus `release_transformer=True`, except on a batch
-        item before the last; the session then drops the instance, as for every other family.
+        the 1 GB cache (held by the session) plus `release_transformer=True`; the session then
+        drops the instance, as for every other family.
         """
         effective_loras = self._effective_request_lora_adapters(request)
         row = self._h3_route_row(task)
@@ -5701,7 +5673,7 @@ class MFluxVisionBackend(VisionBackend):
                 "task": task,
                 "model": _public_model_name(self._resolved_model_path),
                 "base_model": self._resolved_base_model,
-                "quantization_bits": self._resolved_quantization_bits,
+                "quantization_bits": self._quantization_bits(),
                 "seed": seed,
                 "steps": engine.get("steps"),
                 "width": engine.get("width"),
@@ -5742,13 +5714,13 @@ class MFluxVisionBackend(VisionBackend):
         modes = tuple(self.supported_memory_modes(task))
         lower = [mode for mode in modes[modes.index(memory_plan.mode) + 1 :]] if memory_plan.mode in modes else []
         advice = (
-            f"memory_mode={' or '.join(repr(mode) for mode in lower)} lowers the peak; "
+            f"memory_mode={' or '.join(repr(mode) for mode in lower)} lowers the peak, as does"
             if lower
-            else "this is the lowest memory mode; "
+            else "This is the lowest memory mode; what lowers the peak is"
         )
         return GpuOutOfMemoryError(
-            f"MLX-Gen cannot fit this {task} run in memory with memory_mode={memory_plan.mode!r}: "
-            f"{error} {advice}a shorter clip or a smaller canvas does too."
+            f"MLX-Gen cannot fit this {task} run in memory with memory_mode={memory_plan.mode!r} ({error}). "
+            f"{advice} a shorter clip or a smaller canvas."
         )
 
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
@@ -5761,9 +5733,11 @@ class MFluxVisionBackend(VisionBackend):
     ) -> GeneratedAsset:
         if progress_callback is None:
             return self.generate_video(request)
-        extra = dict(request.extra or {})
-        extra["_step_progress_callback"] = progress_callback
-        return self.generate_video(replace(request, extra=extra))
+        return self.generate_video(
+            self._run_on_runtime_thread(
+                self._normalized_with_step_progress, request, progress_callback, self._normalize_video, task="text_to_video"
+            )
+        )
 
     def _image_to_video_impl(self, request: ImageToVideoRequest) -> GeneratedAsset:
         request = self._normalize_once(request, self._normalize_video, task="image_to_video")
@@ -5811,9 +5785,11 @@ class MFluxVisionBackend(VisionBackend):
     ) -> GeneratedAsset:
         if progress_callback is None:
             return self.image_to_video(request)
-        extra = dict(request.extra or {})
-        extra["_step_progress_callback"] = progress_callback
-        return self.image_to_video(replace(request, extra=extra))
+        return self.image_to_video(
+            self._run_on_runtime_thread(
+                self._normalized_with_step_progress, request, progress_callback, self._normalize_video, task="image_to_video"
+            )
+        )
 
 
 MLXGenBackendConfig = MFluxBackendConfig

@@ -23,6 +23,14 @@ def _mlx_gen_installed() -> bool:
     return True
 
 
+def _yaml_installed() -> bool:
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 _PREPARED_SHARD = b"mlx-gen prepared shard"
 
 
@@ -62,13 +70,21 @@ class TestBaseModelIdentification(unittest.TestCase):
         # A Hugging Face cache snapshot is named by its repo id, not by its revision.
         snapshot = "/Users/someone/.cache/huggingface/hub/models--AbstractFramework--minimax-h3-4bit/snapshots/0a1b2c"
         self.assertEqual(self.infer(snapshot), "minimax-h3")
-        # A folder of any name: the package's own card.
-        package = _package(
-            self.tmp,
-            "my-video-model",
-            card="---\nbase_model: MiniMaxAI/MiniMax-H3\nlibrary_name: mlx-gen\n---\n",
-        )
-        self.assertEqual(self.infer(str(package)), "minimax-h3")
+
+    @unittest.skipUnless(_yaml_installed(), "PyYAML is not installed (it comes with huggingface_hub)")
+    def test_a_folder_of_any_name_is_identified_by_its_cards_top_level_base_model(self):
+        cards = {
+            "string": ("base_model: MiniMaxAI/MiniMax-H3\nlibrary_name: mlx-gen\n", "minimax-h3"),
+            "flow list": ("base_model: [MiniMaxAI/MiniMax-H3]\n", "minimax-h3"),
+            "block list": ("base_model:\n  - MiniMaxAI/MiniMax-H3\n  - other/model\n", "minimax-h3"),
+            "quoted": ("base_model: 'MiniMaxAI/MiniMax-H3'  # the source\n", "minimax-h3"),
+            "nested key only": ("model-index:\n  base_model: MiniMaxAI/MiniMax-H3\n", None),
+            "not YAML": ("base_model: [MiniMaxAI/MiniMax-H3\n", None),
+        }
+        for name, (front_matter, expected) in cards.items():
+            with self.subTest(card=name):
+                package = _package(self.tmp, f"model-{len(name)}-{name[0]}", card=f"---\n{front_matter}---\n# Card\n")
+                self.assertEqual(self.infer(str(package)), expected)
 
     def test_a_parent_directory_never_decides(self):
         self.assertEqual(
@@ -134,10 +150,10 @@ class TestPreparedPackage(unittest.TestCase):
         if prepared:
             self.assertEqual(tuple(backend.get_capabilities().quantize_bits), ())
             with self.assertRaisesRegex(CapabilityNotSupportedError, "prepared MLX-Gen package"):
-                backend._checked_load_quantize(8, model_path=str(model_path))
+                backend._checked_load_quantize(8)
         else:
             self.assertEqual(tuple(backend.get_capabilities().quantize_bits), (3, 4, 5, 6, 8))
-            self.assertEqual(backend._checked_load_quantize(8, model_path=str(model_path)), 8)
+            self.assertEqual(backend._checked_load_quantize(8), 8)
 
     def test_a_folder_name_never_makes_a_package_prepared(self):
         from abstractvision.backends.mflux import _is_prepared_mlx_gen_package
@@ -473,12 +489,6 @@ _IMAGE_ROUTE_SAMPLES = {
         "effective_steps": 12,
         "mask_strength": 1.0,
     },
-    "text_to_image (Qwen control)": {
-        **_IMAGE,
-        "controlnet_image_path": f"{_P}/tmp/control.png",
-        "controlnet_strength": 1.0,
-        "controlnet_model": "InstantX/Qwen-Image-ControlNet-Union",
-    },
     "image_upscale (SeedVR2, input carrying an earlier run's metadata)": {
         **_IMAGE,
         "model": f"{_P}/seedvr2-3b-8bit",
@@ -622,6 +632,11 @@ class TestEngineMetadataPaths(unittest.TestCase):
                     if key not in _TEMPORARY_PATH_METADATA_KEYS and _P not in json.dumps(value):
                         self.assertEqual(cleaned[key], value, key)
 
+        # An edit's image list and its mask are files written for the run: left out, as the source is.
+        cleaned = _public_engine_metadata(_ROUTE_SAMPLES["image_to_image (edit, references and mask)"])
+        for key in ("image_path", "image_paths", "masked_image_path"):
+            self.assertNotIn(key, cleaned)
+
         cleaned = _public_engine_metadata(_ROUTE_SAMPLES["MiniMax-H3 (soundtrack muxed)"])
         self.assertEqual(cleaned["model"], "minimax-h3-8bit")
         self.assertEqual(
@@ -670,8 +685,6 @@ class TestEngineMetadataPaths(unittest.TestCase):
             generation_time=1.0,
             lora_paths=[f"{_P}/a.safetensors"],
             lora_scales=[1.0],
-            controlnet_image_path=f"{_P}/control.png",
-            controlnet_strength=1.0,
             image_path=f"{_P}/image.png",
             image_paths=[f"{_P}/image.png"],
             image_strength=0.5,

@@ -90,6 +90,10 @@ class TestMlxGenHostContract(unittest.TestCase):
                 return_value=(_FakeModelConfig, FileNotFoundError, _FakeFlux2, _FakeFlux2, object, object),
             )
         )
+        # MLX-Gen's `--quantize` choices, which the stand-in runtime does not provide.
+        self.stack.enter_context(
+            patch("abstractvision.backends.mflux._mlx_gen_quantize_choices", return_value=(3, 4, 5, 6, 8))
+        )
         self.rows = _flux_rows()
         self.stack.enter_context(
             patch(

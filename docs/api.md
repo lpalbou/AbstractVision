@@ -156,11 +156,10 @@ normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
 executable on `PATH` whenever a backend returns frame sequences for local
 packaging.
 
-For MLX-Gen text-to-image, `ImageGenerationRequest` includes typed
-`control_image` and `control_strength` fields for the validated structured-control
-route `AbstractFramework/qwen-image-8bit`. The control image is a structure guide
-such as edges, sketch, or pose, not a source-image edit input. These are not
-generic cross-backend hints: unsupported backends reject them explicitly.
+`ImageGenerationRequest` includes typed `control_image` and `control_strength`
+fields: a structure guide such as edges, sketch, or pose, not a source-image edit
+input. No built-in backend applies them; each one, MLX-Gen included, refuses a
+`control_image` with `CapabilityNotSupportedError` (`field="control_image"`).
 
 ### Local example (MLX-Gen backend)
 
@@ -325,12 +324,15 @@ and logs that once per process, while a mode passed on the request is refused.
 carrying those values would, so the first such request reuses it: the values
 are checked by the same function as a request's, before anything loads, with
 the same refusals; `memory_mode=None` is the process default under the same rule.
-A backend that takes no load-time quantize refuses `quantize` there. MLX-Gen
-warms up in `"default"`, since `"low"` would release the model it preloads; on
-MLX-Gen, `preload()` loads the model and runs one image generation as its
-warm-up on image and edit models; video models (Wan, MiniMax-H3) are loaded
-without a warm-up run. When anything in a preload fails, the model it loaded is
-dropped before the error is raised.
+A backend that takes no load-time quantize refuses `quantize` there. On
+MLX-Gen, `preload()` loads the model as the first request with those values
+starts it (under the same 1 GB cache hold in `"low"` and `"lowest"`) into the
+instance that request reuses, so in a mode whose runs drop the model the
+preloaded instance serves one request. A text-to-image model loaded for a mode
+that keeps it also runs one image generation in that mode as its warm-up;
+edit-only, video (Wan, MiniMax-H3) and upscale (SeedVR2) models load without one.
+When anything in a preload fails, the model it loaded is dropped before the error
+is raised.
 
 ```python
 asset_or_ref = vm.generate_video(
@@ -543,10 +545,11 @@ What an application embedding `VisionManager` can rely on:
   id (a Hugging Face cache snapshot) or its directory name (another local path),
   and adapters the same way (`org/name:file.safetensors`, or the file name):
   every field of the engine's metadata that holds a path (`model`, `lora_paths`,
-  `lora_application_reports`, the reference, mask and control image paths, the file
-  `video_health` checked, the `original_*` fields an upscale copies from its input),
-  in `metadata["mlx_gen"]` and its top-level copies, and `requested_lora_adapters`; the paths of the temporary files AbstractVision wrote
-  for a run (`image_path`, `video_path`, `audio_sidecar_path`) are left out.
+  `lora_application_reports`, the file `video_health` checked, the `original_*`
+  fields an upscale copies from its input), in `metadata["mlx_gen"]` and its
+  top-level copies, and `requested_lora_adapters`; the fields naming the files
+  AbstractVision wrote for a run (`image_path`, `image_paths`, `masked_image_path`,
+  `video_path`, `audio_sidecar_path`) are left out.
 - **Route rows.** `vm.describe_routes(model=None, task=None)` returns MLX-Gen's
   capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,
   audio, memory (`measured_runs`, peaks), quantization. Other
