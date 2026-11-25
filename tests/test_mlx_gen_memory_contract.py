@@ -176,7 +176,7 @@ class TestMlxGenMiniMaxH3Contract(unittest.TestCase):
             model_inventory._mlx_gen_rows.cache_clear()
             started = time.perf_counter()
             peaks = {
-                repo: model_inventory.memory_peaks(repo, base_model="minimax-h3-turbo")
+                repo: model_inventory.memory_peaks(repo)
                 for repo in ("AbstractFramework/minimax-h3-8bit", "AbstractFramework/minimax-h3-4bit")
             }
             self.assertLess(time.perf_counter() - started, 1.0)
@@ -192,6 +192,17 @@ class TestMlxGenMiniMaxH3Contract(unittest.TestCase):
         self.assertEqual(tuple(flags.engine_mode for flags in MLX_GEN_MEMORY_MODE_FLAGS.values()), MINIMAX_H3_MODES)
         for table in MINIMAX_H3_SMALLEST_TESTED_MACHINE.values():
             self.assertLessEqual(set(table), set(MINIMAX_H3_MODES))
+
+    def test_measured_runs_name_no_schedule_and_are_the_same_on_every_schedule(self):
+        # Why `memory_peaks` takes no schedule: nothing in a run tells which schedule it ran with.
+        runs = {
+            schedule: [row["measured_runs"] for row in self._backend(base_model=schedule).describe_routes()]
+            for schedule in ("minimax-h3", "minimax-h3-turbo", "minimax-h3-turbo-544p")
+        }
+        self.assertEqual(runs["minimax-h3"], runs["minimax-h3-turbo"])
+        self.assertEqual(runs["minimax-h3"], runs["minimax-h3-turbo-544p"])
+        keys = {key for rows in runs["minimax-h3"] for run in rows for key in run}
+        self.assertFalse(keys & {"base_model", "schedule", "model", "turbo_lora", "adapter"}, keys)
 
     def test_schedule_config_is_the_one_the_cli_builds(self):
         from mflux.models.common.config import ModelConfig

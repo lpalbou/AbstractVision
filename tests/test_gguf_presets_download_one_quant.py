@@ -80,7 +80,7 @@ class GgufPresetsDownloadOneQuantTests(unittest.TestCase):
             plan = md.plan_model_preset_download(_preset("Green-Sky/SD-Turbo-GGUF"))
             with self.assertRaises(RuntimeError):
                 md.download_model_preset(_preset("Green-Sky/SD-Turbo-GGUF"))
-        self.assertEqual([f.name for f in plan.files], ["README.md", "sd_turbo-f16-q8_0.gguf"])
+        self.assertEqual([f.name for f in plan.package.files], ["README.md", "sd_turbo-f16-q8_0.gguf"])
         got = list(filter_repo_objects(listing, allow_patterns=captured["allow_patterns"],
                                        ignore_patterns=captured.get("ignore_patterns")))
         self.assertEqual(sorted(got), ["README.md", "sd_turbo-f16-q8_0.gguf"])

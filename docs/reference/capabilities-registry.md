@@ -34,7 +34,7 @@ Important boundary:
 
 - `vision_model_capabilities.json` is the curated package view of model-family tasks, downloadable variants, and model-level defaults.
 - `vision_adapter_capabilities.json` is the curated package view of adapter families, compatible base-model aliases, and adapter default/recommended parameters.
-- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask`, `control_image`, or LoRA target roles at runtime.
+- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask` or LoRA target roles at runtime (it refuses `control_image` on every route in this release).
 
 ## What the registry is used for
 
@@ -150,6 +150,10 @@ Some models include a `downloads` list to document what AbstractVision considers
   packages for one engine and no `--bits` is given
 - optional `gated: true`: the Hugging Face repository is gated; downloading it needs its licence
   accepted on the repository page (the model's optional `license_name` names it in messages)
+- optional `explicit_download: true`: generation (MLX-Gen and Diffusers) never downloads this repository, even with
+  `allow_download` (`ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`, `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`); it is fetched only by an explicit
+  `abstractvision download`, and the refusal names that command. Today the four MiniMax-H3 repositories
+  carry it. `gated` says only whether the Hub asks for the licence to be accepted.
 
 Download sizes are not stored: `download` and `download --dry-run` read them from the Hub listing.
 

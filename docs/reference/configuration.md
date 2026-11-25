@@ -16,7 +16,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 
 - `abstractvision models` — list known registry model ids (one per line); `--json` adds each model's downloads with the fields `show-model` prints
 - `abstractvision tasks` — list known tasks
-- `abstractvision show-model <id> [--json]` — print a model’s tasks + params and, for each download, its size, whether the Hugging Face repository is gated (and the licence to accept), whether it is in the local cache (and its size there), the `memory_mode` values this host can run and, for MLX-Gen packages whose capability rows publish measured runs, the peak memory of each mode and the smallest memory it was tested on; for MiniMax-H3 it also lists the schedules (`base_model`) and the adapter each loads
+- `abstractvision show-model <id> [--json]` — print a model’s tasks + params and, for each download, whether the Hugging Face repository is gated (and the licence to accept), its cache state (`cached` with its size on disk, `incomplete` with the gap, or `absent`; the download size comes from `download --dry-run`), the `memory_mode` values this host can run and, for MLX-Gen packages whose capability rows publish measured runs, the peak memory of each mode and the smallest memory it was tested on; for MiniMax-H3 it also lists the schedules (`base_model`) and the adapter each loads
 - `abstractvision catalog [--provider ...] [--task ...] [--json]` — browse the downloadable models: target, engine, bits (`*` marks the recommended package), access (gated or open), cache state and the memory modes this host can run
 - `abstractvision download <model id or repo id> [--bits N] [--base-model SCHEDULE] [--dry-run]` — download a curated preset into the Hugging Face cache (see [Downloads](#downloads))
 - `abstractvision adapters --provider mlx-gen --model <id> --task <task>` — list backend-discovered cached adapters for one exact route
@@ -140,54 +140,78 @@ Note:
 ### Downloads
 
 `abstractvision download` takes an exact package repo id (`AbstractFramework/minimax-h3-4bit`), its
-short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`). A model id with several
-packages selects the one the catalog marks as recommended (`*` in `catalog`), or the width
-`--bits 2|4|8|16` names; `--allow-non-8bit` selects a model's source snapshot. A model id with several
-packages and no recommendation asks for an exact repo id or `--bits`. On Apple silicon `--target auto`
-is `mlx` (MLX-Gen packages first).
+short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`), and selects one package:
 
-- The plan: before anything is written, the files the preset selects are listed on the Hugging Face
-  Hub (metadata only; a Diffusers pipeline's `model_index.json` is read into memory to keep only the
-  files the Diffusers backend loads). Each file is either complete in the cache (huggingface_hub's own
-  test: its snapshot link or its blob exists) or to fetch. The command prints the access, the size and
-  file count, how many files are complete and how many are to fetch with their size, and the free space
-  of the cache disk. The files to fetch must fit there at their full size, or the download stops and
-  writes nothing.
-- Fetching: only the files to fetch are requested; when none are, the command says every file is
-  already present and fetches nothing. A partial file left by an interrupted download counts as to
-  fetch: whether huggingface_hub continues it or starts it over depends on its transport, so the plan
-  counts it at its full size. Ctrl-C exits with code 130; the files that
-  completed stay in the cache, and the same command fetches the rest. A download that ends with files
-  missing names them.
+- A model with a single package selects it, whatever its width (`stabilityai/stable-diffusion-xl-base-1.0`
+  selects its Diffusers pipeline, `briaai/Fibo-Edit` its 16-bit MLX-Gen snapshot).
+- A model with several packages of one engine selects the one the catalog marks as recommended (`*` in
+  `catalog`; for MiniMax-H3 the 8-bit package), or the width `--bits 2|4|8|16` names. With several and
+  no recommendation the command stops and lists them: name one, or pass `--bits`.
+- Across targets, the host's order decides (Apple silicon: `mlx`, `gguf`, `diffusers`, `hf-snapshot`;
+  NVIDIA: `gguf`, `diffusers`, `hf-snapshot`; processor only: `diffusers`, `hf-snapshot`, `gguf`),
+  preferring an 8-bit package.
+  `--target` or `--provider` restricts the choice to one target or engine; a name with no package for
+  it is refused, with the packages it has.
+- `--allow-non-8bit` drops the 8-bit preference. A repository named exactly then selects that
+  repository instead of a package made from it: `abstractvision download MiniMaxAI/MiniMax-H3
+  --allow-non-8bit` fetches the MiniMax-H3 source repository, which the model id alone does not (it
+  selects the recommended 8-bit package), and on Apple silicon `stabilityai/sdxl-turbo` selects that
+  Diffusers pipeline instead of its GGUF package. Where the host's order puts a target without an 8-bit
+  package first (processor only: `diffusers`), that target is chosen (`Qwen/Qwen-Image` then selects the
+  Diffusers pipeline instead of the GGUF package). A model with a single package needs no flag.
+- A Hugging Face `owner/name` that the catalog does not list downloads every file of the repository.
+
+What the command does:
+
+- The plan: before anything is written, every repository the download fetches from is listed on the
+  Hugging Face Hub (metadata only; a Diffusers pipeline's `model_index.json` is read into memory to keep
+  only the files the Diffusers backend loads): the package, a stable-diffusion.cpp bundle's companion
+  repositories (the VAE and text encoder a GGUF diffusion model needs), and the adapter of `--base-model`.
+  Each file is either complete in the cache (huggingface_hub's own test: its snapshot link or its blob
+  exists) or to fetch. The command prints the access, the size and file count, how many files are
+  complete and how many are to fetch, one line per companion or adapter, one total, and the free space
+  of the cache disk.
+- The disk check: the files to fetch must fit at their full size, less what their partial `.incomplete`
+  files already hold (huggingface_hub writes each file into that same file, continuing it over plain
+  HTTP and rewriting it from the start over Xet, so its space is reused); the `disk:` line states this
+  rule and the bytes it needs. Otherwise the download stops and writes nothing.
+- Fetching: only the files to fetch are requested, from the commit the listing named, so a repository
+  updated during the download cannot mix two commits; the cache then records that commit as the
+  repository's `main`. When nothing is to fetch, the command says every file is already present and
+  fetches nothing. Ctrl-C exits with code 130; the files that completed stay in the cache, and the same
+  command fetches the rest. A download that ends with files missing names them.
 - Without the Hub listing, nothing is sized or fetched, and the command says why and what to do:
-  offline mode (`HF_HUB_OFFLINE`), the Hub unreachable, an HTTP error, or a listing without file sizes
-  (huggingface.co gives every size; a mirror set with `HF_ENDPOINT` may not). A cached snapshot is
-  reported as it is, not compared with the Hub; the command stops when there is none or a local look
-  sees a gap.
+  offline mode (`HF_HUB_OFFLINE`), the Hub unreachable, an HTTP error, huggingface_hub (or a module it
+  imports) not installed, or a listing without file sizes (huggingface.co gives every size; a mirror set
+  with `HF_ENDPOINT` may not). What the cache holds is reported as it is, not compared with the Hub;
+  the command stops when a local look sees a gap or a repository is missing.
 - Legacy trees: a `~/models/<preset>` tree (`ABSTRACTVISION_MODEL_DIR`, or `--model-dir`) is moved into
-  the cache, as in 0.3.36; `download` then says it was imported and not compared with the Hub, and
-  fetches nothing on top of it. When the cache already holds the package, the tree is removed.
-- A Hugging Face `owner/name` that the catalog does not list downloads every file of the repository
-  through the same plan and disk check; its access comes from the Hub listing. A 401 for a repository
-  not marked gated means it does not exist, is private, or is gated: the Hub does not say which.
+  the cache; `download` then says it was imported and not compared with the Hub, and fetches nothing for
+  the package on top of it. When the cache already holds the package, the tree is removed.
+- A 401 for a repository not marked gated means it does not exist, is private, or is gated: the Hub
+  does not say which.
 - Gated repositories (for example the `AbstractFramework/minimax-h3-*` packages): accept the licence on
   the repository page while logged in to Hugging Face, then authenticate (`hf auth login`, `HF_TOKEN`, or
   `--token`). A refused download ends with a message naming the page and the licence.
-- `--base-model <schedule>`: for MLX-Gen models whose schedules load an adapter, also fetches that
-  adapter into mlx-gen's LoRA cache. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and
-  `minimax-h3-turbo` load a lightx2v Turbo LoRA; `minimax-h3` loads none. Without `--base-model`, the
-  command prints the schedules whose adapter is not cached.
-- `--dry-run`: prints the selection, the plan above and the adapter state, writes nothing and exits 0;
-  when the download would not fit, its last line says so.
+- `--base-model <schedule>`: for MLX-Gen models whose schedules load an adapter, the adapter is part of
+  the plan (what it is, cached or to fetch, its size) and is fetched into huggingface_hub's cache, where
+  mlx-gen finds it. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and `minimax-h3-turbo` load a
+  lightx2v Turbo LoRA; `minimax-h3` loads none. Which adapter a schedule loads is read from mlx-gen: a
+  `--base-model` that is not a schedule of the package, or an adapter that cannot be named because
+  mlx-gen is not installed, stops the command before anything is fetched. Without `--base-model`, the
+  command prints the schedules whose adapter is absent, with the command that fetches it.
+- `--dry-run`: prints the selection and the same plan, writes nothing and exits 0; when the download
+  would not fit, its last line says so.
 - `catalog` and `show-model` show each download's cache state from a local look, offline: `cached` is a
   snapshot with no gap that look can see (a partial file, a link without content, a weight file an index
   names, a component `model_index.json` names whose folder the package's patterns name, such as
-  `transformer_2/`, or no weight file at all), `incomplete` names the gap. Only `download` (or
-  `--dry-run`) compares a snapshot with the Hub, so a file nothing local refers to, such as one an
-  interrupted download never started, can be missing from a snapshot shown as `cached`.
-- Generation never downloads a repository whose catalog download is marked `explicit_download: true`
+  `transformer_2/`, or no weight file at all), `incomplete` names the gap, `absent` is nothing in the
+  cache. Only `download` (or `--dry-run`) compares a snapshot with the Hub, so a file nothing local
+  refers to, such as one an interrupted download never started, can be missing from a snapshot shown as
+  `cached`.
+- Generation (MLX-Gen and Diffusers) never downloads a repository whose catalog download is marked `explicit_download: true`
   (today the four MiniMax-H3 repositories: `AbstractFramework/minimax-h3-8bit|bf16|4bit` and
-  `MiniMaxAI/MiniMax-H3`), or an adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`. `gated`
+  `MiniMaxAI/MiniMax-H3`), or an MLX-Gen adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1` or `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`. `gated`
   only says whether the Hub asks for the licence to be accepted.
 
 ```bash
@@ -195,6 +219,7 @@ abstractvision show-model MiniMaxAI/MiniMax-H3
 abstractvision download MiniMaxAI/MiniMax-H3 --dry-run
 abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p
 abstractvision download MiniMaxAI/MiniMax-H3 --bits 4
+abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit   # the source repository
 ```
 
 ### OpenAI / OpenAI-Compatible HTTP Backend

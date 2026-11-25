@@ -35,6 +35,7 @@ from ..lora_adapters import (
 )
 from ..model_capabilities import VisionModelCapabilitiesRegistry
 from ..model_downloads import (
+    download_command,
     download_hf_repo_snapshot,
     find_model_preset,
     looks_like_hf_repo_id,
@@ -1568,23 +1569,37 @@ def _explicit_download_note(repo_id: str, base_model: Optional[str]) -> str:
     spec = _explicit_download_model(repo_id)
     if spec is None:
         return ""
-    try:
-        adapter = _mlx_gen_schedule_adapter(base_model) if base_model else None
-    except (ValueError, OptionalDependencyMissingError):
-        adapter = None
-    command = f"`abstractvision download {repo_id}`"
-    if adapter:
-        command = (
-            f"`abstractvision download {repo_id} --base-model {base_model}` "
-            "(which also caches the adapter that schedule loads)"
-        )
     licence = spec.license_name or "its licence"
     return (
         f" {spec.model_id} weights are never downloaded during generation, even with "
         f"allow_download: the catalog marks {repo_id} for explicit download only ({licence}). "
         "Accept the licence (on the repository page while logged in to Hugging Face, for a "
-        f"gated repository), then download explicitly: {command}."
+        f"gated repository), then download explicitly: {_download_instruction(repo_id, base_model)}."
     )
+
+
+def _download_instruction(repo_id: str, base_model: Optional[str] = None) -> str:
+    """The `abstractvision download` command that fetches exactly `repo_id` (`download_command`), with
+    the schedule when it loads an adapter; the repository page when no form of the command selects it."""
+    try:
+        adapter = _mlx_gen_schedule_adapter(base_model) if base_model else None
+    except (ValueError, OptionalDependencyMissingError):
+        adapter = None
+    if adapter:
+        try:
+            return (
+                f"`{download_command(repo_id, engine='mlx-gen', base_model=base_model)}` "
+                "(which also caches the adapter that schedule loads)"
+            )
+        except ValueError:
+            pass  # not a schedule of this repository: the command without it
+    try:
+        return f"`{download_command(repo_id, engine='mlx-gen')}`"
+    except ValueError:
+        return (
+            f"no `abstractvision download` command selects {repo_id} on this host; "
+            f"fetch it from https://huggingface.co/{repo_id}"
+        )
 
 
 def _mlx_gen_schedule_adapter(base_model: str) -> Optional[str]:
@@ -3731,9 +3746,8 @@ class MFluxVisionBackend(VisionBackend):
                 )
                 if not self._cfg.allow_download or explicit_note:
                     raise OptionalDependencyMissingError(
-                        f"MLX-Gen model preset {configured_model!r} is not available in the Hugging Face cache. "
-                        f"Run: abstractvision download {preset.repo_id} --provider mlx-gen"
-                        + explicit_note
+                        f"MLX-Gen model preset {configured_model!r} is not available in the Hugging Face cache."
+                        + (explicit_note or f" Run: {_download_instruction(preset.repo_id)}.")
                     )
                 try:
                     downloaded = download_hf_repo_snapshot(

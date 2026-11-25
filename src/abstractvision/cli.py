@@ -22,29 +22,28 @@ from .backends import (
     StableDiffusionCppBackendConfig,
     StableDiffusionCppVisionBackend,
 )
+from .errors import OptionalDependencyMissingError
 from .lora_adapters import resolve_request_lora_adapters
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_downloads import (
     catalog_download_preset,
-    catalog_names_model,
     catalog_target_scope,
     default_model_target,
+    download_command,
     download_model_preset,
     find_model_preset,
     format_bytes,
     format_model_preset_rows,
     HuggingFaceAccessError,
     local_model_profile,
-    looks_like_hf_repo_id,
     MacOSGGUFUnsupportedError,
     model_presets,
     normalize_model_engine,
-    legacy_model_tree,
     plan_model_preset_download,
-    repository_preset,
     resolve_hf_token,
     resolve_model_target_and_engine,
     resolve_sdcpp_model_selection,
+    select_download_preset,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
 from .model_inventory import directory_files_and_bytes, preset_status
@@ -375,6 +374,14 @@ def default_local_model_id(provider_kind: str) -> str:
     return LOCAL_DEFAULT_MLX_GEN_MODEL_ID if provider_kind == "mlx-gen" else LOCAL_DEFAULT_MODEL_ID
 
 
+def _local_default_download_command(provider_kind: str) -> str:
+    """The `download` command that fetches what `provider_kind` loads for this machine's local default:
+    the engine is named, since the model id alone selects by the host's target order (on a processor-only
+    host, the GGUF package rather than the Diffusers pipeline Diffusers loads)."""
+
+    return f"abstractvision download {default_local_model_id(provider_kind)} --provider {provider_kind}"
+
+
 def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
     store = LocalAssetStore(args.store_dir) if args.store_dir else LocalAssetStore()
     explicit_provider = (
@@ -412,8 +419,7 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
         model_value = default_local_model_id(provider_kind)
         print(
             f"No --provider or --model: using {provider_kind} with {model_value}, this machine's local default "
-            f"(8-bit FLUX.2 [klein] 4B). Download it once with: abstractvision download {model_value}"
-            + (" --provider mlx-gen" if provider_kind == "mlx-gen" else ""),
+            f"(FLUX.2 [klein] 4B). Download it once with: {_local_default_download_command(provider_kind)}",
             file=sys.stderr,
         )
 
@@ -646,7 +652,7 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
             if item["adapter"] is None:
                 print(f"  - {item['base_model']}: loads no adapter")
                 continue
-            state = f"cached at {item['adapter_path']}" if item["adapter_path"] else "not cached"
+            state = f"cached at {item['adapter_path']}" if item["adapter_path"] else "absent"
             print(
                 f"  - {item['base_model']}: loads {item['adapter']} ({state}); "
                 f"`abstractvision download <package> --base-model {item['base_model']}` fetches it"
@@ -732,7 +738,7 @@ def _cache_label(status: Dict[str, Any], *, short: bool = False) -> str:
             return "incomplete"
         held = f"{format_bytes(status['cache_bytes'])} in cache: " if status.get("cache_bytes") is not None else ""
         return f"incomplete ({held}{'; '.join(status.get('cache_gaps') or [])})"
-    return "not cached"
+    return "absent"
 
 
 def _memory_modes_label(status: Dict[str, Any]) -> str:
@@ -1144,7 +1150,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                 (str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a")
                 + ("*" if preset.recommended else ""),
                 "gated" if preset.gated else "open",
-                _cache_label(status, short=True) if status["cache"] != "absent" else "-",
+                _cache_label(status, short=True),
                 _memory_modes_label(status),
                 lora_display,
                 ",".join(lora_roles),
@@ -1270,7 +1276,8 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     print(
         "tip: cache is a local look: `cached` is a snapshot with no gap visible offline (partial file, "
         "missing link or indexed shard, model_index.json component the package's patterns name, no "
-        "weight file); only `download` (or `--dry-run`) compares it with the Hub listing"
+        "weight file), `incomplete` one with such a gap, `absent` nothing in the cache; only `download` "
+        "(or `--dry-run`) compares it with the Hub listing"
     )
     print()
     for line in _format_table(
@@ -1305,82 +1312,79 @@ def _download_dry_run(
 ) -> Dict[str, Any]:
     """`download --dry-run`: the plan the download would follow, and whether it fits; nothing is written."""
 
-    tree, action = legacy_model_tree(preset, model_dir=model_dir)
-    if tree is not None and action == "import":
-        files, size = directory_files_and_bytes(tree)
-        item = preset.to_dict()
-        item.update(dry_run=True, legacy_import=str(tree))
-        if not json_mode:
-            print(
-                f"cache: the legacy directory {tree} ({files} files, {format_bytes(size)}) would be imported into "
-                "the Hugging Face cache; it would not be compared with the Hub, and nothing would be fetched"
-            )
-            print("dry run: nothing was downloaded or imported")
-        return item
-    try:
-        plan = plan_model_preset_download(preset, token=token, **_all_files_kwargs(args))
-    except HuggingFaceAccessError as e:
-        raise SystemExit(str(e)) from e
+    plan = _download_plan(preset, args, token=token, schedule=schedule, model_dir=model_dir)
     fits = plan.disk_space_error()
     item = preset.to_dict()
     item.update(dry_run=True, plan=plan.to_dict())
-    if tree is not None and not json_mode:
-        print(f"legacy: {tree} would be removed; the cache already holds a snapshot of {preset.repo_id}")
-    adapters: List[Tuple[str, str]] = []
-    if schedule is not None:
-        from .backends.mflux import resolve_mlx_gen_schedule_adapter
-
-        resolved = resolve_mlx_gen_schedule_adapter(schedule)
-        if resolved is not None:
-            item.update(base_model=schedule, adapter=resolved[0], adapter_path=resolved[1])
-            adapters.append((schedule, f"{resolved[0]} ({'cached at ' + resolved[1] if resolved[1] else 'would be fetched'})"))
+    if plan.base_model is not None:
+        item.update(base_model=plan.base_model, adapter=plan.adapter, adapter_path=plan.adapter_path)
     if not json_mode:
+        if plan.legacy_import is not None:
+            files, size = directory_files_and_bytes(plan.legacy_import)
+            print(
+                f"cache: the legacy directory {plan.legacy_import} ({files} files, {format_bytes(size)}) would be "
+                "imported into the Hugging Face cache; it would not be compared with the Hub, and nothing would be "
+                "fetched for the package"
+            )
+        if plan.legacy_remove is not None:
+            print(f"legacy: {plan.legacy_remove} would be removed; the cache already holds a snapshot of {preset.repo_id}")
         for line in plan.summary_lines():
             print(line)
         if fits:
             print(fits)
-        for name, text in adapters:
-            print(f"adapter ({name}): {text}")
         if schedule is None:
             for hint in _schedule_adapter_hints(preset):
                 print(hint)
+        imported = " or imported" if plan.legacy_import is not None else ""
         if not plan.listed:
-            print("dry run: nothing was downloaded; without the Hub listing nothing was sized")
+            print(f"dry run: nothing was downloaded{imported}; without the Hub listing nothing was sized")
         elif fits:
             print(
-                f"dry run: nothing was downloaded; the download would not fit ({format_bytes(plan.fetch_bytes)} "
-                f"to fetch, {format_bytes(plan.free_bytes)} free)"
+                f"dry run: nothing was downloaded{imported}; the download would not fit "
+                f"({format_bytes(plan.required_bytes)} needed, {format_bytes(plan.free_bytes)} free)"
             )
         else:
-            print("dry run: nothing was downloaded")
+            print(f"dry run: nothing was downloaded{imported}")
     return item
 
 
-def _download_schedule(preset: Any, schedule: Optional[str]) -> Optional[str]:
-    """`download --base-model`: the MLX-Gen schedule whose adapter is fetched with the preset."""
-
-    if schedule is None:
-        return None
-    if str(preset.engine) != "mlx-gen":
-        raise SystemExit(f"--base-model names an MLX-Gen schedule; {preset.repo_id} is a {preset.engine} artifact.")
-    from .backends.mflux import mlx_gen_package_schedule
+def _download_plan(
+    preset: Any, args: argparse.Namespace, *, token: Optional[str], schedule: Optional[str], model_dir: Optional[Path]
+) -> Any:
+    """The download's whole plan, or SystemExit saying why none can be made (nothing is fetched then)."""
 
     try:
-        return mlx_gen_package_schedule(preset, schedule)
-    except ValueError as e:
-        raise SystemExit(f"--base-model {e}") from None
+        return plan_model_preset_download(
+            preset, base_model=schedule, model_dir=model_dir, token=token, **_all_files_kwargs(args)
+        )
+    except (HuggingFaceAccessError, ValueError, OptionalDependencyMissingError) as e:
+        raise SystemExit(f"{e}\nNothing was downloaded.") from None
 
 
-def _download_schedule_adapter(schedule: str) -> Optional[Tuple[str, Optional[str]]]:
-    from .backends.mflux import resolve_mlx_gen_schedule_adapter
+def _download_preset(
+    preset: Any,
+    args: argparse.Namespace,
+    *,
+    token: Optional[str],
+    schedule: Optional[str],
+    model_dir: Optional[Path],
+    report: Any,
+) -> Path:
+    """`download`: the whole plan (package, companions, adapter) first, then the fetch; a wrong
+    --base-model or an adapter that cannot be named stops the command before anything is written."""
 
     try:
-        return resolve_mlx_gen_schedule_adapter(schedule, download=True)
-    except KeyboardInterrupt:
-        print(f"Download of the {schedule} adapter interrupted; run the same command again.", file=sys.stderr)
-        raise SystemExit(130) from None
-    except Exception as e:
-        raise SystemExit(f"Could not fetch the adapter the {schedule} schedule loads: {e}") from e
+        return download_model_preset(
+            preset,
+            base_model=schedule,
+            model_dir=model_dir,
+            token=token,
+            max_workers=int(getattr(args, "max_workers", 4) or 4),
+            report=report,
+            **_all_files_kwargs(args),
+        )
+    except (ValueError, OptionalDependencyMissingError) as e:
+        raise SystemExit(f"{e}\nNothing was downloaded.") from None
 
 
 def _schedule_adapter_hints(preset: Any) -> List[str]:
@@ -1395,18 +1399,14 @@ def _schedule_adapter_hints(preset: Any) -> List[str]:
         if item["adapter_path"]:
             lines.append(f"adapter ({item['base_model']}): cached at {item['adapter_path']}")
         else:
-            lines.append(
-                f"adapter ({item['base_model']}): not cached; fetch it with "
-                f"`abstractvision download {preset.repo_id} --base-model {item['base_model']}`"
-            )
+            command = download_command(preset.repo_id, engine=preset.engine, base_model=item["base_model"])
+            lines.append(f"adapter ({item['base_model']}): absent; fetch it with `{command}`")
     return lines
 
 
 def _cmd_download_model(args: argparse.Namespace) -> int:
     target = str(getattr(args, "target", "auto") or "auto")
     engine = str(getattr(args, "engine", "auto") or "auto")
-    raw_target = str(target or "auto").strip().lower()
-    raw_engine = str(engine or "auto").strip().lower().replace("_", "-")
     raw_names = getattr(args, "names", None)
     if raw_names is None:
         raw_names = [getattr(args, "name", "")]
@@ -1454,10 +1454,6 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
     json_mode = bool(getattr(args, "json", False))
     cli_token = resolve_hf_token(str(getattr(args, "token", None) or "") or None)
     allow_non_8bit = bool(getattr(args, "allow_non_8bit", False))
-    require_8bit = not allow_non_8bit
-    if raw_target in {"diffusers", "hf-snapshot"} or raw_engine in {"diffusers", "transformers"}:
-        # Diffusers targets are full pipeline snapshots; do not force an 8-bit-only policy.
-        require_8bit = False
     bits = getattr(args, "bits", None)
     schedule = str(getattr(args, "base_model", None) or "").strip() or None
 
@@ -1471,47 +1467,12 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 print()
             print(f"name: {name}")
         try:
-            preset = find_model_preset(
-                name,
-                target=target,
-                engine=engine,
-                require_8bit=require_8bit,
-                bits=bits,
+            preset = select_download_preset(
+                name, target=target, engine=engine, bits=bits, allow_non_8bit=allow_non_8bit
             )
         except ValueError as e:
-            mlx_gen_non_quantized_ok = raw_engine in {
-                "mflux",
-                "m-flux",
-                "mlx-gen",
-                "mlxgen",
-                "mlx_gen",
-            } or raw_target in {"mlx", "apple", "mac", "macos", "osx", "metal"}
-            preset = None
-            if require_8bit and mlx_gen_non_quantized_ok:
-                # Exact non-quantized MLX-Gen/runtime snapshots such as Wan and FIBO are valid
-                # curated models even though no q4/q8 artifact exists for them.
-                try:
-                    preset = find_model_preset(
-                        name,
-                        target=target,
-                        engine=engine,
-                        require_8bit=False,
-                        bits=bits,
-                    )
-                except ValueError:
-                    preset = None
-            if preset is not None:
-                pass
-            elif bits is not None or schedule is not None or catalog_names_model(name):
-                # A catalog model is never fetched as an unfiltered snapshot: the choice it
-                # needs (a width, a target, an exact package) is in the message.
-                raise SystemExit(str(e)) from e
-            elif looks_like_hf_repo_id(name):
-                preset = repository_preset(name)
-            else:
-                raise SystemExit(str(e)) from e
+            raise SystemExit(str(e)) from e
 
-        adapter_schedule = _download_schedule(preset, schedule)
         if not json_mode:
             print(f"selected: {preset.repo_id}")
             if not preset.in_catalog:
@@ -1527,9 +1488,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
 
         if bool(getattr(args, "dry_run", False)):
             results.append(
-                _download_dry_run(
-                    preset, args, token=cli_token, schedule=adapter_schedule, json_mode=json_mode, model_dir=model_dir
-                )
+                _download_dry_run(preset, args, token=cli_token, schedule=schedule, json_mode=json_mode, model_dir=model_dir)
             )
             continue
 
@@ -1542,16 +1501,10 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
             except Exception as e:
                 raise SystemExit(str(e)) from e
 
+        fetch = {"schedule": schedule, "model_dir": model_dir, "report": _report}
         try:
             try:
-                path = download_model_preset(
-                    preset,
-                    model_dir=model_dir,
-                    token=cli_token,
-                    max_workers=int(getattr(args, "max_workers", 4) or 4),
-                    report=_report,
-                    **_all_files_kwargs(args),
-                )
+                path = _download_preset(preset, args, token=cli_token, **fetch)
             except HuggingFaceAccessError as e:
                 retry_token = _interactive_hf_token_retry(
                     e, current_token=cli_token, json_mode=json_mode
@@ -1559,14 +1512,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 if retry_token is None:
                     raise SystemExit(str(e)) from e
                 try:
-                    path = download_model_preset(
-                        preset,
-                        model_dir=model_dir,
-                        token=retry_token,
-                        max_workers=int(getattr(args, "max_workers", 4) or 4),
-                        report=_report,
-                        **_all_files_kwargs(args),
-                    )
+                    path = _download_preset(preset, args, token=retry_token, **fetch)
                     cli_token = retry_token
                 except (HuggingFaceAccessError, RuntimeError) as e2:
                     raise SystemExit(str(e2)) from e2
@@ -1582,23 +1528,20 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
 
         item = preset.to_dict()
         item["snapshot_dir"] = str(path)
-        if adapter_schedule is not None:
-            adapter = _download_schedule_adapter(adapter_schedule)
-            if adapter is not None:
-                item["base_model"] = adapter_schedule
-                item["adapter"], item["adapter_path"] = adapter
-                if not json_mode:
-                    print(f"adapter ({adapter_schedule}): {adapter[1]}")
+        if schedule is not None:
+            from .backends.mflux import mlx_gen_package_schedule, resolve_mlx_gen_schedule_adapter
+
+            item["base_model"] = mlx_gen_package_schedule(preset, schedule)
+            resolved_adapter = resolve_mlx_gen_schedule_adapter(item["base_model"])
+            item["adapter"], item["adapter_path"] = resolved_adapter or (None, None)
         elif not json_mode:
             for hint in _schedule_adapter_hints(preset):
                 print(hint)
         if preset.engine == "stable-diffusion.cpp":
-            resolved = resolve_sdcpp_model_selection(
-                preset.key,
-                allow_download=True,
-                token=cli_token,
-                max_workers=int(getattr(args, "max_workers", 4) or 4),
-            )
+            try:
+                resolved = resolve_sdcpp_model_selection(preset.repo_id, allow_download=False)
+            except (RuntimeError, ValueError) as e:
+                raise SystemExit(str(e)) from e
             item.update(
                 {
                     "resolved_model": resolved.model,
@@ -2229,6 +2172,7 @@ def _repl_help() -> str:
         "\n"
         "Generation:\n"
         "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ... --control-image path --control-strength F] [--open]\n"
+        "      (--control-image is accepted and refused by every built-in backend in this release)\n"
         "  /i2i --image path <prompt...> [--reference-image path ... --mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
         "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
         "  /i2v --image path [prompt...] [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
@@ -3619,7 +3563,12 @@ def build_parser() -> argparse.ArgumentParser:
     dl.add_argument(
         "--allow-non-8bit",
         action="store_true",
-        help="Permit explicit fallback presets when no quantized artifact is curated.",
+        help=(
+            "Do not prefer an 8-bit package: a repository named exactly (e.g. the MiniMaxAI/MiniMax-H3 source "
+            "repository) selects that repository instead of a package made from it, and the host's target order "
+            "decides even where a later target has an 8-bit package. A model with a single package selects it "
+            "without this flag."
+        ),
     )
     dl.add_argument(
         "--bits",
@@ -3865,13 +3814,16 @@ def build_parser() -> argparse.ArgumentParser:
     t2i.add_argument(
         "--control-image",
         default=None,
-        help="Optional structured control image path for MLX-Gen base-Qwen route `AbstractFramework/qwen-image-8bit`.",
+        help=(
+            "Structured control image path (edges, sketch, pose). Accepted by the request; every built-in "
+            "backend refuses it in this release (CapabilityNotSupportedError, field control_image)."
+        ),
     )
     t2i.add_argument(
         "--control-strength",
         type=float,
         default=None,
-        help="Optional structured control strength for `--control-image`. Default is 0.85 when omitted.",
+        help="Structured control strength for `--control-image` (refused with it by every built-in backend in this release).",
     )
     t2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     t2i.add_argument(

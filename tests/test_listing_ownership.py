@@ -63,7 +63,7 @@ class TestNoPrivateNamesAcrossModules(unittest.TestCase):
         self.assertEqual(str(raised.exception), refusal)
         with self.assertRaises(SystemExit) as exited:
             cli.main(["download", "AbstractFramework/minimax-h3-8bit", "--base-model", "flux2-klein-4b"])
-        self.assertEqual(str(exited.exception), f"--base-model {refusal}")
+        self.assertEqual(str(exited.exception), f"--base-model {refusal}\nNothing was downloaded.")
 
     def test_the_catalog_lookups_are_public(self):
         from abstractvision.model_downloads import catalog_download_preset, catalog_names_model
@@ -145,14 +145,14 @@ class TestCatalogNotesAreTheDisplayedText(unittest.TestCase):
         self.assertEqual(sum(note == _CURATED_DIFFUSERS_NOTE for note in notes.values()), len(_CURATED_DIFFUSERS))
 
     def test_download_prints_the_catalog_note_as_it_is(self):
-        from abstractvision import cli
+        from abstractvision import cli, model_downloads
         from abstractvision.model_downloads import find_model_preset
 
         def with_note(*args, **kwargs):
             return replace(find_model_preset(*args, **kwargs), notes="#FALLBACK: full Diffusers snapshot (not 8-bit). As written.")
 
         out = io.StringIO()
-        with patch.object(cli, "find_model_preset", side_effect=with_note), patch.object(
+        with patch.object(model_downloads, "find_model_preset", side_effect=with_note), patch.object(
             cli, "download_model_preset", return_value=Path("/tmp/hf-cache/snapshot")
         ), contextlib.redirect_stdout(out):
             rc = cli.main(["download", "stable-diffusion", "--provider", "diffusers"])

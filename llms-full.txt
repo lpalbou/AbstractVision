@@ -63,11 +63,11 @@ Agent quickstart (choose the path that matches your goal):
 
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image`, `image_to_image`, `image_upscale`, and backend-dependent `text_to_video` / `image_to_video`.
-- Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, FLUX.2/Qwen multi-reference image edits, validated Qwen structured control and Qwen/FIBO masked edits, canonical SeedVR2 q8/q4 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`.
+- Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, FLUX.2/Qwen multi-reference image edits, Qwen/FIBO masked edits (every built-in backend refuses `control_image` in this release), canonical SeedVR2 q8/q4 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`.
 - Wan video defaults live in one per-model table (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`): 832x480 for TI2V-5B (121 frames, 24 fps, 50 steps) and the A14B models (81 frames, 16 fps, 40 steps); explicit `width`/`height`/`num_frames`/`fps`/`steps` override them. The VAE decode is tiled by default (`extra={"vae_tiling": False}` / `--no-vae-tiling` to disable); measured memory per size is in `docs/faq.md`.
-- Every generation request takes `memory_mode` (`default`, `low`, `lowest`; CLI `--memory-mode`; AbstractCore keyword or `extra`; process default `ABSTRACTVISION_MEMORY_MODE`, which degrades to the closest mode a backend can honour, while a request value is refused; `make_vision_tools(..., memory_mode=...)` fixes it for all tool calls). MLX-Gen: `low` = its low-RAM mode per route, `lowest` = low-RAM plus block streaming, accepted where routes stream transformer blocks: MiniMax-H3, and no other current catalog model. Diffusers on CUDA: `low`/`lowest` = model/sequential CPU offload (the request only raises the configured `cpu_offload`). stable-diffusion.cpp: `low` = CPU offload of parameters. OpenAI-compatible: the modes the remote lists for the model in `GET /vision/models` (AbstractCore's server), sent with `quantize` and the soundtrack fields; `default` only for a plain OpenAI endpoint. Every backend refuses a mode it cannot honour with `CapabilityNotSupportedError`, also when called directly. Discovery: `get_capabilities().memory_modes`, MLX-Gen catalog `parameter_constraints["memory_mode"]` (also over HTTP), plugin `available_providers()` details (Python only).
-- MiniMax-H3 (`MiniMaxAI/MiniMax-H3`, packages `AbstractFramework/minimax-h3-8bit|bf16|4bit`, gated, territorial licence, never downloaded during generation; `abstractvision download MiniMaxAI/MiniMax-H3 [--bits 4|16] [--base-model minimax-h3-turbo-544p]` fetches the recommended 8-bit package, or the width named, and the Turbo adapter of that schedule): video with a stereo soundtrack through MLX-Gen; `base_model` picks the schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`); typed `soundscape`, `music`, `generate_audio`, `audio_shift` (and `flow_shift` as the video shift); frame grid and defaults from MLX-Gen's capability row; result MP4 with AAC plus `GeneratedAsset.audio`; `memory_mode` low = 1 GB cache + transformer release, lowest = block streaming.
-- Downloads and listings: `download` plans from the Hub listing before it writes anything (files complete in the cache, files to fetch and their size, whether they fit on the cache disk), fetches only the files to fetch, and names the page and licence when a gated repository refuses; `--dry-run` prints the plan. `catalog`, `show-model` and `models --json` show per download its access (gated/open, from the catalog), its cache state from an offline local look with size on disk, the memory modes this host can run and, for MLX-Gen packages with published measurements, the peak memory per mode and the smallest memory it was tested on (read from mlx-gen at run time).
+- Every generation request takes `memory_mode` (`default`, `low`, `lowest`; CLI `--memory-mode`; AbstractCore keyword or `extra`; process default `ABSTRACTVISION_MEMORY_MODE`, which degrades to the closest mode a backend can honour, while a request value is refused; `make_vision_tools(..., memory_mode=...)` fixes it for all tool calls). MLX-Gen: `low` = its low-RAM mode per route, `lowest` = low-RAM plus block streaming, accepted where routes stream transformer blocks: MiniMax-H3, and no other current catalog model. Diffusers on CUDA: `low`/`lowest` = model/sequential CPU offload (the request only raises the configured `cpu_offload`). stable-diffusion.cpp: `low` = CPU offload of parameters. OpenAI-compatible: the modes the remote lists for the model in `GET /vision/models` (AbstractCore's server), sent with `quantize` and the soundtrack fields; `default` only for a plain OpenAI endpoint. Every backend refuses a mode it cannot honour with `CapabilityNotSupportedError`, also when called directly. Discovery: `get_capabilities().memory_modes`, MLX-Gen catalog `parameter_constraints["memory_mode"]` (also over HTTP), plugin `available_providers()` details (also read by AbstractCore's server).
+- MiniMax-H3 (`MiniMaxAI/MiniMax-H3`, packages `AbstractFramework/minimax-h3-8bit|bf16|4bit`, gated, territorial licence, never downloaded during generation; `abstractvision download MiniMaxAI/MiniMax-H3 [--bits 4|16] [--base-model minimax-h3-turbo-544p]` fetches the recommended 8-bit package, or the width named, and the Turbo adapter of that schedule; `--allow-non-8bit` fetches the source repository itself): video with a stereo soundtrack through MLX-Gen; `base_model` picks the schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`); typed `soundscape`, `music`, `generate_audio`, `audio_shift` (and `flow_shift` as the video shift); frame grid and defaults from MLX-Gen's capability row; result MP4 with AAC plus `GeneratedAsset.audio`; `memory_mode` low = 1 GB cache + transformer release, lowest = block streaming.
+- Downloads and listings: `download` selects one package (a model with a single package selects it; several: the recommended one, `--bits`, or a stop listing them) and plans from the Hub listings before it writes anything, for every repository it fetches from (the package, a stable-diffusion.cpp bundle's companions, a `--base-model` schedule's adapter): files complete in the cache, files to fetch and their size, one total, and whether they fit on the cache disk (the files to fetch at full size, less what their partial `.incomplete` files hold). It fetches only the files to fetch, from the commit the listing named, and names the page and licence when a gated repository refuses; `--dry-run` prints the same plan. Cache states are `cached`, `incomplete` or `absent`. `catalog`, `show-model` and `models --json` show per download its access (gated/open, from the catalog), its cache state from an offline local look with size on disk, the memory modes this host can run and, for MLX-Gen packages with published measurements, the peak memory per mode and the smallest memory it was tested on (read from mlx-gen at run time).
 - Host contract: `cancel_event` on every request (`GenerationCancelledError`, between steps on MLX-Gen), typed load-time `quantize` (`get_capabilities().quantize_bits`), `VisionManager.describe_routes()` for MLX-Gen's schema-17 rows as JSON, engine metadata under `metadata["mlx_gen"]`, progress-callback errors logged without stopping the run.
 - Task-specific Wan A14B video declares typed `guidance_2` defaults in `vision_model_capabilities.json` (`3.0` for T2V, `3.5` for I2V); it is not transported through backend `extra`.
 - MLX-Gen progress is surfaced through Python/Core `on_progress(event)` callbacks, opt-in one-shot image generation/edit CLI `--progress`, and denoise-step video/upscale progress by default.
@@ -312,11 +312,14 @@ cache-only unless you explicitly enable runtime downloads. `catalog` and
 its cache state as a local look sees it (with its size on disk) and the memory
 modes this machine can run; for MLX-Gen packages with published measurements,
 `show-model` adds the peak memory of each mode. `download` plans from the
-Hugging Face listing before it writes anything: how many files are already
-complete in the cache, how many are to fetch and their size, and whether they
-fit on the cache disk. It then fetches only the files to fetch; after an
-interruption the same command fetches the rest. `--dry-run` prints the plan
-without downloading. See [Downloads](docs/reference/configuration.md#downloads).
+Hugging Face listings before it writes anything, for every repository it
+fetches from (the package, a GGUF bundle's text encoder and VAE, the adapter of
+a `--base-model` schedule): how many files are already complete in the cache,
+how many are to fetch and their size, and whether they fit on the cache disk
+(a partial file's bytes count as already there). It then fetches only the files
+to fetch, from the commit the listing named; after an interruption the same
+command fetches the rest. `--dry-run` prints the plan without downloading. See
+[Downloads](docs/reference/configuration.md#downloads).
 
 ```bash
 pip install "abstractvision[models,mlx-gen]"
@@ -345,6 +348,7 @@ abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provi
 abstractvision download AbstractFramework/seedvr2-3b-8bit --provider mlx-gen
 # MiniMax-H3 (video with sound): gated, accept the licence on the package page first.
 # The model id fetches the recommended 8-bit package; --base-model also caches the Turbo adapter.
+# `--allow-non-8bit` fetches the MiniMaxAI/MiniMax-H3 source repository itself instead.
 abstractvision show-model MiniMaxAI/MiniMax-H3
 abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p --dry-run
 abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p
@@ -938,7 +942,7 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. MLX-Gen is validated on Apple Silicon; the explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)), and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, Qwen/FIBO masked edits (structured control images are refused), official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. MLX-Gen is validated on Apple Silicon; the explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)), and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
   - MLX-Gen for Wan 2.2 local `text_to_video` and first-frame `image_to_video`
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
@@ -1448,12 +1452,6 @@ abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-2512-
 abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 ```
 
-Structured control from the shell:
-
-```bash
-abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ./pose.png --control-strength 0.85 "fashion editorial portrait, same pose, soft daylight, neutral studio backdrop" --steps 20 --guidance-scale 4.0 --open
-```
-
 Image-to-image/edit from the shell:
 
 ```bash
@@ -1486,9 +1484,8 @@ Leave out `--width/--height/--frames/--fps/--steps` to use each model's default
 (832x480 for every Wan model; 121 frames at 24 fps for TI2V-5B, 81 frames at
 16 fps for A14B). The measured memory per size is in
 [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
-For MLX-Gen Qwen structured control, use the validated base route
-`AbstractFramework/qwen-image-8bit` and pass `--control-image` plus optional
-`--control-strength`. For masked edits, use the validated Qwen edit route
+`--control-image` is accepted by `t2i` but refused by every built-in backend in
+this release, MLX-Gen included. For masked edits, use the validated Qwen edit route
 `AbstractFramework/qwen-image-edit-2511-8bit` (or FIBO Edit) and pass
 `--mask`.
 
@@ -1922,9 +1919,9 @@ All assets referenced here were generated through AbstractVision with
   `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Installed adapter discovery is backend-owned and lists optional overlays only;
   full-model component files are excluded from the adapter inventory.
-- The MLX-Gen surface exposes route-aware Qwen masked edit and
-  structured control through typed request fields instead of `extra`-only
-  escape hatches.
+- The MLX-Gen surface exposes route-aware Qwen masked edit through a typed
+  request field instead of an `extra`-only escape hatch; it refuses structured
+  control images (`control_image`) in this release.
 - The public TI2V-5B visual proofs in this bundle use `832x480`.
 - The public task-specific Wan A14B proofs in this bundle use `480x240`.
 - The LoRA-heavy proof runs on this page use curated 8-bit MLX-Gen routes. For
@@ -1984,18 +1981,15 @@ Bundled discovery artifacts:
 
 ## Route-aware Qwen extras
 
-The public request surface exposes the validated Qwen MLX-Gen
-extras directly:
+The public request surface exposes the validated Qwen MLX-Gen masked edit
+directly:
 
 - masked edit:
   `abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --image ./input.png --mask ./mask.png "repair the marked area"`
-- structured control:
-  `abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ./edges.png --control-strength 0.9 "pagoda at sunrise"`
 
-Those inputs fail closed when the selected route does not advertise the matching
-runtime capability. `0.85` is the packaged default when
-`--control-strength` is omitted; `0.9` above matches the current upstream proof
-setting rather than the default.
+A mask fails closed when the selected route does not advertise the matching
+runtime capability. A structured control image (`--control-image`) is refused by
+MLX-Gen, as by every built-in backend in this release.
 
 ## Shared adapter contract
 
@@ -2705,19 +2699,22 @@ Request fields (on `VideoGenerationRequest` and `ImageToVideoRequest`):
 | `generate_audio` | `False` writes a silent clip. Default: the soundtrack is generated. A boolean: any other type, the string `"false"` included, is refused. |
 | `flow_shift`, `audio_shift` | The video and audio schedule shifts (MLX-Gen `video_shift` / `audio_shift`), positive numbers. |
 | `width`, `height` | Given together; positive multiples of the route's `dimension_multiple` (32), with an aspect ratio inside MLX-Gen's window (1:4 to 4:1). Unset: the schedule's canvas, or for a first frame MiniMax-H3's own mapping of the keyframe's aspect ratio, which must then lie in the same window. |
-| `num_frames` | Rounded up by MLX-Gen to its grid (`17n+5` at 24 fps, `124` to `345`); a count outside the grid is refused before any weights load. |
+| `num_frames` | Rounded up by MLX-Gen to the next count of its grid (`17n+5` at 24 fps, `124` to `345`): `125` runs as `141`. A count that rounds outside that range (below `108`, or above `345`) is refused before any weights load. |
 | `steps`, `seed`, `quantize`, `memory_mode`, `cancel_event` | As for other routes; `steps` is at least 1 and `seed` lies in `[0, 2**64 - 1]` (MLX's random key). `quantize` applies to the source snapshot only (8 or 4, the row's `validated_quantization_bits`). |
 | `lora_adapters` | Adapters on the `transformer` role (the row's `lora_target_roles`). As in MLX-Gen, the list replaces the Turbo adapter a Turbo schedule attaches: include the Turbo file to keep the 8-step schedule. |
 
 Values left unset stay unset, so MLX-Gen applies the schedule's own defaults.
 Everything is checked before any weights load, against MLX-Gen's capability row
-and its own MiniMax-H3 planning code, and every refusal names the field:
+and its own MiniMax-H3 planning code, and a refusal about one field names it
+(a refusal about two fields together, such as `lowest` with `quantize`, leaves
+`field` None):
 
 - What the route cannot apply, or a value outside what it accepts, raises
   `CapabilityNotSupportedError`: `negative_prompt`, `guidance_scale`,
   `guidance_2`, an `fps` other than 24, an `extra` key other than the progress
   callbacks and `memory_mode`, a canvas off the multiple or outside the aspect
-  window, a frame count off the grid, `steps` below 1, a shift that is not
+  window, a frame count that rounds outside `124` to `345` (a count inside is
+  rounded up to the grid, not refused), `steps` below 1, a shift that is not
   positive.
 - A value of the wrong type, or two fields that contradict each other, raises
   `ValueError`: a width that is not an integer, `soundscape` or `music` that is
@@ -2905,7 +2902,7 @@ Optional gating:
 Important: the registry is *not* a guarantee that your configured backend can execute a task at runtime.
 Use [docs/reference/backends.md](reference/backends.md) for backend support.
 
-### Downloads and what is installed
+### Downloads and what is cached
 
 The download presets live in
 [`../src/abstractvision/model_downloads.py`](../src/abstractvision/model_downloads.py); the state of a
@@ -2913,37 +2910,59 @@ preset on this host in [`../src/abstractvision/model_inventory.py`](../src/abstr
 The CLI's `download`, `catalog`, `show-model` and `models --json` are built on them.
 
 ```python
-from abstractvision.model_downloads import download_model_preset, find_model_preset, plan_model_preset_download
+from abstractvision.model_downloads import download_model_preset, plan_model_preset_download, select_download_preset
 from abstractvision.model_inventory import preset_status
 
-preset = find_model_preset("MiniMaxAI/MiniMax-H3")         # the recommended package: AbstractFramework/minimax-h3-8bit
-preset = find_model_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/minimax-h3-4bit
+preset = select_download_preset("MiniMaxAI/MiniMax-H3")          # the recommended package: AbstractFramework/minimax-h3-8bit
+preset = select_download_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/minimax-h3-4bit
 print(preset.gated, preset.license_name, preset.recommended)  # from the catalog
-plan = plan_model_preset_download(preset)  # reads the Hub listing; downloads nothing
-print(plan.summary_lines(), plan.disk_space_error())  # access, size, files complete / to fetch, free disk space
+plan = plan_model_preset_download(preset, base_model="minimax-h3-turbo-544p")  # reads the Hub listings; downloads nothing
+print(plan.summary_lines(), plan.disk_space_error())  # access, sizes, files complete / to fetch, free disk space
 print(preset_status(preset))  # cache / cache_bytes / cache_gaps / snapshot_dir / memory_modes / memory_peaks
-snapshot_dir = download_model_preset(preset, report=print)
+snapshot_dir = download_model_preset(preset, base_model="minimax-h3-turbo-544p", report=print)
 ```
 
-- `find_model_preset(name, *, target, engine, require_8bit, bits)`: an exact repo id selects that
-  package; a model id with several packages selects the width `bits` names, else the package the
-  catalog marks `recommended`, else raises `ValueError` listing the choices.
-- `plan_model_preset_download(preset, *, token, all_files)`: a `HubDownloadPlan`, read from the Hub
-  listing without writing anything: `files` (each a `HubFile` with `name`, `size` and `complete`: its
-  snapshot link or blob is in the cache, huggingface_hub's own test; a partial `.incomplete` file is not
-  complete), `complete_files`, `fetch_files`, `total_bytes`, `complete_bytes`, `fetch_bytes`, `free_bytes`,
-  `gated`, `listing_error` (why there is no listing; the byte counts are then None), `summary_lines()`,
-  `disk_space_error()` (the message when the files to fetch do not fit, else None) and `to_dict()`.
-  `download --dry-run` prints it. Raises `HuggingFaceAccessError` when the Hub refuses the repository.
-- `download_model_preset(preset, *, model_dir, token, max_workers, all_files, report)`: a legacy
-  `<model_dir>/<preset.local_dir_name>` tree (`legacy_model_tree`) is moved into the cache as in 0.3.36 and
-  returned as it is, nothing fetched (`report` says it was not compared with the Hub). Otherwise it plans
-  first and passes the summary to `report`; raises `InsufficientDiskSpaceError` (a `RuntimeError`) before anything is written
-  when the files to fetch do not fit; fetches exactly the files to fetch (none when every file is
-  complete); raises `HuggingFaceAccessError` when the Hub refuses the repository (naming the licence when
-  the catalog marks it gated) and `RuntimeError` when files are missing after the download. Without the
-  listing it returns a cached snapshot with no visible gap as it is, else raises `RuntimeError` saying why
-  there is no listing and what to do.
+- `select_download_preset(name, *, target, engine, bits, allow_non_8bit)`: the preset `abstractvision
+  download` fetches, with its flags. A model with a single package selects it; with several packages of
+  one engine, the one the catalog marks `recommended`, else the width `bits` names, else `ValueError`
+  listing them. Across targets the host's order decides, preferring an 8-bit package unless
+  `allow_non_8bit`, with which a repository named exactly selects that repository instead of a package
+  made from it. A Hugging Face `owner/name` the catalog does not name is the whole repository
+  (`repository_preset`). `find_model_preset(name, *, target, engine, require_8bit, bits)` is the catalog
+  lookup it is built on.
+- `download_command(repo_id, *, engine=None, base_model=None)`: the `abstractvision download` command
+  that selects exactly `repo_id` on this host, checked with `select_download_preset`:
+  `abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit` for the MiniMax-H3 source repository,
+  `abstractvision download AbstractFramework/minimax-h3-8bit` for a package; `ValueError` when no form
+  of the command selects it.
+- `plan_model_preset_download(preset, *, base_model, model_dir, token, all_files)`: a `DownloadPlan`,
+  read from the Hub listings without writing anything. `parts` are the repositories the download fetches
+  from (`DownloadPart`: `role`, `plan`): the package, a stable-diffusion.cpp bundle's companions (`vae`,
+  `llm`), and the adapter of the MLX-Gen schedule `base_model` unless mlx-gen finds it cached
+  (`adapter`, `adapter_path`). Each part's `plan` is a `HubDownloadPlan`: `files` (each a `HubFile` with
+  `name`, `size`, `complete` (its snapshot link or blob is in the cache, huggingface_hub's own test) and
+  `partial` (the bytes its `.incomplete` file holds)), `complete_files`, `fetch_files`, `total_bytes`,
+  `complete_bytes`, `fetch_bytes`, `partial_bytes`, `required_bytes`, `free_bytes`, `commit` (the commit
+  the listing named, which the fetch takes), `gated`, `listing_error` (why there is no listing; the byte
+  counts are then None). The `DownloadPlan` adds the totals, `legacy_import` / `legacy_remove` (a legacy
+  tree), `summary_lines()`, `disk_space_error()` (the message when the files to fetch do not fit under
+  `DISK_RULE`, else None) and `to_dict()`. `download --dry-run` prints it. Raises
+  `HuggingFaceAccessError` when the Hub refuses a repository, `ValueError` when `base_model` is not a
+  schedule of the package, and `OptionalDependencyMissingError` when the adapter can only be named by
+  mlx-gen and mlx-gen cannot be imported.
+- `DISK_RULE`: the files to fetch count at their full size, less what their partial `.incomplete` files
+  already hold, because huggingface_hub writes each file into that same file (continuing it over plain
+  HTTP, rewriting it from the start over Xet).
+- `download_model_preset(preset, *, base_model, model_dir, token, max_workers, all_files, report)`: plans
+  first and passes the summary to `report`. A legacy `<model_dir>/<preset.local_dir_name>` tree
+  (`legacy_model_tree`) is moved into the cache and used as the package as it is (`report` says it was
+  not compared with the Hub). Raises `InsufficientDiskSpaceError` (a `RuntimeError`) before anything is
+  written when the files to fetch do not fit; fetches exactly the files to fetch of every part (none
+  when every file is complete), from the commit each listing named, and records that commit as the
+  repository's `main`; raises `HuggingFaceAccessError` when the Hub refuses a repository (naming the
+  licence when the catalog marks it gated) and `RuntimeError` when files are missing after the download.
+  Without a listing it uses what a local look finds in the cache as it is when it finds every part, else
+  raises `RuntimeError` saying why there is no listing and what to do. Returns the package snapshot.
 - `repository_preset(repo_id)`: a repository the catalog does not list, downloaded whole through the same
   plan.
 - `local_cache_state(preset)`: the local look the listings use, offline: `snapshot_dir`, `files`,
@@ -2958,15 +2977,17 @@ snapshot_dir = download_model_preset(preset, report=print)
   measured runs, `memory_peaks` (below) and `smallest_tested_memory_gb` (per mode, the smallest unified
   memory mlx-gen completed a run of that width on, where it publishes it). The figures are read from the
   installed mlx-gen at run time.
-- `memory_peaks(repo_id, base_model=None)`: MLX-Gen's measured runs for one catalog package, as JSON rows
+- `memory_peaks(repo_id)`: MLX-Gen's measured runs for one catalog package, as JSON rows
   `{task, memory_mode, width, height, frames, steps, peak_bytes, machine_total_ram_bytes}` (`peak_bytes` is
   the whole-process footprint, `machine_total_ram_bytes` the memory of the Mac it ran on), kept to the
-  package's stored width and, with `base_model`, to that schedule's rows (`ValueError` for a schedule the
-  package does not have). Empty for a repository that is not a prepared MLX-Gen package of the catalog, or
-  when mlx-gen is not installed or publishes nothing; no model is built.
+  package's stored width. A run names its canvas, frames and steps but not the schedule it ran with, and
+  mlx-gen 0.40.1 publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
+  per package, not per schedule. Empty for a repository that is not a prepared MLX-Gen package of the
+  catalog, or when mlx-gen is not installed or publishes nothing; no model is built.
 - `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`: the
-  adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA) and its cached path, or `None` when the
-  schedule loads none; `download=True` fetches it, as `abstractvision download --base-model` does.
+  adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA) and where mlx-gen finds it, or `None`
+  when the schedule loads none. `abstractvision download --base-model` fetches the adapter through its
+  plan (into huggingface_hub's cache, where mlx-gen looks), not with `download=True`.
 
 ## Artifacts and stores
 
@@ -3085,7 +3106,7 @@ The public API includes `text_to_video`, `image_to_video`, and `multi_view_image
   - Diffusers backend ([`../src/abstractvision/backends/huggingface_diffusers.py`](../src/abstractvision/backends/huggingface_diffusers.py))
   - stable-diffusion.cpp backend ([`../src/abstractvision/backends/stable_diffusion_cpp.py`](../src/abstractvision/backends/stable_diffusion_cpp.py))
   - MLX-Gen backend for curated Apple-first local MLX presets ([`../src/abstractvision/backends/mflux.py`](../src/abstractvision/backends/mflux.py))
-- Local MLX-Gen supports `text_to_image` for curated q4/q8 FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, and official FIBO snapshots; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports validated Qwen structured control and Qwen/FIBO masked edits through route-aware runtime checks; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for `text_to_video` and first-frame `image_to_video`.
+- Local MLX-Gen supports `text_to_image` for curated q4/q8 FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, and official FIBO snapshots; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports Qwen/FIBO masked edits through route-aware runtime checks (and refuses structured control images); and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for `text_to_video` and first-frame `image_to_video`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local surfaces.
 - OpenAI-compatible HTTP can also support `text_to_video` / `image_to_video` when `text_to_video_path` / `image_to_video_path` are configured ([`../src/abstractvision/backends/openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py)).
 - No built-in backend implements `multi_view_image` yet (they raise `CapabilityNotSupportedError` in `generate_angles(...)`).
@@ -3174,7 +3195,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. MLX-Gen is validated on Apple Silicon. The explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the NVIDIA/Linux `gpu` and `all-gpu` profiles do not include it.
+- Local MLX-Gen supports curated q4/q8 image presets, Qwen/FIBO masked edits (structured control images are refused), official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. MLX-Gen is validated on Apple Silicon. The explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the NVIDIA/Linux `gpu` and `all-gpu` profiles do not include it.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - OpenAI-compatible HTTP can also provide `text_to_video` / `image_to_video` **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
@@ -3446,7 +3467,7 @@ Memory modes, `quantize` and sound:
 - A video response's `audio` object (`present`, `sample_rate`, `channels`, `codec`, and `wav` = `{"b64_json"}` or `{"url"}` when the soundtrack is not muxed into the MP4) fills `GeneratedAsset.audio` (`GeneratedAudioTrack`, with the WAV bytes in `data` when unmuxed); `metadata["memory_mode"]` holds the remote's `memory_mode_used` (from the response, or for a job from its result, else from the job), and is absent when the remote does not report it.
 - A request with `cancel_event` runs as a remote job (`POST {base_url}/vision/jobs/...`, polled); setting the event sends `POST {base_url}/vision/jobs/{id}/cancel` and raises `GenerationCancelledError`, and a poll that ends any other way (a network error, an interrupt) sends the same cancel before the error propagates. AbstractCore's server runs one job at a time and refuses a job while another generation runs (where a request without `cancel_event` waits); the backend raises that refusal as a `RuntimeError` saying another generation is running on the server.
 - Without that route (a plain OpenAI image endpoint, and always for the OpenAI API), only `default` is listed, a request that sets any of these fields (or `extra["memory_mode"]`) is refused with `CapabilityNotSupportedError` before anything is sent, and none of them is ever sent as a field; other `extra` keys, `quantize` or the soundtrack names included, reach it as before.
-- `list_provider_models()` and a request that sets one of the fields or a `cancel_event` (or runs under `$ABSTRACTVISION_MEMORY_MODE`) ask, as does, once per backend, the first request that carries `extra`; the answer is reused for 30 seconds, and `get_capabilities()` and `supported_memory_modes()` read the last one without a request. A request that sets none of them and carries no `extra` makes no discovery request. An answer (the catalog, or a 200 without one, or an HTTP 4xx) is kept; a discovery request that fails (timeout, connection error, HTTP 5xx) is not: a request that needed it is refused with the reason, and the next one asks again. A request that arrives while that question is in flight waits for its answer.
+- `list_provider_models()` and a request that sets one of the fields or a `cancel_event` (or runs under `$ABSTRACTVISION_MEMORY_MODE`) ask, as does, once per backend, the first request that carries `extra`; the answer is reused for 30 seconds, and `get_capabilities()` and `supported_memory_modes()` read the last one without a request. A request that sets none of them and carries no `extra` makes no discovery request. An answer (the catalog, or a 200 without one, or an HTTP 4xx) is kept; a discovery request that fails (timeout, connection error, HTTP 5xx) is not: a request that needed it is refused with the reason, and the next one asks again. A request that arrives while that question is in flight waits for its answer. On such a remote, `list_provider_models()` lists that catalog itself, each entry with its `memory_modes`, `supports_audio` and `audio_fields` (see Provider model catalogs below).
 
 Provider model catalogs:
 - `OpenAICompatibleVisionBackend.list_provider_models(...)` on a remote that serves the vision routes (AbstractCore's server) lists `GET {base_url}/vision/models`: one entry per model, named by the `routed_model` a request sends, with its `memory_modes` and audio support (that server's `GET /models` lists text models). On any other remote it queries `GET /models` (the configured `models_path`) as before; a remote that answers it with HTTP 404, 405 or 501 has no model catalog, and the backend raises `CapabilityNotSupportedError` saying so.
@@ -3674,7 +3695,7 @@ Non-curated MLX-Gen models:
 Runtime behavior notes:
 - MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
 - Local MLX-Gen `image_to_image` is supported for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models. Route-aware masked edit is available on `AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, and `briaai/Fibo-Edit-RMBG`; unsupported routes fail closed instead of silently dropping the mask.
-- Local MLX-Gen `text_to_image` exposes route-aware structured control on `AbstractFramework/qwen-image-8bit` through typed `control_image` / `control_strength` (CLI: `--control-image` / `--control-strength`). Structured control is not silently reinterpreted as image edit.
+- Local MLX-Gen does not run structured control: a typed `control_image` (CLI `--control-image`) is refused with `CapabilityNotSupportedError` (`field="control_image"`), as on every built-in backend in this release, and is never reinterpreted as an image edit.
 - Edit strength is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter where the runtime supports it.
 - Local MLX-Gen video is implemented for `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`, and the task-specific Wan A14B packages `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. TI2V-5B should be run at `832x480` / `480x832` or above in practice. Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at `480x240`.
 - Local MLX-Gen also serves MiniMax-H3 (`MiniMaxAI/MiniMax-H3`; packages `AbstractFramework/minimax-h3-8bit`, `-bf16`, `-4bit`): a video with a synchronized stereo soundtrack, `text_to_video` and first-frame `image_to_video`. Set `base_model` to `minimax-h3-turbo-544p`, `minimax-h3-turbo` or `minimax-h3` to pick the schedule. Requests take `soundscape`, `music`, `generate_audio`, `flow_shift` (the video shift) and `audio_shift`; MLX-Gen's capability row and its own MiniMax-H3 planning code (aspect window, prompt composition, adapter check) decide what is accepted, and every value is checked before any weights load, with an error that names the field. Results are the MP4 with its AAC track plus `GeneratedAsset.audio` and `GeneratedAsset.audio_summary()`; a track MLX-Gen could not mux is kept as a WAV (a second artifact when a store is set). `preload()` loads the model without a warm-up run, as for Wan. The weights are never downloaded during generation (gated; territorial licence). See [Video with sound](../api.md#video-with-sound-minimax-h3). `abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p` fetches the recommended package and the Turbo adapter.
@@ -3735,7 +3756,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 
 - `abstractvision models` — list known registry model ids (one per line); `--json` adds each model's downloads with the fields `show-model` prints
 - `abstractvision tasks` — list known tasks
-- `abstractvision show-model <id> [--json]` — print a model’s tasks + params and, for each download, its size, whether the Hugging Face repository is gated (and the licence to accept), whether it is in the local cache (and its size there), the `memory_mode` values this host can run and, for MLX-Gen packages whose capability rows publish measured runs, the peak memory of each mode and the smallest memory it was tested on; for MiniMax-H3 it also lists the schedules (`base_model`) and the adapter each loads
+- `abstractvision show-model <id> [--json]` — print a model’s tasks + params and, for each download, whether the Hugging Face repository is gated (and the licence to accept), its cache state (`cached` with its size on disk, `incomplete` with the gap, or `absent`; the download size comes from `download --dry-run`), the `memory_mode` values this host can run and, for MLX-Gen packages whose capability rows publish measured runs, the peak memory of each mode and the smallest memory it was tested on; for MiniMax-H3 it also lists the schedules (`base_model`) and the adapter each loads
 - `abstractvision catalog [--provider ...] [--task ...] [--json]` — browse the downloadable models: target, engine, bits (`*` marks the recommended package), access (gated or open), cache state and the memory modes this host can run
 - `abstractvision download <model id or repo id> [--bits N] [--base-model SCHEDULE] [--dry-run]` — download a curated preset into the Hugging Face cache (see [Downloads](#downloads))
 - `abstractvision adapters --provider mlx-gen --model <id> --task <task>` — list backend-discovered cached adapters for one exact route
@@ -3859,54 +3880,78 @@ Note:
 ### Downloads
 
 `abstractvision download` takes an exact package repo id (`AbstractFramework/minimax-h3-4bit`), its
-short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`). A model id with several
-packages selects the one the catalog marks as recommended (`*` in `catalog`), or the width
-`--bits 2|4|8|16` names; `--allow-non-8bit` selects a model's source snapshot. A model id with several
-packages and no recommendation asks for an exact repo id or `--bits`. On Apple silicon `--target auto`
-is `mlx` (MLX-Gen packages first).
+short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`), and selects one package:
 
-- The plan: before anything is written, the files the preset selects are listed on the Hugging Face
-  Hub (metadata only; a Diffusers pipeline's `model_index.json` is read into memory to keep only the
-  files the Diffusers backend loads). Each file is either complete in the cache (huggingface_hub's own
-  test: its snapshot link or its blob exists) or to fetch. The command prints the access, the size and
-  file count, how many files are complete and how many are to fetch with their size, and the free space
-  of the cache disk. The files to fetch must fit there at their full size, or the download stops and
-  writes nothing.
-- Fetching: only the files to fetch are requested; when none are, the command says every file is
-  already present and fetches nothing. A partial file left by an interrupted download counts as to
-  fetch: whether huggingface_hub continues it or starts it over depends on its transport, so the plan
-  counts it at its full size. Ctrl-C exits with code 130; the files that
-  completed stay in the cache, and the same command fetches the rest. A download that ends with files
-  missing names them.
+- A model with a single package selects it, whatever its width (`stabilityai/stable-diffusion-xl-base-1.0`
+  selects its Diffusers pipeline, `briaai/Fibo-Edit` its 16-bit MLX-Gen snapshot).
+- A model with several packages of one engine selects the one the catalog marks as recommended (`*` in
+  `catalog`; for MiniMax-H3 the 8-bit package), or the width `--bits 2|4|8|16` names. With several and
+  no recommendation the command stops and lists them: name one, or pass `--bits`.
+- Across targets, the host's order decides (Apple silicon: `mlx`, `gguf`, `diffusers`, `hf-snapshot`;
+  NVIDIA: `gguf`, `diffusers`, `hf-snapshot`; processor only: `diffusers`, `hf-snapshot`, `gguf`),
+  preferring an 8-bit package.
+  `--target` or `--provider` restricts the choice to one target or engine; a name with no package for
+  it is refused, with the packages it has.
+- `--allow-non-8bit` drops the 8-bit preference. A repository named exactly then selects that
+  repository instead of a package made from it: `abstractvision download MiniMaxAI/MiniMax-H3
+  --allow-non-8bit` fetches the MiniMax-H3 source repository, which the model id alone does not (it
+  selects the recommended 8-bit package), and on Apple silicon `stabilityai/sdxl-turbo` selects that
+  Diffusers pipeline instead of its GGUF package. Where the host's order puts a target without an 8-bit
+  package first (processor only: `diffusers`), that target is chosen (`Qwen/Qwen-Image` then selects the
+  Diffusers pipeline instead of the GGUF package). A model with a single package needs no flag.
+- A Hugging Face `owner/name` that the catalog does not list downloads every file of the repository.
+
+What the command does:
+
+- The plan: before anything is written, every repository the download fetches from is listed on the
+  Hugging Face Hub (metadata only; a Diffusers pipeline's `model_index.json` is read into memory to keep
+  only the files the Diffusers backend loads): the package, a stable-diffusion.cpp bundle's companion
+  repositories (the VAE and text encoder a GGUF diffusion model needs), and the adapter of `--base-model`.
+  Each file is either complete in the cache (huggingface_hub's own test: its snapshot link or its blob
+  exists) or to fetch. The command prints the access, the size and file count, how many files are
+  complete and how many are to fetch, one line per companion or adapter, one total, and the free space
+  of the cache disk.
+- The disk check: the files to fetch must fit at their full size, less what their partial `.incomplete`
+  files already hold (huggingface_hub writes each file into that same file, continuing it over plain
+  HTTP and rewriting it from the start over Xet, so its space is reused); the `disk:` line states this
+  rule and the bytes it needs. Otherwise the download stops and writes nothing.
+- Fetching: only the files to fetch are requested, from the commit the listing named, so a repository
+  updated during the download cannot mix two commits; the cache then records that commit as the
+  repository's `main`. When nothing is to fetch, the command says every file is already present and
+  fetches nothing. Ctrl-C exits with code 130; the files that completed stay in the cache, and the same
+  command fetches the rest. A download that ends with files missing names them.
 - Without the Hub listing, nothing is sized or fetched, and the command says why and what to do:
-  offline mode (`HF_HUB_OFFLINE`), the Hub unreachable, an HTTP error, or a listing without file sizes
-  (huggingface.co gives every size; a mirror set with `HF_ENDPOINT` may not). A cached snapshot is
-  reported as it is, not compared with the Hub; the command stops when there is none or a local look
-  sees a gap.
+  offline mode (`HF_HUB_OFFLINE`), the Hub unreachable, an HTTP error, huggingface_hub (or a module it
+  imports) not installed, or a listing without file sizes (huggingface.co gives every size; a mirror set
+  with `HF_ENDPOINT` may not). What the cache holds is reported as it is, not compared with the Hub;
+  the command stops when a local look sees a gap or a repository is missing.
 - Legacy trees: a `~/models/<preset>` tree (`ABSTRACTVISION_MODEL_DIR`, or `--model-dir`) is moved into
-  the cache, as in 0.3.36; `download` then says it was imported and not compared with the Hub, and
-  fetches nothing on top of it. When the cache already holds the package, the tree is removed.
-- A Hugging Face `owner/name` that the catalog does not list downloads every file of the repository
-  through the same plan and disk check; its access comes from the Hub listing. A 401 for a repository
-  not marked gated means it does not exist, is private, or is gated: the Hub does not say which.
+  the cache; `download` then says it was imported and not compared with the Hub, and fetches nothing for
+  the package on top of it. When the cache already holds the package, the tree is removed.
+- A 401 for a repository not marked gated means it does not exist, is private, or is gated: the Hub
+  does not say which.
 - Gated repositories (for example the `AbstractFramework/minimax-h3-*` packages): accept the licence on
   the repository page while logged in to Hugging Face, then authenticate (`hf auth login`, `HF_TOKEN`, or
   `--token`). A refused download ends with a message naming the page and the licence.
-- `--base-model <schedule>`: for MLX-Gen models whose schedules load an adapter, also fetches that
-  adapter into mlx-gen's LoRA cache. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and
-  `minimax-h3-turbo` load a lightx2v Turbo LoRA; `minimax-h3` loads none. Without `--base-model`, the
-  command prints the schedules whose adapter is not cached.
-- `--dry-run`: prints the selection, the plan above and the adapter state, writes nothing and exits 0;
-  when the download would not fit, its last line says so.
+- `--base-model <schedule>`: for MLX-Gen models whose schedules load an adapter, the adapter is part of
+  the plan (what it is, cached or to fetch, its size) and is fetched into huggingface_hub's cache, where
+  mlx-gen finds it. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and `minimax-h3-turbo` load a
+  lightx2v Turbo LoRA; `minimax-h3` loads none. Which adapter a schedule loads is read from mlx-gen: a
+  `--base-model` that is not a schedule of the package, or an adapter that cannot be named because
+  mlx-gen is not installed, stops the command before anything is fetched. Without `--base-model`, the
+  command prints the schedules whose adapter is absent, with the command that fetches it.
+- `--dry-run`: prints the selection and the same plan, writes nothing and exits 0; when the download
+  would not fit, its last line says so.
 - `catalog` and `show-model` show each download's cache state from a local look, offline: `cached` is a
   snapshot with no gap that look can see (a partial file, a link without content, a weight file an index
   names, a component `model_index.json` names whose folder the package's patterns name, such as
-  `transformer_2/`, or no weight file at all), `incomplete` names the gap. Only `download` (or
-  `--dry-run`) compares a snapshot with the Hub, so a file nothing local refers to, such as one an
-  interrupted download never started, can be missing from a snapshot shown as `cached`.
-- Generation never downloads a repository whose catalog download is marked `explicit_download: true`
+  `transformer_2/`, or no weight file at all), `incomplete` names the gap, `absent` is nothing in the
+  cache. Only `download` (or `--dry-run`) compares a snapshot with the Hub, so a file nothing local
+  refers to, such as one an interrupted download never started, can be missing from a snapshot shown as
+  `cached`.
+- Generation (MLX-Gen and Diffusers) never downloads a repository whose catalog download is marked `explicit_download: true`
   (today the four MiniMax-H3 repositories: `AbstractFramework/minimax-h3-8bit|bf16|4bit` and
-  `MiniMaxAI/MiniMax-H3`), or an adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`. `gated`
+  `MiniMaxAI/MiniMax-H3`), or an MLX-Gen adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1` or `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`. `gated`
   only says whether the Hub asks for the licence to be accepted.
 
 ```bash
@@ -3914,6 +3959,7 @@ abstractvision show-model MiniMaxAI/MiniMax-H3
 abstractvision download MiniMaxAI/MiniMax-H3 --dry-run
 abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p
 abstractvision download MiniMaxAI/MiniMax-H3 --bits 4
+abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit   # the source repository
 ```
 
 ### OpenAI / OpenAI-Compatible HTTP Backend
@@ -4038,7 +4084,7 @@ Important boundary:
 
 - `vision_model_capabilities.json` is the curated package view of model-family tasks, downloadable variants, and model-level defaults.
 - `vision_adapter_capabilities.json` is the curated package view of adapter families, compatible base-model aliases, and adapter default/recommended parameters.
-- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask`, `control_image`, or LoRA target roles at runtime.
+- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask` or LoRA target roles at runtime (it refuses `control_image` on every route in this release).
 
 ## What the registry is used for
 
@@ -4154,6 +4200,10 @@ Some models include a `downloads` list to document what AbstractVision considers
   packages for one engine and no `--bits` is given
 - optional `gated: true`: the Hugging Face repository is gated; downloading it needs its licence
   accepted on the repository page (the model's optional `license_name` names it in messages)
+- optional `explicit_download: true`: generation (MLX-Gen and Diffusers) never downloads this repository, even with
+  `allow_download` (`ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`, `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`); it is fetched only by an explicit
+  `abstractvision download`, and the refusal names that command. Today the four MiniMax-H3 repositories
+  carry it. `gated` says only whether the Hub asks for the licence to be accepted.
 
 Download sizes are not stored: `download` and `download --dry-run` read them from the Hub listing.
 
@@ -4636,9 +4686,10 @@ For task-specific Wan A14B video models, `guidance_2` is a typed request
 parameter for the second-stage/low-noise guidance path. Pass it directly to
 `t2v(...)` / `i2v(...)`; do not wrap it in `extra`.
 
-For MLX-Gen base-Qwen structured control, pass `control_image=<bytes>` and
-optional `control_strength=<float>` directly to `t2i(...)`. Unsupported
-backends reject those fields explicitly instead of silently ignoring them.
+`control_image=<bytes>` and `control_strength=<float>` reach the request as
+typed fields, but in this release every built-in backend, MLX-Gen included,
+refuses a `control_image` with `CapabilityNotSupportedError`
+(`field="control_image"`) instead of ignoring it.
 
 The same applies to LoRA adapters. Prefer the shared typed contract:
 
@@ -4704,7 +4755,8 @@ The current AbstractCore server's residency records are its own and independent
 of what this plugin lists as loaded.
 
 The facade forwards every typed field of the request a method builds, under the
-same name: `control_image` / `control_strength` on `t2i`, `soundscape`, `music`,
+same name: `control_image` / `control_strength` on `t2i` (which every built-in
+backend refuses in this release), `soundscape`, `music`,
 `generate_audio`, `audio_shift` on `t2v` / `i2v`, and `quantize`, `memory_mode`
 and `cancel_event` on all of them. Two kinds of keyword are refused with
 `CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i`, and the soundtrack
@@ -4744,13 +4796,14 @@ Discovery, and where each part is visible:
   (a request imports it), `default` until then. AbstractCore's HTTP server
   reads it for `GET /v1/vision/providers/` and for the `memory_modes` of the
   entries of `GET /v1/vision/models`.
-- `llm.vision.memory_peaks(model, base_model=None)` returns MLX-Gen's measured
-  memory peaks for one catalog package as JSON rows `{task, memory_mode, width,
-  height, frames, steps, peak_bytes, machine_total_ram_bytes}`, with `task` in
-  AbstractVision's form (`text_to_video`) and `memory_mode` one of its modes.
-  The rows are already kept to that package's stored width and, when
-  `base_model` names one of its schedules, to that schedule's rows, so a host
-  relays them as they are. The list is empty when the model is not a prepared
+- `llm.vision.memory_peaks(model)` returns MLX-Gen's measured memory peaks for
+  one catalog package as JSON rows `{task, memory_mode, width, height, frames,
+  steps, peak_bytes, machine_total_ram_bytes}`, with `task` in AbstractVision's
+  form (`text_to_video`) and `memory_mode` one of its modes. The rows are
+  already kept to that package's stored width, so a host relays them as they
+  are. They are per package, not per schedule: a run names its canvas, frames
+  and steps but not the schedule it ran with, and mlx-gen publishes the same
+  runs on every MiniMax-H3 schedule. The list is empty when the model is not a prepared
   MLX-Gen package of the catalog or when mlx-gen is not installed or publishes
   nothing, and the call builds no model and reads no weights.
 - With an `artifact_store`, the stored artifact's metadata records `memory_mode`
@@ -5251,7 +5304,10 @@ except for the changes listed below.
   Pillow 13, and publishes capability schema 17. The calls AbstractVision makes for FLUX.2, Z-Image, Qwen, ERNIE,
   FIBO, Bonsai, SeedVR2 and Wan are unchanged. On macOS the same extras require `mlx>=0.32.4`: MLX 0.31.0 to 0.32.3
   can end the process with a Metal "invalid resource" error during a MiniMax-H3 decode when the MLX cache is small,
-  and MLX 0.32.4 fixed it. Upgrade with `pip install -U "abstractvision[mlx-gen]"`. An upgrade without the extra
+  and MLX 0.32.4 fixed it. In those versions the scalar a convolution pads its channels with is not kept alive until
+  the GPU runs the convolution: in the 3D convolution path (0.31.0 to 0.32.3), which the MiniMax-H3 video decode
+  runs, and in a 2D convolution path that pads input channels (0.32.1 to 0.32.3); 0.32.4 keeps it alive in both.
+  Upgrade with `pip install -U "abstractvision[mlx-gen]"`. An upgrade without the extra
   keeps the installed mlx-gen and MLX, so the MLX-Gen backend refuses an mlx-gen outside `>=0.40.1,<0.41.0`, and on
   macOS an MLX older than 0.32.4: the first model load raises `OptionalDependencyMissingError` naming the installed
   version and that command.
@@ -5263,10 +5319,11 @@ except for the changes listed below.
   - Video requests take the typed fields `soundscape`, `music`, `generate_audio` and `audio_shift`; `flow_shift` is
     the video shift. The prompt is passed to MLX-Gen unchanged, and values left unset keep the schedule's defaults.
   - Every value is checked before any weights load, against MLX-Gen's capability row (frame grid `17n+5` at 24 fps,
-    canvas multiple) and its own MiniMax-H3 rules (aspect window 1:4 to 4:1, prompt composition, adapters), and each
-    refusal names the field: what the route cannot apply or a value outside what it accepts raises
+    canvas multiple) and its own MiniMax-H3 rules (aspect window 1:4 to 4:1, prompt composition, adapters), and a
+    refusal about one field names it: what the route cannot apply or a value outside what it accepts raises
     `CapabilityNotSupportedError` (negative prompt, guidance, another fps, an unknown `extra` key, an adapter on
-    another role, a canvas or frame count off the grid); a value of the wrong type, or two fields that contradict
+    another role, a canvas off the grid, a frame count that rounds outside 124 to 345: a count from 108 to 345 is
+    rounded up to the next `17n+5` count, so 125 runs as 141); a value of the wrong type, or two fields that contradict
     each other, raises `ValueError`. A first frame is decoded first. Wan and the other local backends refuse the
     soundtrack fields.
   - Results are the MP4 with its AAC soundtrack, `GeneratedAsset.audio` (`GeneratedAudioTrack`: sample rate,
@@ -5321,49 +5378,62 @@ except for the changes listed below.
     sending a request). Diffusers with `device="auto"` lists `low` and `lowest` once torch is imported (a request
     imports it) and `default` until then.
 - **Downloads.**
-  - `abstractvision download <model id>` selects the package the catalog marks as recommended (for MiniMax-H3, the
-    8-bit one); `--bits 2|4|8|16` selects another width.
-  - Every download is planned before anything is written: the files the package selects are read from the
-    Hugging Face listing (metadata only; a Diffusers pipeline's `model_index.json` is read into memory), and each
-    is either complete in the cache or to fetch. The command prints the access (`open` or `gated`), the size and
-    file count, how many files are complete and how many are to fetch, and the free space of the cache disk; the
-    files to fetch must fit there at their full size, or it stops (`InsufficientDiskSpaceError`) and writes
-    nothing. It then fetches exactly the files to fetch: a package whose files are all in the cache is reported as
-    present and nothing is fetched, and one missing files (for example a Wan 2.2 A14B package downloaded by 0.3.36,
-    without `transformer_2/`) gets them. A partial file left by an interrupted download counts as to fetch:
-    whether huggingface_hub continues it or starts it over depends on its transport.
+  - `abstractvision download <model id>` selects one package: a model with a single package selects it; with
+    several packages of one engine, the one the catalog marks as recommended (for MiniMax-H3, the 8-bit one), or the
+    width `--bits 2|4|8|16` names; with several and none recommended, the command stops and lists them. A repository
+    named exactly with `--allow-non-8bit` selects that repository (`abstractvision download MiniMaxAI/MiniMax-H3
+    --allow-non-8bit` fetches the MiniMax-H3 source repository, which the model id alone does not).
+  - Every download is planned before anything is written, for every repository it fetches from: the package, a
+    stable-diffusion.cpp bundle's companions (the text encoder and VAE a GGUF diffusion model needs), and with
+    `--base-model <schedule>` the adapter that MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA). The files each
+    selects are read from the Hugging Face listing (metadata only; a Diffusers pipeline's `model_index.json` is read
+    into memory), and each is either complete in the cache or to fetch. The command prints the access (`open` or
+    `gated`), the size and file count, how many files are complete and how many are to fetch, one line per companion
+    or adapter, one total, and the free space of the cache disk. The files to fetch must fit there at their full
+    size, less what their partial `.incomplete` files already hold (huggingface_hub writes each file into that same
+    file, continuing it over plain HTTP and rewriting it from the start over Xet), a rule the `disk:` line states;
+    otherwise the command stops (`InsufficientDiskSpaceError`) and writes nothing. It then fetches exactly the files
+    to fetch, from the commit the listing named, and records that commit as the repository's `main`: a package whose
+    files are all in the cache is reported as present and nothing is fetched, and one missing files (for example a
+    Wan 2.2 A14B package downloaded by 0.3.36, without `transformer_2/`) gets them.
+  - A `--base-model` that is not a schedule of the package, or an adapter that cannot be named because mlx-gen
+    cannot be imported, stops the command before anything is fetched, naming what is missing. The adapter is fetched
+    into huggingface_hub's cache, where mlx-gen finds it. Without `--base-model`, `download` lists the schedules
+    whose adapter is absent, with the command that fetches it.
   - Ctrl-C ends the command with exit code 130 and says that the files that completed stay in the cache and that
     the same command continues with the rest. A download that ends with files missing names them.
   - Without the Hub listing, `download` fetches nothing and says why (offline mode, the Hub unreachable, an HTTP
-    error, or a listing without file sizes, which huggingface.co always gives but a mirror set with `HF_ENDPOINT`
-    may not), and what to do. It reports a cached snapshot as it is, not compared with the Hub; with none, or one
-    with a gap a local look can see, it stops. Generation with `allow_download` that finds the model cached makes
-    no Hub request, as before.
-  - `--dry-run` prints the same plan, the adapter state, and, when the download would not fit, says so on its last
-    line; it writes nothing and exits 0.
+    error, huggingface_hub or a module it imports not installed, or a listing without file sizes, which huggingface.co
+    always gives but a mirror set with `HF_ENDPOINT` may not), and what to do. It reports what the cache holds as it
+    is, not compared with the Hub; when a local look sees a gap or a repository is missing, it stops. Generation with
+    `allow_download` that finds the model cached makes no Hub request, as before.
+  - `--dry-run` prints the same plan; it writes nothing and exits 0, and when the download would not fit, its last
+    line says so.
   - A Hugging Face `owner/name` the catalog does not list downloads the whole repository through the same plan,
     size and disk check, with its access from the listing.
-  - `--base-model <schedule>` also fetches the adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA);
-    without it, `download` lists the schedules that load an adapter and whether each is cached.
   - The catalog marks gated repositories (`gated: true`). `download` says so before it starts, and a gated
     repository that refuses the account ends with `HuggingFaceAccessError` naming the repository page and the
     licence to accept. For a repository not marked gated, a 401 says what the Hub's answer means: the repository
     does not exist, is private, or is gated, and the Hub does not say which.
-  - Python: `find_model_preset(..., bits=)`, `download_model_preset(..., report=)`,
-    `plan_model_preset_download(preset)` (a `HubDownloadPlan`), `repository_preset(repo_id)`,
-    `abstractvision.model_inventory.preset_status(preset)` and `local_cache_state(preset)`, and
-    `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`.
+  - Python: `select_download_preset(name, *, target, engine, bits, allow_non_8bit)` (the selection `download`
+    makes), `download_command(repo_id, *, engine, base_model)` (the command that selects exactly that repository on
+    this host), `find_model_preset(..., bits=)`, `plan_model_preset_download(preset, *, base_model, model_dir, token,
+    all_files)` (a `DownloadPlan` of `DownloadPart`s, each with its `HubDownloadPlan`), `download_model_preset(...,
+    base_model=, report=)`, `repository_preset(repo_id)`, `abstractvision.model_inventory.preset_status(preset)` and
+    `local_cache_state(preset)`, and `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model,
+    download=False)`.
 - **Model listings.** `catalog` marks the recommended package with `*` in `bits` and adds the `access`, `cache`
   and `memory_modes` columns. `show-model` adds, per download, its access, cache state with size on disk, the memory
   modes this host can run and, for MLX-Gen packages with published measurements, the peak memory of each mode and
   the smallest memory it was tested on (read from the installed mlx-gen), plus the schedules and the adapter each
   loads. `models --json` and `show-model --json` print the same as JSON. The peaks come from
-  `abstractvision.model_inventory.memory_peaks(repo_id, base_model=None)`, also the AbstractCore plugin's
-  `memory_peaks(model, base_model=None)`: one row per measured run of that package's stored width (and schedule),
-  with its `task` and `memory_mode`. The cache state is a local look, offline:
+  `abstractvision.model_inventory.memory_peaks(repo_id)`, also the AbstractCore plugin's `memory_peaks(model)`: one
+  row per measured run of that package's stored width, with its `task` and `memory_mode`; a run names no schedule,
+  and mlx-gen publishes the same runs on every MiniMax-H3 schedule. The cache state is a local look, offline:
   `cached` is a snapshot with no gap it can see (no partial file, link without content or missing weight file an
   index names, every `model_index.json` component whose folder the package's patterns name present, at least one
-  weight file), `incomplete` names the gap. Only `download` compares a snapshot with
+  weight file), `incomplete` names the gap, `absent` is nothing in the cache: the same three words in the `catalog`
+  table, `show-model` and `--json`. Only `download` compares a snapshot with
   the Hub, so a file that nothing local refers to, such as one an interrupted download never started, can be
   missing from a snapshot shown as `cached`.
 - **OpenAI-compatible backend with AbstractCore's server.** A remote that lists `memory_modes` for the model in
@@ -5397,9 +5467,11 @@ except for the changes listed below.
     options only on a backend that applies them (MLX-Gen, a remote that advertises them) and pass through `extra`
     unchanged elsewhere. A field and an `extra` value that disagree raise `ValueError`.
   - `CapabilityNotSupportedError.field` and `.supported` name the refused request field and the values accepted
-    there, when a refusal is about one field (None otherwise); the message is unchanged. MLX-Gen sets them on every
-    such refusal (`memory_mode`, `quantize` with the accepted widths, `width`, `num_frames`, `steps`, the shifts,
-    `fps`, `negative_prompt`, guidance, `lora_adapters`, `control_image`, `mask`).
+    there, when a refusal is about one field (None otherwise); the message is unchanged. On MLX-Gen a refusal
+    about one field names it (`memory_mode`, `quantize` with the accepted widths, `width`, `num_frames`, `steps`, the
+    shifts, `fps`, `negative_prompt`, guidance, `lora_adapters`, `control_image`, `mask`); a refusal about two fields
+    together (`memory_mode="lowest"` with load-time `quantize`, or with an adapter that trains the AdaLN projections)
+    leaves both None.
   - `preload(memory_mode=None, quantize=None)` on every backend: the values are checked as a request's are, before
     anything loads, and the model loads as a request carrying them loads it, so that request reuses it; a backend
     that takes no load-time quantize refuses it. The AbstractCore plugin's `load_resident_model(...)` passes a
@@ -5418,10 +5490,23 @@ except for the changes listed below.
 
 ### Changed
 
-- `download` of a model id that has several packages and no recommended one stops and lists the packages; name one
-  exactly, or pass `--bits`. A catalog model is no longer fetched as an unfiltered snapshot of its whole upstream
-  repository. A name that is neither in the catalog nor an `owner/name` points to `abstractvision catalog` instead
-  of listing every known name.
+- `download` of a catalog model with a single package (for example `stabilityai/stable-diffusion-xl-base-1.0`,
+  `briaai/Fibo-Edit`, the alias `stable-diffusion`) selects that package without flags and fetches the files it
+  selects (for a Diffusers pipeline, those the backend loads), where 0.3.36 fetched the whole repository of an
+  `owner/name` and refused any other name without `--allow-non-8bit` (which selected the same package).
+- `download` of a model id with several packages and none recommended (FLUX.2 [klein], Qwen-Image, Z-Image,
+  ERNIE-Image-Turbo, FIBO, SeedVR2, the Wan 2.2 models, HunyuanVideo-1.5) stops and lists them, where 0.3.36
+  fetched the whole upstream repository; name a package, pass `--bits`, or, for a source repository,
+  `--allow-non-8bit`.
+- `download <owner/name> --provider <engine>` (or `--target`) for a model with no package of that engine stops and
+  lists the packages it has, where 0.3.36 ignored the provider and fetched the whole repository.
+- A name that is neither in the catalog nor an `owner/name` points to `abstractvision catalog` instead of listing
+  every known name.
+- The one-shot commands' local-default notice names the engine in its download command (`--provider diffusers` on a
+  processor-only host, where the model id alone selects the GGUF package rather than the Diffusers pipeline it runs),
+  and no longer calls that default 8-bit.
+- `--allow-non-8bit` is no longer needed for a model with a single package; it still makes a repository named
+  exactly select that repository, and lets the host's target order choose a target without an 8-bit package.
 - `download` prints the package's own target and engine (a GGUF package says `gguf` and `stable-diffusion.cpp`).
 - A legacy `~/models/<preset>` tree (or one under `--model-dir`) is still moved into the cache as before, and
   `download` then says it was imported and not compared with the Hub, and fetches nothing on top of it.
@@ -5495,6 +5580,15 @@ except for the changes listed below.
   it as loaded.
 - AbstractCore plugin: `control_image` and `control_strength` reach `t2i` (they were dropped), where a backend that
   cannot apply them refuses them.
+
+### Removed
+
+- `abstractvision.cli.download_hf_repo_snapshot`, a name the CLI module imported: use
+  `abstractvision.model_downloads.download_hf_repo_snapshot`, where it is defined (it now plans and checks the disk
+  before fetching).
+- `abstractvision.backends.mflux.WAN_VIDEO_MLX_CACHE_LIMIT_CEILING_BYTES` and `WAN_VIDEO_MLX_CACHE_LIMIT_FLOOR_BYTES`:
+  AbstractVision no longer sets an MLX cache limit for Wan `default` runs; MLX-Gen applies its own (RAM/8, 1 to
+  8 GiB), and `low` / `lowest` runs hold 1 GB (see `memory_mode`).
 
 ## 0.3.36 - 2026-11-11
 

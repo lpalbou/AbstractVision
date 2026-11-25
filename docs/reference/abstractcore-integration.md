@@ -172,9 +172,10 @@ For task-specific Wan A14B video models, `guidance_2` is a typed request
 parameter for the second-stage/low-noise guidance path. Pass it directly to
 `t2v(...)` / `i2v(...)`; do not wrap it in `extra`.
 
-For MLX-Gen base-Qwen structured control, pass `control_image=<bytes>` and
-optional `control_strength=<float>` directly to `t2i(...)`. Unsupported
-backends reject those fields explicitly instead of silently ignoring them.
+`control_image=<bytes>` and `control_strength=<float>` reach the request as
+typed fields, but in this release every built-in backend, MLX-Gen included,
+refuses a `control_image` with `CapabilityNotSupportedError`
+(`field="control_image"`) instead of ignoring it.
 
 The same applies to LoRA adapters. Prefer the shared typed contract:
 
@@ -240,7 +241,8 @@ The current AbstractCore server's residency records are its own and independent
 of what this plugin lists as loaded.
 
 The facade forwards every typed field of the request a method builds, under the
-same name: `control_image` / `control_strength` on `t2i`, `soundscape`, `music`,
+same name: `control_image` / `control_strength` on `t2i` (which every built-in
+backend refuses in this release), `soundscape`, `music`,
 `generate_audio`, `audio_shift` on `t2v` / `i2v`, and `quantize`, `memory_mode`
 and `cancel_event` on all of them. Two kinds of keyword are refused with
 `CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i`, and the soundtrack
@@ -280,13 +282,14 @@ Discovery, and where each part is visible:
   (a request imports it), `default` until then. AbstractCore's HTTP server
   reads it for `GET /v1/vision/providers/` and for the `memory_modes` of the
   entries of `GET /v1/vision/models`.
-- `llm.vision.memory_peaks(model, base_model=None)` returns MLX-Gen's measured
-  memory peaks for one catalog package as JSON rows `{task, memory_mode, width,
-  height, frames, steps, peak_bytes, machine_total_ram_bytes}`, with `task` in
-  AbstractVision's form (`text_to_video`) and `memory_mode` one of its modes.
-  The rows are already kept to that package's stored width and, when
-  `base_model` names one of its schedules, to that schedule's rows, so a host
-  relays them as they are. The list is empty when the model is not a prepared
+- `llm.vision.memory_peaks(model)` returns MLX-Gen's measured memory peaks for
+  one catalog package as JSON rows `{task, memory_mode, width, height, frames,
+  steps, peak_bytes, machine_total_ram_bytes}`, with `task` in AbstractVision's
+  form (`text_to_video`) and `memory_mode` one of its modes. The rows are
+  already kept to that package's stored width, so a host relays them as they
+  are. They are per package, not per schedule: a run names its canvas, frames
+  and steps but not the schedule it ran with, and mlx-gen publishes the same
+  runs on every MiniMax-H3 schedule. The list is empty when the model is not a prepared
   MLX-Gen package of the catalog or when mlx-gen is not installed or publishes
   nothing, and the call builds no model and reads no weights.
 - With an `artifact_store`, the stored artifact's metadata records `memory_mode`

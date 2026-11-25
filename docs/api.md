@@ -427,19 +427,22 @@ Request fields (on `VideoGenerationRequest` and `ImageToVideoRequest`):
 | `generate_audio` | `False` writes a silent clip. Default: the soundtrack is generated. A boolean: any other type, the string `"false"` included, is refused. |
 | `flow_shift`, `audio_shift` | The video and audio schedule shifts (MLX-Gen `video_shift` / `audio_shift`), positive numbers. |
 | `width`, `height` | Given together; positive multiples of the route's `dimension_multiple` (32), with an aspect ratio inside MLX-Gen's window (1:4 to 4:1). Unset: the schedule's canvas, or for a first frame MiniMax-H3's own mapping of the keyframe's aspect ratio, which must then lie in the same window. |
-| `num_frames` | Rounded up by MLX-Gen to its grid (`17n+5` at 24 fps, `124` to `345`); a count outside the grid is refused before any weights load. |
+| `num_frames` | Rounded up by MLX-Gen to the next count of its grid (`17n+5` at 24 fps, `124` to `345`): `125` runs as `141`. A count that rounds outside that range (below `108`, or above `345`) is refused before any weights load. |
 | `steps`, `seed`, `quantize`, `memory_mode`, `cancel_event` | As for other routes; `steps` is at least 1 and `seed` lies in `[0, 2**64 - 1]` (MLX's random key). `quantize` applies to the source snapshot only (8 or 4, the row's `validated_quantization_bits`). |
 | `lora_adapters` | Adapters on the `transformer` role (the row's `lora_target_roles`). As in MLX-Gen, the list replaces the Turbo adapter a Turbo schedule attaches: include the Turbo file to keep the 8-step schedule. |
 
 Values left unset stay unset, so MLX-Gen applies the schedule's own defaults.
 Everything is checked before any weights load, against MLX-Gen's capability row
-and its own MiniMax-H3 planning code, and every refusal names the field:
+and its own MiniMax-H3 planning code, and a refusal about one field names it
+(a refusal about two fields together, such as `lowest` with `quantize`, leaves
+`field` None):
 
 - What the route cannot apply, or a value outside what it accepts, raises
   `CapabilityNotSupportedError`: `negative_prompt`, `guidance_scale`,
   `guidance_2`, an `fps` other than 24, an `extra` key other than the progress
   callbacks and `memory_mode`, a canvas off the multiple or outside the aspect
-  window, a frame count off the grid, `steps` below 1, a shift that is not
+  window, a frame count that rounds outside `124` to `345` (a count inside is
+  rounded up to the grid, not refused), `steps` below 1, a shift that is not
   positive.
 - A value of the wrong type, or two fields that contradict each other, raises
   `ValueError`: a width that is not an integer, `soundscape` or `music` that is
@@ -627,7 +630,7 @@ Optional gating:
 Important: the registry is *not* a guarantee that your configured backend can execute a task at runtime.
 Use [docs/reference/backends.md](reference/backends.md) for backend support.
 
-### Downloads and what is installed
+### Downloads and what is cached
 
 The download presets live in
 [`../src/abstractvision/model_downloads.py`](../src/abstractvision/model_downloads.py); the state of a
@@ -635,37 +638,59 @@ preset on this host in [`../src/abstractvision/model_inventory.py`](../src/abstr
 The CLI's `download`, `catalog`, `show-model` and `models --json` are built on them.
 
 ```python
-from abstractvision.model_downloads import download_model_preset, find_model_preset, plan_model_preset_download
+from abstractvision.model_downloads import download_model_preset, plan_model_preset_download, select_download_preset
 from abstractvision.model_inventory import preset_status
 
-preset = find_model_preset("MiniMaxAI/MiniMax-H3")         # the recommended package: AbstractFramework/minimax-h3-8bit
-preset = find_model_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/minimax-h3-4bit
+preset = select_download_preset("MiniMaxAI/MiniMax-H3")          # the recommended package: AbstractFramework/minimax-h3-8bit
+preset = select_download_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/minimax-h3-4bit
 print(preset.gated, preset.license_name, preset.recommended)  # from the catalog
-plan = plan_model_preset_download(preset)  # reads the Hub listing; downloads nothing
-print(plan.summary_lines(), plan.disk_space_error())  # access, size, files complete / to fetch, free disk space
+plan = plan_model_preset_download(preset, base_model="minimax-h3-turbo-544p")  # reads the Hub listings; downloads nothing
+print(plan.summary_lines(), plan.disk_space_error())  # access, sizes, files complete / to fetch, free disk space
 print(preset_status(preset))  # cache / cache_bytes / cache_gaps / snapshot_dir / memory_modes / memory_peaks
-snapshot_dir = download_model_preset(preset, report=print)
+snapshot_dir = download_model_preset(preset, base_model="minimax-h3-turbo-544p", report=print)
 ```
 
-- `find_model_preset(name, *, target, engine, require_8bit, bits)`: an exact repo id selects that
-  package; a model id with several packages selects the width `bits` names, else the package the
-  catalog marks `recommended`, else raises `ValueError` listing the choices.
-- `plan_model_preset_download(preset, *, token, all_files)`: a `HubDownloadPlan`, read from the Hub
-  listing without writing anything: `files` (each a `HubFile` with `name`, `size` and `complete`: its
-  snapshot link or blob is in the cache, huggingface_hub's own test; a partial `.incomplete` file is not
-  complete), `complete_files`, `fetch_files`, `total_bytes`, `complete_bytes`, `fetch_bytes`, `free_bytes`,
-  `gated`, `listing_error` (why there is no listing; the byte counts are then None), `summary_lines()`,
-  `disk_space_error()` (the message when the files to fetch do not fit, else None) and `to_dict()`.
-  `download --dry-run` prints it. Raises `HuggingFaceAccessError` when the Hub refuses the repository.
-- `download_model_preset(preset, *, model_dir, token, max_workers, all_files, report)`: a legacy
-  `<model_dir>/<preset.local_dir_name>` tree (`legacy_model_tree`) is moved into the cache as in 0.3.36 and
-  returned as it is, nothing fetched (`report` says it was not compared with the Hub). Otherwise it plans
-  first and passes the summary to `report`; raises `InsufficientDiskSpaceError` (a `RuntimeError`) before anything is written
-  when the files to fetch do not fit; fetches exactly the files to fetch (none when every file is
-  complete); raises `HuggingFaceAccessError` when the Hub refuses the repository (naming the licence when
-  the catalog marks it gated) and `RuntimeError` when files are missing after the download. Without the
-  listing it returns a cached snapshot with no visible gap as it is, else raises `RuntimeError` saying why
-  there is no listing and what to do.
+- `select_download_preset(name, *, target, engine, bits, allow_non_8bit)`: the preset `abstractvision
+  download` fetches, with its flags. A model with a single package selects it; with several packages of
+  one engine, the one the catalog marks `recommended`, else the width `bits` names, else `ValueError`
+  listing them. Across targets the host's order decides, preferring an 8-bit package unless
+  `allow_non_8bit`, with which a repository named exactly selects that repository instead of a package
+  made from it. A Hugging Face `owner/name` the catalog does not name is the whole repository
+  (`repository_preset`). `find_model_preset(name, *, target, engine, require_8bit, bits)` is the catalog
+  lookup it is built on.
+- `download_command(repo_id, *, engine=None, base_model=None)`: the `abstractvision download` command
+  that selects exactly `repo_id` on this host, checked with `select_download_preset`:
+  `abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit` for the MiniMax-H3 source repository,
+  `abstractvision download AbstractFramework/minimax-h3-8bit` for a package; `ValueError` when no form
+  of the command selects it.
+- `plan_model_preset_download(preset, *, base_model, model_dir, token, all_files)`: a `DownloadPlan`,
+  read from the Hub listings without writing anything. `parts` are the repositories the download fetches
+  from (`DownloadPart`: `role`, `plan`): the package, a stable-diffusion.cpp bundle's companions (`vae`,
+  `llm`), and the adapter of the MLX-Gen schedule `base_model` unless mlx-gen finds it cached
+  (`adapter`, `adapter_path`). Each part's `plan` is a `HubDownloadPlan`: `files` (each a `HubFile` with
+  `name`, `size`, `complete` (its snapshot link or blob is in the cache, huggingface_hub's own test) and
+  `partial` (the bytes its `.incomplete` file holds)), `complete_files`, `fetch_files`, `total_bytes`,
+  `complete_bytes`, `fetch_bytes`, `partial_bytes`, `required_bytes`, `free_bytes`, `commit` (the commit
+  the listing named, which the fetch takes), `gated`, `listing_error` (why there is no listing; the byte
+  counts are then None). The `DownloadPlan` adds the totals, `legacy_import` / `legacy_remove` (a legacy
+  tree), `summary_lines()`, `disk_space_error()` (the message when the files to fetch do not fit under
+  `DISK_RULE`, else None) and `to_dict()`. `download --dry-run` prints it. Raises
+  `HuggingFaceAccessError` when the Hub refuses a repository, `ValueError` when `base_model` is not a
+  schedule of the package, and `OptionalDependencyMissingError` when the adapter can only be named by
+  mlx-gen and mlx-gen cannot be imported.
+- `DISK_RULE`: the files to fetch count at their full size, less what their partial `.incomplete` files
+  already hold, because huggingface_hub writes each file into that same file (continuing it over plain
+  HTTP, rewriting it from the start over Xet).
+- `download_model_preset(preset, *, base_model, model_dir, token, max_workers, all_files, report)`: plans
+  first and passes the summary to `report`. A legacy `<model_dir>/<preset.local_dir_name>` tree
+  (`legacy_model_tree`) is moved into the cache and used as the package as it is (`report` says it was
+  not compared with the Hub). Raises `InsufficientDiskSpaceError` (a `RuntimeError`) before anything is
+  written when the files to fetch do not fit; fetches exactly the files to fetch of every part (none
+  when every file is complete), from the commit each listing named, and records that commit as the
+  repository's `main`; raises `HuggingFaceAccessError` when the Hub refuses a repository (naming the
+  licence when the catalog marks it gated) and `RuntimeError` when files are missing after the download.
+  Without a listing it uses what a local look finds in the cache as it is when it finds every part, else
+  raises `RuntimeError` saying why there is no listing and what to do. Returns the package snapshot.
 - `repository_preset(repo_id)`: a repository the catalog does not list, downloaded whole through the same
   plan.
 - `local_cache_state(preset)`: the local look the listings use, offline: `snapshot_dir`, `files`,
@@ -680,15 +705,17 @@ snapshot_dir = download_model_preset(preset, report=print)
   measured runs, `memory_peaks` (below) and `smallest_tested_memory_gb` (per mode, the smallest unified
   memory mlx-gen completed a run of that width on, where it publishes it). The figures are read from the
   installed mlx-gen at run time.
-- `memory_peaks(repo_id, base_model=None)`: MLX-Gen's measured runs for one catalog package, as JSON rows
+- `memory_peaks(repo_id)`: MLX-Gen's measured runs for one catalog package, as JSON rows
   `{task, memory_mode, width, height, frames, steps, peak_bytes, machine_total_ram_bytes}` (`peak_bytes` is
   the whole-process footprint, `machine_total_ram_bytes` the memory of the Mac it ran on), kept to the
-  package's stored width and, with `base_model`, to that schedule's rows (`ValueError` for a schedule the
-  package does not have). Empty for a repository that is not a prepared MLX-Gen package of the catalog, or
-  when mlx-gen is not installed or publishes nothing; no model is built.
+  package's stored width. A run names its canvas, frames and steps but not the schedule it ran with, and
+  mlx-gen 0.40.1 publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
+  per package, not per schedule. Empty for a repository that is not a prepared MLX-Gen package of the
+  catalog, or when mlx-gen is not installed or publishes nothing; no model is built.
 - `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`: the
-  adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA) and its cached path, or `None` when the
-  schedule loads none; `download=True` fetches it, as `abstractvision download --base-model` does.
+  adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA) and where mlx-gen finds it, or `None`
+  when the schedule loads none. `abstractvision download --base-model` fetches the adapter through its
+  plan (into huggingface_hub's cache, where mlx-gen looks), not with `download=True`.
 
 ## Artifacts and stores
 

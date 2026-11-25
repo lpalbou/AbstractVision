@@ -283,7 +283,11 @@ class TestExplicitDownloads(unittest.TestCase):
         )
 
     def test_every_minimax_h3_repository_is_refused_and_the_refusal_names_the_licence(self):
+        import shlex
+
+        from abstractvision.cli import build_parser
         from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.model_downloads import select_download_preset
 
         for model in (
             "AbstractFramework/minimax-h3-8bit",
@@ -297,7 +301,15 @@ class TestExplicitDownloads(unittest.TestCase):
                 message = str(caught.exception)
                 self.assertIn("never downloaded during generation", message)
                 self.assertIn("MiniMax H3 Community License", message)
-                self.assertIn(f"`abstractvision download {model}`", message)
+                # The command named selects this very repository on this host (the source repository needs
+                # --allow-non-8bit: the model id alone selects the recommended 8-bit package).
+                command = message.split("download explicitly: `", 1)[1].split("`", 1)[0]
+                args = build_parser().parse_args(shlex.split(command)[1:])
+                chosen = select_download_preset(
+                    args.names[0], target=args.target, engine=args.engine, bits=args.bits,
+                    allow_non_8bit=args.allow_non_8bit,
+                )
+                self.assertEqual(chosen.repo_id, model, command)
         self.assertEqual(self.downloads, [])
 
     def test_the_explicit_download_field_is_the_one_source(self):

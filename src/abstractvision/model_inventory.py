@@ -114,31 +114,27 @@ def preset_status(preset: VisionModelDownloadPreset) -> Dict[str, Any]:
     return status
 
 
-def memory_peaks(repo_id: str, base_model: Optional[str] = None) -> List[Dict[str, Any]]:
+def memory_peaks(repo_id: str) -> List[Dict[str, Any]]:
     """MLX-Gen's measured peak memory for one catalog package, per task and memory_mode.
 
     Each row is `{task, memory_mode, width, height, frames, steps, peak_bytes,
     machine_total_ram_bytes}`: a completed run from the `measured_runs` of the engine's capability
-    rows for the package (for the `base_model` schedule when given), at the package's stored width.
-    `peak_bytes` is the whole-process footprint; `machine_total_ram_bytes` the memory of the Mac it
-    ran on. Empty for a repository that is not an MLX-Gen package of the catalog, and when mlx-gen
-    is not installed or publishes nothing. No model is built and no weight is read. Raises
-    ValueError when `base_model` is not a schedule of the package."""
+    rows for the package, at the package's stored width. `peak_bytes` is the whole-process footprint;
+    `machine_total_ram_bytes` the memory of the Mac it ran on. A run names its canvas, frames and
+    steps but not the schedule it ran with, and mlx-gen publishes the same runs on every schedule of
+    a model, so the rows are per package, not per schedule. Empty for a repository that is not an
+    MLX-Gen package of the catalog, and when mlx-gen is not installed or publishes nothing. No model
+    is built and no weight is read."""
 
     preset = catalog_download_preset(str(repo_id), target="mlx", engine="mlx-gen")
     # mlx-gen measures its prepared packages, by width; a source snapshot is not one of them.
     if preset is None or str(preset.source) != "abstractframework-mlx-gen":
         return []
-    from .backends.mflux import (
-        mlx_gen_memory_mode_of_run,
-        mlx_gen_package_schedule,
-        mlx_gen_route_task,
-    )
+    from .backends.mflux import mlx_gen_memory_mode_of_run, mlx_gen_route_task
 
-    schedule = mlx_gen_package_schedule(preset, base_model) if base_model is not None else None
     width = _engine_quantize(preset.quantization_bits)
     peaks: List[Dict[str, Any]] = []
-    for row in _mlx_gen_rows(preset.repo_id, schedule):
+    for row in _mlx_gen_rows(preset.repo_id):
         for run in row.get("measured_runs") or []:
             if not isinstance(run, dict) or run.get("outcome") != "completed" or run.get("quantize") != width:
                 continue
@@ -267,9 +263,9 @@ def _mlx_gen_memory_modes(repo_id: str) -> Optional[Tuple[str, ...]]:
 
 
 @lru_cache(maxsize=None)
-def _mlx_gen_rows(repo_id: str, base_model: Optional[str] = None) -> Tuple[Dict[str, Any], ...]:
-    # The rows a backend configured with this package (and schedule) plans with.
-    backend = _mlx_gen_backend(repo_id, base_model)
+def _mlx_gen_rows(repo_id: str) -> Tuple[Dict[str, Any], ...]:
+    # The rows a backend configured with this package plans with.
+    backend = _mlx_gen_backend(repo_id)
     if backend is None:
         return ()
     try:
@@ -278,13 +274,13 @@ def _mlx_gen_rows(repo_id: str, base_model: Optional[str] = None) -> Tuple[Dict[
         return ()
 
 
-def _mlx_gen_backend(repo_id: str, base_model: Optional[str] = None) -> Any:
+def _mlx_gen_backend(repo_id: str) -> Any:
     if local_model_profile() != "apple-silicon" or importlib.util.find_spec("mflux") is None:
         return None
     try:
         from .backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
-        return MFluxVisionBackend(config=MFluxBackendConfig(model=repo_id, base_model=base_model))
+        return MFluxVisionBackend(config=MFluxBackendConfig(model=repo_id))
     except Exception:
         return None
 

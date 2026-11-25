@@ -132,8 +132,8 @@ The follow-up investigation is tracked in:
 - Install the backend extra: `pip install "abstractvision[mlx-gen]"`
 - Download the prepared model first, for example `abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen`.
 - For MLX-Gen mask edits, use a validated masked-edit route such as `AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, or `briaai/Fibo-Edit-RMBG`.
-- For MLX-Gen structured control, use the validated base-Qwen route `AbstractFramework/qwen-image-8bit` and pass `--control-image` / `--control-strength` (or Python `control_image=` / `control_strength=`).
-- If you need mask/control on another local route, use local Diffusers or `stable-diffusion.cpp` instead of expecting AbstractVision to silently fall back.
+- Structured control (`--control-image` / `--control-strength`, Python `control_image=` / `control_strength=`) is accepted by the request, but in this release every built-in backend, MLX-Gen included, refuses a `control_image` with `CapabilityNotSupportedError` (`field="control_image"`).
+- If you need a mask on another local route, use local Diffusers or `stable-diffusion.cpp` instead of expecting AbstractVision to silently fall back.
 
 Notes:
 - MLX-Gen edit strength is passed as `strength` and normalized to the runtime `image_strength` parameter where the model supports it.

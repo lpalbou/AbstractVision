@@ -371,12 +371,13 @@ class TestCliSmoke(unittest.TestCase):
         self.assertTrue(qwen["task_specs"]["text_to_image"]["supports_lora"])
         self.assertEqual(qwen["task_specs"]["text_to_image"]["lora_status"], "validated")
 
-    def test_download_model_refuses_non_8bit_fallback_by_default(self):
-        from abstractvision.cli import main
+    def test_a_model_with_a_single_non_8bit_package_selects_it_without_flags(self):
+        from abstractvision.model_downloads import select_download_preset
 
-        with self.assertRaises(SystemExit) as ctx:
-            main(["download", "stable-diffusion"])
-        self.assertIn("No 8-bit preset", str(ctx.exception))
+        # 0.3.36 refused this name without --allow-non-8bit, which then selected this same package.
+        for flags in ({}, {"allow_non_8bit": True}):
+            preset = select_download_preset("stable-diffusion", **flags)
+            self.assertEqual((preset.repo_id, preset.target), ("stable-diffusion-v1-5/stable-diffusion-v1-5", "diffusers"))
 
     def test_download_alias_diffusers_provider_implies_target_and_allows_full_snapshots_by_default(
         self,
@@ -385,7 +386,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             calls["target"] = preset.target
             calls["bits"] = preset.quantization_bits
@@ -409,7 +410,7 @@ class TestCliSmoke(unittest.TestCase):
     def test_download_diffusers_qwen_edit_prints_curated_16bit_note(self):
         from abstractvision.cli import main
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             return (
                 Path("/tmp/hf-cache")
                 / f"models--{preset.repo_id.replace('/', '--')}"
@@ -432,7 +433,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             return (
                 Path("/tmp/hf-cache")
@@ -595,7 +596,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             calls["model_dir"] = model_dir
             calls["max_workers"] = max_workers
@@ -635,7 +636,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             calls["bits"] = preset.quantization_bits
             return (
@@ -668,7 +669,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             calls["bits"] = preset.quantization_bits
             return (
@@ -701,7 +702,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             calls["bits"] = preset.quantization_bits
             return (
@@ -734,7 +735,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             calls["in_catalog"] = preset.in_catalog
             calls["allow_patterns"] = preset.allow_patterns
@@ -770,7 +771,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             calls["local_dir_name"] = preset.local_dir_name
             calls["max_workers"] = max_workers
@@ -806,7 +807,7 @@ class TestCliSmoke(unittest.TestCase):
         from abstractvision.cli import main
         from abstractvision.model_downloads import SdcppModelSelection
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             return (
                 Path("/tmp/hf-cache")
                 / f"models--{preset.repo_id.replace('/', '--')}"
@@ -815,8 +816,9 @@ class TestCliSmoke(unittest.TestCase):
             )
 
         def fake_resolve(name, *, allow_download=False, token=None, max_workers=4):
-            self.assertEqual(name, "flux2-klein-base-4b")
-            self.assertTrue(allow_download)
+            # The download fetched the bundle's companions with the package; this only names the files.
+            self.assertEqual(name, "leejet/FLUX.2-klein-base-4B-GGUF")
+            self.assertFalse(allow_download)
             return SdcppModelSelection(
                 key="flux2-klein-base-4b",
                 repo_id="leejet/FLUX.2-klein-base-4B-GGUF",
@@ -852,7 +854,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["repo_id"] = preset.repo_id
             calls["target"] = preset.target
             calls["engine"] = preset.engine
@@ -878,7 +880,7 @@ class TestCliSmoke(unittest.TestCase):
         from abstractvision.cli import main
         from abstractvision.model_downloads import HuggingFaceAccessError
 
-        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             raise HuggingFaceAccessError(
                 "stabilityai/stable-diffusion-3.5-medium",
                 raw_message="403 Client Error: gated repo",
@@ -905,7 +907,7 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {"count": 0, "tokens": []}
 
-        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4, report=None):
+        def fake_download(_preset, *, model_dir=None, token=None, max_workers=4, report=None, base_model=None):
             calls["count"] += 1
             calls["tokens"].append(token)
             if calls["count"] == 1:
