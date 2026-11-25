@@ -23,6 +23,7 @@ from ..lora_adapters import (
     serialize_lora_adapters,
 )
 from ..model_capabilities import VisionModelCapabilitiesRegistry, VisionTaskSpec
+from ..model_downloads import download_command
 from ..model_cache import (
     cached_hf_model_sources,
     hf_snapshot_has_incomplete_downloads,
@@ -2678,9 +2679,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             if may_download or "model_index.json" not in msg:
                 return
             if self._cfg.allow_download:
+                try:
+                    how = f"download it with `{download_command(model_id, engine='diffusers')}`"
+                except ValueError:
+                    how = f"fetch it from https://huggingface.co/{model_id}"
                 raise ValueError(
                     f"Model {model_id!r} is not available locally, and generation never downloads it: the "
-                    f"catalog marks it for explicit download only. Download it with `abstractvision download {model_id}`."
+                    f"catalog marks it for explicit download only; {how}."
                 ) from e
             raise ValueError(
                 f"Model {model_id!r} is not available locally and downloads are disabled. "

@@ -4001,6 +4001,8 @@ class MFluxVisionBackend(VisionBackend):
     def _checked_load_quantize(self, quantize: Any) -> int:
         """The one check of a load-time `quantize`, for every family, against the resolved model."""
         try:
+            if isinstance(quantize, bool):
+                raise TypeError
             bits = int(quantize)
         except (TypeError, ValueError):
             raise ValueError(f"quantize must be an integer bit width (got {quantize!r}).") from None
