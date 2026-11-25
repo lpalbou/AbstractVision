@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -24,6 +25,15 @@ def _make_hf_snapshot(root: Path, repo_id: str, *, snapshot_name: str = "abc123"
     (repo_dir / "refs").mkdir(parents=True, exist_ok=True)
     (repo_dir / "refs" / "main").write_text(snapshot_name, encoding="utf-8")
     return snap
+
+
+class _HoldsUntilUnload:
+    """A local backend stand-in: it holds its model from a preload or a run until `unload`."""
+
+    holds = False
+
+    def has_loaded_model(self):
+        return self.holds
 
 
 class TestAbstractCorePlugin(unittest.TestCase):
@@ -130,11 +140,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -163,8 +174,9 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -193,11 +205,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
                 )
@@ -221,11 +234,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
                 )
@@ -257,11 +271,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -295,11 +310,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
                 )
@@ -353,11 +369,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -387,7 +404,7 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
@@ -406,6 +423,7 @@ print("ok")
                 )
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -439,11 +457,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -477,11 +496,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -549,11 +569,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -586,11 +607,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
                 )
@@ -614,11 +636,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
                 )
@@ -699,11 +722,12 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class _FakeDiffusersBackend:
+        class _FakeDiffusersBackend(_HoldsUntilUnload):
             def get_capabilities(self):
                 return VisionBackendCapabilities(supported_tasks=["image_to_image"])
 
             def edit_image(self, request):
+                self.holds = True
                 seen["backend"] = "diffusers"
                 seen["request"] = request
                 return GeneratedAsset(
@@ -861,11 +885,12 @@ print("ok")
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
                 )
@@ -920,12 +945,13 @@ print("ok")
 
         png = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 16)
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, name: str):
                 self.name = name
                 self.unloaded = 0
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image",
                     data=png,
@@ -934,6 +960,7 @@ print("ok")
                 )
 
             def unload(self):
+                self.holds = False
                 self.unloaded += 1
 
         class _DummyOwner:
@@ -968,18 +995,17 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeDiffusersBackend:
-            def has_loaded_model(self):
-                return True  # a local stand-in: it holds the model it was asked to load
-
+        class FakeDiffusersBackend(_HoldsUntilUnload):
             def __init__(self):
                 self.preloaded = 0
                 self.unloaded = 0
 
             def preload(self):
+                self.holds = True
                 self.preloaded += 1
 
             def unload(self):
+                self.holds = False
                 self.unloaded += 1
 
         backend = FakeDiffusersBackend()
@@ -1046,24 +1072,24 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeDiffusersBackend:
-            def has_loaded_model(self):
-                return True  # a local stand-in: it holds the model it was asked to load
-
+        class FakeDiffusersBackend(_HoldsUntilUnload):
             def __init__(self):
                 self.unloaded = 0
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
                 )
 
             def edit_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
                 )
 
             def unload(self):
+                self.holds = False
                 self.unloaded += 1
 
         backend = FakeDiffusersBackend()
@@ -1107,6 +1133,7 @@ print("ok")
         self.assertEqual(cap.list_loaded_models(), [])
 
     def test_abstractcore_plugin_i2i_moves_unknown_kwargs_to_extra(self):
+        from abstractvision.backends.openai_compatible import OpenAICompatibleVisionBackend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset
 
@@ -1116,7 +1143,10 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeOpenAIBackend:
+        class FakeOpenAIBackend(OpenAICompatibleVisionBackend):
+            def __init__(self):
+                pass
+
             def edit_image(self, request):
                 seen["request"] = request
                 return GeneratedAsset(
@@ -1124,7 +1154,7 @@ print("ok")
                 )
 
         cap = _AbstractVisionCapability(_DummyOwner())
-        binding = {"local_control": False}
+        binding = {"local_control": False, "remote_model": "image-2"}
         with patch.object(cap, "_resolve_backend_binding", return_value=binding):
             with patch.object(cap, "_activate_request_backend", return_value=FakeOpenAIBackend()):
                 out = cap.i2i(
@@ -1149,11 +1179,9 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMlxGenBackend:
-            def has_loaded_model(self):
-                return True  # a local stand-in: it holds the model it was asked to load
-
+        class FakeMlxGenBackend(_HoldsUntilUnload):
             def edit_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -1208,20 +1236,19 @@ print("ok")
 
         seen = {}
 
-        class FakeDiffusersBackend:
-            def has_loaded_model(self):
-                return True  # a local stand-in: it holds the model it was asked to load
-
+        class FakeDiffusersBackend(_HoldsUntilUnload):
             def __init__(self):
                 self.unloaded = 0
 
             def generate_video(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="video", data=mp4, mime_type="video/mp4", metadata={}
                 )
 
             def unload(self):
+                self.holds = False
                 self.unloaded += 1
 
         backend = FakeDiffusersBackend()
@@ -1265,8 +1292,9 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMFluxBackend:
+        class FakeMFluxBackend(_HoldsUntilUnload):
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -1304,8 +1332,9 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMFluxBackend:
+        class FakeMFluxBackend(_HoldsUntilUnload):
             def edit_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="image", data=png, mime_type="image/png", metadata={}
@@ -1350,8 +1379,9 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMFluxBackend:
+        class FakeMFluxBackend(_HoldsUntilUnload):
             def image_to_video(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="video", data=mp4, mime_type="video/mp4", metadata={}
@@ -1392,8 +1422,9 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMFluxBackend:
+        class FakeMFluxBackend(_HoldsUntilUnload):
             def generate_video(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(
                     media_type="video", data=mp4, mime_type="video/mp4", metadata={}
@@ -1436,7 +1467,7 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMFluxBackend:
+        class FakeMFluxBackend(_HoldsUntilUnload):
             def list_provider_adapters(self, *, model=None, task=None):
                 return [
                     ProviderAdapterInfo(
@@ -1479,8 +1510,9 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMFluxBackend:
+        class FakeMFluxBackend(_HoldsUntilUnload):
             def generate_image(self, request):
+                self.holds = True
                 seen["seeds"].append(request.seed)
                 return GeneratedAsset(
                     media_type="image",
@@ -1511,8 +1543,9 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMFluxBackend:
+        class FakeMFluxBackend(_HoldsUntilUnload):
             def generate_video(self, request):
+                self.holds = True
                 seen["requests"].append(request)
                 return GeneratedAsset(
                     media_type="video",
@@ -1565,18 +1598,17 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeMFluxBackend:
-            def has_loaded_model(self):
-                return True  # a local stand-in: it holds the model it was asked to load
-
+        class FakeMFluxBackend(_HoldsUntilUnload):
             def __init__(self):
                 self.preloaded = 0
                 self.unloaded = 0
 
             def preload(self):
+                self.holds = True
                 self.preloaded += 1
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image",
                     data=png,
@@ -1585,16 +1617,15 @@ print("ok")
                 )
 
             def unload(self):
+                self.holds = False
                 self.unloaded += 1
 
-        class FakeDiffusersBackend:
-            def has_loaded_model(self):
-                return True  # a local stand-in: it holds the model it was asked to load
-
+        class FakeDiffusersBackend(_HoldsUntilUnload):
             def __init__(self):
                 self.unloaded = 0
 
             def generate_image(self, request):
+                self.holds = True
                 return GeneratedAsset(
                     media_type="image",
                     data=png,
@@ -1603,6 +1634,7 @@ print("ok")
                 )
 
             def unload(self):
+                self.holds = False
                 self.unloaded += 1
 
         mflux_backend = FakeMFluxBackend()
@@ -1655,11 +1687,9 @@ print("ok")
         class _DummyOwner:
             config = {}
 
-        class FakeBackend:
-            def has_loaded_model(self):
-                return True  # a local stand-in: it holds the model it was asked to load
-
+        class FakeBackend(_HoldsUntilUnload):
             def preload(self):
+                self.holds = True
                 return None
 
         first = FakeBackend()
@@ -1740,10 +1770,92 @@ print("ok")
                 }
 
         cap = _AbstractVisionCapability(_DummyOwner())
+        # It answers `has_loaded_model` as the base does (it holds nothing): the load says so.
         state = cap.load_resident_model({"task": "text_to_image"})
         self.assertEqual(state["backend_kind"], "diffusers")
-        self.assertTrue(state["resident"])
+        self.assertEqual((state["state"], state["resident"], state["loaded"]), ("not_loaded", False, False))
+        self.assertEqual(state["reason"], "this backend holds no model in this process")
         self.assertEqual(backend.preloaded, 1)
+        self.assertEqual(cap.list_loaded_models(), [])
+        # Unload reaches the backend although nothing is listed.
+        out = cap.unload_resident_model({"task": "text_to_image"})
+        self.assertEqual((out["state"], backend.unloaded), ("unloaded", 1))
+
+        # Once it answers that it holds its model, the load is resident and listed.
+        backend.has_loaded_model = lambda: backend.preloaded > backend.unloaded
+        state = cap.load_resident_model({"task": "text_to_image"})
+        self.assertEqual((state["state"], state["resident"], state["loaded_new"]), ("resident", True, True))
+        self.assertEqual([record["state"] for record in cap.list_loaded_models()], ["resident"])
+
+    def test_an_injected_backend_is_checked_against_the_plugin_contract_once_at_injection(self):
+        from abstractvision.backends.base_backend import VisionBackend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        message = (
+            "The injected vision backend {name} lacks {missing}, which the AbstractVision plugin calls on "
+            "every backend. Inherit abstractvision.backends.base_backend.VisionBackend, which provides them."
+        )
+
+        # A local backend as the 0.3.36 test file wrote one: preload and unload, no has_loaded_model.
+        class FakeBackend:
+            def __init__(self):
+                self.generated = 0
+
+            def preload(self):
+                pass
+
+            def unload(self):
+                pass
+
+            def generate_image(self, request):
+                self.generated += 1
+
+        class _Plain:
+            pass
+
+        for backend, missing in (
+            (FakeBackend(), "has_loaded_model, supported_memory_modes"),
+            (_Plain(), "has_loaded_model, preload, unload, supported_memory_modes"),
+        ):
+            for key, value in (
+                ("vision_backend_instance", backend),
+                ("vision_backend_factory", lambda owner, backend=backend: backend),
+            ):
+                with self.subTest(backend=type(backend).__name__, hook=key):
+                    owner = types.SimpleNamespace(config={key: value, "vision_backend": "diffusers"})
+                    cap = _AbstractVisionCapability(owner)
+                    with self.assertRaises(TypeError) as ctx:
+                        cap.t2i("a red square")
+                    self.assertEqual(str(ctx.exception), message.format(name=type(backend).__name__, missing=missing))
+        self.assertEqual(FakeBackend().generated, 0)
+
+        # The injected backend of the 0.3.36 catalog test, verbatim: refused when the catalog takes it too.
+        class _Cfg:
+            base_url = "https://api.openai.com/v1"
+
+        class _FailingOpenAIBackend:
+            _cfg = _Cfg()
+
+            def list_provider_models(self, *, task=None):
+                raise RuntimeError("catalog failed")
+
+        owner = types.SimpleNamespace(config={"vision_backend_instance": _FailingOpenAIBackend()})
+        with self.assertRaises(TypeError) as ctx:
+            _AbstractVisionCapability(owner).list_provider_models(task="text_to_image")
+        self.assertEqual(
+            str(ctx.exception),
+            message.format(name="_FailingOpenAIBackend", missing="has_loaded_model, preload, unload, supported_memory_modes"),
+        )
+
+        class _Bare(VisionBackend):
+            def generate_image(self, request):
+                raise NotImplementedError
+
+            edit_image = generate_angles = generate_video = image_to_video = generate_image
+
+        owner = types.SimpleNamespace(config={"vision_backend_instance": _Bare(), "vision_backend": "diffusers"})
+        state = _AbstractVisionCapability(owner).load_resident_model({"task": "text_to_image"})
+        self.assertEqual((state["state"], state["resident"]), ("not_loaded", False))
 
     def test_abstractcore_plugin_rejects_http_backends_for_model_residency(self):
         from abstractvision.errors import AbstractVisionError
@@ -1806,7 +1918,7 @@ print("ok")
 
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 seen["config"] = config
 
@@ -1848,20 +1960,23 @@ print("ok")
         self.assertTrue(out[0]["raw"]["provider_note"].endswith("...<truncated>"))
 
     def test_abstractcore_plugin_provider_models_does_not_synthesize_openai_default(self):
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
         from abstractvision.errors import AbstractVisionError
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
 
-        class _Cfg:
-            base_url = "https://api.openai.com/v1"
-
-        class _FailingOpenAIBackend:
-            _cfg = _Cfg()
-
+        class _FailingOpenAIBackend(OpenAICompatibleVisionBackend):
             def list_provider_models(self, *, task=None):
                 raise RuntimeError("catalog failed")
 
         class _DummyOwner:
-            config = {"vision_backend_instance": _FailingOpenAIBackend()}
+            config = {
+                "vision_backend_instance": _FailingOpenAIBackend(
+                    config=OpenAICompatibleBackendConfig(base_url="https://api.openai.com/v1")
+                )
+            }
 
         cap = _AbstractVisionCapability(_DummyOwner())
         with self.assertRaises(AbstractVisionError) as ctx:

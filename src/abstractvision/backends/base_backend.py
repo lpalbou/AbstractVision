@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 import threading
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import replace
-from typing import Any, Callable, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple, TypeVar
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence, Tuple, TypeVar
 
 from ..types import (
     MEMORY_MODE_DEFAULT,
@@ -109,14 +110,6 @@ class VisionBackend(ABC):
         _ = task
         return frozenset()
 
-    def process_memory_mode(self, task: Optional[str] = None) -> str:
-        """$ABSTRACTVISION_MEMORY_MODE as this backend runs it (warmups use it too)."""
-        mode, from_env = resolve_memory_mode_with_source(None)
-        supported = tuple(self.supported_memory_modes(task))
-        if from_env and mode not in supported:
-            return self._degrade_process_memory_mode(mode, supported)
-        return mode
-
     def _degrade_process_memory_mode(self, mode: str, supported: Sequence[str]) -> str:
         degraded = highest_memory_mode_at_or_below(mode, supported)
         key = (type(self).__name__, mode, tuple(supported))
@@ -143,18 +136,34 @@ class VisionBackend(ABC):
         `memory_mode`, and each option the backend lists in `supported_request_options(task)`, is
         taken from its field or from `extra` (`merge_request_option`, which refuses the two
         disagreeing). For any other option an `extra` key is not the option: it stays in `extra`,
-        uninterpreted, as the backend always received it. Returns the request with the options in
-        their fields and removed from `extra` (so no backend forwards them as engine flags or HTTP
-        fields), and the mode. A mode the backend does not list in
+        uninterpreted, and reaches the backend as any other `extra` key does. Returns the request
+        with the options in their fields and removed from `extra` (so no backend forwards them as
+        engine flags or HTTP fields), and the mode. A mode the backend does not list in
         `supported_memory_modes(task)` raises CapabilityNotSupportedError before any work when
         the request named it; a mode from $ABSTRACTVISION_MEMORY_MODE (one value for every
         backend of the process) runs as the lowest-memory listed mode that is not below it. A
         typed option the backend does not list, or a listed one the request type does not carry,
         is refused the same way.
         """
+        return self._resolve_request_options(
+            request,
+            task=task,
+            supported=tuple(self.supported_memory_modes(task)),
+            listed=self.supported_request_options(task),
+        )
+
+    def _resolve_request_options(
+        self,
+        request: _Request,
+        *,
+        task: Optional[str],
+        supported: Tuple[str, ...],
+        listed: FrozenSet[str],
+    ) -> Tuple[_Request, str]:
+        """`resolve_memory_request` against the given memory modes and options: those of the model
+        the request runs on, when a backend answers per model (a remote's entry for the model sent)."""
         raw_extra = getattr(request, "extra", None)
-        extra = dict(raw_extra) if isinstance(raw_extra, dict) else {}
-        listed = self.supported_request_options(task)
+        extra = dict(raw_extra) if isinstance(raw_extra, Mapping) else {}
         options = {}
         for name in REQUEST_OPTION_FIELDS:
             typed = getattr(request, name, None)
@@ -164,7 +173,6 @@ class VisionBackend(ABC):
             else:
                 options[name] = typed
         mode, from_env = resolve_memory_mode_with_source(options.pop("memory_mode"))
-        supported = tuple(self.supported_memory_modes(task))
         if from_env and mode not in supported:
             mode = self._degrade_process_memory_mode(mode, supported)
         if mode not in supported:

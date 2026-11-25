@@ -80,8 +80,9 @@ except for the changes listed below.
     one ends. `default` runs set no limit: MLX-Gen applies its own (RAM/8, 1 to 8 GiB) and keeps one the host set.
   - Discovery: `get_capabilities().memory_modes`, `parameter_constraints["memory_mode"]`
     on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()` (what
-    that provider's backend lists for its configured model and device, without loading a model or sending a
-    request).
+    that provider's backend lists for its configured model and device, without loading a model, importing torch or
+    sending a request). Diffusers with `device="auto"` lists `low` and `lowest` once torch is imported (a request
+    imports it) and `default` until then.
 - **Downloads.**
   - `abstractvision download <model id>` selects the package the catalog marks as recommended (for MiniMax-H3, the
     8-bit one); `--bits 2|4|8|16` selects another width.
@@ -129,8 +130,8 @@ except for the changes listed below.
   the Hub, so a file that nothing local refers to, such as one an interrupted download never started, can be
   missing from a snapshot shown as `cached`.
 - **OpenAI-compatible backend with AbstractCore's server.** A remote that lists `memory_modes` for the model in
-  `GET {base_url}/vision/models` (the entry whose `routed_model` is the model sent, or `defaults[<task>]` when the
-  request names none) receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
+  `GET {base_url}/vision/models` (the entry whose `routed_model` is the model sent, `extra["model"]` included, which
+  such a remote receives as given, or `defaults[<task>]` when the request names none) receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
   request with `cancel_event` runs there as a remote job, and setting the event cancels it (AbstractCore's server
   refuses such a job while another generation runs, which the backend raises as a `RuntimeError` saying so); a
   video response's `audio` fills `GeneratedAsset.audio`, and `metadata["memory_mode"]` holds the mode the
@@ -201,7 +202,7 @@ except for the changes listed below.
   `cancel_event`.
 - OpenAI-compatible backend: `list_provider_models()` and a request that sets a memory, sound or `quantize` field
   or a `cancel_event` (or runs under `ABSTRACTVISION_MEMORY_MODE`) also query `GET {base_url}/vision/models` (10 s
-  timeout, answer reused for 30 s; never for the OpenAI API or an OpenAI image model); `get_capabilities()` reads
+  timeout, answer reused for 30 s; never for the OpenAI API); `get_capabilities()` reads
   the last answer without a request, and a request that sets none of them and carries no `extra` makes the same
   HTTP calls as before. A discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: a request
   that needed it is refused with the reason. A remote HTTP 422 with the error code `capability_not_supported`, and
@@ -220,6 +221,15 @@ except for the changes listed below.
   per backend, with `GET {base_url}/vision/models`, whether it serves the vision routes; a server that does
   receives `extra` nested (an `extra` object in JSON, an `extra_json` form field), and any other remote, or one whose
   answer failed, receives it unchanged.
+- OpenAI-compatible backend and AbstractCore plugin: a base URL is the OpenAI API when its host is `api.openai.com`
+  or one of its subdomains (such as `eu.api.openai.com`); a URL that has `api.openai.com` only in its path or
+  query, or a look-alike host, is an OpenAI-compatible remote.
+- `VisionBackend.has_loaded_model()` is part of the backend contract: the AbstractCore plugin lists, pins and
+  unloads by it, and a load whose backend answers `False` returns `state: "not_loaded"` with a `reason`.
+- AbstractCore plugin: a backend given through `vision_backend_instance` or `vision_backend_factory` that lacks
+  `has_loaded_model`, `preload`, `unload` or `supported_memory_modes` is refused when it is injected, with a
+  `TypeError` that names the missing methods and says to inherit
+  `abstractvision.backends.base_backend.VisionBackend`, which provides them.
 - The `catalog` table has three more columns (`access`, `cache`, `memory_modes`).
 - `HuggingFaceAccessError` says that the repository is gated and names the licence when the catalog marks it gated,
   otherwise what the HTTP status tells (401, 403, 404), and keeps the first line of the upstream error.

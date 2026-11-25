@@ -252,9 +252,14 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         with self.assertRaises(CapabilityNotSupportedError):
             bare.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest"))
         self.assertEqual(_ContractServer.posts, [])
-        # The string sent is what matches (an `openai-compatible/` prefix is not sent).
+        # The string sent, as given, is what matches: a remote that serves the vision routes gets
+        # `openai-compatible/stand-in/h3` unchanged, which is no entry's `routed_model`.
         prefixed = _client(self.root, model_id="openai-compatible/stand-in/h3", text_to_video_path="/videos/generations")
-        prefixed.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest", music="piano"))
+        with self.assertRaises(CapabilityNotSupportedError):
+            prefixed.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest"))
+        self.assertEqual(_ContractServer.posts, [])
+        exact = _client(self.root, model_id="stand-in/h3", text_to_video_path="/videos/generations")
+        exact.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest", music="piano"))
         _path, body = _ContractServer.posts[-1]
         self.assertEqual((body["model"], body["memory_mode"], body["music"]), ("stand-in/h3", "lowest", "piano"))
         # A task's default is addressed by its routed name too.

@@ -20,6 +20,15 @@ PNG_1X1 = base64.b64decode(
 NO_ENV = {"ABSTRACTVISION_MEMORY_MODE": ""}
 
 
+class _HoldsUntilUnload:
+    """A local backend stand-in: it holds its model from a preload or a run until `unload`."""
+
+    holds = False
+
+    def has_loaded_model(self):
+        return self.holds
+
+
 def _recording_backend(memory_modes):
     from abstractvision.backends import VisionBackend
     from abstractvision.types import GeneratedAsset, VisionBackendCapabilities
@@ -292,7 +301,6 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
                     self.assertEqual(mode, "default")
             self.assertEqual(len(logs.output), 1)  # once per process
             self.assertEqual(mlx_like.resolve_memory_request(ImageGenerationRequest(prompt="p"))[1], "low")
-            self.assertEqual(mlx_like.process_memory_mode(), "low")
             # A value on the request keeps refusing.
             with self.assertRaises(CapabilityNotSupportedError):
                 mlx_like.resolve_memory_request(ImageGenerationRequest(prompt="p", memory_mode="lowest"))
@@ -383,6 +391,49 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
         backend = hd.HuggingFaceDiffusersVisionBackend(config=hd.HuggingFaceDiffusersBackendConfig(model_id="x"))
         with patch.object(hd, "_lazy_import_torch", side_effect=ImportError("no torch")):
             self.assertEqual(tuple(backend.supported_memory_modes()), ("default",))
+
+    def test_diffusers_modes_and_provider_availability_import_no_torch(self):
+        import subprocess
+
+        code = (
+            "import json, sys, types\n"
+            "from abstractvision.backends import huggingface_diffusers as hd\n"
+            "from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability\n"
+            "out = {}\n"
+            "for device in ('auto', 'cuda:0', 'cpu'):\n"
+            "    b = hd.HuggingFaceDiffusersVisionBackend(config=hd.HuggingFaceDiffusersBackendConfig(model_id='x/y', device=device))\n"
+            "    out[device] = [list(b.supported_memory_modes()), list(b.get_capabilities().memory_modes)]\n"
+            "_AbstractVisionCapability(types.SimpleNamespace(config={})).available_providers()\n"
+            "out['torch'] = 'torch' in sys.modules\n"
+            "print(json.dumps(out))\n"
+        )
+        env = {"PATH": "/usr/bin:/bin", "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"), "ABSTRACTVISION_ASSUME_OFFLINE": "1"}
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        out = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertEqual(out["auto"], [["default"], ["default"]])  # not known until torch is imported
+        self.assertEqual(out["cuda:0"], [["default", "low", "lowest"]] * 2)
+        self.assertEqual(out["cpu"], [["default"], ["default"]])
+        self.assertIs(out["torch"], False)
+
+    def test_diffusers_auto_device_is_resolved_by_the_request_it_serves(self):
+        from abstractvision.backends import huggingface_diffusers as hd
+        from abstractvision.types import MEMORY_MODES, ImageGenerationRequest
+
+        class _Loaded(Exception):
+            pass
+
+        backend = hd.HuggingFaceDiffusersVisionBackend(
+            config=hd.HuggingFaceDiffusersBackendConfig(model_id="runwayml/stable-diffusion-v1-5", device="auto")
+        )
+        fake_torch = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: True))
+        with patch.dict(sys.modules, {"torch": None}), patch.dict("os.environ", NO_ENV), patch.object(
+            hd, "_lazy_import_torch", return_value=fake_torch
+        ), patch.object(backend, "_get_or_load_pipeline", side_effect=_Loaded):
+            self.assertEqual(backend.supported_memory_modes(), ("default",))
+            with self.assertRaises(_Loaded):
+                backend.generate_image(ImageGenerationRequest(prompt="p", memory_mode="low"))
+            self.assertEqual(backend.supported_memory_modes(), MEMORY_MODES)
 
     def test_warmups_follow_the_process_default_only_where_it_can_be_honoured(self):
         from abstractvision.backends import huggingface_diffusers as hd
@@ -564,7 +615,7 @@ class TestAbstractCorePluginMemoryMode(unittest.TestCase):
 
         seen = {}
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 pass
 
@@ -572,10 +623,12 @@ class TestAbstractCorePluginMemoryMode(unittest.TestCase):
                 return VisionBackendCapabilities(memory_modes=MEMORY_MODES)
 
             def generate_video(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(media_type="video", data=b"mp4", mime_type="video/mp4", metadata={})
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(media_type="image", data=b"png", mime_type="image/png", metadata={})
 
@@ -724,6 +777,7 @@ _TOOL_PARAMETERS_ON_MAIN = {
 class TestVisionToolsMemoryMode(unittest.TestCase):
     def _tools(self, backend, **kwargs):
         import inspect
+        import shutil
         import tempfile
 
         from abstractvision import VisionManager
@@ -733,6 +787,7 @@ class TestVisionToolsMemoryMode(unittest.TestCase):
         fake_abstractcore = types.ModuleType("abstractcore")
         fake_abstractcore.tool = lambda **_meta: (lambda fn: fn)
         store_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, store_dir, True)
         with patch.dict(sys.modules, {"abstractcore": fake_abstractcore}):
             vm = VisionManager(backend=backend, store=LocalAssetStore(store_dir))
             tools = make_vision_tools(vision_manager=vm, model_id="Qwen/Qwen-Image-2512", **kwargs)

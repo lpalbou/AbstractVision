@@ -20,6 +20,15 @@ PNG_1X1 = base64.b64decode(
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+class _HoldsUntilUnload:
+    """A local backend stand-in: it holds its model from a preload or a run until `unload`."""
+
+    holds = False
+
+    def has_loaded_model(self):
+        return self.holds
+
+
 class _Image:
     def save(self, fp, format=None):  # noqa: A002
         fp.write(PNG_1X1)
@@ -212,7 +221,7 @@ class TestAbstractCoreFacadeTypedOptions(unittest.TestCase):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset, VisionBackendCapabilities
 
-        class _FakeBackend:
+        class _FakeBackend(_HoldsUntilUnload):
             def __init__(self, *, config):
                 pass
 
@@ -220,10 +229,12 @@ class TestAbstractCoreFacadeTypedOptions(unittest.TestCase):
                 return VisionBackendCapabilities(supports_control_image=True, memory_modes=("default",))
 
             def generate_image(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(media_type="image", data=b"png", mime_type="image/png", metadata={})
 
             def generate_video(self, request):
+                self.holds = True
                 seen["request"] = request
                 return GeneratedAsset(media_type="video", data=b"mp4", mime_type="video/mp4", metadata={})
 
@@ -271,16 +282,6 @@ class TestAbstractCoreFacadeTypedOptions(unittest.TestCase):
         self.assertNotIn("guidance_2", _request_kwarg_names(av_types.ImageGenerationRequest))
         self.assertIn("control_image", _request_kwarg_names(av_types.ImageGenerationRequest))
         self.assertIn("prompt", _request_kwarg_names(av_types.ImageToVideoRequest))
-
-
-class TestHostFacts(unittest.TestCase):
-    def test_memory_size_is_reported_or_unavailable_never_guessed(self):
-        from abstractvision import host
-
-        with patch.object(host.os, "sysconf", side_effect=lambda name: {"SC_PAGE_SIZE": 16384, "SC_PHYS_PAGES": 2**21}[name], create=True):
-            self.assertEqual(host.total_physical_memory_bytes(), 16384 * 2**21)
-        with patch.object(host, "os", SimpleNamespace()):  # a platform without POSIX sysconf
-            self.assertIsNone(host.total_physical_memory_bytes())
 
 
 class TestEmbeddingHygiene(unittest.TestCase):

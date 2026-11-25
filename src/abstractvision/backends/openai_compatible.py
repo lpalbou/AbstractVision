@@ -67,7 +67,7 @@ def _join_url(base_url: str, path: str) -> str:
 
 
 def _upstream_extra(extra: Any) -> Dict[str, Any]:
-    if not isinstance(extra, dict):
+    if not isinstance(extra, Mapping):
         return {}
     out: Dict[str, Any] = {}
     for key, value in extra.items():
@@ -156,16 +156,16 @@ def _form_value(value: Any) -> str:
 
 
 def _discovery_entry(
-    catalog: Mapping[str, Any], model_id: Optional[str], task: Optional[str]
+    catalog: Mapping[str, Any], model: Optional[str], task: Optional[str]
 ) -> Optional[Dict[str, Any]]:
-    """The GET /vision/models entry of the model a request sends as `model`.
+    """The GET /vision/models entry of `model`, the string a request sends (`_sent_model`).
 
-    A named model selects the entry whose `routed_model` is the string sent (`provider/model`, the
-    one name the server resolves to that entry, `<provider>/default` for a task's default); no model
+    A named model selects the entry whose `routed_model` is that string (`provider/model`, the one
+    name the server resolves to that entry, `<provider>/default` for a task's default); no model
     selects `defaults[task]`, the model the server runs for a request that names none. Only an
     entry that lists `memory_modes` advertises the memory and sound fields.
     """
-    model = _upstream_model_id(model_id)
+    model = str(model or "").strip()
     defaults = catalog.get("defaults")
     default = defaults.get(task) if isinstance(defaults, Mapping) and task else None
     candidates = [*(catalog.get("models") or []), default] if model else [default]
@@ -175,6 +175,23 @@ def _discovery_entry(
         if not model or str(entry.get("routed_model") or "").strip() == model:
             return dict(entry)
     return None
+
+
+def _entry_memory_modes(entry: Optional[Mapping[str, Any]]) -> Tuple[str, ...]:
+    """The default mode plus the modes a discovery entry lists."""
+    listed = (entry or {}).get("memory_modes") or ()
+    return tuple(dict.fromkeys([MEMORY_MODE_DEFAULT, *(str(m) for m in listed)]))
+
+
+def _entry_request_options(entry: Optional[Mapping[str, Any]], task: Optional[str]) -> FrozenSet[str]:
+    """The typed request options a discovery entry advertises for `task`."""
+    if entry is None:
+        return frozenset()
+    options: Set[str] = {"quantize"}
+    if entry.get("supports_audio") and (task is None or str(task) in _VIDEO_TASKS):
+        audio_fields = entry.get("audio_fields") or ()
+        options.update(str(name) for name in audio_fields if name in SOUNDTRACK_REQUEST_FIELDS)
+    return frozenset(options)
 
 
 def _audio_track(audio: Any, download: Any) -> Optional[GeneratedAudioTrack]:
@@ -226,11 +243,13 @@ def _upstream_model_id(model_id: Optional[str]) -> str:
 
 
 def looks_like_openai_api(base_url: Optional[str]) -> bool:
-    """Whether `base_url` is the OpenAI API: its parsed host, never a substring of the URL."""
+    """Whether `base_url` is the OpenAI API: its host is api.openai.com or one of its subdomains
+    (a regional host such as eu.api.openai.com). The rest of the URL is not read."""
     try:
-        return urlsplit(str(base_url or "").strip()).hostname == "api.openai.com"
+        host = urlsplit(str(base_url or "").strip()).hostname or ""
     except ValueError:
         return False
+    return host == "api.openai.com" or host.endswith(".api.openai.com")
 
 
 def _normalise_catalog_token(value: str) -> str:
@@ -440,6 +459,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
 
     def __init__(self, *, config: OpenAICompatibleBackendConfig):
         self._cfg = config
+        # Held for a GET /vision/models and the recording of its answer: a caller that needs the
+        # answer while another caller is asking waits for it.
         self._catalog_lock = threading.Lock()
         self._catalog: Optional[Dict[str, Any]] = None
         self._catalog_at: Optional[float] = None
@@ -458,7 +479,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             tasks.add("text_to_video")
         if self._cfg.image_to_video_path:
             tasks.add("image_to_video")
-        entry = self._remote_entry(refresh=False, task=None)
+        entry = self._remote_entry(self._sent_model({}), task=None)
         return VisionBackendCapabilities(
             supported_tasks=sorted(tasks),
             supports_mask=True,
@@ -475,20 +496,13 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         configured, for the remote's default of `task`).
 
         Read from the last GET /vision/models answer (no I/O here, nor in `get_capabilities()`);
-        `list_provider_models()` and a request that sets one of the fields refresh it.
+        `list_provider_models()` and a request that sets one of the fields refresh it. A request
+        is checked against the entry of the model it sends (`_prepare`).
         """
-        entry = self._remote_entry(refresh=False, task=task) or {}
-        return tuple(dict.fromkeys([MEMORY_MODE_DEFAULT, *(str(m) for m in entry.get("memory_modes") or ())]))
+        return _entry_memory_modes(self._remote_entry(self._sent_model({}), task=task))
 
     def supported_request_options(self, task: Optional[str] = None) -> FrozenSet[str]:
-        entry = self._remote_entry(refresh=False, task=task)
-        if entry is None:
-            return frozenset()
-        options: Set[str] = {"quantize"}
-        if entry.get("supports_audio") and (task is None or str(task) in _VIDEO_TASKS):
-            audio_fields = entry.get("audio_fields") or ()
-            options.update(str(name) for name in audio_fields if name in SOUNDTRACK_REQUEST_FIELDS)
-        return frozenset(options)
+        return _entry_request_options(self._remote_entry(self._sent_model({}), task=task), task)
 
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
         catalog = self._remote_catalog(refresh=True)
@@ -523,10 +537,6 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             model_id = raw.get("id") or raw.get("model") or raw.get("name")
             if not isinstance(model_id, str) or not model_id.strip():
                 continue
-            entry = _discovery_entry(catalog, str(model_id), task) if catalog is not None else None
-            for key in ("memory_modes", "supports_audio", "audio_fields"):
-                if entry is not None and key in entry:
-                    raw.setdefault(key, entry[key])
             raw.setdefault("provider", provider_name)
             raw.setdefault("backend", "openai-compatible")
             raw.setdefault("routed_model", f"{provider_name}/{str(model_id).strip()}")
@@ -593,15 +603,30 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         Only an answer is kept: the catalog, or a response without one (a 200 that lists no models,
         an HTTP 4xx: a plain OpenAI image endpoint). A request that failed (timeout, connection
         error, 5xx) keeps the previous answer, records why in `_discovery_failure`, and is made
-        again by the next request that needs it.
+        again by the next request that needs it. A caller that refreshes while another is asking
+        waits for that answer and reuses it.
         """
-        if looks_like_openai_api(self._cfg.base_url) or _model_family(self._cfg.model_id):
+        if looks_like_openai_api(self._cfg.base_url):
             return None
+        if not refresh:
+            return self._catalog
         with self._catalog_lock:
             fresh = self._catalog_at is not None and time.monotonic() - self._catalog_at < _DISCOVERY_TTL_S
-            if fresh or not refresh:
-                return self._catalog
-            self._vision_routes_asked = True
+            if not fresh:
+                self._ask_vision_models_locked()
+            return self._catalog
+
+    def _learn_remote_kind(self) -> None:
+        """Ask GET /vision/models once per backend, a failed attempt included; a caller that arrives
+        while the first attempt is in flight waits for its answer."""
+        if looks_like_openai_api(self._cfg.base_url):
+            return
+        with self._catalog_lock:
+            if not self._vision_routes_asked:
+                self._ask_vision_models_locked()
+
+    def _ask_vision_models_locked(self) -> None:
+        self._vision_routes_asked = True
         timeout = self._control_timeout()
         try:
             answer = self._get_json(
@@ -613,22 +638,33 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         except Exception as e:
             cause = e.__cause__
             if not (isinstance(cause, HTTPError) and int(cause.code) < 500):
-                with self._catalog_lock:
-                    self._discovery_failure = str(e) or type(e).__name__
-                    return self._catalog
+                self._discovery_failure = str(e) or type(e).__name__
+                return
             answer = {}
         catalog = answer if isinstance(answer.get("models"), list) else None
-        with self._catalog_lock:
-            if self._serves_vision_routes is None:
-                self._serves_vision_routes = catalog is not None
-            self._catalog = catalog
-            self._catalog_at = time.monotonic()
-            self._discovery_failure = None
-        return catalog
+        if self._serves_vision_routes is None:
+            self._serves_vision_routes = catalog is not None
+        self._catalog = catalog
+        self._catalog_at = time.monotonic()
+        self._discovery_failure = None
 
-    def _remote_entry(self, *, refresh: bool, task: Optional[str]) -> Optional[Dict[str, Any]]:
-        catalog = self._remote_catalog(refresh=refresh)
-        return _discovery_entry(catalog, self._cfg.model_id, task) if catalog is not None else None
+    def _remote_entry(self, model: Optional[str], *, task: Optional[str]) -> Optional[Dict[str, Any]]:
+        """The entry of `model` (a string `_sent_model` computed) in the last discovery answer."""
+        catalog = self._catalog
+        return _discovery_entry(catalog, model, task) if catalog is not None else None
+
+    def _sent_model(self, extra: Any) -> Optional[str]:
+        """The `model` a request sends: `extra["model"]`, else the configured model.
+
+        A remote that serves the vision routes gets it as given: its `routed_model` values are the
+        names it routes. Any other remote gets it without `openai/` and `openai-compatible/`
+        prefixes.
+        """
+        given = extra.get("model") if isinstance(extra, Mapping) else None
+        model = given if given is not None else self._cfg.model_id
+        if not model:
+            return None
+        return str(model).strip() if self._serves_vision_routes else _upstream_model_id(model)
 
     def _unadvertised_reason(self) -> str:
         failure = self._discovery_failure
@@ -637,28 +673,26 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         return f"the remote does not advertise them (no memory_modes for this model in GET {_VISION_MODELS_PATH})"
 
     def _with_extra(self, body: Dict[str, Any], extra: Any, *, form: bool) -> Dict[str, Any]:
-        """`body` (a JSON payload or form fields) with the request's `extra`; every body gets it here.
+        """`body` (a JSON payload or form fields) with the request's `extra` and its `model`.
 
         A remote known to serve the vision discovery route (AbstractCore's server, whose bodies
         refuse unknown top-level keys) gets `extra` nested: an `extra` object in JSON, an
         `extra_json` form field. Any other remote, and one whose kind stayed unknown (its
-        discovery failed), gets the keys at the top level (on a form as strings, None dropped),
-        as 0.3.36 sent them. `extra["model"]` selects the model on both.
+        discovery failed), gets the keys at the top level (on a form as strings, None dropped).
+        `model` is `_sent_model`'s, `extra["model"]` included.
         """
         upstream = _upstream_extra(extra)
+        upstream.pop("model", None)
         out = dict(body)
         if not self._serves_vision_routes:
             if form:
                 upstream = {key: str(value) for key, value in upstream.items() if value is not None}
             out.update(upstream)
-        else:
-            if upstream.get("model") is not None:
-                out["model"] = str(upstream["model"]) if form else upstream["model"]
-            upstream.pop("model", None)
-            if upstream:
-                out["extra_json" if form else "extra"] = json.dumps(upstream) if form else upstream
-        if out.get("model") is not None:
-            out["model"] = _upstream_model_id(out.get("model"))
+        elif upstream:
+            out["extra_json" if form else "extra"] = json.dumps(upstream) if form else upstream
+        model = self._sent_model(extra)
+        if model is not None:
+            out["model"] = model
         return out
 
     def _prepare(self, request: Any, *, task: str) -> Tuple[Any, Dict[str, Any], bool]:
@@ -666,12 +700,13 @@ class OpenAICompatibleVisionBackend(VisionBackend):
 
         Returns the request, the fields to send and whether to run it as a remote job (a request
         with a `cancel_event`, on a remote that advertises the vision routes). The options are
-        resolved from their fields and `extra` by `resolve_memory_request`; `memory_mode` is sent
-        when the request (or $ABSTRACTVISION_MEMORY_MODE) names one, the other options when set,
-        all only to a remote that advertises them.
+        resolved from their fields and `extra` against the discovery entry of the model the request
+        sends (`_sent_model`); `memory_mode` is sent when the request (or
+        $ABSTRACTVISION_MEMORY_MODE) names one, the other options when set, all only to a remote
+        that advertises them.
         """
         extra = getattr(request, "extra", None)
-        extra = extra if isinstance(extra, dict) else {}
+        extra = extra if isinstance(extra, Mapping) else {}
         named = option_is_set(getattr(request, "memory_mode", None)) or option_is_set(extra.get("memory_mode"))
         needs_remote_entry = (
             getattr(request, "cancel_event", None) is not None
@@ -681,18 +716,20 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             # option only for a remote that advertises it, so they never ask on their own.
             or option_is_set(extra.get("memory_mode"))
         )
-        # The body shape of `extra` depends on the remote's kind: the first request that carries
-        # `extra` asks once per backend, a failed attempt included; a later one uses what is known.
-        needs_remote_kind = (
-            bool(set(_upstream_extra(extra)) - {"model"})
-            and self._serves_vision_routes is None
-            and not self._vision_routes_asked
-        )
-        if needs_remote_entry or needs_remote_kind:
+        if needs_remote_entry:
             self._remote_catalog(refresh=True)
-        advertised = self._remote_entry(refresh=False, task=task) is not None
+        elif set(_upstream_extra(extra)) - {"model"}:
+            # The body shape of `extra` depends on the remote's kind.
+            self._learn_remote_kind()
+        entry = self._remote_entry(self._sent_model(extra), task=task)
+        advertised = entry is not None
         try:
-            request, mode = self.resolve_memory_request(request, task=task)
+            request, mode = self._resolve_request_options(
+                request,
+                task=task,
+                supported=_entry_memory_modes(entry),
+                listed=_entry_request_options(entry, task),
+            )
         except CapabilityNotSupportedError as e:
             if advertised or self._discovery_failure is None:
                 raise
@@ -902,7 +939,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             "n": 1,
         }
         if self._cfg.model_id:
-            payload["model"] = _upstream_model_id(self._cfg.model_id)
+            payload["model"] = self._sent_model(request.extra)
 
         # Real OpenAI image models have a narrower schema than many local
         # OpenAI-compatible servers. Keep local-compatible fields for unknown
@@ -938,7 +975,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         # OpenAI-style image edits use multipart form data.
         fields: Dict[str, str] = {"prompt": request.prompt}
         if self._cfg.model_id:
-            fields["model"] = _upstream_model_id(self._cfg.model_id)
+            fields["model"] = self._sent_model(request.extra)
         if request.negative_prompt is not None and not openai_api:
             fields["negative_prompt"] = request.negative_prompt
 
@@ -973,7 +1010,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         request, remote_fields, as_job = self._prepare(request, task="text_to_video")
         payload: Dict[str, Any] = {"prompt": request.prompt, "response_format": "b64_json", "n": 1}
         if self._cfg.model_id:
-            payload["model"] = _upstream_model_id(self._cfg.model_id)
+            payload["model"] = self._sent_model(request.extra)
         if request.negative_prompt is not None:
             payload["negative_prompt"] = request.negative_prompt
         if request.width is not None:
@@ -1007,7 +1044,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 "image_b64": base64.b64encode(bytes(request.image)).decode("ascii")
             }
             if self._cfg.model_id:
-                payload["model"] = _upstream_model_id(self._cfg.model_id)
+                payload["model"] = self._sent_model(request.extra)
             if request.prompt is not None:
                 payload["prompt"] = request.prompt
             if request.negative_prompt is not None:
@@ -1035,7 +1072,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
 
         fields: Dict[str, str] = {}
         if self._cfg.model_id:
-            fields["model"] = _upstream_model_id(self._cfg.model_id)
+            fields["model"] = self._sent_model(request.extra)
         if request.prompt is not None:
             fields["prompt"] = request.prompt
         if request.negative_prompt is not None:

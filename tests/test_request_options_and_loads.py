@@ -5,7 +5,9 @@ field, and the OpenAI-compatible request bodies."""
 import dataclasses
 import io
 import json
+import shutil
 import sys
+import tempfile
 import threading
 import types
 import unittest
@@ -136,6 +138,18 @@ class TestOptionMergedWithExtra(unittest.TestCase):
                 ImageGenerationRequest(prompt="fox", extra={"soundscape": "wind"}), task="text_to_image"
             )
 
+    def test_extra_may_be_any_mapping(self):
+        from types import MappingProxyType
+
+        from abstractvision.types import ImageEditRequest
+
+        request = ImageEditRequest(
+            prompt="fox", image=b"img", extra=MappingProxyType({"width": 256, "quantize": 8, "vae_tiling": False})
+        )
+        with patch.dict("os.environ", NO_ENV):
+            resolved, mode = _backend(options={"quantize"}).resolve_memory_request(request)
+        self.assertEqual((mode, resolved.quantize, resolved.extra), ("default", 8, {"width": 256, "vae_tiling": False}))
+
     def test_backends_that_do_not_list_the_options_get_extra_as_0_3_36_sent_it(self):
         # Captured from AbstractVision 0.3.36 (eea267d) for the same requests: the keys are opaque.
         import base64
@@ -168,9 +182,10 @@ class TestOptionMergedWithExtra(unittest.TestCase):
 
         t2i = MagicMock()
         t2i.from_pretrained.return_value = _Pipe()
+        # Neither Diffusers nor torch runs here: the base CI job has neither.
         with patch.dict("os.environ", NO_ENV), patch.object(
             hd, "_lazy_import_diffusers", return_value=(MagicMock(), t2i, MagicMock(), MagicMock(), "0.0.0")
-        ):
+        ), patch.object(hd, "_lazy_import_torch", return_value=types.SimpleNamespace()):
             hd.HuggingFaceDiffusersVisionBackend(
                 config=hd.HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
             ).generate_image(ImageGenerationRequest(prompt="fox", extra=dict(OPAQUE_EXTRA)))
@@ -304,6 +319,35 @@ class TestLoadedModelsAreDerivedFromTheBackends(unittest.TestCase):
         self.assertEqual((out["state"], out["loaded"], self.backend.unloaded), ("unloaded", False, 1))
         self.assertEqual(self.cap.list_loaded_models(), [])
 
+    def test_a_first_request_that_fails_or_is_cancelled_lists_what_it_left_loaded(self):
+        from abstractvision.errors import GenerationCancelledError
+
+        for failure in (RuntimeError("engine failed mid-run"), GenerationCancelledError("cancelled")):
+            with self.subTest(failure=type(failure).__name__):
+                self.backend.unload()
+                self.backend.unloaded = 0
+                self.backend.fail = failure
+                with self.assertRaises(type(failure)):
+                    self._t2i()
+                (record,) = self.cap.list_loaded_models()
+                self.assertEqual((record["state"], record["tasks"]), ("active", ["text_to_image"]))
+                out = self.cap.unload_resident_model({"provider": "mlx-gen", "model": self.MODEL})
+                self.assertEqual((out["state"], self.backend.unloaded, self.backend.loaded), ("unloaded", 1, False))
+                self.assertEqual(self.cap.list_loaded_models(), [])
+
+    def test_a_backend_that_holds_nothing_is_never_called_resident(self):
+        # The base answer of `has_loaded_model`: a 0.3.36-era subclass, or sd-cli, holds nothing here.
+        self.backend.has_loaded_model = lambda: False
+        record = self._load()
+        self.assertEqual(
+            (record["state"], record["resident"], record["loaded"], record["loaded_new"], record["reason"]),
+            ("not_loaded", False, False, False, "this backend holds no model in this process"),
+        )
+        self.assertEqual(self.cap.list_loaded_models(), [])
+        # Unload still reaches the backend, and reports from the listing.
+        out = self.cap.unload_resident_model({"provider": "mlx-gen", "model": self.MODEL})
+        self.assertEqual((out["state"], self.backend.unloaded), ("unloaded", 1))
+
 
 class TestBackendsSayWhetherTheyHoldAModel(unittest.TestCase):
     def test_base_default_and_diffusers_answer(self):
@@ -373,6 +417,51 @@ class TestStableDiffusionCppSaysWhatItHolds(unittest.TestCase):
 
 class _Stop(Exception):
     pass
+
+
+class TestExplicitDownloadRepositoriesAreNeverFetchedByGeneration(unittest.TestCase):
+    def test_the_catalog_names_them(self):
+        from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry
+
+        registry = VisionModelCapabilitiesRegistry()
+        for repo in ("MiniMaxAI/MiniMax-H3", "AbstractFramework/minimax-h3-8bit", "abstractframework/MINIMAX-H3-4BIT"):
+            self.assertEqual(registry.explicit_download_model(repo).model_id, "MiniMaxAI/MiniMax-H3", repo)
+        for repo in ("black-forest-labs/FLUX.2-klein-4B", "", "MiniMaxAI"):
+            self.assertIsNone(registry.explicit_download_model(repo), repo)
+
+    def test_diffusers_loads_them_from_the_cache_only_even_with_allow_download(self):
+        import os
+
+        from abstractvision.backends import huggingface_diffusers as hd
+        from abstractvision.types import ImageGenerationRequest
+
+        loads = []
+
+        def from_pretrained(model_id, **kwargs):
+            loads.append((model_id, kwargs["local_files_only"], os.environ.get("HF_HUB_OFFLINE")))
+            raise _Stop()
+
+        pipeline_cls = MagicMock()
+        pipeline_cls.from_pretrained.side_effect = from_pretrained
+        fake_torch = types.SimpleNamespace(float32="float32", float16="float16", bfloat16="bfloat16")
+        empty_cache = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, empty_cache, True)
+        for model_id, fetched in (("MiniMaxAI/MiniMax-H3", False), ("some/model", True)):
+            backend = hd.HuggingFaceDiffusersVisionBackend(
+                config=hd.HuggingFaceDiffusersBackendConfig(
+                    model_id=model_id, device="cpu", allow_download=True, cache_dir=empty_cache
+                )
+            )
+            loads.clear()
+            with patch.dict("os.environ", {**NO_ENV, "HF_HOME": empty_cache, "HF_HUB_CACHE": empty_cache}), patch.object(
+                hd, "_lazy_import_diffusers", return_value=(pipeline_cls, pipeline_cls, MagicMock(), MagicMock(), "0.0.0")
+            ), patch.object(hd, "_lazy_import_torch", return_value=fake_torch), patch.object(
+                backend, "_hf_cache_roots", return_value=[Path(empty_cache)]
+            ), self.assertRaises(_Stop):
+                backend.generate_image(ImageGenerationRequest(prompt="fox"))
+            self.assertTrue(loads, model_id)
+            for loaded, local_only, offline in loads:
+                self.assertEqual((loaded, local_only, offline), (model_id, not fetched, "0" if fetched else "1"))
 
 
 class _Pipe:
@@ -611,14 +700,19 @@ class TestOpenAICompatibleBodies(unittest.TestCase):
         )
 
     def _assert_nested(self, bodies):
+        # A remote that serves the vision routes gets `extra["model"]` as given: its `routed_model`
+        # values are the names it routes, prefixes included.
         image = json.loads(bodies["/images/generations"])
-        self.assertEqual((image["model"], image["extra"]), ("other-model", self.NESTED))
+        self.assertEqual((image["model"], image["extra"]), ("openai/other-model", self.NESTED))
         self.assertFalse(set(self.NESTED) & set(image))
         video = json.loads(bodies["/videos/generations"])
-        self.assertEqual((video["model"], video["extra"]), ("other-model", self.NESTED))
+        self.assertEqual((video["model"], video["extra"]), ("openai/other-model", self.NESTED))
         self.assertEqual(
             bodies["/images/edits"],
-            _form(("prompt", "fox"), ("model", "other-model"), ("seed", "3"), ("steps", "4"), ("extra_json", json.dumps(self.NESTED))),
+            _form(
+                ("prompt", "fox"), ("model", "openai/other-model"), ("seed", "3"), ("steps", "4"),
+                ("extra_json", json.dumps(self.NESTED)),
+            ),
         )
 
     def test_a_plain_remote_is_asked_once_and_gets_the_0_3_36_body_byte_for_byte(self):
@@ -682,19 +776,159 @@ class TestOpenAICompatibleBodies(unittest.TestCase):
 
 
 class TestOpenAIHostIsParsed(unittest.TestCase):
-    def test_only_the_openai_host_is_openai(self):
+    URLS = (
+        ("https://api.openai.com/v1", True),
+        ("https://API.OpenAI.com:443/v1", True),
+        ("https://eu.api.openai.com/v1", True),
+        ("https://us.api.openai.com/v1", True),
+        ("https://api.openai.com.evil.example/v1", False),
+        ("https://evilapi.openai.com/v1", False),
+        ("https://openai.com/v1", False),
+        ("http://127.0.0.1:9/api.openai.com/v1", False),
+        ("http://proxy.example/v1?upstream=https://api.openai.com", False),
+        ("http://localhost:8000/v1", False),
+        ("", False),
+    )
+
+    def test_the_openai_host_and_its_subdomains_are_openai(self):
         from abstractvision.backends.openai_compatible import looks_like_openai_api
 
-        for url, expected in (
-            ("https://api.openai.com/v1", True),
-            ("https://API.OpenAI.com:443/v1", True),
-            ("https://api.openai.com.evil.example/v1", False),
-            ("http://127.0.0.1:9/api.openai.com/v1", False),
-            ("http://localhost:8000/v1", False),
-            ("", False),
-        ):
+        for url, expected in self.URLS:
             with self.subTest(url=url):
                 self.assertIs(looks_like_openai_api(url), expected)
+
+    def test_the_backend_and_the_plugin_read_the_host_the_same_way(self):
+        from abstractvision.backends import openai_compatible as oc
+        from abstractvision.integrations.abstractcore_plugin import _provider_id_for_backend
+        from abstractvision.types import ImageGenerationRequest
+
+        sent = []
+
+        def urlopen(req, timeout=None):
+            sent.append((req.get_method(), req.full_url, req.data))
+            return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
+
+        for url, expected in self.URLS[:-1]:
+            with self.subTest(url=url):
+                sent.clear()
+                backend = oc.OpenAICompatibleVisionBackend(
+                    config=oc.OpenAICompatibleBackendConfig(base_url=url, api_key="k", model_id="image-model")
+                )
+                self.assertEqual(_provider_id_for_backend(backend), "openai" if expected else "openai-compatible")
+                with patch.object(oc, "urlopen", urlopen), patch.dict("os.environ", NO_ENV):
+                    backend.generate_image(ImageGenerationRequest(prompt="fox", seed=3, extra={"quality": "low"}))
+                # The OpenAI API is never asked for the vision routes and gets its narrower body.
+                methods = [method for method, _url, _data in sent]
+                self.assertEqual(methods, ["POST"] if expected else ["GET", "POST"])
+                self.assertEqual("seed" in json.loads(sent[-1][2]), not expected)
+
+
+_CATALOG = {
+    "models": [
+        {"routed_model": "mlx-gen/AbstractFramework/flux.2-klein-4b-8bit", "memory_modes": ["default", "low"]},
+        {"routed_model": "openai/gpt-image-1", "memory_modes": ["default"]},
+        {"routed_model": "openai-compatible/remote-sd", "memory_modes": ["default", "low"]},
+    ],
+    "defaults": {"text_to_image": {"routed_model": "diffusers/default", "memory_modes": ["default"]}},
+}
+
+
+class TestTheEntryIsTheModelSent(unittest.TestCase):
+    """One string is the model a request sends and the discovery entry it reads."""
+
+    def setUp(self):
+        from abstractvision.backends import openai_compatible as oc
+
+        self.oc = oc
+        self.discovery = _CATALOG
+        self.gets, self.posts = [], []
+
+        def urlopen(req, timeout=None):
+            if req.get_method() == "GET":
+                self.gets.append(req.full_url)
+                if self.discovery is None:
+                    raise HTTPError(req.full_url, 404, "status", {}, io.BytesIO(b"{}"))
+                return _Response(json.dumps(self.discovery).encode())
+            self.posts.append(json.loads(req.data))
+            return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
+
+        for patcher in (patch.object(oc, "urlopen", urlopen), patch.dict("os.environ", NO_ENV)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _backend(self, model_id=None):
+        return self.oc.OpenAICompatibleVisionBackend(
+            config=self.oc.OpenAICompatibleBackendConfig(base_url="http://core.test/v1", model_id=model_id)
+        )
+
+    def test_a_model_named_only_in_extra_selects_its_entry(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        model = "mlx-gen/AbstractFramework/flux.2-klein-4b-8bit"
+        self._backend().generate_image(ImageGenerationRequest(prompt="fox", memory_mode="low", extra={"model": model}))
+        self.assertEqual((self.posts[-1]["model"], self.posts[-1]["memory_mode"]), (model, "low"))
+
+    def test_every_listed_id_is_sent_as_listed_and_reads_its_own_entry(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        ids = [info.id for info in self._backend().list_provider_models()]
+        self.assertEqual(ids, [entry["routed_model"] for entry in _CATALOG["models"]])
+        for model, modes in zip(ids, ([*entry["memory_modes"]] for entry in _CATALOG["models"])):
+            with self.subTest(model=model):
+                backend = self._backend(model)
+                backend.generate_image(ImageGenerationRequest(prompt="fox", memory_mode=modes[-1]))
+                self.assertEqual((self.posts[-1]["model"], self.posts[-1]["memory_mode"]), (model, modes[-1]))
+                self.assertEqual(backend.supported_memory_modes("text_to_image"), tuple(modes))
+
+    def test_a_plain_remote_gets_the_model_without_openai_prefixes_as_0_3_36_sent_it(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        self.discovery = None
+        backend = self._backend("openai-compatible/openai/remote-sd")
+        backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"quality": "low"}))
+        backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"model": "openai/other", "quality": "low"}))
+        self.assertEqual([body["model"] for body in self.posts], ["remote-sd", "other"])
+
+
+class TestTheRemoteKindIsAskedOnce(unittest.TestCase):
+    def test_a_concurrent_first_request_waits_for_the_answer(self):
+        from abstractvision.backends import openai_compatible as oc
+        from abstractvision.types import ImageGenerationRequest
+
+        asked, answer, bodies = threading.Event(), threading.Event(), []
+
+        def urlopen(req, timeout=None):
+            if req.get_method() == "GET":
+                asked.set()
+                answer.wait(5)  # the answer is slow: the second request arrives meanwhile
+                return _Response(json.dumps({"models": [{"routed_model": "p/m", "memory_modes": ["default"]}]}).encode())
+            bodies.append(json.loads(req.data))
+            return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
+
+        backend = oc.OpenAICompatibleVisionBackend(
+            config=oc.OpenAICompatibleBackendConfig(base_url="http://core.test/v1", model_id="p/m")
+        )
+        with patch.object(oc, "urlopen", urlopen), patch.dict("os.environ", NO_ENV):
+            first = threading.Thread(
+                target=backend.generate_image, args=(ImageGenerationRequest(prompt="one", extra={"sampler": "a"}),)
+            )
+            second = threading.Thread(
+                target=backend.generate_image, args=(ImageGenerationRequest(prompt="two", extra={"sampler": "b"}),)
+            )
+            first.start()
+            try:
+                self.assertTrue(asked.wait(5))
+                second.start()
+                second.join(0.2)
+                self.assertTrue(second.is_alive())  # waiting for the first answer, not sending
+                self.assertEqual(bodies, [])
+            finally:
+                answer.set()
+                first.join(5)
+                if second.ident is not None:  # started
+                    second.join(5)
+        self.assertEqual(sorted(body["extra"]["sampler"] for body in bodies), ["a", "b"])
+        self.assertFalse(any("sampler" in body for body in bodies))
 
 
 if __name__ == "__main__":

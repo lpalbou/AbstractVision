@@ -43,7 +43,6 @@ class DiffusersGpuOutOfMemoryTests(unittest.TestCase):
         msg = str(ctx.exception)
         self.assertIsInstance(ctx.exception, AbstractVisionError)
         self.assertIn("Tongyi-MAI/Z-Image at 1024x1024 (model CPU offload)", msg)
-        self.assertIn("it needed 3.75 GiB more", msg)
         self.assertIn("cpu_offload='sequential'", msg)
         self.assertIsInstance(ctx.exception.__cause__, torch.OutOfMemoryError)
 
@@ -76,14 +75,21 @@ class DiffusersGpuOutOfMemoryTests(unittest.TestCase):
 
     def test_other_errors_pass_through(self):
         class _Boom:
+            def __init__(self, error):
+                self.error = error
+
             def __call__(self, **kwargs):
-                raise RuntimeError("mat1 and mat2 must have the same dtype")
+                raise self.error
 
         backend = hd.HuggingFaceDiffusersVisionBackend(
             config=hd.HuggingFaceDiffusersBackendConfig(model_id="x/y", device="cpu")
         )
-        with self.assertRaises(RuntimeError):
-            backend._pipe_call(_Boom(), {"prompt": "fox"})
+        # The error's type decides, not its text: a RuntimeError that reads like torch's is not one.
+        for error in (RuntimeError("mat1 and mat2 must have the same dtype"), RuntimeError(_TORCH_MESSAGE)):
+            with self.subTest(error=str(error)[:20]):
+                with self.assertRaises(RuntimeError) as ctx:
+                    backend._pipe_call(_Boom(error), {"prompt": "fox"})
+                self.assertIs(ctx.exception, error)
 
 
 if __name__ == "__main__":

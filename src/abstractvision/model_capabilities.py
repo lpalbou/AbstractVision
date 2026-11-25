@@ -212,6 +212,20 @@ class VisionModelCapabilitiesRegistry:
     def iter_task_specs(self, model_id: str) -> Iterable[VisionTaskSpec]:
         return self.get(model_id).tasks.values()
 
+    def explicit_download_model(self, repo_id: str) -> Optional[VisionModelSpec]:
+        """The model whose download of `repo_id` the catalog marks `explicit_download`, else None.
+
+        Generation never fetches such a repository, even with allow_download; only `download`
+        does. Every backend's implicit download asks here.
+        """
+        wanted = str(repo_id or "").strip().lower()
+        if not wanted:
+            return None
+        for spec in self._models.values():
+            if any(d.explicit_download and str(d.repo_id).strip().lower() == wanted for d in spec.downloads):
+                return spec
+        return None
+
 
 _PathPart = Union[str, int]
 
