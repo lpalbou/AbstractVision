@@ -621,26 +621,40 @@ preset = find_model_preset("MiniMaxAI/MiniMax-H3")         # the recommended pac
 preset = find_model_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/minimax-h3-4bit
 print(preset.gated, preset.license_name, preset.recommended)  # from the catalog
 plan = plan_model_preset_download(preset)  # reads the Hub listing; downloads nothing
-print(plan.summary_lines(), plan.disk_space_error())  # size, files already cached, free disk space
-print(preset_status(preset))  # installed / installed_bytes / partial / memory_modes / memory_measurements
+print(plan.summary_lines(), plan.disk_space_error())  # access, size, files complete / to fetch, free disk space
+print(preset_status(preset))  # cache / cache_bytes / cache_gaps / snapshot_dir / memory_modes / memory_measurements
 snapshot_dir = download_model_preset(preset, report=print)
 ```
 
 - `find_model_preset(name, *, target, engine, require_8bit, bits)`: an exact repo id selects that
   package; a model id with several packages selects the width `bits` names, else the package the
   catalog marks `recommended`, else raises `ValueError` listing the choices.
-- `plan_model_preset_download(preset, *, token, all_files)`: a `HubDownloadPlan` with `total_bytes`
-  (None when the Hub listing is not available), `present_bytes` (already in the cache, partial files
-  included), `missing_bytes`, `free_bytes`, `summary_lines()` and `disk_space_error()` (the message,
-  or None when the download fits or its size is unknown). `download --dry-run` prints it.
-- `download_model_preset(preset, *, token, max_workers, all_files, report)`: sizes the download from
-  the Hub listing before it starts and raises `InsufficientDiskSpaceError` (a `RuntimeError`) when the
-  cache disk cannot hold what is still missing; resumes from files already in the cache; raises
-  `HuggingFaceAccessError` naming the repository page and the licence when a gated repository refuses
-  the account; raises `RuntimeError` when files are missing after the download. `report` receives the
-  size and cache summary.
-- `preset_status(preset)`: `installed` and `installed_bytes` (the complete cached snapshot and its size
-  on disk), `partial`, `memory_modes` (what the backend serving the preset honours on this host; `None`
+- `plan_model_preset_download(preset, *, token, all_files)`: a `HubDownloadPlan`, read from the Hub
+  listing without writing anything: `files` (each a `HubFile` with `name`, `size` and `complete`: its
+  snapshot link or blob is in the cache, huggingface_hub's own test; a partial `.incomplete` file is not
+  complete), `complete_files`, `fetch_files`, `total_bytes`, `complete_bytes`, `fetch_bytes`, `free_bytes`,
+  `gated`, `listing_error` (why there is no listing; the byte counts are then None), `summary_lines()`,
+  `disk_space_error()` (the message when the files to fetch do not fit, else None) and `to_dict()`.
+  `download --dry-run` prints it. Raises `HuggingFaceAccessError` when the Hub refuses the repository.
+- `download_model_preset(preset, *, model_dir, token, max_workers, all_files, report)`: a legacy
+  `<model_dir>/<preset.local_dir_name>` tree (`legacy_model_tree`) is moved into the cache as in 0.3.36 and
+  returned as it is, nothing fetched (`report` says it was not compared with the Hub). Otherwise it plans
+  first and passes the summary to `report`; raises `InsufficientDiskSpaceError` (a `RuntimeError`) before anything is written
+  when the files to fetch do not fit; fetches exactly the files to fetch (none when every file is
+  complete); raises `HuggingFaceAccessError` when the Hub refuses the repository (naming the licence when
+  the catalog marks it gated) and `RuntimeError` when files are missing after the download. Without the
+  listing it returns a cached snapshot with no visible gap as it is, else raises `RuntimeError` saying why
+  there is no listing and what to do.
+- `repository_preset(repo_id)`: a repository the catalog does not list, downloaded whole through the same
+  plan.
+- `local_cache_state(preset)`: the local look the listings use, offline: `snapshot_dir`, `files`,
+  `bytes`, `gaps` (what it can see is missing: partial files, links without content, weight files an
+  index names, components `model_index.json` names whose folder the preset's patterns name, no weight
+  file) and `state` (`cached`, `incomplete`
+  or `absent`). No gap does not prove the snapshot holds every file the package selects; only the plan
+  can tell.
+- `preset_status(preset)`: `cache`, `cache_bytes`, `cache_gaps` and `snapshot_dir` (from
+  `local_cache_state`), `memory_modes` (what the backend serving the preset honours on this host; `None`
   when that backend cannot run here) and, for MLX-Gen prepared packages whose capability rows publish
   measured runs, `memory_measurements`: per mode the whole-process `peak_bytes` of the smallest measured
   canvas, the run's `width`, `height`, `frames` and `steps`, and `smallest_tested_machine_gb` where

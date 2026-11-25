@@ -146,12 +146,30 @@ packages selects the one the catalog marks as recommended (`*` in `catalog`), or
 packages and no recommendation asks for an exact repo id or `--bits`. On Apple silicon `--target auto`
 is `mlx` (MLX-Gen packages first).
 
-- Size and disk space: before anything is fetched, the files the preset selects are listed on the
-  Hugging Face Hub (metadata only) and compared with the free space of the cache disk; a download that
-  does not fit stops with a message naming its size. Without the listing (offline), the size is
-  reported as unknown and the disk check is skipped.
-- Resume: files already in the cache, complete or partial, are kept; running the same command again
-  resumes an interrupted download. A download that ends with files missing says so and how to resume.
+- The plan: before anything is written, the files the preset selects are listed on the Hugging Face
+  Hub (metadata only; a Diffusers pipeline's `model_index.json` is read into memory to keep only the
+  files the Diffusers backend loads). Each file is either complete in the cache (huggingface_hub's own
+  test: its snapshot link or its blob exists) or to fetch. The command prints the access, the size and
+  file count, how many files are complete and how many are to fetch with their size, and the free space
+  of the cache disk. The files to fetch must fit there at their full size, or the download stops and
+  writes nothing.
+- Fetching: only the files to fetch are requested; when none are, the command says every file is
+  already present and fetches nothing. A partial file left by an interrupted download counts as to
+  fetch: whether huggingface_hub continues it or starts it over depends on its transport, so the plan
+  counts it at its full size. Ctrl-C exits with code 130; the files that
+  completed stay in the cache, and the same command fetches the rest. A download that ends with files
+  missing names them.
+- Without the Hub listing, nothing is sized or fetched, and the command says why and what to do:
+  offline mode (`HF_HUB_OFFLINE`), the Hub unreachable, an HTTP error, or a listing without file sizes
+  (huggingface.co gives every size; a mirror set with `HF_ENDPOINT` may not). A cached snapshot is
+  reported as it is, not compared with the Hub; the command stops when there is none or a local look
+  sees a gap.
+- Legacy trees: a `~/models/<preset>` tree (`ABSTRACTVISION_MODEL_DIR`, or `--model-dir`) is moved into
+  the cache, as in 0.3.36; `download` then says it was imported and not compared with the Hub, and
+  fetches nothing on top of it. When the cache already holds the package, the tree is removed.
+- A Hugging Face `owner/name` that the catalog does not list downloads every file of the repository
+  through the same plan and disk check; its access comes from the Hub listing. A 401 for a repository
+  not marked gated means it does not exist, is private, or is gated: the Hub does not say which.
 - Gated repositories (for example the `AbstractFramework/minimax-h3-*` packages): accept the licence on
   the repository page while logged in to Hugging Face, then authenticate (`hf auth login`, `HF_TOKEN`, or
   `--token`). A refused download ends with a message naming the page and the licence.
@@ -159,8 +177,14 @@ is `mlx` (MLX-Gen packages first).
   adapter into mlx-gen's LoRA cache. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and
   `minimax-h3-turbo` load a lightx2v Turbo LoRA; `minimax-h3` loads none. Without `--base-model`, the
   command prints the schedules whose adapter is not cached.
-- `--dry-run`: prints the selection, access, cache state, the size from the Hub listing, free disk
-  space and adapter state, and downloads nothing.
+- `--dry-run`: prints the selection, the plan above and the adapter state, writes nothing and exits 0;
+  when the download would not fit, its last line says so.
+- `catalog` and `show-model` show each download's cache state from a local look, offline: `cached` is a
+  snapshot with no gap that look can see (a partial file, a link without content, a weight file an index
+  names, a component `model_index.json` names whose folder the package's patterns name, such as
+  `transformer_2/`, or no weight file at all), `incomplete` names the gap. Only `download` (or
+  `--dry-run`) compares a snapshot with the Hub, so a file nothing local refers to, such as one an
+  interrupted download never started, can be missing from a snapshot shown as `cached`.
 - Generation never downloads a repository whose catalog download is marked `explicit_download: true`
   (today the four MiniMax-H3 repositories: `AbstractFramework/minimax-h3-8bit|bf16|4bit` and
   `MiniMaxAI/MiniMax-H3`), or an adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`. `gated`

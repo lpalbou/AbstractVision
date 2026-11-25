@@ -67,7 +67,7 @@ Reality checks (current shipped behavior, anchored in code):
 - Wan video defaults live in one per-model table (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`): 832x480 for TI2V-5B (121 frames, 24 fps, 50 steps) and the A14B models (81 frames, 16 fps, 40 steps); explicit `width`/`height`/`num_frames`/`fps`/`steps` override them. The VAE decode is tiled by default (`extra={"vae_tiling": False}` / `--no-vae-tiling` to disable); measured memory per size is in `docs/faq.md`.
 - Every generation request takes `memory_mode` (`default`, `low`, `lowest`; CLI `--memory-mode`; AbstractCore keyword or `extra`; process default `ABSTRACTVISION_MEMORY_MODE`, which degrades to the closest mode a backend can honour, while a request value is refused; `make_vision_tools(..., memory_mode=...)` fixes it for all tool calls). MLX-Gen: `low` = its low-RAM mode per route, `lowest` = low-RAM plus block streaming, accepted where routes publish `supports_block_streaming`: MiniMax-H3, and no other current catalog model. Diffusers on CUDA: `low`/`lowest` = model/sequential CPU offload (the request only raises the configured `cpu_offload`). stable-diffusion.cpp: `low` = CPU offload of parameters. OpenAI-compatible: the modes the remote lists for the model in `GET /vision/models` (AbstractCore's server), sent with `quantize` and the soundtrack fields; `default` only for a plain OpenAI endpoint. Every backend refuses a mode it cannot honour with `CapabilityNotSupportedError`, also when called directly. Discovery: `get_capabilities().memory_modes`, MLX-Gen catalog `parameter_constraints["memory_mode"]` (also over HTTP), plugin `available_providers()` details (Python only).
 - MiniMax-H3 (`MiniMaxAI/MiniMax-H3`, packages `AbstractFramework/minimax-h3-8bit|bf16|4bit`, gated, territorial licence, never downloaded during generation; `abstractvision download MiniMaxAI/MiniMax-H3 [--bits 4|16] [--base-model minimax-h3-turbo-544p]` fetches the recommended 8-bit package, or the width named, and the Turbo adapter of that schedule): video with a stereo soundtrack through MLX-Gen; `base_model` picks the schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`); typed `soundscape`, `music`, `generate_audio`, `audio_shift` (and `flow_shift` as the video shift); frame grid and defaults from MLX-Gen's capability row; result MP4 with AAC plus `GeneratedAsset.audio`; `memory_mode` low = 1 GB cache + transformer release, lowest = block streaming.
-- Downloads and listings: `download` checks free disk space against the Hub listing before it starts, resumes from cached files, and names the page and licence when a gated repository refuses; `--dry-run` prints the plan with the size from the Hub listing. `catalog`, `show-model` and `models --json` show per download its access (gated/open, from the catalog), cache state with size on disk, the memory modes this host can run and, for MLX-Gen packages with published measurements, the peak memory per mode and the smallest memory it was tested on (read from mlx-gen at run time).
+- Downloads and listings: `download` plans from the Hub listing before it writes anything (files complete in the cache, files to fetch and their size, whether they fit on the cache disk), fetches only the files to fetch, and names the page and licence when a gated repository refuses; `--dry-run` prints the plan. `catalog`, `show-model` and `models --json` show per download its access (gated/open, from the catalog), its cache state from an offline local look with size on disk, the memory modes this host can run and, for MLX-Gen packages with published measurements, the peak memory per mode and the smallest memory it was tested on (read from mlx-gen at run time).
 - Host contract: `cancel_event` on every request (`GenerationCancelledError`, between steps on MLX-Gen), typed load-time `quantize` (`get_capabilities().quantize_bits`), `VisionManager.describe_routes()` for MLX-Gen's schema-17 rows as JSON, engine metadata under `metadata["mlx_gen"]`, progress-callback errors logged without stopping the run.
 - Task-specific Wan A14B video declares typed `guidance_2` defaults in `vision_model_capabilities.json` (`3.0` for T2V, `3.5` for I2V); it is not transported through backend `extra`.
 - MLX-Gen progress is surfaced through Python/Core `on_progress(event)` callbacks, opt-in one-shot image generation/edit CLI `--progress`, and denoise-step video/upscale progress by default.
@@ -305,15 +305,18 @@ also listed as separate model repos and should be selected explicitly when quali
 than memory footprint. Qwen and ERNIE q4 prepared folders can mix q4 and q8
 components, but they remain the default prepared choice.
 
-The downloader stores curated presets in the Hugging Face cache by default and
-imports older `~/models/<preset>` trees on first use. Generation stays
+The downloader stores curated presets in the Hugging Face cache and imports
+older `~/models/<preset>` trees into it on first use. Generation stays
 cache-only unless you explicitly enable runtime downloads. `catalog` and
 `show-model` give each download's access (whether its repository is gated),
-whether it is installed (with its size on disk) and the memory modes this
-machine can run; for MLX-Gen packages with published measurements, `show-model`
-adds the peak memory of each mode. `download` sizes the download from the
-Hugging Face listing and checks the free disk space before it starts, resumes an
-interrupted download, and `--dry-run` prints the plan without downloading. See [Downloads](docs/reference/configuration.md#downloads).
+its cache state as a local look sees it (with its size on disk) and the memory
+modes this machine can run; for MLX-Gen packages with published measurements,
+`show-model` adds the peak memory of each mode. `download` plans from the
+Hugging Face listing before it writes anything: how many files are already
+complete in the cache, how many are to fetch and their size, and whether they
+fit on the cache disk. It then fetches only the files to fetch; after an
+interruption the same command fetches the rest. `--dry-run` prints the plan
+without downloading. See [Downloads](docs/reference/configuration.md#downloads).
 
 ```bash
 pip install "abstractvision[models,mlx-gen]"
@@ -2898,26 +2901,40 @@ preset = find_model_preset("MiniMaxAI/MiniMax-H3")         # the recommended pac
 preset = find_model_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/minimax-h3-4bit
 print(preset.gated, preset.license_name, preset.recommended)  # from the catalog
 plan = plan_model_preset_download(preset)  # reads the Hub listing; downloads nothing
-print(plan.summary_lines(), plan.disk_space_error())  # size, files already cached, free disk space
-print(preset_status(preset))  # installed / installed_bytes / partial / memory_modes / memory_measurements
+print(plan.summary_lines(), plan.disk_space_error())  # access, size, files complete / to fetch, free disk space
+print(preset_status(preset))  # cache / cache_bytes / cache_gaps / snapshot_dir / memory_modes / memory_measurements
 snapshot_dir = download_model_preset(preset, report=print)
 ```
 
 - `find_model_preset(name, *, target, engine, require_8bit, bits)`: an exact repo id selects that
   package; a model id with several packages selects the width `bits` names, else the package the
   catalog marks `recommended`, else raises `ValueError` listing the choices.
-- `plan_model_preset_download(preset, *, token, all_files)`: a `HubDownloadPlan` with `total_bytes`
-  (None when the Hub listing is not available), `present_bytes` (already in the cache, partial files
-  included), `missing_bytes`, `free_bytes`, `summary_lines()` and `disk_space_error()` (the message,
-  or None when the download fits or its size is unknown). `download --dry-run` prints it.
-- `download_model_preset(preset, *, token, max_workers, all_files, report)`: sizes the download from
-  the Hub listing before it starts and raises `InsufficientDiskSpaceError` (a `RuntimeError`) when the
-  cache disk cannot hold what is still missing; resumes from files already in the cache; raises
-  `HuggingFaceAccessError` naming the repository page and the licence when a gated repository refuses
-  the account; raises `RuntimeError` when files are missing after the download. `report` receives the
-  size and cache summary.
-- `preset_status(preset)`: `installed` and `installed_bytes` (the complete cached snapshot and its size
-  on disk), `partial`, `memory_modes` (what the backend serving the preset honours on this host; `None`
+- `plan_model_preset_download(preset, *, token, all_files)`: a `HubDownloadPlan`, read from the Hub
+  listing without writing anything: `files` (each a `HubFile` with `name`, `size` and `complete`: its
+  snapshot link or blob is in the cache, huggingface_hub's own test; a partial `.incomplete` file is not
+  complete), `complete_files`, `fetch_files`, `total_bytes`, `complete_bytes`, `fetch_bytes`, `free_bytes`,
+  `gated`, `listing_error` (why there is no listing; the byte counts are then None), `summary_lines()`,
+  `disk_space_error()` (the message when the files to fetch do not fit, else None) and `to_dict()`.
+  `download --dry-run` prints it. Raises `HuggingFaceAccessError` when the Hub refuses the repository.
+- `download_model_preset(preset, *, model_dir, token, max_workers, all_files, report)`: a legacy
+  `<model_dir>/<preset.local_dir_name>` tree (`legacy_model_tree`) is moved into the cache as in 0.3.36 and
+  returned as it is, nothing fetched (`report` says it was not compared with the Hub). Otherwise it plans
+  first and passes the summary to `report`; raises `InsufficientDiskSpaceError` (a `RuntimeError`) before anything is written
+  when the files to fetch do not fit; fetches exactly the files to fetch (none when every file is
+  complete); raises `HuggingFaceAccessError` when the Hub refuses the repository (naming the licence when
+  the catalog marks it gated) and `RuntimeError` when files are missing after the download. Without the
+  listing it returns a cached snapshot with no visible gap as it is, else raises `RuntimeError` saying why
+  there is no listing and what to do.
+- `repository_preset(repo_id)`: a repository the catalog does not list, downloaded whole through the same
+  plan.
+- `local_cache_state(preset)`: the local look the listings use, offline: `snapshot_dir`, `files`,
+  `bytes`, `gaps` (what it can see is missing: partial files, links without content, weight files an
+  index names, components `model_index.json` names whose folder the preset's patterns name, no weight
+  file) and `state` (`cached`, `incomplete`
+  or `absent`). No gap does not prove the snapshot holds every file the package selects; only the plan
+  can tell.
+- `preset_status(preset)`: `cache`, `cache_bytes`, `cache_gaps` and `snapshot_dir` (from
+  `local_cache_state`), `memory_modes` (what the backend serving the preset honours on this host; `None`
   when that backend cannot run here) and, for MLX-Gen prepared packages whose capability rows publish
   measured runs, `memory_measurements`: per mode the whole-process `peak_bytes` of the smallest measured
   canvas, the run's `width`, `height`, `frames` and `steps`, and `smallest_tested_machine_gb` where
@@ -3820,12 +3837,30 @@ packages selects the one the catalog marks as recommended (`*` in `catalog`), or
 packages and no recommendation asks for an exact repo id or `--bits`. On Apple silicon `--target auto`
 is `mlx` (MLX-Gen packages first).
 
-- Size and disk space: before anything is fetched, the files the preset selects are listed on the
-  Hugging Face Hub (metadata only) and compared with the free space of the cache disk; a download that
-  does not fit stops with a message naming its size. Without the listing (offline), the size is
-  reported as unknown and the disk check is skipped.
-- Resume: files already in the cache, complete or partial, are kept; running the same command again
-  resumes an interrupted download. A download that ends with files missing says so and how to resume.
+- The plan: before anything is written, the files the preset selects are listed on the Hugging Face
+  Hub (metadata only; a Diffusers pipeline's `model_index.json` is read into memory to keep only the
+  files the Diffusers backend loads). Each file is either complete in the cache (huggingface_hub's own
+  test: its snapshot link or its blob exists) or to fetch. The command prints the access, the size and
+  file count, how many files are complete and how many are to fetch with their size, and the free space
+  of the cache disk. The files to fetch must fit there at their full size, or the download stops and
+  writes nothing.
+- Fetching: only the files to fetch are requested; when none are, the command says every file is
+  already present and fetches nothing. A partial file left by an interrupted download counts as to
+  fetch: whether huggingface_hub continues it or starts it over depends on its transport, so the plan
+  counts it at its full size. Ctrl-C exits with code 130; the files that
+  completed stay in the cache, and the same command fetches the rest. A download that ends with files
+  missing names them.
+- Without the Hub listing, nothing is sized or fetched, and the command says why and what to do:
+  offline mode (`HF_HUB_OFFLINE`), the Hub unreachable, an HTTP error, or a listing without file sizes
+  (huggingface.co gives every size; a mirror set with `HF_ENDPOINT` may not). A cached snapshot is
+  reported as it is, not compared with the Hub; the command stops when there is none or a local look
+  sees a gap.
+- Legacy trees: a `~/models/<preset>` tree (`ABSTRACTVISION_MODEL_DIR`, or `--model-dir`) is moved into
+  the cache, as in 0.3.36; `download` then says it was imported and not compared with the Hub, and
+  fetches nothing on top of it. When the cache already holds the package, the tree is removed.
+- A Hugging Face `owner/name` that the catalog does not list downloads every file of the repository
+  through the same plan and disk check; its access comes from the Hub listing. A 401 for a repository
+  not marked gated means it does not exist, is private, or is gated: the Hub does not say which.
 - Gated repositories (for example the `AbstractFramework/minimax-h3-*` packages): accept the licence on
   the repository page while logged in to Hugging Face, then authenticate (`hf auth login`, `HF_TOKEN`, or
   `--token`). A refused download ends with a message naming the page and the licence.
@@ -3833,8 +3868,14 @@ is `mlx` (MLX-Gen packages first).
   adapter into mlx-gen's LoRA cache. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and
   `minimax-h3-turbo` load a lightx2v Turbo LoRA; `minimax-h3` loads none. Without `--base-model`, the
   command prints the schedules whose adapter is not cached.
-- `--dry-run`: prints the selection, access, cache state, the size from the Hub listing, free disk
-  space and adapter state, and downloads nothing.
+- `--dry-run`: prints the selection, the plan above and the adapter state, writes nothing and exits 0;
+  when the download would not fit, its last line says so.
+- `catalog` and `show-model` show each download's cache state from a local look, offline: `cached` is a
+  snapshot with no gap that look can see (a partial file, a link without content, a weight file an index
+  names, a component `model_index.json` names whose folder the package's patterns name, such as
+  `transformer_2/`, or no weight file at all), `incomplete` names the gap. Only `download` (or
+  `--dry-run`) compares a snapshot with the Hub, so a file nothing local refers to, such as one an
+  interrupted download never started, can be missing from a snapshot shown as `cached`.
 - Generation never downloads a repository whose catalog download is marked `explicit_download: true`
   (today the four MiniMax-H3 repositories: `AbstractFramework/minimax-h3-8bit|bf16|4bit` and
   `MiniMaxAI/MiniMax-H3`), or an adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`. `gated`
@@ -5144,8 +5185,8 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 ## 0.3.37 - 2026-11-25
 
 This release adds MiniMax-H3 (video with a synchronized stereo soundtrack), a `memory_mode` setting on every
-generation request, downloads that check disk space and resume, model listings that show access, cache state and
-memory per mode, and what an application embedding `VisionManager` needs: cancellation, load-time quantization, the
+generation request, downloads planned against the cache with a disk-space check, model listings that show access,
+cache state and memory per mode, and what an application embedding `VisionManager` needs: cancellation, load-time quantization, the
 engine's route rows and metadata. It requires MLX-Gen 0.40.1. Requests that set none of the new fields run as before,
 except for the changes listed below.
 
@@ -5212,25 +5253,46 @@ except for the changes listed below.
 - **Downloads.**
   - `abstractvision download <model id>` selects the package the catalog marks as recommended (for MiniMax-H3, the
     8-bit one); `--bits 2|4|8|16` selects another width.
-  - Before anything is fetched, the files the preset selects are sized from the Hugging Face listing and compared
-    with the free space of the cache disk: a download that does not fit stops with its size and the free space
-    (`InsufficientDiskSpaceError`). Files already in the cache, partial ones included, are resumed; an interrupted
-    download, or one that ends with files missing, says so and how to resume.
-  - `--dry-run` prints the selection, access, cache state, size, free space and adapter state, and downloads
-    nothing.
+  - Every download is planned before anything is written: the files the package selects are read from the
+    Hugging Face listing (metadata only; a Diffusers pipeline's `model_index.json` is read into memory), and each
+    is either complete in the cache or to fetch. The command prints the access (`open` or `gated`), the size and
+    file count, how many files are complete and how many are to fetch, and the free space of the cache disk; the
+    files to fetch must fit there at their full size, or it stops (`InsufficientDiskSpaceError`) and writes
+    nothing. It then fetches exactly the files to fetch: a package whose files are all in the cache is reported as
+    present and nothing is fetched, and one missing files (for example a Wan 2.2 A14B package downloaded by 0.3.36,
+    without `transformer_2/`) gets them. A partial file left by an interrupted download counts as to fetch:
+    whether huggingface_hub continues it or starts it over depends on its transport.
+  - Ctrl-C ends the command with exit code 130 and says that the files that completed stay in the cache and that
+    the same command continues with the rest. A download that ends with files missing names them.
+  - Without the Hub listing, `download` fetches nothing and says why (offline mode, the Hub unreachable, an HTTP
+    error, or a listing without file sizes, which huggingface.co always gives but a mirror set with `HF_ENDPOINT`
+    may not), and what to do. It reports a cached snapshot as it is, not compared with the Hub; with none, or one
+    with a gap a local look can see, it stops. Generation with `allow_download` that finds the model cached makes
+    no Hub request, as before.
+  - `--dry-run` prints the same plan, the adapter state, and, when the download would not fit, says so on its last
+    line; it writes nothing and exits 0.
+  - A Hugging Face `owner/name` the catalog does not list downloads the whole repository through the same plan,
+    size and disk check, with its access from the listing.
   - `--base-model <schedule>` also fetches the adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA);
     without it, `download` lists the schedules that load an adapter and whether each is cached.
   - The catalog marks gated repositories (`gated: true`). `download` says so before it starts, and a gated
     repository that refuses the account ends with `HuggingFaceAccessError` naming the repository page and the
-    licence to accept.
+    licence to accept. For a repository not marked gated, a 401 says what the Hub's answer means: the repository
+    does not exist, is private, or is gated, and the Hub does not say which.
   - Python: `find_model_preset(..., bits=)`, `download_model_preset(..., report=)`,
-    `plan_model_preset_download(preset)` (a `HubDownloadPlan`), `abstractvision.model_inventory.preset_status(preset)`
-    and `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`.
-- **Model listings.** `catalog` marks the recommended package with `*` in `bits` and adds the `access`, `installed`
+    `plan_model_preset_download(preset)` (a `HubDownloadPlan`), `repository_preset(repo_id)`,
+    `abstractvision.model_inventory.preset_status(preset)` and `local_cache_state(preset)`, and
+    `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`.
+- **Model listings.** `catalog` marks the recommended package with `*` in `bits` and adds the `access`, `cache`
   and `memory_modes` columns. `show-model` adds, per download, its access, cache state with size on disk, the memory
   modes this host can run and, for MLX-Gen packages with published measurements, the peak memory of each mode and
   the smallest memory it was tested on (read from the installed mlx-gen), plus the schedules and the adapter each
-  loads. `models --json` and `show-model --json` print the same as JSON.
+  loads. `models --json` and `show-model --json` print the same as JSON. The cache state is a local look, offline:
+  `cached` is a snapshot with no gap it can see (no partial file, link without content or missing weight file an
+  index names, every `model_index.json` component whose folder the package's patterns name present, at least one
+  weight file), `incomplete` names the gap. Only `download` compares a snapshot with
+  the Hub, so a file that nothing local refers to, such as one an interrupted download never started, can be
+  missing from a snapshot shown as `cached`.
 - **OpenAI-compatible backend with AbstractCore's server.** A remote that lists `memory_modes` for the model in
   `GET {base_url}/vision/models` receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
   request with `cancel_event` runs there as a remote job, and setting the event cancels it (AbstractCore's server
@@ -5260,7 +5322,11 @@ except for the changes listed below.
 
 - `download` of a model id that has several packages and no recommended one stops and lists the packages; name one
   exactly, or pass `--bits`. A catalog model is no longer fetched as an unfiltered snapshot of its whole upstream
-  repository.
+  repository. A name that is neither in the catalog nor an `owner/name` points to `abstractvision catalog` instead
+  of listing every known name.
+- `download` prints the package's own target and engine (a GGUF package says `gguf` and `stable-diffusion.cpp`).
+- A legacy `~/models/<preset>` tree (or one under `--model-dir`) is still moved into the cache as before, and
+  `download` then says it was imported and not compared with the Hub, and fetches nothing on top of it.
 - `make_vision_tools`: a parameter the call leaves unset and the catalog lists without a default stays unset, so the
   engine applies its own default. Models whose catalog lists `steps` without a default no longer run at the tool's
   10 steps (15 for edits).
@@ -5283,14 +5349,15 @@ except for the changes listed below.
   discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: a request that needed it is
   refused with the reason. A remote HTTP 422 with the error code `capability_not_supported` raises
   `CapabilityNotSupportedError` with the remote's message instead of `RuntimeError`.
-- The `catalog` table has three more columns (`access`, `installed`, `memory_modes`).
-- `HuggingFaceAccessError` says that the repository is gated or not accessible to the account, names the licence
-  when the catalog knows it, and keeps the first line of the upstream error.
+- The `catalog` table has three more columns (`access`, `cache`, `memory_modes`).
+- `HuggingFaceAccessError` says that the repository is gated and names the licence when the catalog marks it gated,
+  otherwise what the HTTP status tells (401, 403, 404), and keeps the first line of the upstream error.
 
 ### Fixed
 
 - Downloads of the Wan 2.2 A14B MLX-Gen packages fetch the low-noise expert (`transformer_2/`), and MLX-Gen package
   downloads fetch the chat-template files (`*.jinja`) the Qwen, ERNIE and Bonsai tokenizers load; both were left out.
+  Running `download` again on a package downloaded by 0.3.36 fetches them.
 - MLX-Gen releases the loaded model, and clears the MLX cache, before it loads another one (another model or
   adapter set): two instances are never in memory together.
 - A failed MLX-Gen `preload()` drops the model it loaded before raising, and the AbstractCore plugin keeps no
