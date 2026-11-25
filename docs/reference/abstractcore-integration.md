@@ -242,10 +242,10 @@ The facade forwards every typed field of the request a method builds, under the
 same name: `control_image` / `control_strength` on `t2i`, `soundscape`, `music`,
 `generate_audio`, `audio_shift` on `t2v` / `i2v`, and `quantize`, `memory_mode`
 and `cancel_event` on all of them. Two kinds of keyword are refused with
-`CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i` (0.3.36 raised
-`TypeError` there), and the soundtrack options (`soundscape`, `music`,
-`generate_audio`, `audio_shift`) on a call whose request has none. Every other
-unknown keyword remains a backend-specific `extra` parameter, as in 0.3.36:
+`CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i`, and the soundtrack
+options (`soundscape`, `music`, `generate_audio`, `audio_shift`) on a call whose
+request has none. Every other unknown keyword remains a backend-specific `extra`
+parameter:
 `t2v(..., vae_tiling=False)` reaches Wan as `extra["vae_tiling"]`, and
 `t2i(..., fps=24)` lands in `extra` too.
 

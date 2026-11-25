@@ -70,7 +70,7 @@ class GgufPresetsDownloadOneQuantTests(unittest.TestCase):
             repo_id="Green-Sky/SD-Turbo-GGUF", cache_dir=Path("/tmp"), total_bytes=None, present_bytes=0, free_bytes=None
         )
         with patch.object(md, "ensure_hf_repo_snapshot", return_value=None), \
-             patch.object(md, "plan_hf_download", return_value=unsized), \
+             patch.object(md, "_plan_hf_download", return_value=unsized), \
              patch("huggingface_hub.snapshot_download", side_effect=fake_snapshot_download):
             with self.assertRaises(RuntimeError):
                 md.download_model_preset(_preset("Green-Sky/SD-Turbo-GGUF"))

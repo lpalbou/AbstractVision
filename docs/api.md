@@ -444,9 +444,7 @@ aspect window); `describe_routes()` returns the row. Wan and the other local
 backends refuse `soundscape`, `music`, `generate_audio` and `audio_shift`; the
 OpenAI-compatible backend sends them to a remote that advertises them for its
 model and refuses them otherwise
-([backends](reference/backends.md#openai-compatible-http-backend)). MiniMax-H3
-needs mlx-gen 0.40.1 or later (it checks the VAE files at every use); an older
-install is refused with `OptionalDependencyMissingError` before any load.
+([backends](reference/backends.md#openai-compatible-http-backend)).
 
 The result is the MP4 with its AAC soundtrack. `GeneratedAsset.audio` is a
 `GeneratedAudioTrack` (`sample_rate`, `channels`, `duration_seconds`, `muxed`,
@@ -603,7 +601,7 @@ Use [docs/reference/backends.md](reference/backends.md) for backend support.
 
 ### Downloads and what is installed
 
-The download presets and their Hugging Face facts live in
+The download presets live in
 [`../src/abstractvision/model_downloads.py`](../src/abstractvision/model_downloads.py); the state of a
 preset on this host in [`../src/abstractvision/model_inventory.py`](../src/abstractvision/model_inventory.py).
 The CLI's `download`, `catalog`, `show-model` and `models --json` are built on them.
@@ -614,8 +612,9 @@ from abstractvision.model_inventory import preset_status
 
 preset = find_model_preset("MiniMaxAI/MiniMax-H3")         # the recommended package: AbstractFramework/minimax-h3-8bit
 preset = find_model_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/minimax-h3-4bit
-print(preset.download_bytes, preset.gated, preset.license_name, preset.recommended)
-print(plan_model_preset_download(preset).summary_lines())  # size, files already cached, free disk space
+print(preset.gated, preset.license_name, preset.recommended)  # from the catalog
+plan = plan_model_preset_download(preset)  # reads the Hub listing; downloads nothing
+print(plan.summary_lines(), plan.disk_space_error())  # size, files already cached, free disk space
 print(preset_status(preset))  # installed / installed_bytes / partial / memory_modes / memory_measurements
 snapshot_dir = download_model_preset(preset, report=print)
 ```
@@ -623,6 +622,10 @@ snapshot_dir = download_model_preset(preset, report=print)
 - `find_model_preset(name, *, target, engine, require_8bit, bits)`: an exact repo id selects that
   package; a model id with several packages selects the width `bits` names, else the package the
   catalog marks `recommended`, else raises `ValueError` listing the choices.
+- `plan_model_preset_download(preset, *, token, all_files)`: a `HubDownloadPlan` with `total_bytes`
+  (None when the Hub listing is not available), `present_bytes` (already in the cache, partial files
+  included), `missing_bytes`, `free_bytes`, `summary_lines()` and `disk_space_error()` (the message,
+  or None when the download fits or its size is unknown). `download --dry-run` prints it.
 - `download_model_preset(preset, *, token, max_workers, all_files, report)`: sizes the download from
   the Hub listing before it starts and raises `InsufficientDiskSpaceError` (a `RuntimeError`) when the
   cache disk cannot hold what is still missing; resumes from files already in the cache; raises

@@ -768,6 +768,9 @@ class TestMiniMaxH3Backend(unittest.TestCase):
             with self.subTest(image=image):
                 with self.assertRaisesRegex(ValueError, pattern):
                     backend.image_to_video(ImageToVideoRequest(image=image, prompt="fox"))
+                # The same check is part of the request's normalization, which VisionManager runs first.
+                with self.assertRaisesRegex(ValueError, pattern):
+                    backend.normalize_image_to_video_request(ImageToVideoRequest(image=image, prompt="fox"))
         self.assertEqual(_FakeMiniMaxH3.instances, [])
 
     def test_a_keyframe_outside_the_aspect_window_is_refused_when_the_canvas_is_unset(self):
@@ -780,8 +783,11 @@ class TestMiniMaxH3Backend(unittest.TestCase):
 
         buf = BytesIO()
         Image.new("RGB", (100, 10)).save(buf, format="PNG")
+        backend = self._backend()
         with self.assertRaisesRegex(CapabilityNotSupportedError, "aspect ratio"):
-            self._backend().image_to_video(ImageToVideoRequest(image=buf.getvalue(), prompt="fox"))
+            backend.image_to_video(ImageToVideoRequest(image=buf.getvalue(), prompt="fox"))
+        with self.assertRaisesRegex(CapabilityNotSupportedError, "keyframe's width x height"):
+            backend.normalize_image_to_video_request(ImageToVideoRequest(image=buf.getvalue(), prompt="fox"))
         self.assertEqual(_FakeMiniMaxH3.instances, [])
 
     def test_lowest_refuses_an_adapter_that_trains_the_adaln_projections_before_loading(self):
@@ -1017,18 +1023,15 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertNotIn(6, source.quantize_bits())
         self.assertTrue(set(source.quantize_bits()) <= {4, 8})
 
-    def test_minimax_h3_needs_mlx_gen_0_40_1(self):
+    def test_the_catalog_states_the_package_floor_for_minimax_h3(self):
+        # One floor: the install requirement (mlx-gen>=0.40.1) is what MiniMax-H3 needs at run time.
         from abstractvision.backends import mflux
-        from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry
 
-        self.assertEqual(mflux.MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "0.40.1")
-        with patch("abstractvision.backends.mflux._installed_mlx_gen_version", return_value="0.40.0"):
-            with self.assertRaisesRegex(OptionalDependencyMissingError, r"mlx-gen>=0\.40\.1"):
-                mflux._require_mlx_gen_version(mflux.MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MiniMax-H3")
-        with patch("abstractvision.backends.mflux._installed_mlx_gen_version", return_value="0.40.1"):
-            mflux._require_mlx_gen_version(mflux.MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MiniMax-H3")
-        with patch("abstractvision.backends.mflux._installed_mlx_gen_version", return_value="0.40.10"):
-            mflux._require_mlx_gen_version(mflux.MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MiniMax-H3")
+        self.assertEqual(mflux.MLX_GEN_VERSION_FLOOR, "0.40.1")
+        spec = VisionModelCapabilitiesRegistry().get("MiniMaxAI/MiniMax-H3")
+        for task in ("text_to_video", "image_to_video"):
+            self.assertEqual(spec.tasks[task].requires["min_runtime_version"], mflux.MLX_GEN_VERSION_FLOOR)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from .capability_assets import load_json_asset
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_cache import (
     default_hf_cache_root,
@@ -76,11 +75,9 @@ class VisionModelDownloadPreset:
     allow_patterns: Tuple[str, ...]
     notes: str = ""
     source_priority: int = 100
-    # Hugging Face facts from `assets/vision_model_hub_facts.json`: whether the repository is
-    # gated (access needs the licence accepted on its page) and how many bytes `download` fetches.
+    # From the catalog: the repository is gated (its licence must be accepted on its page), the
+    # package `download <model id>` picks among several when no `--bits` is given, the licence name.
     gated: bool = False
-    download_bytes: Optional[int] = None
-    # The package `download <model id>` picks when the model has several and no `--bits` is given.
     recommended: bool = False
     license_name: str = ""
 
@@ -109,8 +106,6 @@ class VisionModelDownloadPreset:
 # destination.
 DEFAULT_MODEL_DIR = Path("~/models")
 HF_TOKEN_SETTINGS_URL = "https://huggingface.co/settings/tokens"
-HUB_FACTS_ASSET_PATH = "assets/vision_model_hub_facts.json"
-HUB_FACTS_ENV_VAR = "ABSTRACTVISION_HUB_FACTS_PATH"
 
 
 _COMMON_MLX_PATTERNS = (
@@ -228,9 +223,9 @@ class InsufficientDiskSpaceError(RuntimeError):
 class HubDownloadPlan:
     """What a download fetches, measured against the Hugging Face cache before it starts.
 
-    `total_bytes` is None when neither the Hub listing nor the packaged facts give a size (the
-    disk check is then skipped rather than guessed). `present_bytes` counts complete files and
-    partial `.incomplete` ones already in the cache: a download resumes from them."""
+    `total_bytes` is None when the Hub listing is not available (the disk check is then skipped
+    rather than guessed). `present_bytes` counts complete files and partial `.incomplete` ones
+    already in the cache: a download resumes from them."""
 
     repo_id: str
     cache_dir: Path
@@ -238,7 +233,6 @@ class HubDownloadPlan:
     present_bytes: int
     free_bytes: Optional[int]
     files: Tuple[str, ...] = ()
-    size_source: str = "unknown"
 
     @property
     def missing_bytes(self) -> Optional[int]:
@@ -264,6 +258,19 @@ class HubDownloadPlan:
         if self.free_bytes is not None:
             lines.append(f"free disk space: {format_bytes(self.free_bytes)}")
         return lines
+
+    def disk_space_error(self) -> Optional[str]:
+        """Why the cache disk cannot hold what is still missing, or None when it can (or is unknown)."""
+        missing = self.missing_bytes
+        if missing is None or self.free_bytes is None or missing <= self.free_bytes:
+            return None
+        fetched = f" ({format_bytes(missing)} still to fetch)" if self.present_bytes else ""
+        return (
+            f"Not enough free disk space to download {self.repo_id}: it is {format_bytes(self.total_bytes)}"
+            f"{fetched} and {format_bytes(self.free_bytes)} is free at {_existing_parent(self.cache_dir)}. "
+            "Free some space, or point HF_HUB_CACHE (or HF_HOME) at a disk with room, then run the same "
+            "command again."
+        )
 
 
 def format_bytes(value: Optional[int]) -> str:
@@ -1769,20 +1776,21 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
     try:
         reg = VisionModelCapabilitiesRegistry()
     except Exception:
-        return tuple(
-            sorted(
-                (_with_hub_facts(p, None) for p in out),
-                key=lambda p: (p.key, p.source_priority, p.repo_id),
-            )
-        )
+        return tuple(sorted(out, key=lambda p: (p.key, p.source_priority, p.repo_id)))
 
     recommended: set[tuple[str, str, str, str]] = set()
+    gated: set[str] = set()
+    license_names: Dict[str, str] = {}
     for model_id in reg.list_models():
         spec = reg.get(model_id)
         for dl in spec.downloads:
             key = (dl.key, dl.engine, dl.target, dl.repo_id)
             if dl.recommended:
                 recommended.add(key)
+            if dl.gated:
+                gated.add(str(dl.repo_id))
+            if spec.license_name:
+                license_names.setdefault(str(dl.repo_id), spec.license_name)
             if key in seen:
                 continue
             seen.add(key)
@@ -1828,52 +1836,14 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
 
     enriched = [
         replace(
-            _with_hub_facts(p, reg),
+            p,
+            gated=p.repo_id in gated,
             recommended=(p.key, p.engine, p.target, p.repo_id) in recommended,
+            license_name=license_names.get(p.repo_id, ""),
         )
         for p in out
     ]
     return tuple(sorted(enriched, key=lambda p: (p.key, p.source_priority, p.repo_id)))
-
-
-@lru_cache(maxsize=1)
-def hub_facts() -> Dict[str, Dict[str, Any]]:
-    """Per-repository Hugging Face facts (gating, download size) packaged with AbstractVision.
-
-    Written by `scripts/refresh_hub_facts.py` from the Hub's public metadata API. Empty when the
-    asset cannot be read."""
-
-    try:
-        data = load_json_asset(
-            package="abstractvision",
-            default_asset_path=HUB_FACTS_ASSET_PATH,
-            env_var=HUB_FACTS_ENV_VAR,
-            label="Hub facts asset",
-        )
-    except Exception:
-        return {}
-    repos = data.get("repos") if isinstance(data, dict) else None
-    return {str(k): v for k, v in repos.items() if isinstance(v, dict)} if isinstance(repos, dict) else {}
-
-
-def _with_hub_facts(
-    preset: VisionModelDownloadPreset, reg: Optional[VisionModelCapabilitiesRegistry]
-) -> VisionModelDownloadPreset:
-    facts = hub_facts().get(str(preset.repo_id), {})
-    sizes = facts.get("download_bytes") if isinstance(facts.get("download_bytes"), dict) else {}
-    size = sizes.get(str(preset.target))
-    license_name = ""
-    if reg is not None:
-        try:
-            license_name = reg.get(str(preset.upstream_repo_id or preset.repo_id)).license_name
-        except Exception:
-            license_name = ""
-    return replace(
-        preset,
-        gated=facts.get("gated") is True,
-        download_bytes=int(size) if isinstance(size, int) and size > 0 else None,
-        license_name=license_name,
-    )
 
 
 @lru_cache(maxsize=1)
@@ -2276,7 +2246,7 @@ def find_model_preset(
     raise ValueError(f"Unknown vision model preset {name!r}. Known presets: {', '.join(known)}")
 
 
-def preset_for(repo_id: str, *, target: str, engine: str) -> Optional[VisionModelDownloadPreset]:
+def _preset_for(repo_id: str, *, target: str, engine: str) -> Optional[VisionModelDownloadPreset]:
     """The download preset for one repository, target and engine, or None."""
 
     for preset in _all_presets():
@@ -2285,7 +2255,7 @@ def preset_for(repo_id: str, *, target: str, engine: str) -> Optional[VisionMode
     return None
 
 
-def catalog_names_model(name: str) -> bool:
+def _catalog_names_model(name: str) -> bool:
     """Whether `name` is a key, alias, repository or upstream model id of any download preset."""
 
     requested = str(name or "").strip().lower()
@@ -2366,21 +2336,7 @@ def _existing_parent(path: Path) -> Path:
     return current
 
 
-def _blob_bytes_on_disk(repo_dir: Path) -> int:
-    """Bytes of the complete and partial (`.incomplete`) blobs a cached repository holds."""
-
-    total = 0
-    blobs = repo_dir / "blobs"
-    try:
-        for entry in blobs.iterdir():
-            if entry.is_file():
-                total += entry.stat().st_size
-    except Exception:
-        return total
-    return total
-
-
-def plan_hf_download(
+def _plan_hf_download(
     repo_id: str,
     *,
     allow_patterns: Optional[Sequence[str]] = None,
@@ -2388,13 +2344,12 @@ def plan_hf_download(
     token: Optional[str] = None,
     revision: Optional[str] = None,
     cache_dir: Optional[Path | str] = None,
-    fallback_total_bytes: Optional[int] = None,
 ) -> HubDownloadPlan:
     """Size a snapshot download against the cache before it starts.
 
     The Hub listing (public metadata, readable for gated repositories too) gives the exact files
     and sizes the patterns select; blobs already in the cache, complete or partial, count as
-    present. Without the listing, `fallback_total_bytes` (the packaged hub facts) stands in."""
+    present. Without the listing, the size is unknown."""
 
     cache_root = Path(cache_dir).expanduser() if cache_dir else default_hf_cache_root()
     repo_dir = hf_repo_dir(str(repo_id), cache_dir=str(cache_root))
@@ -2426,17 +2381,8 @@ def plan_hf_download(
         siblings = None
 
     if siblings is None or any(getattr(s, "size", None) is None for s in siblings):
-        total = int(fallback_total_bytes) if fallback_total_bytes else None
-        present = _blob_bytes_on_disk(repo_dir)
-        if total is not None:
-            present = min(present, total)
         return HubDownloadPlan(
-            repo_id=str(repo_id),
-            cache_dir=cache_root,
-            total_bytes=total,
-            present_bytes=present if total is not None else 0,
-            free_bytes=free_bytes,
-            size_source="hub facts" if total is not None else "unknown",
+            repo_id=str(repo_id), cache_dir=cache_root, total_bytes=None, present_bytes=0, free_bytes=free_bytes
         )
 
     total = 0
@@ -2465,21 +2411,13 @@ def plan_hf_download(
         present_bytes=present,
         free_bytes=free_bytes,
         files=tuple(sorted(str(s.rfilename) for s in siblings)),
-        size_source="hub",
     )
 
 
-def require_disk_space(plan: HubDownloadPlan) -> None:
-    missing = plan.missing_bytes
-    if missing is None or plan.free_bytes is None or missing <= plan.free_bytes:
-        return
-    fetched = f" ({format_bytes(missing)} still to fetch)" if plan.present_bytes else ""
-    raise InsufficientDiskSpaceError(
-        f"Not enough free disk space to download {plan.repo_id}: it is {format_bytes(plan.total_bytes)}"
-        f"{fetched} and {format_bytes(plan.free_bytes)} is free at {_existing_parent(plan.cache_dir)}. "
-        "Free some space, or point HF_HUB_CACHE (or HF_HOME) at a disk with room, then run the same "
-        "command again."
-    )
+def _require_disk_space(plan: HubDownloadPlan) -> None:
+    error = plan.disk_space_error()
+    if error is not None:
+        raise InsufficientDiskSpaceError(error)
 
 
 def _require_planned_files(plan: HubDownloadPlan, snapshot: Path) -> None:
@@ -2517,8 +2455,8 @@ def download_hf_repo_snapshot(
         ) from e
 
     if not local_files_only:
-        require_disk_space(
-            plan_hf_download(
+        _require_disk_space(
+            _plan_hf_download(
                 str(repo_id),
                 allow_patterns=allow_patterns,
                 ignore_patterns=ignore_patterns,
@@ -2677,13 +2615,12 @@ def plan_model_preset_download(
     allow_patterns, ignore_patterns = _preset_download_patterns(
         preset, token=token, all_files=all_files, trim=False
     )
-    return plan_hf_download(
+    return _plan_hf_download(
         preset.repo_id,
         allow_patterns=allow_patterns,
         ignore_patterns=ignore_patterns,
         token=token,
         cache_dir=default_hf_cache_root(),
-        fallback_total_bytes=preset.download_bytes,
     )
 
 
@@ -2704,7 +2641,7 @@ def download_model_preset(
     A Diffusers preset downloads only what the Diffusers backend loads on this host
     (`diffusers_download_files`); `all_files=True` takes every file its patterns match.
 
-    Before fetching, the download is sized against the cache (`plan_hf_download`): `report`
+    Before fetching, the download is sized against the cache from the Hub listing: `report`
     receives that summary, a cache disk without room raises `InsufficientDiskSpaceError`, and
     files already in the cache (complete or partial) are resumed rather than fetched again. A
     gated repository the account cannot read raises `HuggingFaceAccessError`, naming the
@@ -2734,18 +2671,17 @@ def download_model_preset(
         ) from e
 
     allow_patterns, ignore_patterns = _preset_download_patterns(preset, token=token, all_files=all_files)
-    plan = plan_hf_download(
+    plan = _plan_hf_download(
         preset.repo_id,
         allow_patterns=allow_patterns,
         ignore_patterns=ignore_patterns,
         token=token,
         cache_dir=cache_root,
-        fallback_total_bytes=preset.download_bytes,
     )
     if report is not None:
         for line in plan.summary_lines():
             report(line)
-    require_disk_space(plan)
+    _require_disk_space(plan)
     try:
         snapshot = snapshot_download(
             repo_id=preset.repo_id,

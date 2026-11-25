@@ -25,7 +25,8 @@ from .backends import (
 from .lora_adapters import resolve_request_lora_adapters
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_downloads import (
-    catalog_names_model,
+    _catalog_names_model,
+    _preset_for,
     catalog_target_scope,
     default_model_target,
     download_hf_repo_snapshot,
@@ -40,19 +41,12 @@ from .model_downloads import (
     model_presets,
     normalize_model_engine,
     plan_model_preset_download,
-    preset_for,
-    require_disk_space,
     resolve_hf_token,
     resolve_model_target_and_engine,
     resolve_sdcpp_model_selection,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
-from .model_inventory import (
-    describe_measurement,
-    install_label,
-    memory_modes_label,
-    preset_status,
-)
+from .model_inventory import preset_status
 from .types import (
     MEMORY_MODES,
     ImageEditRequest,
@@ -534,8 +528,8 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
     )
 
 
-def _download_entry(dl: Any) -> Dict[str, Any]:
-    """One registry download with its Hub facts and its state on this host."""
+def _download_entry(dl: Any, spec: Any) -> Dict[str, Any]:
+    """One catalog download of `spec` with its state on this host."""
 
     entry: Dict[str, Any] = {
         "key": dl.key,
@@ -545,15 +539,12 @@ def _download_entry(dl: Any) -> Dict[str, Any]:
         "bits": dl.bits,
         "source": dl.source,
         "recommended": bool(dl.recommended),
+        "gated": bool(dl.gated),
+        "license_name": spec.license_name or None,
         "notes": dl.notes,
     }
-    preset = preset_for(dl.repo_id, target=dl.target, engine=dl.engine)
+    preset = _preset_for(dl.repo_id, target=dl.target, engine=dl.engine)
     if preset is not None:
-        entry.update(
-            gated=preset.gated,
-            download_bytes=preset.download_bytes,
-            license_name=preset.license_name or None,
-        )
         entry.update(preset_status(preset))
     return entry
 
@@ -566,7 +557,7 @@ def _model_entry(spec: Any) -> Dict[str, Any]:
         "license_name": spec.license_name or None,
         "tasks": sorted(spec.tasks.keys()),
         "notes": spec.notes,
-        "downloads": [_download_entry(dl) for dl in spec.downloads],
+        "downloads": [_download_entry(dl, spec) for dl in spec.downloads],
     }
 
 
@@ -597,11 +588,11 @@ def _cmd_tasks(_: argparse.Namespace) -> int:
 def _cmd_show_model(args: argparse.Namespace) -> int:
     reg = VisionModelCapabilitiesRegistry()
     spec = reg.get(str(args.model_id))
-    downloads = [_download_entry(dl) for dl in spec.downloads]
-    schedules = _model_schedules(spec)
+    entry = _model_entry(spec)
+    downloads = entry["downloads"]
+    mlx_gen_repos = [dl.repo_id for dl in spec.downloads if str(dl.engine) == "mlx-gen"]
+    schedules = _schedule_adapters(spec.model_id, *mlx_gen_repos) if mlx_gen_repos else []
     if bool(getattr(args, "json", False)):
-        entry = _model_entry(spec)
-        entry["downloads"] = downloads
         if schedules:
             entry["schedules"] = schedules
         entry["task_specs"] = {
@@ -715,44 +706,64 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
 
 def _download_detail_lines(entry: Dict[str, Any]) -> List[str]:
     lines: List[str] = []
-    facts = []
-    if entry.get("download_bytes"):
-        facts.append(f"size: {format_bytes(entry['download_bytes'])}")
-    if "gated" in entry:
-        if entry["gated"]:
-            terms = f"the {entry['license_name']}" if entry.get("license_name") else "its terms"
-            facts.append(
-                f"access: gated (accept {terms} at https://huggingface.co/{entry['repo_id']} while logged in)"
-            )
-        else:
-            facts.append("access: open")
+    if entry["gated"]:
+        terms = f"the {entry['license_name']}" if entry.get("license_name") else "its terms"
+        facts = [f"access: gated (accept {terms} at https://huggingface.co/{entry['repo_id']} while logged in)"]
+    else:
+        facts = ["access: open"]
     if "installed" in entry:
-        facts.append(install_label(entry))
-    if facts:
-        lines.append("  ".join(facts))
+        facts.append(_install_label(entry))
+    lines.append("  ".join(facts))
     if "memory_modes" in entry:
-        lines.append(f"memory modes on this host: {memory_modes_label(entry)}")
+        lines.append(f"memory modes on this host: {_memory_modes_label(entry)}")
     for mode, measurement in (entry.get("memory_measurements") or {}).items():
-        lines.append(f"memory ({mode}, measured by mlx-gen): {describe_measurement(measurement)}")
+        lines.append(f"memory ({mode}, measured by mlx-gen): {_describe_measurement(measurement)}")
     return lines
 
 
-def _model_schedules(spec: Any) -> List[Dict[str, Any]]:
-    """The MLX-Gen schedules (base_model values) of a model whose packages take several, with the
-    adapter each loads and whether it is cached. Empty without mlx-gen or for single-schedule models."""
+def _install_label(status: Dict[str, Any]) -> str:
+    if status.get("installed"):
+        return f"installed ({format_bytes(status.get('installed_bytes'))})"
+    if status.get("partial"):
+        return "partial download"
+    return "not installed"
 
-    mlx_gen = [dl for dl in spec.downloads if str(dl.engine) == "mlx-gen"]
-    if not mlx_gen:
-        return []
+
+def _memory_modes_label(status: Dict[str, Any]) -> str:
+    modes = status.get("memory_modes")
+    return ",".join(modes) if modes else "not available on this host"
+
+
+def _describe_measurement(entry: Dict[str, Any]) -> str:
+    text = (
+        f"peak {format_bytes(entry.get('peak_bytes'))} at {entry.get('width')}x{entry.get('height')}, "
+        f"{entry.get('frames')} frames, {entry.get('steps')} steps"
+    )
+    if entry.get("smallest_tested_machine_gb"):
+        text += f"; smallest tested memory: {entry['smallest_tested_machine_gb']} GB"
+    return text
+
+
+def _family_schedules(*selectors: Any) -> List[str]:
+    """The MLX-Gen schedules (base_model values) of the model family `selectors` name; empty for none."""
+
+    from .backends.mflux import _MFLUX_MODELS, _infer_base_model
+
+    key = _infer_base_model(*selectors)
+    family = _MFLUX_MODELS[key].family if key in _MFLUX_MODELS else None
+    return sorted(k for k, d in _MFLUX_MODELS.items() if family is not None and d.family == family)
+
+
+def _schedule_adapters(*selectors: Any) -> List[Dict[str, Any]]:
+    """Each schedule of the family `selectors` name, with the adapter it loads and its cached path.
+
+    Empty without mlx-gen, or when no schedule of the family loads an adapter."""
+
     try:
-        from .backends.mflux import _MFLUX_MODELS, _infer_base_model, resolve_mlx_gen_schedule_adapter
+        from .backends.mflux import resolve_mlx_gen_schedule_adapter
 
-        key = _infer_base_model(spec.model_id, *(dl.repo_id for dl in mlx_gen))
-        family = _MFLUX_MODELS[key].family if key in _MFLUX_MODELS else None
-        if family is None:
-            return []
         out: List[Dict[str, Any]] = []
-        for schedule in sorted(k for k, d in _MFLUX_MODELS.items() if d.family == family):
+        for schedule in _family_schedules(*selectors):
             resolved = resolve_mlx_gen_schedule_adapter(schedule)
             out.append(
                 {
@@ -761,9 +772,9 @@ def _model_schedules(spec: Any) -> List[Dict[str, Any]]:
                     "adapter_path": resolved[1] if resolved else None,
                 }
             )
-        return out if any(item["adapter"] for item in out) else []
     except Exception:
         return []
+    return out if any(item["adapter"] for item in out) else []
 
 
 def _cmd_provider_models(args: argparse.Namespace) -> int:
@@ -1051,7 +1062,14 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         presets = sorted(filtered, key=lambda p: (p.key, p.source_priority, p.repo_id))
 
     rows: List[Sequence[Any]] = []
-    statuses: Dict[str, Dict[str, Any]] = {}
+    statuses: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def _cached_status(preset: Any) -> Dict[str, Any]:
+        key = (preset.repo_id, preset.target)
+        if key not in statuses:
+            statuses[key] = preset_status(preset)
+        return statuses[key]
+
     runtime_route_specs = _mlx_gen_runtime_task_specs(
         [
             (
@@ -1110,7 +1128,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
             )
         else:
             lora_display = ""
-        status = statuses.setdefault(preset.repo_id + "|" + preset.target, preset_status(preset))
+        status = _cached_status(preset)
         rows.append(
             (
                 model_id,
@@ -1118,10 +1136,9 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                 preset.engine,
                 (str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a")
                 + ("*" if preset.recommended else ""),
-                format_bytes(preset.download_bytes) if preset.download_bytes else "-",
                 "gated" if preset.gated else "open",
-                install_label(status) if status["installed"] or status["partial"] else "-",
-                memory_modes_label(status),
+                _install_label(status) if status["installed"] or status["partial"] else "-",
+                _memory_modes_label(status),
                 lora_display,
                 ",".join(lora_roles),
                 preset.repo_id,
@@ -1169,7 +1186,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                         model_id=model_id,
                         registry_tasks=sorted(spec.tasks.keys()) if spec else [],
                     ),
-                    **statuses.setdefault(p.repo_id + "|" + p.target, preset_status(p)),
+                    **_cached_status(p),
                 }
                 for p in matching_presets
             ]
@@ -1239,9 +1256,9 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
     )
     print("tip: `abstractvision model-presets --all-targets --all` shows the raw preset table")
     print(
-        "tip: bits* is the recommended package; size is what `download` fetches; gated repos need their "
-        "licence accepted on the Hugging Face page; memory modes are those this host can run "
-        "(`show-model` adds MLX-Gen's measured peaks)"
+        "tip: bits* is the recommended package; gated repos need their licence accepted on the Hugging Face "
+        "page; memory modes are those this host can run (`show-model` adds MLX-Gen's measured peaks); "
+        "`download <model> --dry-run` gives the download size"
     )
     print()
     for line in _format_table(
@@ -1250,7 +1267,6 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
             "target",
             "engine",
             "bits",
-            "size",
             "access",
             "installed",
             "memory_modes",
@@ -1273,11 +1289,7 @@ def _download_dry_run(
 
     plan = plan_model_preset_download(preset, token=token, **_all_files_kwargs(args))
     status = preset_status(preset)
-    try:
-        require_disk_space(plan)
-        fits: Optional[str] = None
-    except RuntimeError as e:
-        fits = str(e)
+    fits = plan.disk_space_error()
     item = preset.to_dict()
     item.update(status)
     item.update(
@@ -1286,7 +1298,6 @@ def _download_dry_run(
         present_bytes=plan.present_bytes,
         missing_bytes=plan.missing_bytes,
         free_bytes=plan.free_bytes,
-        size_source=plan.size_source,
         disk_space_error=fits,
     )
     adapters: List[Tuple[str, str]] = []
@@ -1298,7 +1309,7 @@ def _download_dry_run(
             item.update(base_model=schedule, adapter=resolved[0], adapter_path=resolved[1])
             adapters.append((schedule, f"{resolved[0]} ({'cached at ' + resolved[1] if resolved[1] else 'would be fetched'})"))
     if not json_mode:
-        print(f"installed: {install_label(status)}")
+        print(f"installed: {_install_label(status)}")
         for line in plan.summary_lines():
             print(line)
         if preset.target == "diffusers":
@@ -1320,14 +1331,11 @@ def _download_schedule(preset: Any, schedule: Optional[str]) -> Optional[str]:
         return None
     if str(preset.engine) != "mlx-gen":
         raise SystemExit(f"--base-model names an MLX-Gen schedule; {preset.repo_id} is a {preset.engine} artifact.")
-    from .backends.mflux import _MFLUX_MODELS, _infer_base_model
+    from .backends.mflux import _infer_base_model
 
     key = _infer_base_model(schedule)
-    family = _MFLUX_MODELS[key].family if key in _MFLUX_MODELS else None
-    preset_key = _infer_base_model(preset.repo_id, preset.upstream_repo_id, preset.key)
-    preset_family = _MFLUX_MODELS[preset_key].family if preset_key in _MFLUX_MODELS else None
-    if family is None or family != preset_family:
-        choices = sorted(k for k, d in _MFLUX_MODELS.items() if preset_family and d.family == preset_family)
+    choices = _family_schedules(preset.repo_id, preset.upstream_repo_id, preset.key)
+    if key not in choices:
         raise SystemExit(
             f"--base-model {schedule!r} is not a schedule of {preset.repo_id}."
             + (f" Choose one of: {', '.join(choices)}." if choices else "")
@@ -1351,27 +1359,18 @@ def _schedule_adapter_hints(preset: Any) -> List[str]:
 
     if str(preset.engine) != "mlx-gen":
         return []
-    try:
-        from .backends.mflux import _MFLUX_MODELS, _infer_base_model, resolve_mlx_gen_schedule_adapter
-
-        preset_key = _infer_base_model(preset.repo_id, preset.upstream_repo_id, preset.key)
-        family = _MFLUX_MODELS[preset_key].family if preset_key in _MFLUX_MODELS else None
-        schedules = sorted(k for k, d in _MFLUX_MODELS.items() if family and d.family == family)
-        lines = []
-        for schedule in schedules:
-            resolved = resolve_mlx_gen_schedule_adapter(schedule)
-            if resolved is None:
-                continue
-            if resolved[1]:
-                lines.append(f"adapter ({schedule}): cached at {resolved[1]}")
-            else:
-                lines.append(
-                    f"adapter ({schedule}): not cached; fetch it with "
-                    f"`abstractvision download {preset.repo_id} --base-model {schedule}`"
-                )
-        return lines
-    except Exception:
-        return []
+    lines = []
+    for item in _schedule_adapters(preset.repo_id, preset.upstream_repo_id, preset.key):
+        if item["adapter"] is None:
+            continue
+        if item["adapter_path"]:
+            lines.append(f"adapter ({item['base_model']}): cached at {item['adapter_path']}")
+        else:
+            lines.append(
+                f"adapter ({item['base_model']}): not cached; fetch it with "
+                f"`abstractvision download {preset.repo_id} --base-model {item['base_model']}`"
+            )
+    return lines
 
 
 def _cmd_download_model(args: argparse.Namespace) -> int:
@@ -1481,7 +1480,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 preset = None
             if preset is not None:
                 pass
-            elif bits is not None or schedule is not None or catalog_names_model(name):
+            elif bits is not None or schedule is not None or _catalog_names_model(name):
                 # A catalog model is never fetched as an unfiltered snapshot: the choice it
                 # needs (a width, a target, an exact package) is in the message.
                 raise SystemExit(str(e)) from e
@@ -1537,8 +1536,6 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
             print(
                 f"artifact: {preset.target}; bits: {preset.quantization_bits or 'n/a'}; provider/engine: {preset.engine}"
             )
-            if preset.download_bytes:
-                print(f"size: {format_bytes(preset.download_bytes)}")
             if preset.gated:
                 terms = f"the {preset.license_name}" if preset.license_name else "its terms"
                 print(

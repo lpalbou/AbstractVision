@@ -148,12 +148,10 @@ Some models include a `downloads` list to document what AbstractVision considers
 - optional `source`, `notes`
 - optional `recommended: true`: the package `download <model id>` selects when the model has several
   packages for one engine and no `--bits` is given
+- optional `gated: true`: the Hugging Face repository is gated; downloading it needs its licence
+  accepted on the repository page (the model's optional `license_name` names it in messages)
 
-Hugging Face facts about each download repository are kept apart, in
-`assets/vision_model_hub_facts.json`: `gated`, and `download_bytes` per preset target (the bytes
-`download` fetches with that preset's patterns; Diffusers presets have none, since what they fetch
-depends on the host). `scripts/refresh_hub_facts.py` rewrites it from the Hub's public metadata API;
-`--check` reports differences without writing.
+Download sizes are not stored: `download` and `download --dry-run` read them from the Hub listing.
 
 This metadata is descriptive, but in this repo it is maintained to align with the curated
 download surfaces exposed by `abstractvision catalog`, `abstractvision model-presets`, and

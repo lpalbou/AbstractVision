@@ -546,22 +546,25 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         extra = getattr(request, "extra", None)
         return [name for name in OPTIONAL_REQUEST_FIELDS if isinstance(extra, dict) and name in extra]
 
-    def _prepare(self, request: Any, *, task: str) -> Tuple[Any, Dict[str, Any]]:
-        """Check the request against what the remote takes; return it and the fields to send.
+    def _prepare(self, request: Any, *, task: str) -> Tuple[Any, Dict[str, Any], bool]:
+        """Check the request against what the remote takes.
 
-        `memory_mode` is sent when the request (or $ABSTRACTVISION_MEMORY_MODE) names one, the other
-        fields when set; all only to a remote that advertises them. The same keys in `extra` travel
-        with `extra` and are refused for any other remote.
+        Returns the request, the fields to send and whether to run it as a remote job (a request
+        with a `cancel_event`, on a remote that advertises the vision routes). `memory_mode` is sent
+        when the request (or $ABSTRACTVISION_MEMORY_MODE) names one, the other fields when set; all
+        only to a remote that advertises them. The same keys in `extra` travel with `extra` and are
+        refused for any other remote.
         """
         extra = getattr(request, "extra", None)
         named = getattr(request, "memory_mode", None) or (extra or {}).get("memory_mode")
-        uses_fields = (
-            _option_is_set(named)
+        needs_remote_entry = (
+            getattr(request, "cancel_event", None) is not None
+            or _option_is_set(named)
             or bool(str(os.environ.get(MEMORY_MODE_ENV_VAR) or "").strip())
             or bool(self._extra_fields(request))
             or any(_option_is_set(getattr(request, name, None)) for name in OPTIONAL_REQUEST_FIELDS)
         )
-        if uses_fields:
+        if needs_remote_entry:
             self._remote_entry(refresh=True)
         request, mode, _batch = self.resolve_memory_request(request, task=task)
         if self._remote_entry(refresh=False) is None:
@@ -571,7 +574,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                     f"{type(self).__name__} does not support {', '.join(in_extra)}: the remote does not "
                     f"advertise them (no memory_modes for this model in GET {_VISION_MODELS_PATH})."
                 )
-            return request, {}
+            return request, {}, False
         fields: Dict[str, Any] = {}
         if _option_is_set(named) or mode != MEMORY_MODE_DEFAULT:
             fields["memory_mode"] = mode
@@ -582,10 +585,27 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             if name in (request.extra or {}) and request.extra[name] != value:
                 raise ValueError(f"{name}={value!r} and extra[{name!r}]={request.extra[name]!r} disagree; pass one.")
             fields[name] = value
-        return request, fields
+        return request, fields, getattr(request, "cancel_event", None) is not None
 
-    def _uses_remote_job(self, request: Any) -> bool:
-        return getattr(request, "cancel_event", None) is not None and self._remote_entry(refresh=True) is not None
+    def _send(
+        self,
+        path: str,
+        job_route: str,
+        request: Any,
+        as_job: bool,
+        *,
+        payload: Optional[Dict[str, Any]] = None,
+        fields: Optional[Dict[str, str]] = None,
+        files: Optional[Dict[str, Tuple[str, bytes, str]]] = None,
+    ) -> Dict[str, Any]:
+        """POST the request (JSON `payload`, else multipart `fields`/`files`), as a remote job when `as_job`."""
+        if as_job:
+            return self._run_remote_job(
+                job_route, cancel_event=request.cancel_event, payload=payload, fields=fields, files=files
+            )
+        if payload is not None:
+            return self._post_json(path=path, payload=payload)
+        return self._post_multipart(path=path, fields=fields or {}, files=files or {})
 
     def _run_remote_job(
         self,
@@ -721,7 +741,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         return GeneratedAsset(media_type=media_type, data=content, mime_type=mime, metadata=metadata, audio=audio)
 
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
-        request, remote_fields = self._prepare(request, task="text_to_image")
+        request, remote_fields, as_job = self._prepare(request, task="text_to_image")
         if request.control_image is not None:
             raise CapabilityNotSupportedError(
                 "OpenAI-compatible backend does not support structured control images for text-to-image."
@@ -761,14 +781,11 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             payload.pop("response_format", None)
         payload.update(remote_fields)
 
-        if self._uses_remote_job(request):
-            resp = self._run_remote_job("images/generations", cancel_event=request.cancel_event, payload=payload)
-        else:
-            resp = self._post_json(path=self._cfg.image_generations_path, payload=payload)
+        resp = self._send(self._cfg.image_generations_path, "images/generations", request, as_job, payload=payload)
         return self._parse_media(resp, fallback_mime="image/png")
 
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
-        request, remote_fields = self._prepare(request, task="image_to_image")
+        request, remote_fields, as_job = self._prepare(request, task="image_to_image")
         family = _model_family(self._cfg.model_id)
         openai_api = _looks_like_openai_api(self._cfg.base_url) or family is not None
         # OpenAI-style image edits use multipart form data.
@@ -800,10 +817,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             fields["model"] = _upstream_model_id(fields.get("model"))
         fields.update({name: _form_value(value) for name, value in remote_fields.items()})
 
-        if self._uses_remote_job(request):
-            resp = self._run_remote_job("images/edits", cancel_event=request.cancel_event, fields=fields, files=files)
-        else:
-            resp = self._post_multipart(path=self._cfg.image_edits_path, fields=fields, files=files)
+        resp = self._send(self._cfg.image_edits_path, "images/edits", request, as_job, fields=fields, files=files)
         return self._parse_media(resp, fallback_mime="image/png")
 
     def generate_angles(self, request) -> list[GeneratedAsset]:
@@ -814,7 +828,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
         if not self._cfg.text_to_video_path:
             raise CapabilityNotSupportedError("text_to_video is not configured for this backend.")
-        request, remote_fields = self._prepare(request, task="text_to_video")
+        request, remote_fields, as_job = self._prepare(request, task="text_to_video")
         payload: Dict[str, Any] = {"prompt": request.prompt, "response_format": "b64_json", "n": 1}
         if self._cfg.model_id:
             payload["model"] = _upstream_model_id(self._cfg.model_id)
@@ -840,16 +854,13 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         if payload.get("model") is not None:
             payload["model"] = _upstream_model_id(payload.get("model"))
         payload.update(remote_fields)
-        if self._uses_remote_job(request):
-            resp = self._run_remote_job("videos/generations", cancel_event=request.cancel_event, payload=payload)
-        else:
-            resp = self._post_json(path=str(self._cfg.text_to_video_path), payload=payload)
+        resp = self._send(str(self._cfg.text_to_video_path), "videos/generations", request, as_job, payload=payload)
         return self._parse_media(resp, fallback_mime="video/mp4")
 
     def image_to_video(self, request: ImageToVideoRequest) -> GeneratedAsset:
         if not self._cfg.image_to_video_path:
             raise CapabilityNotSupportedError("image_to_video is not configured for this backend.")
-        request, remote_fields = self._prepare(request, task="image_to_video")
+        request, remote_fields, as_job = self._prepare(request, task="image_to_video")
 
         if str(self._cfg.image_to_video_mode) == "json_b64":
             payload: Dict[str, Any] = {
@@ -881,10 +892,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             if payload.get("model") is not None:
                 payload["model"] = _upstream_model_id(payload.get("model"))
             payload.update(remote_fields)
-            if self._uses_remote_job(request):
-                resp = self._run_remote_job("videos/edits", cancel_event=request.cancel_event, payload=payload)
-            else:
-                resp = self._post_json(path=str(self._cfg.image_to_video_path), payload=payload)
+            resp = self._send(str(self._cfg.image_to_video_path), "videos/edits", request, as_job, payload=payload)
             return self._parse_media(resp, fallback_mime="video/mp4")
 
         fields: Dict[str, str] = {}
@@ -919,10 +927,6 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         fields.update({name: _form_value(value) for name, value in remote_fields.items()})
 
         files = {"image": ("image.png", bytes(request.image), "image/png")}
-        if self._uses_remote_job(request):
-            resp = self._run_remote_job("videos/edits", cancel_event=request.cancel_event, fields=fields, files=files)
-        else:
-            resp = self._post_multipart(
-                path=str(self._cfg.image_to_video_path), fields=fields, files=files
-            )
+        path = str(self._cfg.image_to_video_path)
+        resp = self._send(path, "videos/edits", request, as_job, fields=fields, files=files)
         return self._parse_media(resp, fallback_mime="video/mp4")

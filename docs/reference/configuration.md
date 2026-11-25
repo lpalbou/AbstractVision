@@ -17,7 +17,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision models` — list known registry model ids (one per line); `--json` adds each model's downloads with the fields `show-model` prints
 - `abstractvision tasks` — list known tasks
 - `abstractvision show-model <id> [--json]` — print a model’s tasks + params and, for each download, its size, whether the Hugging Face repository is gated (and the licence to accept), whether it is in the local cache (and its size there), the `memory_mode` values this host can run and, for MLX-Gen packages whose capability rows publish measured runs, the peak memory of each mode and the smallest memory it was tested on; for MiniMax-H3 it also lists the schedules (`base_model`) and the adapter each loads
-- `abstractvision catalog [--provider ...] [--task ...] [--json]` — browse the downloadable models: target, engine, bits (`*` marks the recommended package), download size, access (gated or open), cache state and the memory modes this host can run
+- `abstractvision catalog [--provider ...] [--task ...] [--json]` — browse the downloadable models: target, engine, bits (`*` marks the recommended package), access (gated or open), cache state and the memory modes this host can run
 - `abstractvision download <model id or repo id> [--bits N] [--base-model SCHEDULE] [--dry-run]` — download a curated preset into the Hugging Face cache (see [Downloads](#downloads))
 - `abstractvision adapters --provider mlx-gen --model <id> --task <task>` — list backend-discovered cached adapters for one exact route
 - `abstractvision provider-models --openai --task text_to_image` — explicitly query the official OpenAI `/models` catalog
@@ -148,8 +148,8 @@ is `mlx` (MLX-Gen packages first).
 
 - Size and disk space: before anything is fetched, the files the preset selects are listed on the
   Hugging Face Hub (metadata only) and compared with the free space of the cache disk; a download that
-  does not fit stops with a message naming its size. Without the listing (offline), the size packaged
-  in `assets/vision_model_hub_facts.json` is used.
+  does not fit stops with a message naming its size. Without the listing (offline), the size is
+  reported as unknown and the disk check is skipped.
 - Resume: files already in the cache, complete or partial, are kept; running the same command again
   resumes an interrupted download. A download that ends with files missing says so and how to resume.
 - Gated repositories (for example the `AbstractFramework/minimax-h3-*` packages): accept the licence on
@@ -159,8 +159,8 @@ is `mlx` (MLX-Gen packages first).
   adapter into mlx-gen's LoRA cache. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and
   `minimax-h3-turbo` load a lightx2v Turbo LoRA; `minimax-h3` loads none. Without `--base-model`, the
   command prints the schedules whose adapter is not cached.
-- `--dry-run`: prints the selection, size, access, cache state, free disk space and adapter state, and
-  downloads nothing.
+- `--dry-run`: prints the selection, access, cache state, the size from the Hub listing, free disk
+  space and adapter state, and downloads nothing.
 - Generation never downloads gated MiniMax-H3 weights or their adapters, even with
   `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`.
 
@@ -170,8 +170,6 @@ abstractvision download MiniMaxAI/MiniMax-H3 --dry-run
 abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p
 abstractvision download MiniMaxAI/MiniMax-H3 --bits 4
 ```
-
-- `ABSTRACTVISION_HUB_FACTS_PATH` — optional filesystem path to a replacement `vision_model_hub_facts.json` (per repository: `gated`, and `download_bytes` per preset target). `scripts/refresh_hub_facts.py` rewrites the packaged file from the Hub's public metadata.
 
 ### OpenAI / OpenAI-Compatible HTTP Backend
 

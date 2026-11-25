@@ -2263,7 +2263,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.40\.0",
+                        r"mlx-gen>=0\.40\.1",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(

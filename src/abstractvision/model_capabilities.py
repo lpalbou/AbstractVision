@@ -24,6 +24,8 @@ class VisionModelDownloadSpec:
     aliases: List[str] = field(default_factory=list)
     # The package `download <model id>` picks among several of one engine when no width is named.
     recommended: bool = False
+    # The Hugging Face repository is gated: downloading it needs its licence accepted on its page.
+    gated: bool = False
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,7 @@ class VisionModelCapabilitiesRegistry:
                                 if isinstance(alias, str) and str(alias).strip()
                             ],
                             recommended=item.get("recommended") is True,
+                            gated=item.get("gated") is True,
                         )
                     )
                     for alias in [key, repo_id, *downloads[-1].aliases]:

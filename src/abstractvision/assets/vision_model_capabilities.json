@@ -202,7 +202,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.1-dev",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token).",
+          "gated": true
         },
         {
           "key": "flux1-dev",
@@ -211,7 +212,8 @@
           "bits": 8,
           "repo_id": "black-forest-labs/FLUX.1-dev-FP8",
           "source": "official",
-          "notes": "Official FP8 side artifact; components only, not a standalone Diffusers pipeline."
+          "notes": "Official FP8 side artifact; components only, not a standalone Diffusers pipeline.",
+          "gated": true
         }
       ],
       "tasks": {
@@ -262,7 +264,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.1-schnell",
           "source": "official",
-          "notes": "Official Diffusers snapshot (full model weights)."
+          "notes": "Official Diffusers snapshot (full model weights).",
+          "gated": true
         }
       ],
       "tasks": {
@@ -322,7 +325,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.2-dev",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token).",
+          "gated": true
         },
         {
           "key": "flux2-dev",
@@ -417,7 +421,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.1-Kontext-dev",
           "source": "official",
-          "notes": "Official Diffusers edit pipeline snapshot."
+          "notes": "Official Diffusers edit pipeline snapshot.",
+          "gated": true
         }
       ],
       "tasks": {
@@ -502,7 +507,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.1-Canny-dev",
           "source": "official",
-          "notes": "Official Diffusers control pipeline snapshot."
+          "notes": "Official Diffusers control pipeline snapshot.",
+          "gated": true
         }
       ],
       "tasks": {
@@ -555,7 +561,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.1-Depth-dev",
           "source": "official",
-          "notes": "Official Diffusers control pipeline snapshot."
+          "notes": "Official Diffusers control pipeline snapshot.",
+          "gated": true
         }
       ],
       "tasks": {
@@ -608,7 +615,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.1-Fill-dev",
           "source": "official",
-          "notes": "Official Diffusers fill pipeline snapshot."
+          "notes": "Official Diffusers fill pipeline snapshot.",
+          "gated": true
         }
       ],
       "tasks": {
@@ -664,7 +672,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.1-Krea-dev",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token).",
+          "gated": true
         }
       ],
       "tasks": {
@@ -1030,7 +1039,8 @@
           "bits": 4,
           "repo_id": "AbstractFramework/flux.2-klein-9b-4bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation."
+          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation.",
+          "gated": true
         },
         {
           "key": "flux2-klein-9b",
@@ -1039,7 +1049,8 @@
           "bits": 8,
           "repo_id": "AbstractFramework/flux.2-klein-9b-8bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount."
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount.",
+          "gated": true
         },
         {
           "key": "flux2-klein-9b",
@@ -1048,7 +1059,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.2-klein-9B",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token).",
+          "gated": true
         },
         {
           "key": "flux2-klein-9b",
@@ -1057,7 +1069,8 @@
           "bits": 8,
           "repo_id": "black-forest-labs/FLUX.2-klein-9b-fp8",
           "source": "official",
-          "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline)."
+          "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline).",
+          "gated": true
         },
         {
           "key": "flux2-klein-9b",
@@ -1161,7 +1174,8 @@
           "bits": 4,
           "repo_id": "AbstractFramework/flux.2-klein-base-9b-4bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation."
+          "notes": "AbstractFramework MLX-Gen prepared q4 folder. Default Apple Silicon recommendation.",
+          "gated": true
         },
         {
           "key": "flux2-klein-base-9b",
@@ -1170,7 +1184,8 @@
           "bits": 8,
           "repo_id": "AbstractFramework/flux.2-klein-base-9b-8bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount."
+          "notes": "AbstractFramework MLX-Gen prepared q8 folder. Prefer when quality is paramount.",
+          "gated": true
         },
         {
           "key": "flux2-klein-base-9b",
@@ -1179,7 +1194,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.2-klein-base-9B",
           "source": "official",
-          "notes": "Official Diffusers snapshot (full model weights)."
+          "notes": "Official Diffusers snapshot (full model weights).",
+          "gated": true
         },
         {
           "key": "flux2-klein-base-9b",
@@ -1188,7 +1204,8 @@
           "bits": 8,
           "repo_id": "black-forest-labs/FLUX.2-klein-base-9b-fp8",
           "source": "official",
-          "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline)."
+          "notes": "Official FP8 side artifact (components only; not a standalone Diffusers pipeline).",
+          "gated": true
         },
         {
           "key": "flux2-klein-base-9b",
@@ -2548,7 +2565,8 @@
           "bits": 16,
           "repo_id": "stabilityai/stable-diffusion-3-medium-diffusers",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token).",
+          "gated": true
         }
       ],
       "tasks": {
@@ -2597,7 +2615,8 @@
           "bits": 16,
           "repo_id": "stabilityai/stable-diffusion-3.5-large",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token).",
+          "gated": true
         }
       ],
       "tasks": {
@@ -2646,7 +2665,8 @@
           "bits": 16,
           "repo_id": "stabilityai/stable-diffusion-3.5-large-turbo",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token).",
+          "gated": true
         }
       ],
       "tasks": {
@@ -2695,7 +2715,8 @@
           "bits": 16,
           "repo_id": "stabilityai/stable-diffusion-3.5-medium",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepting terms + HF token).",
+          "gated": true
         }
       ],
       "tasks": {
@@ -4151,7 +4172,8 @@
           "bits": 16,
           "repo_id": "black-forest-labs/FLUX.2-klein-9b-kv",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires HF token).",
+          "gated": true
         },
         {
           "key": "flux2-klein-9b-kv",
@@ -4604,7 +4626,8 @@
           "repo_id": "AbstractFramework/minimax-h3-8bit",
           "source": "abstractframework-mlx-gen",
           "notes": "AbstractFramework MLX-Gen 8-bit package: 8-bit transformer and conditioner. Recommended. Gated on Hugging Face: accept the MiniMax H3 Community License on the package page while logged in, then download explicitly.",
-          "recommended": true
+          "recommended": true,
+          "gated": true
         },
         {
           "key": "minimax-h3",
@@ -4613,7 +4636,8 @@
           "bits": 16,
           "repo_id": "AbstractFramework/minimax-h3-bf16",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen 16-bit package: the released weights, repacked. Gated on Hugging Face: accept the MiniMax H3 Community License on the package page while logged in, then download explicitly."
+          "notes": "AbstractFramework MLX-Gen 16-bit package: the released weights, repacked. Gated on Hugging Face: accept the MiniMax H3 Community License on the package page while logged in, then download explicitly.",
+          "gated": true
         },
         {
           "key": "minimax-h3",
@@ -4622,7 +4646,8 @@
           "bits": 4,
           "repo_id": "AbstractFramework/minimax-h3-4bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen mixed package: 4-bit conditioner, 6-bit transformer. Gated on Hugging Face: accept the MiniMax H3 Community License on the package page while logged in, then download explicitly."
+          "notes": "AbstractFramework MLX-Gen mixed package: 4-bit conditioner, 6-bit transformer. Gated on Hugging Face: accept the MiniMax H3 Community License on the package page while logged in, then download explicitly.",
+          "gated": true
         },
         {
           "key": "minimax-h3",
@@ -4631,7 +4656,7 @@
           "bits": 16,
           "repo_id": "MiniMaxAI/MiniMax-H3",
           "source": "official",
-          "notes": "Official MiniMax-H3 source repository, consumed by MLX-Gen 0.40.0+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Not gated; the MiniMax H3 Community License applies. `download` fetches the files MLX-Gen loads, not the whole repository."
+          "notes": "Official MiniMax-H3 source repository, consumed by MLX-Gen 0.40.1+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Not gated; the MiniMax H3 Community License applies. `download` fetches the files MLX-Gen loads, not the whole repository."
         }
       ],
       "tasks": {
@@ -4708,7 +4733,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.0"
+            "min_runtime_version": "0.40.1"
           }
         },
         "image_to_video": {
@@ -4789,7 +4814,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.0"
+            "min_runtime_version": "0.40.1"
           }
         }
       }
@@ -4806,7 +4831,8 @@
           "bits": 16,
           "repo_id": "stabilityai/stable-video-diffusion-img2vid-xt-1-1",
           "source": "official",
-          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepted terms)."
+          "notes": "Official Diffusers snapshot (gated on Hugging Face; requires accepted terms).",
+          "gated": true
         }
       ],
       "tasks": {
@@ -5103,7 +5129,8 @@
           "bits": 4,
           "repo_id": "AbstractFramework/fibo-4bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen prepared 4-bit folder for FIBO."
+          "notes": "AbstractFramework MLX-Gen prepared 4-bit folder for FIBO.",
+          "gated": true
         },
         {
           "key": "fibo",
@@ -5112,7 +5139,8 @@
           "bits": 8,
           "repo_id": "AbstractFramework/fibo-8bit",
           "source": "abstractframework-mlx-gen",
-          "notes": "AbstractFramework MLX-Gen prepared 8-bit folder for FIBO."
+          "notes": "AbstractFramework MLX-Gen prepared 8-bit folder for FIBO.",
+          "gated": true
         },
         {
           "key": "fibo",
@@ -5121,7 +5149,8 @@
           "bits": 16,
           "repo_id": "briaai/FIBO",
           "source": "official",
-          "notes": "Official FIBO snapshot consumed directly by MLX-Gen 0.18.7+. This is not a prepared q4/q8 folder."
+          "notes": "Official FIBO snapshot consumed directly by MLX-Gen 0.18.7+. This is not a prepared q4/q8 folder.",
+          "gated": true
         }
       ],
       "tasks": {
@@ -5225,7 +5254,8 @@
           "bits": 16,
           "repo_id": "briaai/Fibo-lite",
           "source": "official",
-          "notes": "Official FIBO lite snapshot consumed directly by MLX-Gen 0.18.7+. This is not a prepared q4/q8 folder."
+          "notes": "Official FIBO lite snapshot consumed directly by MLX-Gen 0.18.7+. This is not a prepared q4/q8 folder.",
+          "gated": true
         }
       ],
       "tasks": {
@@ -5329,7 +5359,8 @@
           "bits": 16,
           "repo_id": "briaai/Fibo-Edit",
           "source": "official",
-          "notes": "Official FIBO Edit snapshot consumed directly by MLX-Gen 0.18.7+. This is not a prepared q4/q8 folder."
+          "notes": "Official FIBO Edit snapshot consumed directly by MLX-Gen 0.18.7+. This is not a prepared q4/q8 folder.",
+          "gated": true
         }
       ],
       "tasks": {
@@ -5393,7 +5424,8 @@
           "bits": 16,
           "repo_id": "briaai/Fibo-Edit-RMBG",
           "source": "official",
-          "notes": "Official FIBO Edit RMBG snapshot consumed directly by MLX-Gen 0.18.7+. This is not a prepared q4/q8 folder."
+          "notes": "Official FIBO Edit RMBG snapshot consumed directly by MLX-Gen 0.18.7+. This is not a prepared q4/q8 folder.",
+          "gated": true
         }
       ],
       "tasks": {

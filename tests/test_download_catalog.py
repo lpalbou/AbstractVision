@@ -256,24 +256,23 @@ class TestPackageSelection(unittest.TestCase):
         self.assertEqual(preset.repo_id, "AbstractFramework/flux.2-klein-4b-4bit")
 
 
-class TestHubFacts(unittest.TestCase):
-    def test_minimax_h3_facts(self):
+class TestCatalogAccessFacts(unittest.TestCase):
+    def test_minimax_h3_access_licence_and_recommendation(self):
         presets = {p.repo_id: p for p in md.model_presets(target="mlx", engine="mlx-gen", include_non_8bit=True)}
         for repo_id in ("AbstractFramework/minimax-h3-8bit", "AbstractFramework/minimax-h3-bf16", "AbstractFramework/minimax-h3-4bit"):
             self.assertTrue(presets[repo_id].gated, repo_id)
             self.assertEqual(presets[repo_id].license_name, "MiniMax H3 Community License")
         self.assertFalse(presets["MiniMaxAI/MiniMax-H3"].gated)
         self.assertEqual([r for r, p in presets.items() if p.recommended], ["AbstractFramework/minimax-h3-8bit"])
-        self.assertAlmostEqual(presets["AbstractFramework/minimax-h3-bf16"].download_bytes / GIB, 115.1, delta=0.1)
-        self.assertAlmostEqual(presets["AbstractFramework/minimax-h3-8bit"].download_bytes / GIB, 64.3, delta=0.1)
-        self.assertAlmostEqual(presets["AbstractFramework/minimax-h3-4bit"].download_bytes / GIB, 44.9, delta=0.1)
 
-    def test_every_preset_repository_has_facts_and_every_mlx_package_a_size(self):
-        facts = md.hub_facts()
-        for preset in md.model_presets(target="auto", include_non_8bit=True, include_all_targets=True):
-            self.assertIn(preset.repo_id, facts)
-            if preset.target == "mlx":
-                self.assertIsNotNone(preset.download_bytes, preset.repo_id)
+    def test_every_preset_of_a_gated_catalog_repository_is_gated(self):
+        from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry
+
+        reg = VisionModelCapabilitiesRegistry()
+        gated = {dl.repo_id for mid in reg.list_models() for dl in reg.get(mid).downloads if dl.gated}
+        self.assertIn("black-forest-labs/FLUX.1-dev", gated)
+        presets = md.model_presets(target="auto", include_non_8bit=True, include_all_targets=True)
+        self.assertEqual({p.repo_id for p in presets if p.gated}, gated & {p.repo_id for p in presets})
 
 
 class TestDownloadCommand(unittest.TestCase):
@@ -402,14 +401,14 @@ class TestGenerationNeverDownloads(unittest.TestCase):
             import mflux.models.common.config  # noqa: F401
         except Exception:
             self.skipTest("mlx-gen is not installed")
-        from abstractvision.backends.mflux import mlx_gen_schedule_adapter
+        from abstractvision.backends.mflux import _mlx_gen_schedule_adapter
 
-        self.assertIsNone(mlx_gen_schedule_adapter("minimax-h3"))
-        self.assertIsNone(mlx_gen_schedule_adapter("flux2-klein-4b"))
+        self.assertIsNone(_mlx_gen_schedule_adapter("minimax-h3"))
+        self.assertIsNone(_mlx_gen_schedule_adapter("flux2-klein-4b"))
         for schedule in ("minimax-h3-turbo", "minimax-h3-turbo-544p"):
-            self.assertTrue(str(mlx_gen_schedule_adapter(schedule)).startswith("hf:lightx2v/Minimax-h3-Turbo/"))
+            self.assertTrue(str(_mlx_gen_schedule_adapter(schedule)).startswith("hf:lightx2v/Minimax-h3-Turbo/"))
         with self.assertRaisesRegex(ValueError, "Unknown MLX-Gen base model"):
-            mlx_gen_schedule_adapter("not-a-model")
+            _mlx_gen_schedule_adapter("not-a-model")
 
 
 class TestListings(unittest.TestCase):
@@ -489,7 +488,6 @@ class TestListings(unittest.TestCase):
         rc, out = _run_cli(["show-model", "MiniMaxAI/MiniMax-H3"])
         self.assertEqual(rc, 0)
         self.assertIn("memory modes on this host: not available on this host", out)
-        self.assertIn("size: 64.3 GiB", out)
         self.assertIn("access: gated (accept the MiniMax H3 Community License", out)
         self.assertIn("access: open", out)
         self.assertNotIn("measured by mlx-gen", out)

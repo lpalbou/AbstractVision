@@ -18,10 +18,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .model_cache import framework_hf_cache_roots, incomplete_hf_model_sources, resolve_hf_repo_snapshot
-from .model_downloads import VisionModelDownloadPreset, format_bytes, local_model_profile
+from .model_downloads import VisionModelDownloadPreset, local_model_profile
 from .types import MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW, MEMORY_MODE_LOWEST
-
-NOT_AVAILABLE = "not available on this host"
 
 # How each memory_mode runs on MLX-Gen, as the (low_ram, stream_blocks) flags of its measured runs.
 _MLX_GEN_MODE_FLAGS: Dict[str, Tuple[bool, bool]] = {
@@ -37,7 +35,27 @@ _MLX_GEN_MODE_NAMES: Dict[str, str] = {
 }
 
 
-def installed_snapshot(repo_id: str) -> Optional[Tuple[Path, int]]:
+def preset_status(preset: VisionModelDownloadPreset) -> Dict[str, Any]:
+    """Cache state, memory modes and MLX-Gen measurements of one preset on this host."""
+
+    installed = _installed_snapshot(preset.repo_id)
+    modes = _engine_memory_modes(preset.engine, preset.repo_id)
+    status: Dict[str, Any] = {
+        "installed": installed is not None,
+        "installed_bytes": installed[1] if installed else None,
+        "snapshot_dir": str(installed[0]) if installed else None,
+        "partial": installed is None and _is_partially_downloaded(preset.repo_id),
+        "memory_modes": list(modes) if modes is not None else None,
+    }
+    # mlx-gen measures its prepared packages, by width; a source snapshot is not one of them.
+    if str(preset.source) == "abstractframework-mlx-gen" and modes is not None:
+        measurements = _mlx_gen_memory_measurements(preset.repo_id, preset.quantization_bits)
+        if measurements:
+            status["memory_measurements"] = measurements
+    return status
+
+
+def _installed_snapshot(repo_id: str) -> Optional[Tuple[Path, int]]:
     """The complete cached snapshot of `repo_id` and its size on disk, or None."""
 
     snapshot = resolve_hf_repo_snapshot(
@@ -45,10 +63,10 @@ def installed_snapshot(repo_id: str) -> Optional[Tuple[Path, int]]:
     )
     if snapshot is None:
         return None
-    return snapshot, snapshot_size_bytes(snapshot)
+    return snapshot, _snapshot_size_bytes(snapshot)
 
 
-def snapshot_size_bytes(snapshot: Path) -> int:
+def _snapshot_size_bytes(snapshot: Path) -> int:
     """Bytes of the files a snapshot holds (its symlinks resolved, each blob counted once)."""
 
     seen: set[str] = set()
@@ -68,7 +86,7 @@ def snapshot_size_bytes(snapshot: Path) -> int:
     return total
 
 
-def is_partially_downloaded(repo_id: str) -> bool:
+def _is_partially_downloaded(repo_id: str) -> bool:
     return bool(
         incomplete_hf_model_sources(
             str(repo_id), extra_roots=framework_hf_cache_roots(), require_weight_files=True
@@ -76,7 +94,7 @@ def is_partially_downloaded(repo_id: str) -> bool:
     )
 
 
-def engine_memory_modes(engine: str, repo_id: str) -> Optional[Tuple[str, ...]]:
+def _engine_memory_modes(engine: str, repo_id: str) -> Optional[Tuple[str, ...]]:
     """The memory modes the backend serving `engine` honours for `repo_id` on this host.
 
     None when that backend cannot run here (its runtime is not installed, or no AbstractVision
@@ -92,7 +110,7 @@ def engine_memory_modes(engine: str, repo_id: str) -> Optional[Tuple[str, ...]]:
     return None
 
 
-def mlx_gen_memory_measurements(repo_id: str, bits: Optional[int]) -> Dict[str, Dict[str, Any]]:
+def _mlx_gen_memory_measurements(repo_id: str, bits: Optional[int]) -> Dict[str, Dict[str, Any]]:
     """Peak memory per memory_mode for one prepared package, from mlx-gen's capability rows.
 
     Keyed by memory_mode. Each value holds `peak_bytes` (whole-process footprint), the run's
@@ -137,49 +155,6 @@ def mlx_gen_memory_measurements(repo_id: str, bits: Optional[int]) -> Dict[str, 
             entry["smallest_tested_machine_gb"] = machine
         out[mode] = entry
     return out
-
-
-def describe_measurement(entry: Dict[str, Any]) -> str:
-    text = (
-        f"peak {format_bytes(entry.get('peak_bytes'))} at {entry.get('width')}x{entry.get('height')}, "
-        f"{entry.get('frames')} frames, {entry.get('steps')} steps"
-    )
-    if entry.get("smallest_tested_machine_gb"):
-        text += f"; smallest tested memory: {entry['smallest_tested_machine_gb']} GB"
-    return text
-
-
-def preset_status(preset: VisionModelDownloadPreset) -> Dict[str, Any]:
-    """Cache state, memory modes and MLX-Gen measurements of one preset on this host."""
-
-    installed = installed_snapshot(preset.repo_id)
-    modes = engine_memory_modes(preset.engine, preset.repo_id)
-    status: Dict[str, Any] = {
-        "installed": installed is not None,
-        "installed_bytes": installed[1] if installed else None,
-        "snapshot_dir": str(installed[0]) if installed else None,
-        "partial": installed is None and is_partially_downloaded(preset.repo_id),
-        "memory_modes": list(modes) if modes is not None else None,
-    }
-    # mlx-gen measures its prepared packages, by width; a source snapshot is not one of them.
-    if str(preset.source) == "abstractframework-mlx-gen" and modes is not None:
-        measurements = mlx_gen_memory_measurements(preset.repo_id, preset.quantization_bits)
-        if measurements:
-            status["memory_measurements"] = measurements
-    return status
-
-
-def install_label(status: Dict[str, Any]) -> str:
-    if status.get("installed"):
-        return f"installed ({format_bytes(status.get('installed_bytes'))})"
-    if status.get("partial"):
-        return "partial download"
-    return "not installed"
-
-
-def memory_modes_label(status: Dict[str, Any]) -> str:
-    modes = status.get("memory_modes")
-    return ",".join(modes) if modes else NOT_AVAILABLE
 
 
 @lru_cache(maxsize=None)

@@ -165,12 +165,12 @@ components, but they remain the default prepared choice.
 The downloader stores curated presets in the Hugging Face cache by default and
 imports older `~/models/<preset>` trees on first use. Generation stays
 cache-only unless you explicitly enable runtime downloads. `catalog` and
-`show-model` give each download's size, whether its repository is gated, whether
-it is installed (with its size on disk) and the memory modes this machine can run;
-for MLX-Gen packages with published measurements, `show-model` adds the peak
-memory of each mode. `download` checks the free disk space before it starts,
-resumes an interrupted download, and `--dry-run` prints the plan without
-downloading. See [Downloads](docs/reference/configuration.md#downloads).
+`show-model` give each download's access (whether its repository is gated),
+whether it is installed (with its size on disk) and the memory modes this
+machine can run; for MLX-Gen packages with published measurements, `show-model`
+adds the peak memory of each mode. `download` sizes the download from the
+Hugging Face listing and checks the free disk space before it starts, resumes an
+interrupted download, and `--dry-run` prints the plan without downloading. See [Downloads](docs/reference/configuration.md#downloads).
 
 ```bash
 pip install "abstractvision[models,mlx-gen]"

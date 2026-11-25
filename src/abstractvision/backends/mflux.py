@@ -74,9 +74,7 @@ logger = logging.getLogger(__name__)
 
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
-MLX_GEN_VERSION_FLOOR = "0.40.0"
-# MiniMax-H3 runs on the MLX-Gen release that checks its VAE files at every use (0.40.1).
-MINIMAX_H3_MLX_GEN_VERSION_FLOOR = "0.40.1"
+MLX_GEN_VERSION_FLOOR = "0.40.1"
 WAN_TI2V_MODEL_KEY = "wan2.2-ti2v-5b"
 WAN_T2V_A14B_MODEL_KEY = "wan2.2-t2v-a14b"
 WAN_I2V_A14B_MODEL_KEY = "wan2.2-i2v-a14b"
@@ -1416,35 +1414,7 @@ def _explicit_download_note(base_model: Optional[str]) -> str:
     )
 
 
-def _installed_mlx_gen_version() -> Optional[str]:
-    from importlib import metadata
-
-    try:
-        return metadata.version("mlx-gen")
-    except metadata.PackageNotFoundError:
-        return None
-
-
-def _release_numbers(version: str) -> Tuple[int, ...]:
-    # The release segment of a PEP 440 version ("0.40.1" of "0.40.1.dev3").
-    numbers: List[int] = []
-    for part in str(version).split("."):
-        if not part.isdigit():
-            break
-        numbers.append(int(part))
-    return tuple(numbers)
-
-
-def _require_mlx_gen_version(floor: str, what: str) -> None:
-    installed = _installed_mlx_gen_version()
-    if installed is not None and _release_numbers(installed) < _release_numbers(floor):
-        raise OptionalDependencyMissingError(
-            f"{what} requires mlx-gen>={floor} (installed: {installed}). "
-            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"`.'
-        )
-
-
-def mlx_gen_schedule_adapter(base_model: str) -> Optional[str]:
+def _mlx_gen_schedule_adapter(base_model: str) -> Optional[str]:
     """The adapter an MLX-Gen schedule attaches on its own (`hf:<repo>/<file>`), or None.
 
     The MiniMax-H3 Turbo schedules (`minimax-h3-turbo`, `minimax-h3-turbo-544p`) attach a
@@ -1472,7 +1442,7 @@ def resolve_mlx_gen_schedule_adapter(base_model: str, *, download: bool = False)
     The path is None when the adapter is not cached. `download=True` fetches it into mlx-gen's
     LoRA cache, as `mlxgen download --base-model <schedule>` does; generation never does."""
 
-    adapter = mlx_gen_schedule_adapter(base_model)
+    adapter = _mlx_gen_schedule_adapter(base_model)
     if adapter is None:
         return None
     try:
@@ -1493,12 +1463,11 @@ def resolve_mlx_gen_schedule_adapter(base_model: str, *, download: bool = False)
 
 
 def _lazy_import_mflux_minimax_h3() -> Any:
-    _require_mlx_gen_version(MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MLX-Gen MiniMax-H3 video generation")
     try:
         from mflux.models.minimax_h3.variants.minimax_h3 import MiniMaxH3  # type: ignore
     except Exception as e:  # pragma: no cover
         raise OptionalDependencyMissingError(
-            f"MLX-Gen MiniMax-H3 video generation requires mlx-gen>={MINIMAX_H3_MLX_GEN_VERSION_FLOOR}. "
+            f"MLX-Gen MiniMax-H3 video generation requires mlx-gen>={MLX_GEN_VERSION_FLOOR}. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"`.'
         ) from e
     return MiniMaxH3
@@ -1510,7 +1479,6 @@ def _lazy_import_mlx_gen_h3_planning() -> Any:
     `compose_prompt` (its verdict on a prompt section given twice), the aspect-ratio window, the
     adapter check for AdaLN projections, and the load-time quantization widths.
     """
-    _require_mlx_gen_version(MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MLX-Gen MiniMax-H3 video generation")
     try:
         from mflux.models.minimax_h3.latent_creator import h3_layout  # type: ignore
         from mflux.models.minimax_h3.minimax_h3_initializer import MiniMaxH3Initializer  # type: ignore
@@ -1520,7 +1488,7 @@ def _lazy_import_mlx_gen_h3_planning() -> Any:
         )
     except Exception as e:  # pragma: no cover
         raise OptionalDependencyMissingError(
-            f"MLX-Gen MiniMax-H3 video generation requires mlx-gen>={MINIMAX_H3_MLX_GEN_VERSION_FLOOR}. "
+            f"MLX-Gen MiniMax-H3 video generation requires mlx-gen>={MLX_GEN_VERSION_FLOOR}. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"`.'
         ) from e
     from types import SimpleNamespace
@@ -4025,9 +3993,11 @@ class MFluxVisionBackend(VisionBackend):
         *,
         request: Union[VideoGenerationRequest, ImageToVideoRequest],
     ) -> Dict[str, Any]:
+        # A first frame is opened and decoded before anything else is checked.
+        keyframe = _checked_keyframe_size(request.image) if isinstance(request, ImageToVideoRequest) else None
         model_def = self._resolved_model_def()
         if model_def.family == "minimax-h3":
-            return self._normalize_h3_request_values(request=request)
+            return self._normalize_h3_request_values(request=request, keyframe=keyframe)
         if model_def.family != "wan-video":
             raise CapabilityNotSupportedError(
                 "MLX-Gen video generation is implemented for Wan and MiniMax-H3 models "
@@ -4116,12 +4086,15 @@ class MFluxVisionBackend(VisionBackend):
         if not rows:
             raise CapabilityNotSupportedError(
                 f"MLX-Gen publishes no MiniMax-H3 {task} route in this build; "
-                f"upgrade mlx-gen to {MINIMAX_H3_MLX_GEN_VERSION_FLOOR} or later."
+                f"upgrade mlx-gen to {MLX_GEN_VERSION_FLOOR} or later."
             )
         return next((row for row in rows if row.get("default_for_task")), rows[0])
 
     def _normalize_h3_request_values(
-        self, *, request: Union[VideoGenerationRequest, ImageToVideoRequest]
+        self,
+        *,
+        request: Union[VideoGenerationRequest, ImageToVideoRequest],
+        keyframe: Optional[Tuple[int, int]],
     ) -> Dict[str, Any]:
         """Check a MiniMax-H3 request against MLX-Gen's capability row and its own planning rules.
 
@@ -4211,6 +4184,9 @@ class MFluxVisionBackend(VisionBackend):
         planning = _lazy_import_mlx_gen_h3_planning()
         if width is not None:
             self._check_h3_aspect_ratio(width, height, planning=planning, what="width x height")
+        elif keyframe is not None:
+            # MLX-Gen maps the keyframe's own aspect ratio onto its canvas, within its window.
+            self._check_h3_aspect_ratio(*keyframe, planning=planning, what="the keyframe's width x height")
         try:
             # MLX-Gen's own composition, for its verdict on a section given twice.
             planning.compose_prompt(str(prompt), texts["soundscape"], texts["music"])
@@ -5194,9 +5170,8 @@ class MFluxVisionBackend(VisionBackend):
         conditioning_image_metadata: Optional[Dict[str, Any]] = None,
     ) -> GeneratedAsset:
         if isinstance(request, VideoGenerationRequest):
+            # An image-to-video request is normalized by `_image_to_video_impl`, before its keyframe is written.
             request = self.normalize_video_generation_request(request)
-        else:
-            request = self.normalize_image_to_video_request(request)
         if self._resolved_model_def().family == "minimax-h3":
             return self._generate_h3_run(request, memory_plan, task=task, image_path=image_path)
         effective_loras = self._effective_request_lora_adapters(request)
@@ -5509,16 +5484,7 @@ class MFluxVisionBackend(VisionBackend):
         return self.generate_video(replace(request, extra=extra))
 
     def _image_to_video_impl(self, request: ImageToVideoRequest) -> GeneratedAsset:
-        keyframe_width, keyframe_height = _checked_keyframe_size(request.image)
         request = self.normalize_image_to_video_request(request)
-        if self._resolved_model_def().family == "minimax-h3" and request.width is None:
-            # MLX-Gen maps the keyframe's own aspect ratio onto its canvas, within its window.
-            self._check_h3_aspect_ratio(
-                keyframe_width,
-                keyframe_height,
-                planning=_lazy_import_mlx_gen_h3_planning(),
-                what="the keyframe's width x height",
-            )
         suffix = self._sniff_image_suffix(request.image)
         with tempfile.NamedTemporaryFile(mode="wb", suffix=suffix, delete=False) as fp:
             tmp_path = Path(fp.name)

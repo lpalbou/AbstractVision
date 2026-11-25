@@ -627,9 +627,8 @@ def _read_bytes_from_path(path: Union[str, Path]) -> bytes:
 
 # Fields passed positionally or resolved by the facade itself, never as keyword pass-through.
 _FACADE_HANDLED_FIELDS = frozenset({"prompt", "image", "mask"})
-# Keywords 0.3.36 forwarded as fields of a request type that has none, so they raised TypeError;
-# they are refused with a typed error instead.
-_FIELDS_THAT_RAISED_TYPE_ERROR = {
+# Video-only keywords an image call refuses, rather than passing them on in `extra`.
+_REFUSED_ON_IMAGE_CALLS = {
     ImageGenerationRequest: frozenset({"guidance_2"}),
     ImageEditRequest: frozenset({"guidance_2"}),
 }
@@ -646,13 +645,12 @@ def _request_kwarg_names(request_cls: Any) -> set:
 def _refuse_misplaced_typed_options(request_cls: Any, kwargs: Mapping[str, Any], *, method: str) -> None:
     """Refuse what the call's request type cannot take and no backend would read from `extra`.
 
-    That is a keyword that raised TypeError in 0.3.36 (`guidance_2` on an image call), and a typed
-    request option a backend must apply or refuse (OPTIONAL_REQUEST_FIELDS: the soundtrack options
-    on an image call). Every other unknown keyword stays a backend-specific `extra` parameter, as
-    in 0.3.36 (`vae_tiling` on `t2v`, which Wan reads there).
+    That is `guidance_2` on an image call, and a typed request option a backend must apply or
+    refuse (OPTIONAL_REQUEST_FIELDS: the soundtrack options on an image call). Every other unknown
+    keyword stays a backend-specific `extra` parameter (`vae_tiling` on `t2v`, which Wan reads there).
     """
     own = _request_kwarg_names(request_cls)
-    refused_names = _FIELDS_THAT_RAISED_TYPE_ERROR.get(request_cls, frozenset()) | frozenset(OPTIONAL_REQUEST_FIELDS)
+    refused_names = _REFUSED_ON_IMAGE_CALLS.get(request_cls, frozenset()) | frozenset(OPTIONAL_REQUEST_FIELDS)
     misplaced = sorted(
         key for key, value in kwargs.items() if value is not None and key in refused_names and key not in own
     )
