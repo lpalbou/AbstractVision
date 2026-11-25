@@ -302,13 +302,18 @@ class TestExplicitDownloads(unittest.TestCase):
 
     def test_the_explicit_download_field_is_the_one_source(self):
         from abstractvision.backends import mflux
+        from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry
 
         def catalog(**flags):
             download = SimpleNamespace(repo_id="AbstractFramework/minimax-h3-8bit", **flags)
             spec = SimpleNamespace(
                 model_id="MiniMaxAI/MiniMax-H3", license_name="", downloads=[download]
             )
-            return SimpleNamespace(list_models=lambda: [spec.model_id], get=lambda _model_id: spec)
+            registry = SimpleNamespace(_models={spec.model_id: spec})
+            registry.explicit_download_model = lambda repo_id: VisionModelCapabilitiesRegistry.explicit_download_model(
+                registry, repo_id
+            )
+            return registry
 
         note = mflux._explicit_download_note
         with patch.object(
