@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.3.37 - 2026-11-25
+## 0.3.37 - 2026-11-26
 
 This release adds MiniMax-H3 (video with a synchronized stereo soundtrack), a `memory_mode` setting on every
 generation request, downloads planned against the cache with a disk-space check, model listings that show access,
