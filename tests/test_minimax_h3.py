@@ -10,6 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from _mlx_gen_versions import setUpModule, tearDownModule  # noqa: F401
+
 
 
 def _png(width, height):
@@ -667,16 +669,24 @@ class TestMiniMaxH3Backend(unittest.TestCase):
             self.assertEqual(cap.list_resident_models(), [])
             self.assertFalse(backend.has_loaded_model())
 
-            # A preload that fails after the load leaves neither the model nor a record.
-            cap.load_resident_model({})
+            # A preload that fails after loading drops what it loaded, and the plugin keeps no record.
             from abstractvision.backends.mflux import MFluxVisionBackend
 
             with patch.object(MFluxVisionBackend, "_mark_preloaded", side_effect=RuntimeError("boom")):
-                backend._warmed_model_key = None
                 with self.assertRaisesRegex(RuntimeError, "boom"):
                     cap.load_resident_model({})
             self.assertFalse(backend.has_loaded_model())
             self.assertEqual(cap.list_loaded_models(), [])
+
+            # One that fails after reusing the model it already held leaves that model held.
+            cap.load_resident_model({})
+            held = backend._model
+            with patch.object(MFluxVisionBackend, "_mark_preloaded", side_effect=RuntimeError("boom")):
+                backend._warmed_model_key = None
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    cap.load_resident_model({})
+            self.assertIs(backend._model, held)
+            self.assertEqual(len(cap.list_loaded_models()), 1)
 
     def test_plugin_record_follows_the_instance_a_low_run_drops(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -1145,6 +1155,19 @@ class TestMiniMaxH3Backend(unittest.TestCase):
 
     # --- quantize, version floor ---------------------------------------------------------------
 
+    def test_a_boolean_or_non_integral_quantize_is_a_value_error_on_minimax_h3(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        for path in (self.package, self.source):
+            for value in (True, False, 8.5):
+                with self.subTest(path=path.name, quantize=value):
+                    backend = self._backend(path=path)
+                    with self.assertRaisesRegex(ValueError, "quantize must be an integer"):
+                        backend.generate_video(VideoGenerationRequest(prompt="fox", quantize=value))
+                    with self.assertRaisesRegex(ValueError, "quantize must be an integer"):
+                        backend.preload(quantize=value)
+                    self.assertFalse(backend.has_loaded_model())
+
     def test_quantize_bits_without_rows_lists_no_width_minimax_h3_cannot_take(self):
         self.caps = SimpleNamespace(capabilities=())
         source = self._backend(path=self.source)
@@ -1376,6 +1399,7 @@ class TestMiniMaxH3Backend(unittest.TestCase):
             frames.append(tb.tb_frame.f_code.co_name)
             tb = tb.tb_next
         self.assertFalse({"_generate_h3_run", "_generate_video_run", "_memory_session"} & set(frames), frames)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -165,8 +165,8 @@ except for the changes listed below.
     in the API guide; the error carries no traceback of the run, so a caller that keeps it holds none of its memory.
   - Load-time `quantize` (bits) on generation requests, as `--quantize` and as an AbstractCore plugin keyword,
     validated against the route (`get_capabilities().quantize_bits`) and refused on prepared packages and on the
-    other local backends. SeedVR2 upscaling goes through the same check: a prepared package refuses `quantize`
-    (on `upscale_image` and `preload`), and its source accepts MLX-Gen's widths.
+    other local backends. A bool or a non-integral number raises `ValueError` naming `quantize` (on an upscale
+    request `False` keeps its 0.3.36 meaning, an unquantized load).
   - `VisionManager.describe_routes(model=..., task=...)` returns MLX-Gen's capability rows as JSON, so a host can
     build its controls and memory planning without importing MLX-Gen.
   - MLX-Gen results carry the engine's metadata under `metadata["mlx_gen"]` on every route, upscaling included.
@@ -236,14 +236,20 @@ except for the changes listed below.
   clip and its audio sidecar) are left out.
   The refusals of a prepared package given `quantize`, of a model path that does not exist and of an adapter
   `lowest` cannot stream name the model or adapter the same way.
-- MLX-Gen video requests are type-checked: a width, height, frame count, fps or step count that is not an integer, a
-  guidance scale or shift that is not a finite number (NaN, infinity), or a seed outside `[0, 2**64 - 1]`, raises
+- MLX-Gen SeedVR2 upscaling checks `quantize` as the other families do: a prepared package refuses it (on
+  `upscale_image` and `preload`), and the source accepts MLX-Gen's widths, refusing any other integer with
+  `CapabilityNotSupportedError` (`field="quantize"`, it raised `ValueError`) and a non-integral number with
+  `ValueError` (it was truncated). An upscale request still reads `"none"`, `""`, `"0"`, `0`, `"false"`, `False`,
+  `"off"` and `"no"` (in any case) as an unquantized load, as 0.3.36 did.
+- MLX-Gen video requests are type-checked: a width, height, frame count, fps, step count or Wan
+  `extra["max_sequence_length"]` that is not an integer, a guidance scale, `guidance_2` or shift (a field, or Wan's
+  `extra["flow_shift"]`) that is not a finite number (NaN, infinity), or a seed outside `[0, 2**64 - 1]`, raises
   `ValueError` naming the field instead of being truncated or passed on; an image-to-video first frame that cannot
   be decoded raises `ValueError` naming `image`.
 - MLX-Gen Wan results carry, under `metadata["mlx_gen"]`, the metadata MLX-Gen's save writes beside the clip (as
   MiniMax-H3 results do), which adds what only the save knows (video health, the process's peak memory).
-- MLX-Gen refuses `control_image` with `CapabilityNotSupportedError` (`field="control_image"`) before anything
-  loads, and `get_capabilities().supports_control_image` is `False`: MLX-Gen runs structured control through its
+- MLX-Gen refuses `control_image`, and `control_strength` given alone, with `CapabilityNotSupportedError` (`field`
+  names it) before anything loads, and `get_capabilities().supports_control_image` is `False`: MLX-Gen runs structured control through its
   Qwen ControlNet variant and a ControlNet sidecar repository, which AbstractVision does not load. The catalog no
   longer lists `control_image` and `control_strength` for Qwen Image.
 - An exception raised in a progress callback is logged once and no longer ends the run; stop a run with
@@ -290,7 +296,8 @@ except for the changes listed below.
 - MLX-Gen releases the loaded model, and clears the MLX cache, before it loads another one (another model or
   adapter set): two instances are never in memory together.
 - A failed MLX-Gen `preload()` drops the model it loaded before raising, and the AbstractCore plugin does not list
-  it as loaded.
+  it as loaded. A preload refused for its values, or one that fails after reusing the model already held, leaves
+  that model held.
 - AbstractCore plugin: `control_image` and `control_strength` reach `t2i` (they were dropped), where a backend that
   cannot apply them refuses them.
 
