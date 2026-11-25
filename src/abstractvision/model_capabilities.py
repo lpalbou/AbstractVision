@@ -26,6 +26,8 @@ class VisionModelDownloadSpec:
     recommended: bool = False
     # The Hugging Face repository is gated: downloading it needs its licence accepted on its page.
     gated: bool = False
+    # Generation never fetches this repository, even with allow_download (only `download` does).
+    explicit_download: bool = False
 
 
 @dataclass(frozen=True)
@@ -126,6 +128,7 @@ class VisionModelCapabilitiesRegistry:
                             ],
                             recommended=item.get("recommended") is True,
                             gated=item.get("gated") is True,
+                            explicit_download=item.get("explicit_download") is True,
                         )
                     )
                     for alias in [key, repo_id, *downloads[-1].aliases]:

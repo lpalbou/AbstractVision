@@ -399,13 +399,21 @@ class TestDownloadCommand(unittest.TestCase):
 
 
 class TestGenerationNeverDownloads(unittest.TestCase):
-    def test_the_refusal_points_to_the_explicit_download(self):
+    def test_the_refusal_names_the_catalog_licence_and_points_to_the_explicit_download(self):
         from abstractvision.backends.mflux import _explicit_download_note
 
-        note = _explicit_download_note("minimax-h3-turbo-544p")
-        self.assertIn("never downloaded during generation", note)
+        note = _explicit_download_note("AbstractFramework/minimax-h3-8bit", "minimax-h3")
+        self.assertIn("MiniMaxAI/MiniMax-H3 weights are never downloaded during generation", note)
+        self.assertIn("(MiniMax H3 Community License)", note)
+        self.assertIn("`abstractvision download AbstractFramework/minimax-h3-8bit`", note)
+        self.assertEqual(_explicit_download_note("AbstractFramework/flux.2-klein-4b-8bit", "flux2-klein-4b"), "")
+        try:
+            import mflux.models.common.config  # noqa: F401
+        except Exception:
+            return
+        note = _explicit_download_note("AbstractFramework/minimax-h3-8bit", "minimax-h3-turbo-544p")
         self.assertIn(
-            "abstractvision download AbstractFramework/minimax-h3-8bit --base-model minimax-h3-turbo-544p", note
+            "`abstractvision download AbstractFramework/minimax-h3-8bit --base-model minimax-h3-turbo-544p`", note
         )
 
     def test_schedule_adapters_come_from_mlx_gen(self):

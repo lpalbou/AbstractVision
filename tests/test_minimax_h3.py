@@ -118,8 +118,6 @@ class _FakeH3Video:
                 for p in init["lora_paths"]
             ]
             metadata["lora_applied_file_count"] = len(init["lora_paths"])
-            # A field a later MLX-Gen may add, nested: cleaned the same way without being named.
-            metadata["future_engine_field"] = {"inputs": [{"weights": init["lora_paths"][0]}]}
         if self.kwargs.get("generate_audio", True):
             metadata.update(
                 audio_present=True,
@@ -215,6 +213,17 @@ class _FakeModelConfig:
         return ("config", str(model_name), base_model)
 
 
+_PREPARED_SHARD = b"mlx-gen prepared shard"
+
+
+class _FakeWeightLoader:
+    """MLX-Gen's StreamingWeightLoader.is_prepared: whether a component's shard headers carry its metadata."""
+
+    @staticmethod
+    def is_prepared(component):
+        return any(shard.read_bytes() == _PREPARED_SHARD for shard in Path(component).glob("*.safetensors"))
+
+
 class TestMiniMaxH3Backend(unittest.TestCase):
     def setUp(self):
         _FakeMiniMaxH3.instances = []
@@ -228,8 +237,7 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.tmp = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
         self.package = self.tmp / "minimax-h3-8bit"
         (self.package / "transformer").mkdir(parents=True)
-        (self.package / "transformer" / "0.safetensors").write_bytes(b"x")
-        (self.package / "README.md").write_text("---\nlibrary_name: mlx-gen\n---\n")
+        (self.package / "transformer" / "0.safetensors").write_bytes(_PREPARED_SHARD)
         self.source = self.tmp / "MiniMax-H3"
         (self.source / "transformer").mkdir(parents=True)
         (self.source / "transformer" / "0.safetensors").write_bytes(b"x")
@@ -243,6 +251,12 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         )
         self.stack.enter_context(
             patch("abstractvision.backends.mflux._lazy_import_mflux_minimax_h3", return_value=_FakeMiniMaxH3)
+        )
+        self.stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mlx_gen_weight_loader",
+                return_value=(_FakeWeightLoader, ValueError),
+            )
         )
         self.stack.enter_context(
             patch("abstractvision.backends.mflux._lazy_import_mlx_gen_h3_planning", return_value=_FakeH3Planning)
@@ -983,7 +997,6 @@ class TestMiniMaxH3Backend(unittest.TestCase):
                 [(r["requested_path"], r["resolved_path"], r["applied_target_count"]) for r in reports],
                 [("style.safetensors", "style.safetensors", 2)],
             )
-        self.assertEqual(asset.metadata["mlx_gen"]["future_engine_field"], {"inputs": [{"weights": "style.safetensors"}]})
         for name in ("image_path", "video_path", "audio_sidecar_path"):
             self.assertNotIn(name, asset.metadata["mlx_gen"])
 

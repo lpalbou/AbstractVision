@@ -2757,10 +2757,12 @@ MLX-Gen's preflight finds that a run cannot fit, the backend raises
 to try.
 
 The weights are never downloaded during generation, even with
-`allow_download=True`: the AbstractFramework packages are gated, and the MiniMax
-H3 Community License's grant excludes the European Union, the United Kingdom, the
-Republic of Korea and the United States of America (the source repository
-`MiniMaxAI/MiniMax-H3` is not gated; the same licence applies). Accept the
+`allow_download=True`: the catalog marks the downloads that only an explicit
+download fetches (`explicit_download: true`), today the three AbstractFramework
+packages and the source repository `MiniMaxAI/MiniMax-H3`. The packages are gated,
+and the MiniMax H3 Community License's grant excludes the European Union, the
+United Kingdom, the Republic of Korea and the United States of America (the
+source repository is not gated; the same licence applies). Accept the
 licence on the package page while logged in to Hugging Face and download
 explicitly: `abstractvision download MiniMaxAI/MiniMax-H3` fetches the
 recommended 8-bit package (`--bits 4` or `--bits 16` the others), and
@@ -2794,15 +2796,17 @@ What an application embedding `VisionManager` can rely on:
 - **Load-time quantize.** `quantize` (bits) on generation requests.
   `get_capabilities().quantize_bits` lists the widths the configured model
   accepts: the route's `validated_quantization_bits`, else MLX-Gen's `--quantize`
-  choices (for MiniMax-H3, its own 8 and 4). A prepared (already quantized)
-  package, and the other local backends, refuse it; the OpenAI-compatible backend
-  sends it to a remote that advertises it.
+  choices (for MiniMax-H3, its own 8 and 4). A prepared package (its shards carry
+  MLX-Gen's metadata, or the catalog lists it as a prepared or sub-16-bit package)
+  lists none and refuses it, as do the other local backends; the OpenAI-compatible
+  backend sends it to a remote that advertises it.
 - **Metadata without local paths.** MLX-Gen results report the model as its repo
   id (a Hugging Face cache snapshot) or its directory name (another local path),
   and adapters the same way (`org/name:file.safetensors`, or the file name):
-  every absolute path in the engine's metadata, whatever field carries it
-  (`model`, `lora_paths`, `lora_application_reports`, ...), in `metadata["mlx_gen"]`
-  and its top-level copies, and `requested_lora_adapters`; the paths of the temporary files AbstractVision wrote
+  every field of the engine's metadata that holds a path (`model`, `lora_paths`,
+  `lora_application_reports`, the reference, mask and control image paths, the file
+  `video_health` checked, the `original_*` fields an upscale copies from its input),
+  in `metadata["mlx_gen"]` and its top-level copies, and `requested_lora_adapters`; the paths of the temporary files AbstractVision wrote
   for a run (`image_path`, `video_path`, `audio_sidecar_path`) are left out.
 - **Route rows.** `vm.describe_routes(model=None, task=None)` returns MLX-Gen's
   capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,
@@ -3831,8 +3835,10 @@ is `mlx` (MLX-Gen packages first).
   command prints the schedules whose adapter is not cached.
 - `--dry-run`: prints the selection, access, cache state, the size from the Hub listing, free disk
   space and adapter state, and downloads nothing.
-- Generation never downloads gated MiniMax-H3 weights or their adapters, even with
-  `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`.
+- Generation never downloads a repository whose catalog download is marked `explicit_download: true`
+  (today the four MiniMax-H3 repositories: `AbstractFramework/minimax-h3-8bit|bf16|4bit` and
+  `MiniMaxAI/MiniMax-H3`), or an adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`. `gated`
+  only says whether the Hub asks for the licence to be accepted.
 
 ```bash
 abstractvision show-model MiniMaxAI/MiniMax-H3
@@ -3872,7 +3878,7 @@ Playground-only Diffusers vars:
 
 - `ABSTRACTVISION_MFLUX_MODEL` — exact published MLX-Gen repo id, local model path, or custom repo id (examples: `AbstractFramework/flux.2-klein-4b-4bit`, `AbstractFramework/ernie-image-turbo-8bit`, `briaai/FIBO`, `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, `briaai/Fibo-Edit`, `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit`, `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`, `/path/to/preset-dir`)
 - `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional base family for local paths or custom repos (`flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`, `flux2-klein-base-9b`, `bonsai-image-ternary`, `z-image`, `z-image-turbo`, `qwen-image`, `qwen-image-edit-2511`, `ernie-image-turbo`, `fibo`, `fibo-lite`, `fibo-edit`, `fibo-edit-rmbg`, `wan2.2-ti2v-5b`, `wan2.2-t2v-a14b`, `wan2.2-i2v-a14b`), or the MiniMax-H3 schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`)
-- `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache
+- `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache, except for the repositories the catalog marks `explicit_download` (see [Downloads](#downloads))
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root only; curated downloads now land in the Hugging Face cache
 - `ABSTRACTVISION_MLX_GEN_LORA_PATHS` / `ABSTRACTVISION_MFLUX_LORA_PATHS` — optional default LoRA adapters applied by the MLX-Gen backend when a request does not carry its own `lora_adapters`
 - `ABSTRACTVISION_MLX_GEN_LORA_SCALES` / `ABSTRACTVISION_MFLUX_LORA_SCALES` — optional default LoRA scales aligned with the configured default paths
@@ -5261,9 +5267,10 @@ except for the changes listed below.
 - AbstractCore plugin: `guidance_2` on `t2i` or `i2i` raises `CapabilityNotSupportedError` (it raised `TypeError`), as
   do the soundtrack options on an image call. Every other unknown keyword stays a backend `extra` parameter.
 - MLX-Gen result metadata names the model and adapters by repo id (a Hugging Face cache snapshot) or by file or
-  directory name, never by local path: every absolute path in the engine's metadata, whatever field carries it
-  (`model`, `lora_paths`, `lora_application_reports`, ...), in `metadata["mlx_gen"]` and its top-level copies, and
-  `requested_lora_adapters`. The paths of the temporary files written for a run are left out.
+  directory name, never by local path: every field of the engine's metadata that holds a path (`model`,
+  `lora_paths`, `lora_application_reports`, the reference, mask and control image paths, the video file checked by
+  `video_health`, and the `original_*` fields an upscale copies from its input), in `metadata["mlx_gen"]` and its
+  top-level copies, and `requested_lora_adapters`. The paths of the temporary files written for a run are left out.
 - MLX-Gen video requests are type-checked: a width, height, frame count, fps or step count that is not an integer, or
   a seed outside `[0, 2**64 - 1]`, raises `ValueError` naming the field instead of being truncated; an image-to-video
   first frame that cannot be decoded raises `ValueError` naming `image`.

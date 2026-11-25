@@ -161,8 +161,10 @@ is `mlx` (MLX-Gen packages first).
   command prints the schedules whose adapter is not cached.
 - `--dry-run`: prints the selection, access, cache state, the size from the Hub listing, free disk
   space and adapter state, and downloads nothing.
-- Generation never downloads gated MiniMax-H3 weights or their adapters, even with
-  `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`.
+- Generation never downloads a repository whose catalog download is marked `explicit_download: true`
+  (today the four MiniMax-H3 repositories: `AbstractFramework/minimax-h3-8bit|bf16|4bit` and
+  `MiniMaxAI/MiniMax-H3`), or an adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`. `gated`
+  only says whether the Hub asks for the licence to be accepted.
 
 ```bash
 abstractvision show-model MiniMaxAI/MiniMax-H3
@@ -202,7 +204,7 @@ Playground-only Diffusers vars:
 
 - `ABSTRACTVISION_MFLUX_MODEL` — exact published MLX-Gen repo id, local model path, or custom repo id (examples: `AbstractFramework/flux.2-klein-4b-4bit`, `AbstractFramework/ernie-image-turbo-8bit`, `briaai/FIBO`, `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, `briaai/Fibo-Edit`, `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit`, `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`, `/path/to/preset-dir`)
 - `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional base family for local paths or custom repos (`flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`, `flux2-klein-base-9b`, `bonsai-image-ternary`, `z-image`, `z-image-turbo`, `qwen-image`, `qwen-image-edit-2511`, `ernie-image-turbo`, `fibo`, `fibo-lite`, `fibo-edit`, `fibo-edit-rmbg`, `wan2.2-ti2v-5b`, `wan2.2-t2v-a14b`, `wan2.2-i2v-a14b`), or the MiniMax-H3 schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`)
-- `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache
+- `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache, except for the repositories the catalog marks `explicit_download` (see [Downloads](#downloads))
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root only; curated downloads now land in the Hugging Face cache
 - `ABSTRACTVISION_MLX_GEN_LORA_PATHS` / `ABSTRACTVISION_MFLUX_LORA_PATHS` — optional default LoRA adapters applied by the MLX-Gen backend when a request does not carry its own `lora_adapters`
 - `ABSTRACTVISION_MLX_GEN_LORA_SCALES` / `ABSTRACTVISION_MFLUX_LORA_SCALES` — optional default LoRA scales aligned with the configured default paths
