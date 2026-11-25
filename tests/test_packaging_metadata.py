@@ -174,8 +174,13 @@ class TestPackagingMetadata(unittest.TestCase):
             "(platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'"
         )
 
+        # MLX 0.31.0 to 0.32.3 free a padding buffer of a 3D convolution before the Metal command that reads it.
+        mlx = "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'"
+
         for extra in ("mlx-gen", "mflux", "apple", "all", "all-apple"):
-            self.assertIn(expected, _optional_dependency_requirements(pyproject, extra))
+            requirements = _optional_dependency_requirements(pyproject, extra)
+            self.assertIn(expected, requirements)
+            self.assertIn(mlx, requirements)
 
     def test_nvidia_gpu_profiles_never_pull_mlx(self):
         # Operator ruling 2026-09-29: on Linux, mlx-gen pulls mlx[cuda13] (~2.1 GB of

@@ -1933,7 +1933,7 @@ All assets referenced here were generated through AbstractVision with
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.40.1,<0.41.0`.
+  `mlx-gen>=0.40.1,<0.41.0`, with `mlx>=0.32.4` on macOS.
 
 MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
 Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
@@ -5231,7 +5231,9 @@ except for the changes listed below.
 - **MLX-Gen 0.40.1.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) requires
   `mlx-gen>=0.40.1,<0.41.0` (0.3.36 required `>=0.38.0,<0.39.0`). It brings MiniMax-H3, saves images and videos with
   Pillow 13, and publishes capability schema 17. The calls AbstractVision makes for FLUX.2, Z-Image, Qwen, ERNIE,
-  FIBO, Bonsai, SeedVR2 and Wan are unchanged. Upgrade with `pip install -U "abstractvision[mlx-gen]"`.
+  FIBO, Bonsai, SeedVR2 and Wan are unchanged. On macOS the same extras require `mlx>=0.32.4`: MLX 0.31.0 to 0.32.3
+  can end the process with a Metal "invalid resource" error during a MiniMax-H3 decode when the MLX cache is small,
+  and MLX 0.32.4 fixed it. Upgrade with `pip install -U "abstractvision[mlx-gen]"`.
 - **MiniMax-H3: video with a synchronized stereo soundtrack**, `text_to_video` and first-frame `image_to_video`,
   through the MLX-Gen backend. The catalog entry `MiniMaxAI/MiniMax-H3` lists the packages
   `AbstractFramework/minimax-h3-8bit` (recommended), `AbstractFramework/minimax-h3-bf16` and
@@ -5958,12 +5960,14 @@ sdcpp = [
 # Apple-specific local runtime dependencies.
 mlx-gen = [
   "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
 # Compatibility extra for callers that still install the historical MFLUX extra.
 # It intentionally installs MLX-Gen, not the retired standalone mflux package.
 mflux = [
   "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
 # Native Apple Python install profile. Docker cannot expose Apple's Metal stack,
@@ -5983,6 +5987,7 @@ apple = [
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -6057,6 +6062,7 @@ all = [
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 
@@ -6077,6 +6083,7 @@ all-apple = [
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
   "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
 

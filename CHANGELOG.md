@@ -15,7 +15,9 @@ except for the changes listed below.
 - **MLX-Gen 0.40.1.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) requires
   `mlx-gen>=0.40.1,<0.41.0` (0.3.36 required `>=0.38.0,<0.39.0`). It brings MiniMax-H3, saves images and videos with
   Pillow 13, and publishes capability schema 17. The calls AbstractVision makes for FLUX.2, Z-Image, Qwen, ERNIE,
-  FIBO, Bonsai, SeedVR2 and Wan are unchanged. Upgrade with `pip install -U "abstractvision[mlx-gen]"`.
+  FIBO, Bonsai, SeedVR2 and Wan are unchanged. On macOS the same extras require `mlx>=0.32.4`: MLX 0.31.0 to 0.32.3
+  can end the process with a Metal "invalid resource" error during a MiniMax-H3 decode when the MLX cache is small,
+  and MLX 0.32.4 fixed it. Upgrade with `pip install -U "abstractvision[mlx-gen]"`.
 - **MiniMax-H3: video with a synchronized stereo soundtrack**, `text_to_video` and first-frame `image_to_video`,
   through the MLX-Gen backend. The catalog entry `MiniMaxAI/MiniMax-H3` lists the packages
   `AbstractFramework/minimax-h3-8bit` (recommended), `AbstractFramework/minimax-h3-bf16` and

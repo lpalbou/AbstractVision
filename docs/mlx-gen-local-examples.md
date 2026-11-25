@@ -32,7 +32,7 @@ All assets referenced here were generated through AbstractVision with
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.40.1,<0.41.0`.
+  `mlx-gen>=0.40.1,<0.41.0`, with `mlx>=0.32.4` on macOS.
 
 MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
 Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
