@@ -98,7 +98,12 @@ class TestMemoryModeTypes(unittest.TestCase):
                 normalize_memory_mode(value)
 
     def test_the_field_wins_then_extra_then_the_environment(self):
-        from abstractvision.types import resolve_memory_mode_with_source as resolve
+        from abstractvision.backends.base_backend import merge_request_option
+        from abstractvision.types import resolve_memory_mode_with_source
+
+        def resolve(value, extra=None):
+            # As resolve_memory_request: the field merged with `extra`, then the environment.
+            return resolve_memory_mode_with_source(merge_request_option("memory_mode", value, extra or {}))
 
         with patch.dict("os.environ", NO_ENV):
             self.assertEqual(resolve(None), ("default", False))
@@ -299,7 +304,8 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
             hd, "_lazy_import_torch", return_value=types.SimpleNamespace()
         ):
             self.assertEqual(backend.resolve_memory_request(ImageGenerationRequest(prompt="p"))[1], "default")
-            self.assertEqual(backend._warmup_generation_request().memory_mode, "default")
+            # A preload with no mode, and its warmup, run the process default as this backend honours it.
+            self.assertEqual(backend._resolve_preload_options(None, None, task="text_to_image")[0], "default")
 
     def test_openai_compatible_runs_a_process_low_default_as_default(self):
         from abstractvision.backends.openai_compatible import (
@@ -389,8 +395,10 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
                 backend = hd.HuggingFaceDiffusersVisionBackend(
                     config=hd.HuggingFaceDiffusersBackendConfig(model_id="x", device=device)
                 )
-                self.assertEqual(backend._warmup_generation_request().memory_mode, expected, device)
-                self.assertEqual(backend._warmup_edit_request().memory_mode, expected, device)
+                for task in ("text_to_image", "image_to_image"):
+                    mode, _quantize = backend._resolve_preload_options(None, None, task=task)
+                    self.assertEqual(mode, expected, device)
+                    self.assertEqual(backend._warmup_generation_request(mode).memory_mode, expected, device)
 
         inits = []
 
@@ -400,7 +408,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
 
         backend = self._sdcpp_backend()
         with patch.dict(sys.modules, {"stable_diffusion_cpp": types.SimpleNamespace(StableDiffusion=_StableDiffusion)}), patch(
-            "abstractvision.backends.stable_diffusion_cpp._require_sd_cli",
+            "abstractvision.backends.stable_diffusion_cpp.require_sd_cli",
             side_effect=OptionalDependencyMissingError("no sd-cli"),
         ), patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": "low"}):
             backend.preload()
@@ -419,16 +427,14 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
         backend._pipelines["t2i"] = offloaded
 
         # The configured placement (or a higher one) serves default and low requests as loaded.
-        for floor in ("", "model"):
-            backend._offload_floor = floor
-            self.assertIs(backend._get_or_load_pipeline("t2i"), offloaded)
+        for mode in ("default", "low"):
+            self.assertIs(backend._get_or_load_pipeline("t2i", memory_mode=mode), offloaded)
         # lowest needs sequential offload: the pipeline is dropped and loaded again.
-        backend._offload_floor = "sequential"
         with patch.object(hd, "_lazy_import_diffusers", side_effect=RuntimeError("reload")), patch.object(
             hd, "_release_pipeline_adapters"
         ) as released:
             with self.assertRaisesRegex(RuntimeError, "reload"):
-                backend._get_or_load_pipeline("t2i")
+                backend._get_or_load_pipeline("t2i", memory_mode="lowest")
         self.assertNotIn("t2i", backend._pipelines)
         released.assert_called_once_with(offloaded)
         self.assertEqual(hd._MEMORY_MODE_OFFLOAD_FLOOR, {"default": "", "low": "model", "lowest": "sequential"})
@@ -467,7 +473,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
 
         backend = self._sdcpp_backend()
         self.assertEqual(tuple(backend.get_capabilities().memory_modes), ("default", "low"))
-        with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"), patch(
+        with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="/usr/bin/sd-cli"), patch(
             "abstractvision.backends.stable_diffusion_cpp.subprocess.run", side_effect=fake_run
         ):
             low = backend.generate_image(ImageGenerationRequest(prompt="p", extra={"memory_mode": "low"}))
@@ -492,7 +498,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
             Path(cmd[cmd.index("--output") + 1]).write_bytes(PNG_1X1)
 
         backend = self._sdcpp_backend(extra_args=("--offload-to-cpu",))
-        with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"), patch(
+        with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="/usr/bin/sd-cli"), patch(
             "abstractvision.backends.stable_diffusion_cpp.subprocess.run", side_effect=fake_run
         ):
             backend.generate_image(ImageGenerationRequest(prompt="p", memory_mode="low"))
@@ -519,7 +525,7 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
         fake_mod = types.SimpleNamespace(__version__="0.0.0", StableDiffusion=_StableDiffusion)
         backend = self._sdcpp_backend()
         with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}), patch(
-            "abstractvision.backends.stable_diffusion_cpp._require_sd_cli",
+            "abstractvision.backends.stable_diffusion_cpp.require_sd_cli",
             side_effect=OptionalDependencyMissingError("no sd-cli"),
         ):
             backend.generate_image(ImageGenerationRequest(prompt="p"))
@@ -670,8 +676,9 @@ class TestAbstractCorePluginMemoryMode(unittest.TestCase):
         def fake_urlopen(req, timeout=None):
             transport.append(req.full_url)
             if req.full_url.endswith("/vision/models"):
-                entry = {"id": "stand-in/h3", "memory_modes": ["default", "low"]}
-                return _FakeHTTPResponse(json.dumps({"models": [entry], "active": entry}).encode())
+                # As AbstractCore's server publishes it: a request addresses the entry by `routed_model`.
+                entry = {"id": "h3", "routed_model": "stand-in/h3", "memory_modes": ["default", "low"]}
+                return _FakeHTTPResponse(json.dumps({"models": [entry], "defaults": {}}).encode())
             return _FakeHTTPResponse(json.dumps({"data": [{"id": "stand-in/h3"}]}).encode())
 
         with patch.dict("os.environ", {"ABSTRACTVISION_ASSUME_OFFLINE": "1"}, clear=True), patch.object(

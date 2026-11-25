@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 # Memory modes a caller can request on a generation call, from the fastest run to the lowest
 # memory peak. "default" runs the backend as configured. "low" and "lowest" trade speed for a
@@ -28,20 +28,12 @@ def normalize_memory_mode(value: Any) -> str:
     raise ValueError(f"memory_mode must be one of {', '.join(MEMORY_MODES)} (got {value!r}).")
 
 
-def resolve_memory_mode_with_source(value: Any, extra: Any = None) -> Tuple[str, bool]:
+def resolve_memory_mode_with_source(value: Any) -> Tuple[str, bool]:
     """The mode a call asks for, and whether it came from $ABSTRACTVISION_MEMORY_MODE.
 
-    `value` wins, then `extra["memory_mode"]`, then the environment, then "default". A keyword
-    and an `extra` value that disagree are refused.
+    `value` (the request's, already merged with its `extra`) wins, then the environment, then
+    "default".
     """
-    from_extra = extra.get("memory_mode") if isinstance(extra, Mapping) else None
-    if value is not None and from_extra is not None:
-        if normalize_memory_mode(value) != normalize_memory_mode(from_extra):
-            raise ValueError(
-                f"memory_mode={value!r} and extra['memory_mode']={from_extra!r} disagree; pass one."
-            )
-    if value is None:
-        value = from_extra
     if value is None or not str(value).strip():
         env_value = os.environ.get(MEMORY_MODE_ENV_VAR)
         if env_value is not None and env_value.strip():
@@ -109,8 +101,6 @@ class VisionBackendCapabilities:
     # Memory modes this backend can honour for its configured model and device (see
     # MEMORY_MODES); None when the backend does not say, which means "default" only.
     memory_modes: Optional[Sequence[str]] = None
-    # Whether the configured MLX-Gen model streams transformer blocks, which "lowest" needs.
-    supports_block_streaming: Optional[bool] = None
     # Load-time quantization widths the configured model accepts (`quantize`); None or empty
     # means the option is refused.
     quantize_bits: Optional[Sequence[int]] = None

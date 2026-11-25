@@ -159,6 +159,40 @@ class TestMlxGenMiniMaxH3Contract(unittest.TestCase):
         ):
             self.assertIn(name, generate)
 
+    def test_memory_peaks_are_the_package_width_runs_read_without_a_model(self):
+        import time
+        from unittest.mock import patch
+
+        from mflux.task_inference import MINIMAX_H3_MODES, MINIMAX_H3_SMALLEST_TESTED_MACHINE
+
+        from abstractvision import model_inventory
+        from abstractvision.backends.mflux import MLX_GEN_MEMORY_MODE_FLAGS
+
+        never = AssertionError("listing peaks must not build a model")
+        target = "abstractvision.backends.mflux"
+        with patch(f"{target}._lazy_import_mflux", side_effect=never), patch(
+            f"{target}._lazy_import_mflux_minimax_h3", side_effect=never
+        ), patch("abstractvision.model_inventory.local_model_profile", return_value="apple-silicon"):
+            model_inventory._mlx_gen_rows.cache_clear()
+            started = time.perf_counter()
+            peaks = {
+                repo: model_inventory.memory_peaks(repo, base_model="minimax-h3-turbo")
+                for repo in ("AbstractFramework/minimax-h3-8bit", "AbstractFramework/minimax-h3-4bit")
+            }
+            self.assertLess(time.perf_counter() - started, 1.0)
+        runs = self._backend(base_model="minimax-h3-turbo").describe_routes(task="text_to_video")[0]["measured_runs"]
+        for repo, width in (("AbstractFramework/minimax-h3-8bit", 8), ("AbstractFramework/minimax-h3-4bit", 4)):
+            expected = sorted(
+                run["footprint_bytes"] for run in runs if run["quantize"] == width and run["outcome"] == "completed"
+            )
+            listed = sorted(p["peak_bytes"] for p in peaks[repo] if p["task"] == "text_to_video")
+            self.assertEqual(listed, expected, repo)
+        self.assertEqual({p["task"] for p in peaks["AbstractFramework/minimax-h3-8bit"]}, {"text_to_video", "image_to_video"})
+        # The engine's own names for the modes, as its smallest-tested-machine table uses them.
+        self.assertEqual(tuple(flags.engine_mode for flags in MLX_GEN_MEMORY_MODE_FLAGS.values()), MINIMAX_H3_MODES)
+        for table in MINIMAX_H3_SMALLEST_TESTED_MACHINE.values():
+            self.assertLessEqual(set(table), set(MINIMAX_H3_MODES))
+
     def test_schedule_config_is_the_one_the_cli_builds(self):
         from mflux.models.common.config import ModelConfig
 

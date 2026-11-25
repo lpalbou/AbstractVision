@@ -32,7 +32,7 @@ class TestModelDownloads(unittest.TestCase):
     def test_mlx_gen_family_aliases_are_rejected_as_ambiguous(self):
         from abstractvision.model_downloads import find_model_preset
 
-        with self.assertRaisesRegex(ValueError, "not an exact published model id"):
+        with self.assertRaisesRegex(ValueError, "names several MLX-Gen packages and the catalog recommends none"):
             find_model_preset("qwen-image", target="mlx", engine="mlx-gen", require_8bit=True)
 
     def test_mlx_gen_catalog_covers_abstractframework_q4_q8_collection(self):

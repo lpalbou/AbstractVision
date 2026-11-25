@@ -23,7 +23,7 @@ _PNG = (
 def _cmd(model_id, request, edit=False):
     # Imported here and patched by object: test_abstractcore_plugin pops and reloads the backend modules, so a
     # module-level import would hold a class whose globals a `patch("<module path>...")` no longer reaches (the
-    # unpatched `_require_sd_cli` then looks for a real sd-cli, which the CI runners do not have).
+    # unpatched `require_sd_cli` then looks for a real sd-cli, which the CI runners do not have).
     import abstractvision.backends.stable_diffusion_cpp as sdc
 
     backend = sdc.StableDiffusionCppVisionBackend(config=sdc.StableDiffusionCppBackendConfig(
@@ -33,7 +33,7 @@ def _cmd(model_id, request, edit=False):
     def fake_run(cmd, check, stdout, stderr, cwd, timeout=None):
         Path(cmd[cmd.index("--output") + 1]).write_bytes(_PNG)
 
-    with patch.object(sdc, "_require_sd_cli", return_value="/usr/bin/sd-cli"), \
+    with patch.object(sdc, "require_sd_cli", return_value="/usr/bin/sd-cli"), \
          patch.object(sdc.subprocess, "run", side_effect=fake_run) as run:
         if edit:
             backend.edit_image(request)

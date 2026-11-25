@@ -332,7 +332,7 @@ def hf_snapshot_is_usable(
     return True
 
 
-def _iter_hf_repo_snapshots(
+def iter_hf_repo_snapshots(
     repo_id: str,
     *,
     cache_dir: Optional[str] = None,
@@ -362,7 +362,7 @@ def cached_hf_model_sources(
     """Return cache labels that already contain at least one snapshot for a repo."""
 
     sources: List[str] = []
-    for label, snap in _iter_hf_repo_snapshots(model_id, cache_dir=cache_dir, extra_roots=extra_roots):
+    for label, snap in iter_hf_repo_snapshots(model_id, cache_dir=cache_dir, extra_roots=extra_roots):
         if hf_snapshot_is_usable(
             snap,
             required_files=required_files,
@@ -450,7 +450,7 @@ def resolve_hf_repo_snapshot(
 ) -> Optional[Path]:
     """Return the best local snapshot path for a Hugging Face repository."""
 
-    for _, snap in _iter_hf_repo_snapshots(repo_id, cache_dir=cache_dir, revision=revision, extra_roots=extra_roots):
+    for _, snap in iter_hf_repo_snapshots(repo_id, cache_dir=cache_dir, revision=revision, extra_roots=extra_roots):
         if hf_snapshot_is_usable(
             snap,
             required_files=required_files,

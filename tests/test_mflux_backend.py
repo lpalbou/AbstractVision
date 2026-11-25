@@ -1476,7 +1476,10 @@ class TestMFluxVisionBackend(unittest.TestCase):
         _FakeWan.last_init = None
         with tempfile.TemporaryDirectory() as cache_td:
             self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-I2V-A14B-Diffusers")
             backend = MFluxVisionBackend(config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers"))
+            # The keyframe cases need a model with an image_to_video route.
+            i2v_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="Wan-AI/Wan2.2-I2V-A14B-Diffusers"))
             with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True), patch(
                 "abstractvision.backends.mflux._lazy_import_mflux", return_value=self._lazy_import_return()
             ), patch("abstractvision.backends.mflux._lazy_import_mflux_wan", return_value=_FakeWan):
@@ -1491,7 +1494,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                     (ImageToVideoRequest(image=b"garbage", prompt="fox"), ValueError, "image.*decode"),
                 ):
                     with self.subTest(request=type(request).__name__, pattern=pattern):
-                        run = backend.generate_video if isinstance(request, VideoGenerationRequest) else backend.image_to_video
+                        run = backend.generate_video if isinstance(request, VideoGenerationRequest) else i2v_backend.image_to_video
                         with self.assertRaisesRegex(error, pattern):
                             run(request)
         self.assertIsNone(_FakeWan.last_init)
@@ -3623,7 +3626,6 @@ class TestMFluxVisionBackend(unittest.TestCase):
         )
 
         self.assertEqual(tuple(capabilities.memory_modes), ("default", "low"))
-        self.assertFalse(capabilities.supports_block_streaming)
         # As `mlxgen generate --low-ram` (flux2_generate.py): the 1 GB cache is set before the
         # model loads, then one MemorySaver frees the text encoders and, for one seed, the transformer.
         self.assertEqual(
@@ -3643,7 +3645,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
             {key: assets[0].metadata[key] for key in ("memory_mode", "low_ram", "stream_blocks")},
             {"memory_mode": "low", "low_ram": True, "stream_blocks": False},
         )
-        self.assertNotIn("memory_mode", assets[1].metadata)
+        self.assertEqual(assets[1].metadata["memory_mode"], "default")
         self.assertTrue(backend.has_loaded_model())
 
     def test_memory_mode_lowest_is_refused_where_the_route_cannot_stream_blocks(self):
@@ -3667,7 +3669,6 @@ class TestMFluxVisionBackend(unittest.TestCase):
         )
 
         self.assertEqual(tuple(capabilities.memory_modes), ("default", "low", "lowest"))
-        self.assertTrue(capabilities.supports_block_streaming)
         self.assertIs(_FakeFlux2.last_init.get("stream_blocks"), True)
         self.assertEqual(len(_FakeMemorySaver.instances), 1)
         self.assertEqual(assets[0].metadata["memory_mode"], "lowest")
@@ -3686,7 +3687,11 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(_FakeMemorySaver.instances, [])
         self.assertEqual(_MEMORY_EVENTS, [("init", None)])
         self.assertNotIn("stream_blocks", _FakeFlux2.last_init)
-        self.assertNotIn("memory_mode", assets[0].metadata)
+        # The mode is recorded on every run, "default" included (AbstractCore reads memory_mode_used from it).
+        self.assertEqual(
+            {key: assets[0].metadata[key] for key in ("memory_mode", "low_ram", "stream_blocks")},
+            {"memory_mode": "default", "low_ram": False, "stream_blocks": False},
+        )
 
     def test_memory_mode_low_failed_run_still_drops_the_model_and_restores_the_cache(self):
         from abstractvision.backends.mflux import LOW_RAM_MLX_CACHE_LIMIT_BYTES
@@ -3758,12 +3763,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
         for (base_model, mode), expected in cases.items():
             with self.subTest(base_model=base_model, mode=mode):
                 backend = MFluxVisionBackend(config=MFluxBackendConfig(model=base_model, base_model=base_model))
-                with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": ""}), patch.object(
-                    MFluxVisionBackend, "supported_memory_modes", return_value=("default", "low", "lowest")
-                ):
-                    _request, plan = backend._memory_plan(
-                        ImageGenerationRequest(prompt="fox", memory_mode=mode), task="text_to_image"
-                    )
+                # A normalized request carries its resolved memory_mode; the plan is built from it.
+                plan = backend._memory_plan(ImageGenerationRequest(prompt="fox", memory_mode=mode))
                 self.assertEqual(plan.releases_model, expected)
 
     def test_preload_warmup_ignores_a_process_low_memory_default(self):
@@ -3956,10 +3957,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
             self.assertEqual(len(models), 1)
             raw = models[0].raw
             self.assertEqual(raw["parameter_defaults"]["memory_mode"], "default")
-            self.assertEqual(
-                raw["parameter_constraints"]["memory_mode"],
-                {"enum": modes, "block_streaming": block_streaming},
-            )
+            # The modes alone say what the model can do; no engine term beside them.
+            self.assertEqual(raw["parameter_constraints"]["memory_mode"], {"enum": modes})
             self.assertEqual(raw["parameters"]["constraints"]["memory_mode"]["enum"], modes)
 
 if __name__ == "__main__":

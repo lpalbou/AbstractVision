@@ -225,9 +225,9 @@ builds AbstractVision backends and calls them directly, and every backend reads
 and checks the value itself, so the same refusal applies there.
 
 On MLX-Gen, a `"low"` run frees parts of the model and drops the instance (a
-MiniMax-H3 `"lowest"` run drops it too), so
-the plugin removes its loaded-model record, a resident one included, whether
-the run succeeded or failed; the next request loads the model again. The same
+MiniMax-H3 `"lowest"` run drops it too), so the plugin no longer lists the model
+as loaded, a resident one included, whether the run succeeded or failed; the
+next request loads the model again, unpinned. The same
 holds after every Wan TI2V-5B run, which releases its denoiser before the decode.
 
 A batch, through `llm.vision.t2i_batch(...)` and the other `_batch` methods or
@@ -235,7 +235,7 @@ through the AbstractCore server's HTTP batch routes, is a series of requests:
 with `"low"` each item loads the model again.
 
 The current AbstractCore server's residency records are its own and independent
-of this plugin's loaded-model records.
+of what this plugin lists as loaded.
 
 The facade forwards every typed field of the request a method builds, under the
 same name: `control_image` / `control_strength` on `t2i`, `soundscape`, `music`,
@@ -256,22 +256,34 @@ returned ref carries `audio` (the `GeneratedAsset.audio_summary()` shape:
 records the same object. Without a store the facade returns the MP4 bytes only
 and logs a warning when the soundtrack is not in them.
 
-`load_resident_model(...)` / `load_model(...)` preload the backend; on MLX-Gen a
-video model (Wan, MiniMax-H3) is loaded without a warm-up run. When the preload
-fails, the backend drops what it loaded and no loaded-model record is kept.
+`load_resident_model(...)` / `load_model(...)` preload the backend, with the
+request's `memory_mode` and `quantize` when it carries them (checked as a
+generation request's are, before anything loads), so that requests with those
+values reuse the model; on MLX-Gen a video model (Wan, MiniMax-H3) is loaded
+without a warm-up run. When the preload
+fails, the backend drops what it loaded and the plugin does not list it.
 
 Discovery, and where each part is visible:
 
 - Every MLX-Gen entry of `llm.vision.list_provider_models(...)`, which the
   AbstractCore HTTP model listing also returns, carries
-  `parameter_constraints["memory_mode"]` = `{"enum": [...], "block_streaming": <bool>}`;
-  `enum` holds the modes that model can honour.
+  `parameter_constraints["memory_mode"]` = `{"enum": [...]}`; `enum` holds the
+  modes that model can honour.
 - `llm.vision.available_providers()["details"][<provider>]["memory_modes"]`
   lists what the backend a request for that provider runs on reports with its
   configured model and device (`supported_memory_modes()`; for an
   OpenAI-compatible remote, the modes of its last discovery answer, else
   `default`), without loading a model or sending a request. It is a Python call
   only: AbstractCore's HTTP server does not call `available_providers`.
+- `llm.vision.memory_peaks(model, base_model=None)` returns MLX-Gen's measured
+  memory peaks for one catalog package as JSON rows `{task, memory_mode, width,
+  height, frames, steps, peak_bytes, machine_total_ram_bytes}`, with `task` in
+  AbstractVision's form (`text_to_video`) and `memory_mode` one of its modes.
+  The rows are already kept to that package's stored width and, when
+  `base_model` names one of its schedules, to that schedule's rows, so a host
+  relays them as they are. The list is empty when the model is not a prepared
+  MLX-Gen package of the catalog or when mlx-gen is not installed or publishes
+  nothing, and the call builds no model and reads no weights.
 - With an `artifact_store`, the stored artifact's metadata records `memory_mode`
   (and `low_ram` / `stream_blocks` on MLX-Gen); without one the plugin returns
   bytes only.
@@ -286,7 +298,8 @@ export OPENAI_IMAGE_MODEL=gpt-image-1
 # Local OpenAI-compatible HTTP server, for example AbstractCore Server.
 export ABSTRACTVISION_BACKEND=openai-compatible
 export OPENAI_BASE_URL=http://localhost:8000/v1
-export ABSTRACTVISION_MODEL_ID=server/default
+# No model id: each request runs the server's default for its task. To name one, use the id the
+# server routes, its `routed_model` in GET /v1/vision/models (for example mlx-gen/<repo>).
 ```
 
 ### Provider Catalog Discovery
@@ -304,9 +317,10 @@ The return value is a JSON-safe list of dictionaries serialized from `ProviderMo
 provider metadata is retained in a bounded `raw` field for diagnostics. This method is explicit
 inspection only: it does not mutate the configured backend or select a generation model.
 
-Backends that do not implement provider catalog listing raise a clear AbstractVision error instead
-of returning a misleading empty catalog. When multiple backends are enabled, the plugin probes
-their catalogs concurrently so discovery waits for the slowest backend instead of the sum of
+Backends that do not implement provider catalog listing, and an OpenAI-compatible remote without a
+`GET /models` route, raise `CapabilityNotSupportedError` saying so instead of returning a misleading
+empty catalog; a backend without a catalog is skipped when another backend answers. When multiple
+backends are enabled, the plugin probes their catalogs concurrently so discovery waits for the slowest backend instead of the sum of
 serial scans. Local Diffusers and stable-diffusion.cpp model discovery
 remain separate local-backend concerns, while MLX-Gen and Diffusers provider listings reflect
 cache-backed snapshots rather than a separate `~/models` download tree.
@@ -390,7 +404,9 @@ Notes:
 
 `list_loaded_models()` reports both explicitly preloaded resident models and transient currently
 loaded local models from recent generation requests. `list_resident_models()`
-returns the explicit pinned subset.
+returns the explicit pinned subset. Both ask each backend, when called, whether it holds its model
+(`VisionBackend.has_loaded_model()`): a model a run, a failed preload or an unload released is not
+listed, and its next load starts unpinned.
 
 Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,
 `resident`, and a `tasks` list of observed task aliases using that loaded backend.

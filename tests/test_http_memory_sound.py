@@ -7,9 +7,7 @@ import unittest
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.error import HTTPError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
 # Ensure `src/` layout is importable when running tests without installing the package.
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +15,7 @@ SRC_DIR = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from abstractvision.errors import CapabilityNotSupportedError, GenerationCancelledError  # noqa: E402
-from abstractvision.types import GeneratedAsset, GeneratedAudioTrack  # noqa: E402
+from abstractvision.types import GeneratedAudioTrack  # noqa: E402
 
 MP4 = b"\x00\x00\x00\x18ftypmp42" + b"stand-in video"
 WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 16
@@ -71,11 +69,13 @@ class _ContractServer(_Handler):
     gets = []
     jobs = {}
     # Set by tests: an HTTP status for GET /vision/models, a status for job polls, a server busy
-    # with another generation, and jobs that succeed at their first poll.
+    # with another generation, jobs that succeed at their first poll, and the error fields of jobs
+    # that fail at their first poll.
     discovery_status = None
     poll_status = None
     busy = False
     jobs_succeed = False
+    job_failure = None
 
     def do_GET(self):
         path = urlparse(self.path).path
@@ -83,14 +83,31 @@ class _ContractServer(_Handler):
         if path == "/v1/vision/models" and self.discovery_status is not None:
             self._reply(self.discovery_status, {"error": {"message": "stand-in status"}})
         elif path == "/v1/vision/models":
-            entry = {"id": "stand-in/h3", "memory_modes": list(self.modes), "supports_audio": True, "audio_fields": AUDIO_FIELDS}
-            self._reply(200, {"models": [entry, {"id": "stand-in/image", "memory_modes": ["default"], "supports_audio": False, "audio_fields": []}], "active": None})
+            # As AbstractCore's server publishes them: an entry is addressed in a request by its
+            # `routed_model`; `defaults[<task>]` is the model a request that names none runs; `active`
+            # is the 2.39.0 object, which lists no memory modes.
+            video = {"memory_modes": list(self.modes), "supports_audio": True, "audio_fields": AUDIO_FIELDS}
+            image = {"memory_modes": ["default"], "supports_audio": False, "audio_fields": []}
+            default = {"id": "default", "model": "default", "routed_model": "stand-in/default", "server_default": True}
+            self._reply(200, {
+                "models": [
+                    {"id": "h3", "model": "h3", "routed_model": "stand-in/h3", **video},
+                    {"id": "image", "model": "image", "routed_model": "stand-in/image", **image},
+                ],
+                "defaults": {
+                    "text_to_video": {**default, "capabilities": ["text_to_video"], **video},
+                    "text_to_image": {**default, "capabilities": ["text_to_image"], **image},
+                },
+                "active": {"model_id": "h3", "backend_kind": "stand-in", "loaded_at_s": 1.0, "has_backend": True},
+            })
         elif path == "/v1/models":
             self._reply(200, {"data": [{"id": "stand-in/h3"}, {"id": "other"}]})
         elif path.startswith("/v1/vision/jobs/") and self.poll_status is not None:
             self._reply(self.poll_status, {"error": {"message": "stand-in poll failure"}})
         elif path.startswith("/v1/vision/jobs/"):
             job = self.jobs.get(path.rsplit("/", 1)[-1])
+            if job and self.job_failure is not None and job["state"] == "running":
+                job.update(state="failed", **self.job_failure)
             if job and self.jobs_succeed and job["state"] == "running":
                 job["state"] = "succeeded"
                 if "/videos/" in job["route"]:
@@ -123,7 +140,7 @@ class _ContractServer(_Handler):
             self._reply(422, {"error": {
                 "message": f"memory_mode={mode!r} is not supported for stand-in/h3 (supported: {', '.join(self.modes)}).",
                 "type": "invalid_request_error", "code": "capability_not_supported",
-                "param": "memory_mode", "supported": list(self.modes)}})
+                "field": "memory_mode", "supported": list(self.modes)}})
             return
         if path.startswith("/v1/vision/jobs/") and self.busy:
             self._reply(409, {"detail": "Another generation is already running; wait for it to finish."})
@@ -169,6 +186,7 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         _ContractServer.poll_status = None
         _ContractServer.busy = False
         _ContractServer.jobs_succeed = False
+        _ContractServer.job_failure = None
         self.root = _serve(_ContractServer, self)
         self.client = _client(
             self.root, model_id="stand-in/h3", text_to_video_path="/videos/generations", image_to_video_path="/videos/edits"
@@ -193,7 +211,7 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         self.assertEqual((asset.audio.sample_rate, asset.audio.channels, asset.audio.muxed), (48000, 2, False))
         self.assertEqual(asset.audio.data, WAV)
         self.assertEqual(asset.audio.mime_type, "audio/wav")
-        self.assertEqual(asset.metadata["memory_mode_used"], "lowest")
+        self.assertEqual(asset.metadata["memory_mode"], "lowest")
         # The same summary as a local backend gives: the codec is the remote's (the WAV's PCM format).
         self.assertEqual(
             asset.audio_summary(),
@@ -209,10 +227,14 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         self.assertEqual((form["memory_mode"], form["generate_audio"], form["quantize"]), ("low", "false", "8"))
 
     def test_discovery_lists_modes_per_model(self):
+        gets_before = len(_ContractServer.gets)
         models = {m.id: m for m in self.client.list_provider_models()}
+        # A remote that serves the vision routes lists its vision catalog, each model by the
+        # `routed_model` a request sends; its GET /models (text models) is not read.
+        self.assertEqual(set(models), {"stand-in/h3", "stand-in/image"})
         self.assertEqual(models["stand-in/h3"].raw["memory_modes"], ["default", "low", "lowest"])
         self.assertTrue(models["stand-in/h3"].raw["supports_audio"])
-        self.assertNotIn("memory_modes", models["other"].raw)
+        self.assertNotIn("/v1/models", _ContractServer.gets[gets_before:])
         caps = self.client.get_capabilities()
         self.assertEqual(tuple(caps.memory_modes), ("default", "low", "lowest"))
         self.assertTrue(caps.generates_audio)
@@ -221,6 +243,80 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         image_client = _client(self.root, model_id="stand-in/image")
         image_client.list_provider_models()
         self.assertEqual(tuple(image_client.get_capabilities().memory_modes), ("default",))
+
+    def test_an_entry_is_the_one_whose_routed_model_the_request_sends(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        # The entry's `id` is not what selects it: the server routes a request by `routed_model`.
+        bare = _client(self.root, model_id="h3", text_to_video_path="/videos/generations")
+        with self.assertRaises(CapabilityNotSupportedError):
+            bare.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest"))
+        self.assertEqual(_ContractServer.posts, [])
+        # The string sent is what matches (an `openai-compatible/` prefix is not sent).
+        prefixed = _client(self.root, model_id="openai-compatible/stand-in/h3", text_to_video_path="/videos/generations")
+        prefixed.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest", music="piano"))
+        _path, body = _ContractServer.posts[-1]
+        self.assertEqual((body["model"], body["memory_mode"], body["music"]), ("stand-in/h3", "lowest", "piano"))
+        # A task's default is addressed by its routed name too.
+        default = _client(self.root, model_id="stand-in/default", text_to_video_path="/videos/generations")
+        default.list_provider_models()
+        self.assertEqual(default.supported_memory_modes("text_to_video"), ("default", "low", "lowest"))
+        self.assertEqual(default.supported_memory_modes("text_to_image"), ("default",))
+
+    def test_a_client_naming_no_model_reads_the_server_default_of_the_task(self):
+        from abstractvision.types import (
+            ImageGenerationRequest,
+            ImageToVideoRequest,
+            VideoGenerationRequest,
+        )
+
+        client = _client(self.root, text_to_video_path="/videos/generations", image_to_video_path="/videos/edits")
+        asset = client.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest", soundscape="wind"))
+        _path, body = _ContractServer.posts[-1]
+        self.assertNotIn("model", body)
+        self.assertEqual((body["memory_mode"], body["soundscape"]), ("lowest", "wind"))
+        self.assertEqual(asset.metadata["memory_mode"], "lowest")
+        self.assertEqual(client.supported_request_options("text_to_video"), frozenset({"quantize", *AUDIO_FIELDS}))
+        self.assertEqual(client.supported_request_options("text_to_image"), frozenset({"quantize"}))
+        count = len(_ContractServer.posts)
+        # The image default lists no `low`; the server lists no image_to_video default; `active` is not read.
+        with self.assertRaises(CapabilityNotSupportedError):
+            client.generate_image(ImageGenerationRequest(prompt="fox", memory_mode="low"))
+        with self.assertRaises(CapabilityNotSupportedError):
+            client.image_to_video(ImageToVideoRequest(image=PNG, prompt="fox", memory_mode="low"))
+        self.assertEqual(len(_ContractServer.posts), count)
+        # With neither a model nor a task, no entry describes the remote.
+        self.assertEqual(tuple(client.get_capabilities().memory_modes), ("default",))
+
+    def test_a_job_refused_by_the_server_raises_what_a_synchronous_refusal_raises(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        _ContractServer.modes = ["default", "low"]
+        self.client.list_provider_models()
+        _ContractServer.modes = ["default"]  # the server now refuses `low`
+        with self.assertRaises(CapabilityNotSupportedError) as sync:
+            self.client.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low"))
+        message = str(sync.exception)
+        _ContractServer.modes = ["default", "low"]
+        _ContractServer.job_failure = {
+            "error": message, "error_code": "capability_not_supported", "error_field": "memory_mode", "error_supported": ["default"],
+        }
+        with self.assertRaises(CapabilityNotSupportedError) as job:
+            self.client.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low", cancel_event=threading.Event()))
+        self.assertEqual((sync.exception.field, sync.exception.supported), ("memory_mode", ("default",)))
+        self.assertEqual((str(job.exception), job.exception.field, job.exception.supported), (message, "memory_mode", ("default",)))
+        # Any other failure stays a failure; an ended job is not cancelled.
+        _ContractServer.job_failure = {"error": "engine stopped", "error_code": "server_error", "error_field": None, "error_supported": None}
+        with self.assertRaisesRegex(RuntimeError, r"Remote job \w+ failed: engine stopped") as other:
+            self.client.generate_video(VideoGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+        self.assertNotIsInstance(other.exception, CapabilityNotSupportedError)
+        self.assertEqual([path for path, _body in _ContractServer.posts if path.endswith("/cancel")], [])
+
+    def test_the_mode_used_is_recorded_only_when_the_server_reports_it(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        image = self.client.generate_image(ImageGenerationRequest(prompt="fox", memory_mode="low"))
+        self.assertNotIn("memory_mode", image.metadata)  # this route's body has no memory_mode_used
 
     def test_plain_requests_make_no_discovery_request_and_one_that_sets_a_field_makes_one(self):
         from abstractvision import VisionManager
@@ -264,9 +360,9 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         vm = VisionManager(backend=self.client)
         image = vm.generate_image("fox", memory_mode="low", cancel_event=threading.Event())
         self.assertEqual(_ContractServer.posts[-1][0], "/v1/vision/jobs/images/generations")
-        self.assertEqual(image.metadata["memory_mode_used"], "low")
+        self.assertEqual(image.metadata["memory_mode"], "low")
         video = vm.generate_video("fox", memory_mode="lowest", cancel_event=threading.Event())
-        self.assertEqual(video.metadata["memory_mode_used"], "lowest")
+        self.assertEqual(video.metadata["memory_mode"], "lowest")
         self.assertEqual(video.audio.codec, "pcm_s16le")
 
     def test_a_server_busy_with_another_generation_is_named(self):
@@ -367,7 +463,6 @@ class TestOpenAICompatibleAgainstPlainEndpoint(unittest.TestCase):
             VideoGenerationRequest(prompt="fox", memory_mode="low"),
             VideoGenerationRequest(prompt="fox", soundscape="wind"),
             ImageGenerationRequest(prompt="fox", quantize=8),
-            ImageGenerationRequest(prompt="fox", extra={"soundscape": "wind"}),
         ):
             with self.assertRaises(CapabilityNotSupportedError):
                 getattr(client, "generate_video" if isinstance(request, VideoGenerationRequest) else "generate_image")(request)
@@ -380,75 +475,24 @@ class TestOpenAICompatibleAgainstPlainEndpoint(unittest.TestCase):
         self.assertNotIn("memory_modes", models[0].raw)
 
 
-class TestPlaygroundPassesTheFieldsThrough(unittest.TestCase):
-    def _state(self, backend):
-        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
+class _NoCatalogServer(_PlainOpenAIServer):
+    status = 404
 
-        state = PlaygroundState(PlaygroundServerConfig(default_model_id=""))
-        state._active_backend = backend
-        state._active_backend_kind = "mlx-gen"
-        state._active_model_id = "mlx-gen/stand-in/h3"
-        return state
+    def do_GET(self):
+        self._reply(self.status, {"error": {"message": "stand-in status"}})
 
-    def _wait(self, state, job):
-        for _ in range(200):
-            snap = state.get_job(job["job_id"])
-            if snap["state"] in {"succeeded", "failed"}:
-                return snap
-            time.sleep(0.01)
-        return snap
 
-    def test_video_job_builds_typed_fields_from_top_level_and_extra(self):
-        seen = {}
-
-        class Backend:
-            def generate_video_with_progress(self, request, progress_callback=None):
-                seen["request"] = request
-                return GeneratedAsset(media_type="video", data=MP4, mime_type="video/mp4")
-
-        state = self._state(Backend())
-        job = state.start_video_generation_job(
-            {"prompt": "fox", "memory_mode": "low", "quantize": "8", "generate_audio": "false",
-             "audio_shift": "1.5", "extra": {"soundscape": "wind", "music": "piano", "vae_tiling": False}}
-        )
-        self.assertEqual(self._wait(state, job)["state"], "succeeded")
-        request = seen["request"]
-        self.assertEqual((request.memory_mode, request.quantize, request.generate_audio), ("low", 8, False))
-        self.assertEqual((request.audio_shift, request.soundscape, request.music), (1.5, "wind", "piano"))
-        self.assertEqual(request.extra, {"vae_tiling": False})
-
-    def test_backend_refusal_and_conflicts_surface(self):
-        from abstractvision.backends.base_backend import VisionBackend
-
-        class Backend(VisionBackend):
-            def generate_image(self, request):
-                self.resolve_memory_request(request, task="text_to_image")
-                return GeneratedAsset(media_type="image", data=PNG, mime_type="image/png")
-
-            edit_image = generate_video = image_to_video = generate_angles = generate_image
-
-        state = self._state(Backend())
-        snap = self._wait(state, state.start_image_generation_job({"prompt": "fox", "memory_mode": "lowest"}))
-        self.assertEqual(snap["state"], "failed")
-        self.assertIn("memory_mode='lowest'", snap["error"])
-        with self.assertRaises(CapabilityNotSupportedError):
-            state.start_image_generation_job({"prompt": "fox", "soundscape": "wind"})
-        with self.assertRaisesRegex(ValueError, "memory_mode"):
-            state.start_video_generation_job({"prompt": "fox", "memory_mode": "low", "extra": {"memory_mode": "lowest"}})
-
-    def test_model_load_refuses_memory_fields_instead_of_dropping_them(self):
-        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState, _make_handler
-
-        server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(PlaygroundState(PlaygroundServerConfig(default_model_id=""))))
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        self.addCleanup(server.server_close)
-        self.addCleanup(server.shutdown)
-        body = json.dumps({"model_id": "mlx-gen/stand-in/h3", "memory_mode": "low"}).encode("utf-8")
-        req = Request(f"http://127.0.0.1:{server.server_address[1]}/v1/vision/model/load", data=body, method="POST")
-        with self.assertRaises(HTTPError) as ctx:
-            urlopen(req, timeout=10)
-        self.assertEqual(ctx.exception.code, 400)
-        self.assertIn("memory_mode", json.loads(ctx.exception.read().decode("utf-8"))["error"]["message"])
+class TestOpenAICompatibleCatalog(unittest.TestCase):
+    def test_a_remote_without_a_catalog_route_says_so_typed_and_a_failing_one_does_not(self):
+        client = _client(_serve(_NoCatalogServer, self), model_id="image-model")
+        for status in (404, 405, 501):
+            _NoCatalogServer.status = status
+            with self.subTest(status=status), self.assertRaisesRegex(CapabilityNotSupportedError, rf"has no model catalog: GET /models answered HTTP {status}"):
+                client.list_provider_models()
+        for status in (500, 503, 401):
+            _NoCatalogServer.status = status
+            with self.subTest(status=status), self.assertRaises(RuntimeError):
+                client.list_provider_models()
 
 
 if __name__ == "__main__":

@@ -734,36 +734,36 @@ class TestCliSmoke(unittest.TestCase):
 
         calls = {}
 
-        def fake_snapshot(
-            repo_id,
-            *,
-            token=None,
-            revision=None,
-            allow_patterns=None,
-            ignore_patterns=None,
-            cache_dir=None,
-            local_files_only=False,
-            max_workers=4,
-        ):
-            calls["repo_id"] = repo_id
-            calls["cache_dir"] = cache_dir
-            calls["local_files_only"] = local_files_only
+        def fake_download(preset, *, model_dir=None, token=None, max_workers=4, report=None):
+            calls["repo_id"] = preset.repo_id
+            calls["in_catalog"] = preset.in_catalog
+            calls["allow_patterns"] = preset.allow_patterns
             calls["max_workers"] = max_workers
             return Path("/tmp/hf-cache") / "snap"
 
         buf = io.StringIO()
-        with patch.dict("os.environ", {"HF_HUB_CACHE": "/tmp/hf-cache"}, clear=True):
-            with patch("abstractvision.cli.download_hf_repo_snapshot", new=fake_snapshot):
-                with contextlib.redirect_stdout(buf):
-                    rc = main(["download-model", "some-org/some-model", "--max-workers", "2"])
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with contextlib.redirect_stdout(buf):
+                rc = main(["download-model", "some-org/some-model", "--max-workers", "2"])
 
         out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertEqual(calls["repo_id"], "some-org/some-model")
-        self.assertEqual(calls["cache_dir"], "/tmp/hf-cache")
-        self.assertFalse(calls["local_files_only"])
+        self.assertFalse(calls["in_catalog"])
+        self.assertEqual(calls["allow_patterns"], ())
         self.assertEqual(calls["max_workers"], 2)
+        self.assertIn("catalog: not in the AbstractVision catalog", out)
         self.assertIn("/tmp/hf-cache/snap", out)
+        buf = io.StringIO()
+        with patch("abstractvision.cli.download_model_preset", new=fake_download):
+            with contextlib.redirect_stdout(buf):
+                main(["download", "some-org/some-model", "--json"])
+        # The keys and `source` value 0.3.36 printed for a repository outside the catalog.
+        item = json.loads(buf.getvalue())
+        self.assertEqual(
+            (item["repo_id"], item["snapshot_dir"], item["source"]),
+            ("some-org/some-model", "/tmp/hf-cache/snap", "huggingface_hub_cache"),
+        )
 
     def test_download_model_uses_curated_preset_when_repo_id_is_known(self):
         from abstractvision.cli import main
@@ -829,7 +829,7 @@ class TestCliSmoke(unittest.TestCase):
         with patch("abstractvision.cli.download_model_preset", new=fake_download):
             with patch("abstractvision.cli.resolve_sdcpp_model_selection", new=fake_resolve):
                 with patch(
-                    "abstractvision.backends.stable_diffusion_cpp._require_sd_cli",
+                    "abstractvision.backends.stable_diffusion_cpp.require_sd_cli",
                     return_value="/usr/bin/sd-cli",
                 ):
                     with contextlib.redirect_stdout(buf):

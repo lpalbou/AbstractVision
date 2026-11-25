@@ -9,8 +9,7 @@ patterns again turns this RED. No network: the listings are the repos' real ones
 
 from __future__ import annotations
 
-import json
-import sys
+import fnmatch
 import tempfile
 import types
 import unittest
@@ -87,41 +86,47 @@ class DiffusersDownloadFilesTests(unittest.TestCase):
         self.assertIn("unet/diffusion_pytorch_model.fp16.safetensors", got)
 
 
+try:
+    import huggingface_hub  # noqa: F401
+
+    _HUB = True
+except ImportError:  # the base CI job installs no optional dependency
+    _HUB = False
+
+
+@unittest.skipUnless(_HUB, "huggingface_hub is not installed")
 class DownloadModelPresetTrimTests(unittest.TestCase):
     def _download(self, all_files, profile="cuda"):
         preset = md.find_model_preset("sdxl-turbo", target="diffusers", engine="diffusers", require_8bit=False)
         captured = {}
+        listing = types.SimpleNamespace(
+            sha="abc123",
+            gated=False,
+            siblings=[types.SimpleNamespace(rfilename=f, size=1, blob_id=f"b{i}", lfs=None) for i, f in enumerate(_SDXL_TURBO)],
+        )
 
         with tempfile.TemporaryDirectory() as td:
-            index = Path(td) / "model_index.json"
-            index.write_text(json.dumps(_SDXL_INDEX), encoding="utf-8")
             snap = Path(td) / "snap"
-            (snap / "unet").mkdir(parents=True)
-            (snap / "model_index.json").write_text("{}", encoding="utf-8")
-            (snap / "unet" / "diffusion_pytorch_model.fp16.safetensors").write_bytes(b"x")
 
             def fake_snapshot_download(**kw):
+                from huggingface_hub.utils import filter_repo_objects
+
                 captured.update(kw)
+                for name in filter_repo_objects(_SDXL_TURBO, allow_patterns=kw["allow_patterns"]):
+                    (snap / name).parent.mkdir(parents=True, exist_ok=True)
+                    (snap / name).write_bytes(b"x")
                 return str(snap)
 
             api = MagicMock()
-            api.list_repo_files.return_value = list(_SDXL_TURBO)
-            # The base CI job has no huggingface_hub (an optional dependency): the package imports
-            # it inside the download functions, so a stand-in module is enough for the patches.
-            try:
-                import huggingface_hub  # noqa: F401
-                hub_modules = {}
-            except ImportError:
-                stand_in = types.ModuleType("huggingface_hub")
-                stand_in.HfApi = stand_in.hf_hub_download = stand_in.snapshot_download = None
-                hub_modules = {"huggingface_hub": stand_in}
-            with patch.dict(sys.modules, hub_modules), \
+            api.model_info.return_value = listing
+            with patch.dict("os.environ", {"HF_HUB_CACHE": str(Path(td) / "cache")}), \
                  patch.object(md, "local_model_profile", return_value=profile), \
-                 patch.object(md, "ensure_hf_repo_snapshot", return_value=None), \
+                 patch.object(md, "_hub_json", return_value=dict(_SDXL_INDEX)) as read_index, \
                  patch("huggingface_hub.HfApi", return_value=api), \
-                 patch("huggingface_hub.hf_hub_download", return_value=str(index)), \
+                 patch("huggingface_hub.hf_hub_download", side_effect=AssertionError("writes to the cache")), \
                  patch("huggingface_hub.snapshot_download", side_effect=fake_snapshot_download):
                 md.download_model_preset(preset, all_files=all_files)
+        self.assertEqual(read_index.called, not all_files)
         return captured["allow_patterns"], preset
 
     def test_cuda_download_asks_only_for_the_fp16_set(self):
@@ -132,10 +137,11 @@ class DownloadModelPresetTrimTests(unittest.TestCase):
         ])
         self.assertNotIn("sd_xl_turbo_1.0.safetensors", allow)
 
-    def test_all_files_keeps_the_preset_patterns(self):
+    def test_all_files_takes_every_file_the_preset_patterns_match(self):
         allow, preset = self._download(all_files=True)
-        self.assertEqual(allow, list(preset.allow_patterns))
-
+        expected = sorted(f for f in _SDXL_TURBO if any(fnmatch.fnmatch(f, p) for p in preset.allow_patterns))
+        self.assertEqual(sorted(allow), expected)
+        self.assertIn("sd_xl_turbo_1.0.safetensors", allow)
 
 
 class DownloadCliAllFilesTests(unittest.TestCase):

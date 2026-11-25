@@ -162,15 +162,18 @@ also listed as separate model repos and should be selected explicitly when quali
 than memory footprint. Qwen and ERNIE q4 prepared folders can mix q4 and q8
 components, but they remain the default prepared choice.
 
-The downloader stores curated presets in the Hugging Face cache by default and
-imports older `~/models/<preset>` trees on first use. Generation stays
+The downloader stores curated presets in the Hugging Face cache and imports
+older `~/models/<preset>` trees into it on first use. Generation stays
 cache-only unless you explicitly enable runtime downloads. `catalog` and
 `show-model` give each download's access (whether its repository is gated),
-whether it is installed (with its size on disk) and the memory modes this
-machine can run; for MLX-Gen packages with published measurements, `show-model`
-adds the peak memory of each mode. `download` sizes the download from the
-Hugging Face listing and checks the free disk space before it starts, resumes an
-interrupted download, and `--dry-run` prints the plan without downloading. See [Downloads](docs/reference/configuration.md#downloads).
+its cache state as a local look sees it (with its size on disk) and the memory
+modes this machine can run; for MLX-Gen packages with published measurements,
+`show-model` adds the peak memory of each mode. `download` plans from the
+Hugging Face listing before it writes anything: how many files are already
+complete in the cache, how many are to fetch and their size, and whether they
+fit on the cache disk. It then fetches only the files to fetch; after an
+interruption the same command fetches the rest. `--dry-run` prints the plan
+without downloading. See [Downloads](docs/reference/configuration.md#downloads).
 
 ```bash
 pip install "abstractvision[models,mlx-gen]"

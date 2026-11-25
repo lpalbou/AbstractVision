@@ -4,7 +4,7 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import replace
-from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence, Tuple, TypeVar
+from typing import Any, Callable, Dict, FrozenSet, List, Mapping, Optional, Sequence, Tuple, TypeVar
 
 from ..types import (
     MEMORY_MODE_DEFAULT,
@@ -20,6 +20,7 @@ from ..types import (
     VideoGenerationRequest,
     VisionBackendCapabilities,
     highest_memory_mode_at_or_below,
+    normalize_memory_mode,
     resolve_memory_mode_with_source,
 )
 from ..errors import CapabilityNotSupportedError, GenerationCancelledError
@@ -28,28 +29,56 @@ logger = logging.getLogger(__name__)
 
 _Request = TypeVar("_Request")
 
+# The request type of each task, as the carrier of a preload's options (`_resolve_preload_options`).
+_PRELOAD_REQUEST_TYPES: Dict[str, Callable[[], Any]] = {
+    "text_to_image": lambda: ImageGenerationRequest(prompt=""),
+    "image_to_image": lambda: ImageEditRequest(prompt="", image=b""),
+    "image_upscale": lambda: ImageUpscaleRequest(image=b""),
+    "text_to_video": lambda: VideoGenerationRequest(prompt=""),
+    "image_to_video": lambda: ImageToVideoRequest(image=b""),
+}
+
 # The fallbacks of $ABSTRACTVISION_MEMORY_MODE already logged in this process, as
 # (backend type, mode, supported modes): the AbstractCore plugin and the CLI build a backend per
 # request, so a flag on the instance would log the same fallback at every request.
 _DEGRADED_PROCESS_MEMORY_MODES_LOGGED: set = set()
 _DEGRADED_PROCESS_MEMORY_MODES_LOCK = threading.Lock()
 
-# Typed request options a backend must apply or refuse (never ignore).
-OPTIONAL_REQUEST_FIELDS: Tuple[str, ...] = (
-    "quantize",
-    "soundscape",
-    "music",
-    "generate_audio",
-    "audio_shift",
-)
+# The typed request options, defined once. The soundtrack options exist on video requests only.
+SOUNDTRACK_REQUEST_FIELDS: Tuple[str, ...] = ("soundscape", "music", "generate_audio", "audio_shift")
+# The options a backend must apply or refuse (never ignore); `supported_request_options` lists the
+# ones it applies.
+OPTIONAL_REQUEST_FIELDS: Tuple[str, ...] = ("quantize", *SOUNDTRACK_REQUEST_FIELDS)
+# Every typed request option, which a caller may also pass in `extra`: the memory mode (checked
+# against `supported_memory_modes`) and the options above.
+REQUEST_OPTION_FIELDS: Tuple[str, ...] = ("memory_mode", *OPTIONAL_REQUEST_FIELDS)
 
 
-def _option_is_set(value: Any) -> bool:
+def option_is_set(value: Any) -> bool:
     if value is None:
         return False
     if isinstance(value, str):
         return bool(value.strip())
     return True
+
+
+def merge_request_option(name: str, value: Any, extra: Mapping[str, Any]) -> Any:
+    """Request option `name`: the typed `value`, else `extra[name]`; ValueError when both differ.
+
+    Memory modes compare by their canonical name ("LOW" and "low" agree).
+    """
+    from_extra = extra.get(name)
+    if not option_is_set(value):
+        return from_extra if option_is_set(from_extra) else value
+    if option_is_set(from_extra):
+        same = (
+            normalize_memory_mode(value) == normalize_memory_mode(from_extra)
+            if name == "memory_mode"
+            else value == from_extra
+        )
+        if not same:
+            raise ValueError(f"{name}={value!r} and extra[{name!r}]={from_extra!r} disagree; pass one.")
+    return value
 
 
 def raise_if_cancelled(cancel_event: Any) -> None:
@@ -74,7 +103,8 @@ class VisionBackend(ABC):
     def supported_request_options(self, task: Optional[str] = None) -> FrozenSet[str]:
         """Typed request options this backend applies for `task` (see OPTIONAL_REQUEST_FIELDS).
 
-        A request that sets an option not listed here is refused by `resolve_memory_request`.
+        A request that sets an option not listed here, as a field or in `extra`, is refused by
+        `resolve_memory_request`.
         """
         _ = task
         return frozenset()
@@ -108,17 +138,32 @@ class VisionBackend(ABC):
     def resolve_memory_request(
         self, request: _Request, *, task: Optional[str] = None
     ) -> Tuple[_Request, str]:
-        """Resolve, check and strip a request's memory mode; every backend entry point calls it.
+        """Resolve, check and strip a request's typed options; every backend entry point calls it.
 
-        Returns the request with `memory_mode` set and removed from `extra` (so no backend
-        forwards it as an engine flag or HTTP field), and the mode. A mode the backend does not
-        list in `supported_memory_modes(task)` raises CapabilityNotSupportedError before any work
-        when the request named it; a mode from $ABSTRACTVISION_MEMORY_MODE (one value for every
-        backend of the process) runs as the lowest-memory listed mode that is not below it.
+        `memory_mode`, and each option the backend lists in `supported_request_options(task)`, is
+        taken from its field or from `extra` (`merge_request_option`, which refuses the two
+        disagreeing). For any other option an `extra` key is not the option: it stays in `extra`,
+        uninterpreted, as the backend always received it. Returns the request with the options in
+        their fields and removed from `extra` (so no backend forwards them as engine flags or HTTP
+        fields), and the mode. A mode the backend does not list in
+        `supported_memory_modes(task)` raises CapabilityNotSupportedError before any work when
+        the request named it; a mode from $ABSTRACTVISION_MEMORY_MODE (one value for every
+        backend of the process) runs as the lowest-memory listed mode that is not below it. A
+        typed option the backend does not list, or a listed one the request type does not carry,
+        is refused the same way.
         """
         raw_extra = getattr(request, "extra", None)
         extra = dict(raw_extra) if isinstance(raw_extra, dict) else {}
-        mode, from_env = resolve_memory_mode_with_source(getattr(request, "memory_mode", None), extra)
+        listed = self.supported_request_options(task)
+        options = {}
+        for name in REQUEST_OPTION_FIELDS:
+            typed = getattr(request, name, None)
+            if name == "memory_mode" or name in listed:
+                options[name] = merge_request_option(name, typed, extra)
+                extra.pop(name, None)
+            else:
+                options[name] = typed
+        mode, from_env = resolve_memory_mode_with_source(options.pop("memory_mode"))
         supported = tuple(self.supported_memory_modes(task))
         if from_env and mode not in supported:
             mode = self._degrade_process_memory_mode(mode, supported)
@@ -127,24 +172,27 @@ class VisionBackend(ABC):
             raise CapabilityNotSupportedError(
                 f"{type(self).__name__} cannot honour memory_mode={mode!r}{where} with its configured "
                 f"model and device (supported: {', '.join(supported)}). The mode comes from the "
-                f"request, or from ${MEMORY_MODE_ENV_VAR} when the request names none."
+                f"request, or from ${MEMORY_MODE_ENV_VAR} when the request names none.",
+                field="memory_mode",
+                supported=supported,
             )
         unsupported = [
             name
-            for name in OPTIONAL_REQUEST_FIELDS
-            if _option_is_set(getattr(request, name, None))
-            and name not in self.supported_request_options(task)
+            for name, value in options.items()
+            if option_is_set(value) and (not hasattr(request, name) or name not in listed)
         ]
         if unsupported:
             where = f" for {task}" if task else ""
             raise CapabilityNotSupportedError(
                 f"{type(self).__name__} does not support {', '.join(unsupported)}{where} with its "
-                "configured model."
+                "configured model.",
+                field=unsupported[0] if len(unsupported) == 1 else None,
+                supported=() if len(unsupported) == 1 else None,
             )
         raise_if_cancelled(getattr(request, "cancel_event", None))
-        extra.pop("memory_mode", None)
         if hasattr(request, "memory_mode"):
-            request = replace(request, memory_mode=mode, extra=extra)  # type: ignore[type-var]
+            carried = {name: value for name, value in options.items() if hasattr(request, name)}
+            request = replace(request, memory_mode=mode, extra=extra, **carried)  # type: ignore[type-var]
         return request, mode
 
     def normalize_image_generation_request(
@@ -258,13 +306,42 @@ class VisionBackend(ABC):
         _ = task
         return ()
 
-    def preload(self) -> None:
-        """Best-effort eager load/prepare; does not guarantee a fully warmed first inference."""
-        return None
+    def preload(self, memory_mode: Optional[str] = None, quantize: Optional[int] = None) -> None:
+        """Best-effort eager load/prepare; does not guarantee a fully warmed first inference.
+
+        `memory_mode` and `quantize` are those of the requests the loaded model is for, checked as
+        a request's are (`_resolve_preload_options`) before anything loads. This backend loads
+        nothing ahead of a request, so it only checks them.
+        """
+        if memory_mode is not None or quantize is not None:
+            self._resolve_preload_options(memory_mode, quantize, task=None)
+
+    def _resolve_preload_options(
+        self, memory_mode: Optional[str], quantize: Optional[int], *, task: Optional[str]
+    ) -> Tuple[str, Optional[int]]:
+        """The memory mode and load-time quantize a preload for `task` runs with.
+
+        Checked by `resolve_memory_request`, as a request of that task carrying them would be: the
+        same refusals, and the process default when `memory_mode` is None.
+        """
+        carrier = _PRELOAD_REQUEST_TYPES.get(task or "", _PRELOAD_REQUEST_TYPES["text_to_image"])()
+        request, mode = self.resolve_memory_request(
+            replace(carrier, memory_mode=memory_mode, quantize=quantize), task=task
+        )
+        return mode, request.quantize
 
     def unload(self) -> None:
         """Best-effort: release model weights from memory."""
         return None
+
+    def has_loaded_model(self) -> bool:
+        """Whether this process holds this backend's model weights in memory now.
+
+        Backends that load models in process answer it: False before a load, after `unload`, and
+        after a run or a failed `preload` that released the model. The default, False, is the
+        answer of a backend that loads nothing here (a remote one).
+        """
+        return False
 
     @abstractmethod
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset: ...

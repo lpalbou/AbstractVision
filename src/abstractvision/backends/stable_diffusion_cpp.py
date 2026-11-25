@@ -74,7 +74,7 @@ def _sniff_ext(data: bytes) -> str:
     return ".bin"
 
 
-def _require_sd_cli(path: str) -> str:
+def require_sd_cli(path: str) -> str:
     p = str(path or "").strip()
     if not p:
         raise OptionalDependencyMissingError(
@@ -776,12 +776,18 @@ class StableDiffusionCppVisionBackend(VisionBackend):
         self._py_init_kwargs: Optional[Dict[str, Any]] = None
         self._py_default_generate_kwargs: Optional[Dict[str, Any]] = None
 
-    def preload(self) -> None:
+    def preload(self, memory_mode: Optional[str] = None, quantize: Optional[int] = None) -> None:
+        # Checked as a request carrying them is (this backend takes no quantize).
+        memory, _quantize = self._resolve_preload_options(memory_mode, quantize, task="text_to_image")
         self._validate_macos_gguf_supported()
         mode = self._select_mode()
         if mode == "python":
-            # Load with the placement the process default asks for, so its first request reuses it.
-            self._ensure_python_model(offload_params_to_cpu=self.process_memory_mode() == MEMORY_MODE_LOW)
+            # Load with the placement that mode asks for, so such a request reuses it.
+            self._ensure_python_model(offload_params_to_cpu=memory == MEMORY_MODE_LOW)
+
+    def has_loaded_model(self) -> bool:
+        # The Python binding holds its model in process; `sd-cli` loads it per run and holds nothing.
+        return self._py_model is not None
 
     def unload(self) -> None:
         # Best-effort: drop python-binding model reference so native memory can be reclaimed.
@@ -873,7 +879,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
 
     def _base_cmd(self, *, offload_to_cpu: bool = False) -> List[str]:
         self._validate_macos_gguf_supported()
-        sd_cli = _require_sd_cli(self._cfg.sd_cli_path)
+        sd_cli = require_sd_cli(self._cfg.sd_cli_path)
         cmd: List[str] = [sd_cli]
 
         model = str(self._cfg.model or "").strip()
@@ -913,7 +919,7 @@ class StableDiffusionCppVisionBackend(VisionBackend):
             return self._mode
 
         try:
-            self._sd_cli_resolved = _require_sd_cli(self._cfg.sd_cli_path)
+            self._sd_cli_resolved = require_sd_cli(self._cfg.sd_cli_path)
             self._mode = "cli"
             return self._mode
         except OptionalDependencyMissingError as cli_error:
@@ -1113,7 +1119,9 @@ class StableDiffusionCppVisionBackend(VisionBackend):
     def generate_image(self, request: ImageGenerationRequest) -> GeneratedAsset:
         if request.control_image is not None:
             raise CapabilityNotSupportedError(
-                "stable-diffusion.cpp backend does not support structured control images for text-to-image."
+                "stable-diffusion.cpp backend does not support structured control images for text-to-image.",
+                field="control_image",
+                supported=(),
             )
         return self.generate_image_with_progress(request, progress_callback=None)
 
@@ -1183,11 +1191,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 "python_package": getattr(self._py_sd, "__version__", None),
                 "model": self._cfg.model,
                 "diffusion_model": self._cfg.diffusion_model,
-                **(
-                    {"memory_mode": MEMORY_MODE_LOW, "offload_to_cpu": True}
-                    if offload_params_to_cpu
-                    else {}
-                ),
+                "memory_mode": MEMORY_MODE_LOW if offload_params_to_cpu else MEMORY_MODE_DEFAULT,
+                **({"offload_to_cpu": True} if offload_params_to_cpu else {}),
             },
         )
 
@@ -1286,7 +1291,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                         "sd_cli": str(self._cfg.sd_cli_path),
                         "model": self._cfg.model,
                         "diffusion_model": self._cfg.diffusion_model,
-                        **({"memory_mode": memory_mode, "offload_to_cpu": True} if offload else {}),
+                        "memory_mode": memory_mode,
+                        **({"offload_to_cpu": True} if offload else {}),
                     },
                 )
 
@@ -1381,7 +1387,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                         "sd_cli": str(self._cfg.sd_cli_path),
                         "model": self._cfg.model,
                         "diffusion_model": self._cfg.diffusion_model,
-                        **({"memory_mode": memory_mode, "offload_to_cpu": True} if offload else {}),
+                        "memory_mode": memory_mode,
+                        **({"offload_to_cpu": True} if offload else {}),
                     },
                 )
 
@@ -1457,7 +1464,8 @@ class StableDiffusionCppVisionBackend(VisionBackend):
                 "python_package": getattr(self._py_sd, "__version__", None),
                 "model": self._cfg.model,
                 "diffusion_model": self._cfg.diffusion_model,
-                **({"memory_mode": memory_mode, "offload_to_cpu": True} if offload else {}),
+                "memory_mode": memory_mode,
+                **({"offload_to_cpu": True} if offload else {}),
             },
         )
 

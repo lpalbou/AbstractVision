@@ -5,8 +5,8 @@
 ## 0.3.37 - 2026-11-25
 
 This release adds MiniMax-H3 (video with a synchronized stereo soundtrack), a `memory_mode` setting on every
-generation request, downloads that check disk space and resume, model listings that show access, cache state and
-memory per mode, and what an application embedding `VisionManager` needs: cancellation, load-time quantization, the
+generation request, downloads planned against the cache with a disk-space check, model listings that show access,
+cache state and memory per mode, and what an application embedding `VisionManager` needs: cancellation, load-time quantization, the
 engine's route rows and metadata. It requires MLX-Gen 0.40.1. Requests that set none of the new fields run as before,
 except for the changes listed below.
 
@@ -50,16 +50,16 @@ except for the changes listed below.
   - CLI: `--soundscape`, `--music`, `--no-audio` and `--audio-shift` on `t2v` and `i2v`.
 - **`memory_mode` on every generation request**: `default`, `low` or `lowest`, as a request field, a
   `VisionManager` keyword (batches included), `--memory-mode` on `t2i`, `i2i`, `upscale`, `t2v` and `i2v`, an
-  AbstractCore plugin keyword, `extra["memory_mode"]`, a playground request field and a
-  `make_vision_tools(..., memory_mode=...)` argument. `ABSTRACTVISION_MEMORY_MODE` sets a process default for
-  requests that name none.
+  AbstractCore plugin keyword, `extra["memory_mode"]` and a `make_vision_tools(..., memory_mode=...)` argument.
+  `ABSTRACTVISION_MEMORY_MODE` sets a process default for requests that name none.
   - MLX-Gen: `low` is MLX-Gen's low-RAM mode as each route's `mlxgen` command applies `--low-ram`, with a 1 GB MLX
     cache from before the model loads. Image and edit routes free the text encoders and the transformer, Wan routes
     clear the cache every step and release the denoisers before the decode, SeedVR2 sets the cache limit only, and
     MiniMax-H3 frees the transformer before the decode. `lowest` adds transformer block streaming; it is accepted
     for MiniMax-H3 and refused on every other current catalog model.
   - Diffusers on CUDA: `low` and `lowest` run with model and sequential CPU offload; a request only raises the
-    configured `cpu_offload`, never lowers it. stable-diffusion.cpp: `low` offloads the model parameters to the CPU.
+    configured `cpu_offload`, never lowers it, and every result records the mode in `metadata["memory_mode"]`.
+    stable-diffusion.cpp: `low` offloads the model parameters to the CPU, and its results record the mode too.
     OpenAI-compatible: the modes the remote lists for the model (see below), else `default` only.
   - A mode named on a request that the backend cannot honour raises `CapabilityNotSupportedError` before any model
     loads or any request is sent, in every backend; `VisionManager`, the plugin and the tools pass the value through
@@ -68,7 +68,7 @@ except for the changes listed below.
     warning per process.
   - Image, edit, Wan and MiniMax-H3 models run in `low` (MiniMax-H3 in `lowest` too) free part of the model, which
     is dropped when the run ends, whatever its outcome; the next request loads it again, and the AbstractCore plugin
-    removes its loaded-model record. A batch is a series of such requests: each item loads the model and drops it,
+    no longer lists it as loaded. A batch is a series of such requests: each item loads the model and drops it,
     so every item peaks as one `low` run and under 1.3 GiB stays held between items. Measured per item of a `low`
     batch: FLUX.2 [klein] 9B 8-bit at 1024x1024, 4 steps, 13.2 to 15.4 GiB and 0.5 to 1.9 s to build the instance;
     Wan 2.2 T2V-A14B 8-bit at 480x240, 17 frames, 4 steps, 29.0 to 29.5 GiB and 1.4 to 2.7 s (the weights are then
@@ -76,45 +76,70 @@ except for the changes listed below.
   - `low` and `lowest` hold MLX-Gen's 1 GB MLX cache limit from before the model loads to the end of the run, never
     above a limit already in force; overlapping runs share it, and the limit found before is restored when the last
     one ends. `default` runs set no limit: MLX-Gen applies its own (RAM/8, 1 to 8 GiB) and keeps one the host set.
-  - Discovery: `get_capabilities().memory_modes` and `supports_block_streaming`, `parameter_constraints["memory_mode"]`
+  - Discovery: `get_capabilities().memory_modes`, `parameter_constraints["memory_mode"]`
     on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()` (what
     that provider's backend lists for its configured model and device, without loading a model or sending a
     request).
 - **Downloads.**
   - `abstractvision download <model id>` selects the package the catalog marks as recommended (for MiniMax-H3, the
     8-bit one); `--bits 2|4|8|16` selects another width.
-  - Before anything is fetched, the files the preset selects are sized from the Hugging Face listing and compared
-    with the free space of the cache disk: a download that does not fit stops with its size and the free space
-    (`InsufficientDiskSpaceError`). Files already in the cache, partial ones included, are resumed; an interrupted
-    download, or one that ends with files missing, says so and how to resume.
-  - `--dry-run` prints the selection, access, cache state, size, free space and adapter state, and downloads
-    nothing.
+  - Every download is planned before anything is written: the files the package selects are read from the
+    Hugging Face listing (metadata only; a Diffusers pipeline's `model_index.json` is read into memory), and each
+    is either complete in the cache or to fetch. The command prints the access (`open` or `gated`), the size and
+    file count, how many files are complete and how many are to fetch, and the free space of the cache disk; the
+    files to fetch must fit there at their full size, or it stops (`InsufficientDiskSpaceError`) and writes
+    nothing. It then fetches exactly the files to fetch: a package whose files are all in the cache is reported as
+    present and nothing is fetched, and one missing files (for example a Wan 2.2 A14B package downloaded by 0.3.36,
+    without `transformer_2/`) gets them. A partial file left by an interrupted download counts as to fetch:
+    whether huggingface_hub continues it or starts it over depends on its transport.
+  - Ctrl-C ends the command with exit code 130 and says that the files that completed stay in the cache and that
+    the same command continues with the rest. A download that ends with files missing names them.
+  - Without the Hub listing, `download` fetches nothing and says why (offline mode, the Hub unreachable, an HTTP
+    error, or a listing without file sizes, which huggingface.co always gives but a mirror set with `HF_ENDPOINT`
+    may not), and what to do. It reports a cached snapshot as it is, not compared with the Hub; with none, or one
+    with a gap a local look can see, it stops. Generation with `allow_download` that finds the model cached makes
+    no Hub request, as before.
+  - `--dry-run` prints the same plan, the adapter state, and, when the download would not fit, says so on its last
+    line; it writes nothing and exits 0.
+  - A Hugging Face `owner/name` the catalog does not list downloads the whole repository through the same plan,
+    size and disk check, with its access from the listing.
   - `--base-model <schedule>` also fetches the adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA);
     without it, `download` lists the schedules that load an adapter and whether each is cached.
   - The catalog marks gated repositories (`gated: true`). `download` says so before it starts, and a gated
     repository that refuses the account ends with `HuggingFaceAccessError` naming the repository page and the
-    licence to accept.
+    licence to accept. For a repository not marked gated, a 401 says what the Hub's answer means: the repository
+    does not exist, is private, or is gated, and the Hub does not say which.
   - Python: `find_model_preset(..., bits=)`, `download_model_preset(..., report=)`,
-    `plan_model_preset_download(preset)` (a `HubDownloadPlan`), `abstractvision.model_inventory.preset_status(preset)`
-    and `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`.
-- **Model listings.** `catalog` marks the recommended package with `*` in `bits` and adds the `access`, `installed`
+    `plan_model_preset_download(preset)` (a `HubDownloadPlan`), `repository_preset(repo_id)`,
+    `abstractvision.model_inventory.preset_status(preset)` and `local_cache_state(preset)`, and
+    `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`.
+- **Model listings.** `catalog` marks the recommended package with `*` in `bits` and adds the `access`, `cache`
   and `memory_modes` columns. `show-model` adds, per download, its access, cache state with size on disk, the memory
   modes this host can run and, for MLX-Gen packages with published measurements, the peak memory of each mode and
   the smallest memory it was tested on (read from the installed mlx-gen), plus the schedules and the adapter each
-  loads. `models --json` and `show-model --json` print the same as JSON.
+  loads. `models --json` and `show-model --json` print the same as JSON. The peaks come from
+  `abstractvision.model_inventory.memory_peaks(repo_id, base_model=None)`, also the AbstractCore plugin's
+  `memory_peaks(model, base_model=None)`: one row per measured run of that package's stored width (and schedule),
+  with its `task` and `memory_mode`. The cache state is a local look, offline:
+  `cached` is a snapshot with no gap it can see (no partial file, link without content or missing weight file an
+  index names, every `model_index.json` component whose folder the package's patterns name present, at least one
+  weight file), `incomplete` names the gap. Only `download` compares a snapshot with
+  the Hub, so a file that nothing local refers to, such as one an interrupted download never started, can be
+  missing from a snapshot shown as `cached`.
 - **OpenAI-compatible backend with AbstractCore's server.** A remote that lists `memory_modes` for the model in
-  `GET {base_url}/vision/models` receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
+  `GET {base_url}/vision/models` (the entry whose `routed_model` is the model sent, or `defaults[<task>]` when the
+  request names none) receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
   request with `cancel_event` runs there as a remote job, and setting the event cancels it (AbstractCore's server
   refuses such a job while another generation runs, which the backend raises as a `RuntimeError` saying so); a
-  video response's `audio` fills `GeneratedAsset.audio`, and `metadata["memory_mode_used"]` holds the mode the
-  remote ran. Any other remote refuses these fields with `CapabilityNotSupportedError` before anything is sent.
-- **Playground.** Generation and edit jobs take `memory_mode`, `quantize` and, on video, the soundtrack fields, at the
-  top level or in the extra JSON; model load refuses `memory_mode` and `quantize`, which apply per request.
+  video response's `audio` fills `GeneratedAsset.audio`, and `metadata["memory_mode"]` holds the mode the
+  remote reports it ran. Such a remote receives the request's other `extra` keys nested (an `extra` object in JSON,
+  an `extra_json` form field). Any other remote refuses these fields with `CapabilityNotSupportedError` before
+  anything is sent, and receives `extra` at the top level as before.
 - **For applications embedding AbstractVision.**
   - `cancel_event` on every request (and AbstractCore plugin keyword): MLX-Gen stops between denoising steps and
     raises the new `GenerationCancelledError`; the other backends check it before a run starts
     (`get_capabilities().cancellation`). What stays loaded after a cancelled MLX-Gen run is listed per model family
-    in the API guide.
+    in the API guide; the error carries no traceback of the run, so a caller that keeps it holds none of its memory.
   - Load-time `quantize` (bits) on generation requests, as `--quantize` and as an AbstractCore plugin keyword,
     validated against the route (`get_capabilities().quantize_bits`) and refused on prepared packages and on the
     other local backends.
@@ -126,23 +151,47 @@ except for the changes listed below.
     preflight for MiniMax-H3 only).
   - Importing AbstractVision and constructing a `VisionManager` write no files, set no environment variables and
     import neither AbstractCore nor an engine.
+  - `extra["memory_mode"]` is the memory mode on every backend; `extra["quantize"]` and the soundtrack keys are the
+    options only on a backend that applies them (MLX-Gen, a remote that advertises them) and pass through `extra`
+    unchanged elsewhere. A field and an `extra` value that disagree raise `ValueError`.
+  - `CapabilityNotSupportedError.field` and `.supported` name the refused request field and the values accepted
+    there, when a refusal is about one field (None otherwise); the message is unchanged. MLX-Gen sets them on every
+    such refusal (`memory_mode`, `quantize` with the accepted widths, `width`, `num_frames`, `steps`, the shifts,
+    `fps`, `negative_prompt`, guidance, `lora_adapters`, `control_image`, `mask`).
+  - `preload(memory_mode=None, quantize=None)` on every backend: the values are checked as a request's are, before
+    anything loads, and the model loads as a request carrying them loads it, so that request reuses it; a backend
+    that takes no load-time quantize refuses it. The AbstractCore plugin's `load_resident_model(...)` passes a
+    request's `memory_mode` and `quantize`.
+  - MLX-Gen records `memory_mode` (with `low_ram` and `stream_blocks`) in every result's metadata, `"default"`
+    included.
+  - MLX-Gen checks a request once, on its own thread: `VisionManager` still calls the backend's `normalize_*`
+    (any backend may rely on it), and the backend's entry point does not check the request it returned again.
+    A task the configured model has no route for (an image task on MiniMax-H3) is refused before anything is read.
+  - `VisionBackend.has_loaded_model()` says whether this process holds a backend's model weights now (MLX-Gen,
+    Diffusers and stable-diffusion.cpp's Python binding answer; the default, `False`, is the answer of a backend
+    that loads nothing here). The AbstractCore plugin's loaded-model listings ask it when called.
 
 ### Changed
 
 - `download` of a model id that has several packages and no recommended one stops and lists the packages; name one
   exactly, or pass `--bits`. A catalog model is no longer fetched as an unfiltered snapshot of its whole upstream
-  repository.
+  repository. A name that is neither in the catalog nor an `owner/name` points to `abstractvision catalog` instead
+  of listing every known name.
+- `download` prints the package's own target and engine (a GGUF package says `gguf` and `stable-diffusion.cpp`).
+- A legacy `~/models/<preset>` tree (or one under `--model-dir`) is still moved into the cache as before, and
+  `download` then says it was imported and not compared with the Hub, and fetches nothing on top of it.
 - `make_vision_tools`: a parameter the call leaves unset and the catalog lists without a default stays unset, so the
   engine applies its own default. Models whose catalog lists `steps` without a default no longer run at the tool's
   10 steps (15 for edits).
 - AbstractCore plugin: `guidance_2` on `t2i` or `i2i` raises `CapabilityNotSupportedError` (it raised `TypeError`), as
   do the soundtrack options on an image call. Every other unknown keyword stays a backend `extra` parameter.
 - MLX-Gen result metadata names the model and adapters by repo id (a Hugging Face cache snapshot) or by file or
-  directory name, never by local path: every absolute path in the engine's metadata, whatever field carries it
-  (`model`, `lora_paths`, `lora_application_reports`, ...), in `metadata["mlx_gen"]` and its top-level copies, and
-  `requested_lora_adapters`. The paths of the temporary files written for a run are left out. The refusals of a
-  prepared package given `quantize`, of a model path that does not exist and of an adapter `lowest` cannot stream
-  name the model or adapter the same way.
+  directory name, never by local path: every field of the engine's metadata that holds a path (`model`,
+  `lora_paths`, `lora_application_reports`, the reference, mask and control image paths, the video file checked by
+  `video_health`, and the `original_*` fields an upscale copies from its input), in `metadata["mlx_gen"]` and its
+  top-level copies, and `requested_lora_adapters`. The paths of the temporary files written for a run are left out.
+  The refusals of a prepared package given `quantize`, of a model path that does not exist and of an adapter
+  `lowest` cannot stream name the model or adapter the same way.
 - MLX-Gen video requests are type-checked: a width, height, frame count, fps or step count that is not an integer, or
   a seed outside `[0, 2**64 - 1]`, raises `ValueError` naming the field instead of being truncated; an image-to-video
   first frame that cannot be decoded raises `ValueError` naming `image`.
@@ -151,22 +200,37 @@ except for the changes listed below.
 - OpenAI-compatible backend: `list_provider_models()` and a request that sets a memory, sound or `quantize` field
   or a `cancel_event` (or runs under `ABSTRACTVISION_MEMORY_MODE`) also query `GET {base_url}/vision/models` (10 s
   timeout, answer reused for 30 s; never for the OpenAI API or an OpenAI image model); `get_capabilities()` reads
-  the last answer without a request, and a request that sets none of them makes the same HTTP calls as before. A
-  discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: a request that needed it is
-  refused with the reason. A remote HTTP 422 with the error code `capability_not_supported` raises
-  `CapabilityNotSupportedError` with the remote's message instead of `RuntimeError`.
-- The `catalog` table has three more columns (`access`, `installed`, `memory_modes`).
-- `HuggingFaceAccessError` says that the repository is gated or not accessible to the account, names the licence
-  when the catalog knows it, and keeps the first line of the upstream error.
+  the last answer without a request, and a request that sets none of them and carries no `extra` makes the same
+  HTTP calls as before. A discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: a request
+  that needed it is refused with the reason. A remote HTTP 422 with the error code `capability_not_supported`, and
+  a remote job that fails with that `error_code`, raise `CapabilityNotSupportedError` with the remote's message,
+  `field` and `supported` instead of `RuntimeError`.
+- OpenAI-compatible backend: `list_provider_models()` on a remote that serves the vision routes (AbstractCore's
+  server) lists its `GET {base_url}/vision/models` catalog, each model by the `routed_model` a request sends, with
+  its memory modes and audio support; it read that server's `GET /models`, which lists text models. Other remotes
+  are listed from `GET /models` as before.
+- OpenAI-compatible backend: `list_provider_models()` against a remote that answers `GET /models` with HTTP 404, 405
+  or 501 raises `CapabilityNotSupportedError` (the remote has no model catalog) instead of `RuntimeError`. The
+  AbstractCore plugin's `list_provider_models()` raises it as it is when no backend has a catalog, as it does when
+  the selected backend cannot list models, instead of `AbstractVisionError`; a backend without one is skipped when
+  another answers.
+- OpenAI-compatible backend: the first request that carries `extra` (keys other than `model`) asks the remote once
+  per backend, with `GET {base_url}/vision/models`, whether it serves the vision routes; a server that does
+  receives `extra` nested (an `extra` object in JSON, an `extra_json` form field), and any other remote, or one whose
+  answer failed, receives it unchanged.
+- The `catalog` table has three more columns (`access`, `cache`, `memory_modes`).
+- `HuggingFaceAccessError` says that the repository is gated and names the licence when the catalog marks it gated,
+  otherwise what the HTTP status tells (401, 403, 404), and keeps the first line of the upstream error.
 
 ### Fixed
 
 - Downloads of the Wan 2.2 A14B MLX-Gen packages fetch the low-noise expert (`transformer_2/`), and MLX-Gen package
   downloads fetch the chat-template files (`*.jinja`) the Qwen, ERNIE and Bonsai tokenizers load; both were left out.
+  Running `download` again on a package downloaded by 0.3.36 fetches them.
 - MLX-Gen releases the loaded model, and clears the MLX cache, before it loads another one (another model or
   adapter set): two instances are never in memory together.
-- A failed MLX-Gen `preload()` drops the model it loaded before raising, and the AbstractCore plugin keeps no
-  loaded-model record for it.
+- A failed MLX-Gen `preload()` drops the model it loaded before raising, and the AbstractCore plugin does not list
+  it as loaded.
 - AbstractCore plugin: `control_image` and `control_strength` reach `t2i` (they were dropped).
 
 ## 0.3.36 - 2026-11-11

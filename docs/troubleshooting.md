@@ -48,14 +48,14 @@ present in the Hugging Face cache.
 
 Another common case is an interrupted Hugging Face download: the snapshot
 directory exists, but the repo still contains `.incomplete` blobs and the
-package now rejects that cache entry as unusable until the download is resumed.
+package rejects that cache entry as unusable until the download is finished.
 
 ### Fix
 
 - Pre-download the model with `abstractvision download ... --provider diffusers`
 - or allow runtime downloads explicitly with `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`
 - if the repo already exists but is partial, rerun the same `abstractvision download ... --provider diffusers`
-  command to resume it
+  command: it fetches the files that are not complete in the cache
 
 Examples:
 
