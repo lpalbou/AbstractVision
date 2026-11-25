@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -104,7 +105,7 @@ class VisionManager:
 
     def _move_progress_callbacks_to_extra(self, kwargs: Dict[str, Any]) -> None:
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in ("on_progress", "progress_event_callback", "progress_callback"):
             if key not in kwargs:
                 continue

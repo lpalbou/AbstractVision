@@ -75,7 +75,9 @@ png_bytes = llm.vision.t2i("a red square", width=512, height=512, steps=20)
 
 Per-call routing can select the same backend/model ids used by the
 `abstractvision` shell commands. For MLX-Gen, pass the exact published model
-repo id; there is no separate quantization parameter.
+repo id: a prepared package carries its own width. `quantize=<bits>` quantizes a
+source model at load, on the routes that accept it (`get_capabilities().quantize_bits`),
+and is refused on prepared packages and on the other local backends.
 
 ```python
 from pathlib import Path
@@ -219,10 +221,10 @@ mp4 = llm.vision.t2v(
 )
 ```
 
-AbstractCore's HTTP vision routes do not declare a `memory_mode` field; send it
-in the request's `extra` object (`"extra": {"memory_mode": "low"}`). The server
-builds AbstractVision backends and calls them directly, and every backend reads
-and checks the value itself, so the same refusal applies there.
+AbstractCore's HTTP vision routes take `memory_mode` and `quantize` as request
+fields (JSON bodies and forms; the video routes take the soundtrack fields too).
+The server builds AbstractVision backends and calls them directly, and every
+backend reads and checks the value itself, so the same refusal applies there.
 
 On MLX-Gen, a `"low"` run frees parts of the model and drops the instance (a
 MiniMax-H3 `"lowest"` run drops it too), so the plugin no longer lists the model
@@ -273,8 +275,11 @@ Discovery, and where each part is visible:
   lists what the backend a request for that provider runs on reports with its
   configured model and device (`supported_memory_modes()`; for an
   OpenAI-compatible remote, the modes of its last discovery answer, else
-  `default`), without loading a model or sending a request. It is a Python call
-  only: AbstractCore's HTTP server does not call `available_providers`.
+  `default`), without loading a model, importing torch or sending a request.
+  Diffusers with `device="auto"` lists `low` and `lowest` once torch is imported
+  (a request imports it), `default` until then. AbstractCore's HTTP server
+  reads it for `GET /v1/vision/providers/` and for the `memory_modes` of the
+  entries of `GET /v1/vision/models`.
 - `llm.vision.memory_peaks(model, base_model=None)` returns MLX-Gen's measured
   memory peaks for one catalog package as JSON rows `{task, memory_mode, width,
   height, frames, steps, peak_bytes, machine_total_ram_bytes}`, with `task` in
@@ -411,9 +416,16 @@ listed, and its next load starts unpinned.
 Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,
 `resident`, and a `tasks` list of observed task aliases using that loaded backend.
 
+A request's model is listed when its backend holds it after the run, whatever the run's outcome (a
+failed or cancelled first request included), and `unload_resident_model()` calls the backend's
+`unload()` whenever it resolves one, listed or not, then reports from the listing.
+
 `load_resident_model()` returns the same entry plus `loaded_new`: `true` when that call loaded the
 model, `false` when it was already in memory. AbstractCore and AbstractRuntime use it to report the
-load as `loaded` or `already_loaded`.
+load as `loaded` or `already_loaded`. When the backend holds no model after the preload (`sd-cli`,
+or a backend that keeps the default `has_loaded_model()`), it returns `state: "not_loaded"`,
+`resident: false`, `loaded_new: false` and `reason: "this backend holds no model in this process"`,
+and nothing is listed or pinned.
 
 For deterministic unload behavior, prefer:
 
