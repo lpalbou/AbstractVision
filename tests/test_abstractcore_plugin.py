@@ -967,6 +967,9 @@ print("ok")
             config = {}
 
         class FakeDiffusersBackend:
+            def has_loaded_model(self):
+                return True  # a local stand-in: it holds the model it was asked to load
+
             def __init__(self):
                 self.preloaded = 0
                 self.unloaded = 0
@@ -1042,6 +1045,9 @@ print("ok")
             config = {}
 
         class FakeDiffusersBackend:
+            def has_loaded_model(self):
+                return True  # a local stand-in: it holds the model it was asked to load
+
             def __init__(self):
                 self.unloaded = 0
 
@@ -1142,6 +1148,9 @@ print("ok")
             config = {}
 
         class FakeMlxGenBackend:
+            def has_loaded_model(self):
+                return True  # a local stand-in: it holds the model it was asked to load
+
             def edit_image(self, request):
                 seen["request"] = request
                 return GeneratedAsset(
@@ -1149,7 +1158,9 @@ print("ok")
                 )
 
         cap = _AbstractVisionCapability(_DummyOwner())
+        # The plugin lists the loads of the backends it holds: this one, as the active request backend.
         binding = {
+            "backend": FakeMlxGenBackend(),
             "backend_key": ("mlx-gen", "AbstractFramework/qwen-image-edit-2511-4bit"),
             "backend_kind": "mlx-gen",
             "provider": "mlx-gen",
@@ -1161,20 +1172,17 @@ print("ok")
             image_path = Path(td) / "input.png"
             image_path.write_bytes(png)
             with patch.object(cap, "_resolve_backend_binding", return_value=binding):
-                with patch.object(
-                    cap, "_activate_request_backend", return_value=FakeMlxGenBackend()
-                ):
-                    out = cap.i2i(
-                        "replace the background",
-                        image=str(image_path),
-                        provider="mlx-gen",
-                        model="AbstractFramework/qwen-image-edit-2511-4bit",
-                        steps=20,
-                        guidance_scale=2.5,
-                        strength=0.75,
-                        width=1024,
-                        height=1024,
-                    )
+                out = cap.i2i(
+                    "replace the background",
+                    image=str(image_path),
+                    provider="mlx-gen",
+                    model="AbstractFramework/qwen-image-edit-2511-4bit",
+                    steps=20,
+                    guidance_scale=2.5,
+                    strength=0.75,
+                    width=1024,
+                    height=1024,
+                )
 
         self.assertTrue(out.startswith(b"\x89PNG"))
         self.assertEqual(seen["request"].image, png)
@@ -1199,6 +1207,9 @@ print("ok")
         seen = {}
 
         class FakeDiffusersBackend:
+            def has_loaded_model(self):
+                return True  # a local stand-in: it holds the model it was asked to load
+
             def __init__(self):
                 self.unloaded = 0
 
@@ -1553,6 +1564,9 @@ print("ok")
             config = {}
 
         class FakeMFluxBackend:
+            def has_loaded_model(self):
+                return True  # a local stand-in: it holds the model it was asked to load
+
             def __init__(self):
                 self.preloaded = 0
                 self.unloaded = 0
@@ -1572,6 +1586,9 @@ print("ok")
                 self.unloaded += 1
 
         class FakeDiffusersBackend:
+            def has_loaded_model(self):
+                return True  # a local stand-in: it holds the model it was asked to load
+
             def __init__(self):
                 self.unloaded = 0
 
@@ -1637,6 +1654,9 @@ print("ok")
             config = {}
 
         class FakeBackend:
+            def has_loaded_model(self):
+                return True  # a local stand-in: it holds the model it was asked to load
+
             def preload(self):
                 return None
 

@@ -7,9 +7,7 @@ import unittest
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.error import HTTPError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
 # Ensure `src/` layout is importable when running tests without installing the package.
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +15,7 @@ SRC_DIR = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from abstractvision.errors import CapabilityNotSupportedError, GenerationCancelledError  # noqa: E402
-from abstractvision.types import GeneratedAsset, GeneratedAudioTrack  # noqa: E402
+from abstractvision.types import GeneratedAudioTrack  # noqa: E402
 
 MP4 = b"\x00\x00\x00\x18ftypmp42" + b"stand-in video"
 WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 16
@@ -193,7 +191,7 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         self.assertEqual((asset.audio.sample_rate, asset.audio.channels, asset.audio.muxed), (48000, 2, False))
         self.assertEqual(asset.audio.data, WAV)
         self.assertEqual(asset.audio.mime_type, "audio/wav")
-        self.assertEqual(asset.metadata["memory_mode_used"], "lowest")
+        self.assertEqual(asset.metadata["memory_mode"], "lowest")
         # The same summary as a local backend gives: the codec is the remote's (the WAV's PCM format).
         self.assertEqual(
             asset.audio_summary(),
@@ -264,9 +262,9 @@ class TestOpenAICompatibleAgainstContractServer(unittest.TestCase):
         vm = VisionManager(backend=self.client)
         image = vm.generate_image("fox", memory_mode="low", cancel_event=threading.Event())
         self.assertEqual(_ContractServer.posts[-1][0], "/v1/vision/jobs/images/generations")
-        self.assertEqual(image.metadata["memory_mode_used"], "low")
+        self.assertEqual(image.metadata["memory_mode"], "low")
         video = vm.generate_video("fox", memory_mode="lowest", cancel_event=threading.Event())
-        self.assertEqual(video.metadata["memory_mode_used"], "lowest")
+        self.assertEqual(video.metadata["memory_mode"], "lowest")
         self.assertEqual(video.audio.codec, "pcm_s16le")
 
     def test_a_server_busy_with_another_generation_is_named(self):
@@ -367,7 +365,6 @@ class TestOpenAICompatibleAgainstPlainEndpoint(unittest.TestCase):
             VideoGenerationRequest(prompt="fox", memory_mode="low"),
             VideoGenerationRequest(prompt="fox", soundscape="wind"),
             ImageGenerationRequest(prompt="fox", quantize=8),
-            ImageGenerationRequest(prompt="fox", extra={"soundscape": "wind"}),
         ):
             with self.assertRaises(CapabilityNotSupportedError):
                 getattr(client, "generate_video" if isinstance(request, VideoGenerationRequest) else "generate_image")(request)
@@ -378,77 +375,6 @@ class TestOpenAICompatibleAgainstPlainEndpoint(unittest.TestCase):
         models = client.list_provider_models()
         self.assertEqual([m.id for m in models], ["image-model"])
         self.assertNotIn("memory_modes", models[0].raw)
-
-
-class TestPlaygroundPassesTheFieldsThrough(unittest.TestCase):
-    def _state(self, backend):
-        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState
-
-        state = PlaygroundState(PlaygroundServerConfig(default_model_id=""))
-        state._active_backend = backend
-        state._active_backend_kind = "mlx-gen"
-        state._active_model_id = "mlx-gen/stand-in/h3"
-        return state
-
-    def _wait(self, state, job):
-        for _ in range(200):
-            snap = state.get_job(job["job_id"])
-            if snap["state"] in {"succeeded", "failed"}:
-                return snap
-            time.sleep(0.01)
-        return snap
-
-    def test_video_job_builds_typed_fields_from_top_level_and_extra(self):
-        seen = {}
-
-        class Backend:
-            def generate_video_with_progress(self, request, progress_callback=None):
-                seen["request"] = request
-                return GeneratedAsset(media_type="video", data=MP4, mime_type="video/mp4")
-
-        state = self._state(Backend())
-        job = state.start_video_generation_job(
-            {"prompt": "fox", "memory_mode": "low", "quantize": "8", "generate_audio": "false",
-             "audio_shift": "1.5", "extra": {"soundscape": "wind", "music": "piano", "vae_tiling": False}}
-        )
-        self.assertEqual(self._wait(state, job)["state"], "succeeded")
-        request = seen["request"]
-        self.assertEqual((request.memory_mode, request.quantize, request.generate_audio), ("low", 8, False))
-        self.assertEqual((request.audio_shift, request.soundscape, request.music), (1.5, "wind", "piano"))
-        self.assertEqual(request.extra, {"vae_tiling": False})
-
-    def test_backend_refusal_and_conflicts_surface(self):
-        from abstractvision.backends.base_backend import VisionBackend
-
-        class Backend(VisionBackend):
-            def generate_image(self, request):
-                self.resolve_memory_request(request, task="text_to_image")
-                return GeneratedAsset(media_type="image", data=PNG, mime_type="image/png")
-
-            edit_image = generate_video = image_to_video = generate_angles = generate_image
-
-        state = self._state(Backend())
-        snap = self._wait(state, state.start_image_generation_job({"prompt": "fox", "memory_mode": "lowest"}))
-        self.assertEqual(snap["state"], "failed")
-        self.assertIn("memory_mode='lowest'", snap["error"])
-        with self.assertRaises(CapabilityNotSupportedError):
-            state.start_image_generation_job({"prompt": "fox", "soundscape": "wind"})
-        with self.assertRaisesRegex(ValueError, "memory_mode"):
-            state.start_video_generation_job({"prompt": "fox", "memory_mode": "low", "extra": {"memory_mode": "lowest"}})
-
-    def test_model_load_refuses_memory_fields_instead_of_dropping_them(self):
-        from abstractvision.playground_server import PlaygroundServerConfig, PlaygroundState, _make_handler
-
-        server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(PlaygroundState(PlaygroundServerConfig(default_model_id=""))))
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        self.addCleanup(server.server_close)
-        self.addCleanup(server.shutdown)
-        body = json.dumps({"model_id": "mlx-gen/stand-in/h3", "memory_mode": "low"}).encode("utf-8")
-        req = Request(f"http://127.0.0.1:{server.server_address[1]}/v1/vision/model/load", data=body, method="POST")
-        with self.assertRaises(HTTPError) as ctx:
-            urlopen(req, timeout=10)
-        self.assertEqual(ctx.exception.code, 400)
-        self.assertIn("memory_mode", json.loads(ctx.exception.read().decode("utf-8"))["error"]["message"])
 
 
 if __name__ == "__main__":

@@ -47,26 +47,26 @@ except for the changes listed below.
   - CLI: `--soundscape`, `--music`, `--no-audio` and `--audio-shift` on `t2v` and `i2v`.
 - **`memory_mode` on every generation request**: `default`, `low` or `lowest`, as a request field, a
   `VisionManager` keyword (batches included), `--memory-mode` on `t2i`, `i2i`, `upscale`, `t2v` and `i2v`, an
-  AbstractCore plugin keyword, `extra["memory_mode"]`, a playground request field and a
-  `make_vision_tools(..., memory_mode=...)` argument. `ABSTRACTVISION_MEMORY_MODE` sets a process default for
-  requests that name none.
+  AbstractCore plugin keyword, `extra["memory_mode"]` and a `make_vision_tools(..., memory_mode=...)` argument.
+  `ABSTRACTVISION_MEMORY_MODE` sets a process default for requests that name none.
   - MLX-Gen: `low` is MLX-Gen's low-RAM mode as each route's `mlxgen` command applies `--low-ram`, with a 1 GB MLX
     cache from before the model loads. Image and edit routes free the text encoders and the transformer, Wan routes
     clear the cache every step and release the denoisers before the decode, SeedVR2 sets the cache limit only, and
     MiniMax-H3 frees the transformer before the decode. `lowest` adds transformer block streaming; it is accepted
     for MiniMax-H3 and refused on every other current catalog model.
   - Diffusers on CUDA: `low` and `lowest` run with model and sequential CPU offload; a request only raises the
-    configured `cpu_offload`, never lowers it. stable-diffusion.cpp: `low` offloads the model parameters to the CPU.
+    configured `cpu_offload`, never lowers it, and every result records the mode in `metadata["memory_mode"]`.
+    stable-diffusion.cpp: `low` offloads the model parameters to the CPU, and its results record the mode too.
     OpenAI-compatible: the modes the remote lists for the model (see below), else `default` only.
   - A mode named on a request that the backend cannot honour raises `CapabilityNotSupportedError` before any model
     loads or any request is sent, in every backend; `VisionManager`, the plugin and the tools pass the value through
     (`make_vision_tools` refuses only a value that is not a memory mode). A process default the backend cannot
     honour runs as the nearest less aggressive mode the backend lists (`lowest` → `low` → `default`), with one
     warning per process.
-  - Image, edit and Wan models run in `low` are loaded again on the next request, and the AbstractCore plugin then
-    removes their loaded-model record; batches keep the model until their last item. Overlapping runs share one
+  - Image, edit and Wan models run in `low` are loaded again on the next request, and the AbstractCore plugin no
+    longer lists them as loaded; batches keep the model until their last item. Overlapping runs share one
     process-wide MLX cache limit, and MLX-Gen's default cap is restored when the last one ends.
-  - Discovery: `get_capabilities().memory_modes` and `supports_block_streaming`, `parameter_constraints["memory_mode"]`
+  - Discovery: `get_capabilities().memory_modes`, `parameter_constraints["memory_mode"]`
     on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()` (what
     that provider's backend lists for its configured model and device, without loading a model or sending a
     request).
@@ -96,10 +96,10 @@ except for the changes listed below.
   `GET {base_url}/vision/models` receives `memory_mode`, `quantize` and the soundtrack fields it advertises; a
   request with `cancel_event` runs there as a remote job, and setting the event cancels it (AbstractCore's server
   refuses such a job while another generation runs, which the backend raises as a `RuntimeError` saying so); a
-  video response's `audio` fills `GeneratedAsset.audio`, and `metadata["memory_mode_used"]` holds the mode the
-  remote ran. Any other remote refuses these fields with `CapabilityNotSupportedError` before anything is sent.
-- **Playground.** Generation and edit jobs take `memory_mode`, `quantize` and, on video, the soundtrack fields, at the
-  top level or in the extra JSON; model load refuses `memory_mode` and `quantize`, which apply per request.
+  video response's `audio` fills `GeneratedAsset.audio`, and `metadata["memory_mode"]` holds the mode the
+  remote reports it ran. Such a remote receives the request's other `extra` keys nested (an `extra` object in JSON,
+  an `extra_json` form field). Any other remote refuses these fields with `CapabilityNotSupportedError` before
+  anything is sent, and receives `extra` at the top level as before.
 - **For applications embedding AbstractVision.**
   - `cancel_event` on every request (and AbstractCore plugin keyword): MLX-Gen stops between denoising steps and
     raises the new `GenerationCancelledError`; the other backends check it before a run starts
@@ -116,6 +116,14 @@ except for the changes listed below.
     preflight for MiniMax-H3 only).
   - Importing AbstractVision and constructing a `VisionManager` write no files, set no environment variables and
     import neither AbstractCore nor an engine.
+  - `extra["memory_mode"]` is the memory mode on every backend; `extra["quantize"]` and the soundtrack keys are the
+    options only on a backend that applies them (MLX-Gen, a remote that advertises them) and pass through `extra`
+    unchanged elsewhere. A field and an `extra` value that disagree raise `ValueError`.
+  - `CapabilityNotSupportedError.field` and `.supported` name the refused request field and the values accepted
+    there, when a refusal is about one field (None otherwise); the message is unchanged.
+  - `VisionBackend.has_loaded_model()` says whether this process holds a backend's model weights now (MLX-Gen,
+    Diffusers and stable-diffusion.cpp's Python binding answer; the default, `False`, is the answer of a backend
+    that loads nothing here). The AbstractCore plugin's loaded-model listings ask it when called.
 
 ### Changed
 
@@ -137,12 +145,18 @@ except for the changes listed below.
 - An exception raised in a progress callback is logged once and no longer ends the run; stop a run with
   `cancel_event`.
 - OpenAI-compatible backend: `list_provider_models()` and a request that sets a memory, sound or `quantize` field
-  or a `cancel_event` (or runs under `ABSTRACTVISION_MEMORY_MODE`) also query `GET {base_url}/vision/models` (10 s
-  timeout, answer reused for 30 s; never for the OpenAI API or an OpenAI image model); `get_capabilities()` reads
-  the last answer without a request, and a request that sets none of them makes the same HTTP calls as before. A
-  discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: a request that needed it is
-  refused with the reason. A remote HTTP 422 with the error code `capability_not_supported` raises
-  `CapabilityNotSupportedError` with the remote's message instead of `RuntimeError`.
+  or a `cancel_event` (or runs under `ABSTRACTVISION_MEMORY_MODE`) also query
+  `GET {base_url}/vision/models` (10 s timeout, answer reused for 30 s; never for the OpenAI API or an OpenAI
+  image model); `get_capabilities()` reads the last answer without a request, and a request that sets none of
+  them and carries no `extra` makes the same HTTP calls as before. A discovery request that fails (timeout,
+  connection error, HTTP 5xx) is not kept: a request that needed it is refused with the reason. A remote HTTP 422
+  with the error code
+  `capability_not_supported` raises `CapabilityNotSupportedError` with the remote's message, `field` and
+  `supported` instead of `RuntimeError`.
+- OpenAI-compatible backend: the first request that carries `extra` (keys other than `model`) asks the remote once
+  per backend, with `GET {base_url}/vision/models`, whether it serves the vision routes; a server that does
+  receives `extra` nested (an `extra` object in JSON, an `extra_json` form field), and any other remote, or one whose
+  answer failed, receives it unchanged.
 - The `catalog` table has three more columns (`access`, `installed`, `memory_modes`).
 - `HuggingFaceAccessError` says that the repository is gated or not accessible to the account, names the licence
   when the catalog knows it, and keeps the first line of the upstream error.
@@ -153,8 +167,8 @@ except for the changes listed below.
   downloads fetch the chat-template files (`*.jinja`) the Qwen, ERNIE and Bonsai tokenizers load; both were left out.
 - MLX-Gen releases the loaded model, and clears the MLX cache, before it loads another one (another model or
   adapter set): two instances are never in memory together.
-- A failed MLX-Gen `preload()` drops the model it loaded before raising, and the AbstractCore plugin keeps no
-  loaded-model record for it.
+- A failed MLX-Gen `preload()` drops the model it loaded before raising, and the AbstractCore plugin does not list
+  it as loaded.
 - AbstractCore plugin: `control_image` and `control_strength` reach `t2i` (they were dropped).
 
 ## 0.3.36 - 2026-11-11

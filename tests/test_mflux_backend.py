@@ -3642,7 +3642,6 @@ class TestMFluxVisionBackend(unittest.TestCase):
         )
 
         self.assertEqual(tuple(capabilities.memory_modes), ("default", "low"))
-        self.assertFalse(capabilities.supports_block_streaming)
         # As `mlxgen generate --low-ram` (flux2_generate.py): the 1 GB cache is set before the
         # model loads, then one MemorySaver frees the text encoders and, for one seed, the transformer.
         self.assertEqual(
@@ -3686,7 +3685,6 @@ class TestMFluxVisionBackend(unittest.TestCase):
         )
 
         self.assertEqual(tuple(capabilities.memory_modes), ("default", "low", "lowest"))
-        self.assertTrue(capabilities.supports_block_streaming)
         self.assertIs(_FakeFlux2.last_init.get("stream_blocks"), True)
         self.assertEqual(len(_FakeMemorySaver.instances), 1)
         self.assertEqual(assets[0].metadata["memory_mode"], "lowest")
@@ -3985,10 +3983,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
             self.assertEqual(len(models), 1)
             raw = models[0].raw
             self.assertEqual(raw["parameter_defaults"]["memory_mode"], "default")
-            self.assertEqual(
-                raw["parameter_constraints"]["memory_mode"],
-                {"enum": modes, "block_streaming": block_streaming},
-            )
+            # The modes alone say what the model can do; no engine term beside them.
+            self.assertEqual(raw["parameter_constraints"]["memory_mode"], {"enum": modes})
             self.assertEqual(raw["parameters"]["constraints"]["memory_mode"]["enum"], modes)
 
 if __name__ == "__main__":

@@ -99,7 +99,12 @@ class TestMemoryModeTypes(unittest.TestCase):
                 normalize_memory_mode(value)
 
     def test_the_field_wins_then_extra_then_the_environment(self):
-        from abstractvision.types import resolve_memory_mode_with_source as resolve
+        from abstractvision.backends.base_backend import merge_request_option
+        from abstractvision.types import resolve_memory_mode_with_source
+
+        def resolve(value, extra=None):
+            # As resolve_memory_request: the field merged with `extra`, then the environment.
+            return resolve_memory_mode_with_source(merge_request_option("memory_mode", value, extra or {}))
 
         with patch.dict("os.environ", NO_ENV):
             self.assertEqual(resolve(None), ("default", False))
@@ -463,16 +468,14 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
         backend._pipelines["t2i"] = offloaded
 
         # The configured placement (or a higher one) serves default and low requests as loaded.
-        for floor in ("", "model"):
-            backend._offload_floor = floor
-            self.assertIs(backend._get_or_load_pipeline("t2i"), offloaded)
+        for mode in ("default", "low"):
+            self.assertIs(backend._get_or_load_pipeline("t2i", memory_mode=mode), offloaded)
         # lowest needs sequential offload: the pipeline is dropped and loaded again.
-        backend._offload_floor = "sequential"
         with patch.object(hd, "_lazy_import_diffusers", side_effect=RuntimeError("reload")), patch.object(
             hd, "_release_pipeline_adapters"
         ) as released:
             with self.assertRaisesRegex(RuntimeError, "reload"):
-                backend._get_or_load_pipeline("t2i")
+                backend._get_or_load_pipeline("t2i", memory_mode="lowest")
         self.assertNotIn("t2i", backend._pipelines)
         released.assert_called_once_with(offloaded)
         self.assertEqual(hd._MEMORY_MODE_OFFLOAD_FLOOR, {"default": "", "low": "model", "lowest": "sequential"})

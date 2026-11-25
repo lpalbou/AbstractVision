@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from .errors import AbstractVisionError, CapabilityNotSupportedError
+from .errors import AbstractVisionError
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_cache import (
     cached_hf_model_sources,
@@ -354,50 +354,9 @@ def _asset_to_image_response(
 def _request_kwargs(payload: Dict[str, Any], *, known: set) -> Dict[str, Any]:
     extra = _parse_extra_json(payload.get("extra"))
     for k, v in payload.items():
-        if k not in known and k not in _REQUEST_OPTION_FIELDS and v is not None:
+        if k not in known and v is not None:
             extra[k] = v
     return extra
-
-
-# Typed request fields read from the top level of a request or from its `extra`; the soundtrack
-# fields exist on video requests only.
-_REQUEST_OPTION_FIELDS = ("memory_mode", "quantize", "soundscape", "music", "generate_audio", "audio_shift")
-_VIDEO_ONLY_OPTION_FIELDS = {"soundscape", "music", "generate_audio", "audio_shift"}
-
-
-def _option_value(name: str, raw: Any) -> Any:
-    if name in {"memory_mode", "soundscape", "music"}:
-        return str(raw)
-    if name == "quantize":
-        return None if str(raw).strip().lower() == "none" else _to_int(raw)
-    if name == "generate_audio":
-        if isinstance(raw, bool):
-            return raw
-        text = str(raw).strip().lower()
-        if text not in {"true", "false", "1", "0"}:
-            raise ValueError(f"generate_audio must be a boolean (got {raw!r})")
-        return text in {"true", "1"}
-    return _to_float(raw)
-
-
-def _request_options(payload: Dict[str, Any], extra: Dict[str, Any], *, video: bool) -> Dict[str, Any]:
-    """`memory_mode`, `quantize` and the soundtrack fields, typed for the request (and removed from `extra`).
-
-    The backend checks them like any other request field and refuses what it cannot honour.
-    """
-    out: Dict[str, Any] = {}
-    for name in _REQUEST_OPTION_FIELDS:
-        top = payload.get(name)
-        nested = extra.pop(name, None)
-        given = [_option_value(name, raw) for raw in (top, nested) if raw is not None and str(raw).strip()]
-        if not given:
-            continue
-        if len(given) == 2 and given[0] != given[1]:
-            raise ValueError(f"{name} is given at the top level and in extra with different values; pass one.")
-        if name in _VIDEO_ONLY_OPTION_FIELDS and not video:
-            raise CapabilityNotSupportedError(f"{name} applies to video requests only.")
-        out[name] = given[0]
-    return out
 
 
 @dataclass
@@ -1171,7 +1130,6 @@ class PlaygroundState:
             "seed",
             "extra",
         }
-        extra = _request_kwargs(payload, known=known)
         request = ImageGenerationRequest(
             prompt=prompt,
             negative_prompt=(
@@ -1182,8 +1140,7 @@ class PlaygroundState:
             steps=_to_int(payload.get("steps")),
             guidance_scale=_to_float(payload.get("guidance_scale")),
             seed=_to_int(payload.get("seed")),
-            **_request_options(payload, extra, video=False),
-            extra=extra,
+            extra=_request_kwargs(payload, known=known),
         )
         response_format = str(payload.get("response_format") or "b64_json")
         backend_snapshot: Optional[Any] = None
@@ -1236,7 +1193,6 @@ class PlaygroundState:
             "seed",
             "extra",
         }
-        extra = _request_kwargs(payload, known=known)
         request = VideoGenerationRequest(
             prompt=prompt,
             negative_prompt=(
@@ -1250,8 +1206,7 @@ class PlaygroundState:
             guidance_scale=_to_float(payload.get("guidance_scale")),
             guidance_2=_to_float(payload.get("guidance_2")),
             seed=_to_int(payload.get("seed")),
-            **_request_options(payload, extra, video=True),
-            extra=extra,
+            extra=_request_kwargs(payload, known=known),
         )
         response_format = str(payload.get("response_format") or "b64_json")
         backend_snapshot: Optional[Any] = None
@@ -1310,7 +1265,6 @@ class PlaygroundState:
             steps=_to_int(fields.get("steps")),
             guidance_scale=_to_float(fields.get("guidance_scale")),
             seed=_to_int(fields.get("seed")),
-            **_request_options(fields, extra, video=False),
             extra=extra,
         )
         backend_snapshot: Optional[Any] = None
@@ -1517,13 +1471,6 @@ def _make_handler(state: PlaygroundState) -> type[BaseHTTPRequestHandler]:
                     payload = _parse_json_bytes(body)
                     model_id = str(payload.get("model_id") or payload.get("model") or "").strip()
                     unload_first = bool(payload.get("unload_first"))
-                    # The playground applies memory_mode and quantize per request, never at load.
-                    for name, neutral in (("memory_mode", "default"), ("quantize", "none")):
-                        value = str(payload.get(name) or "").strip().lower()
-                        if value and value != neutral:
-                            raise ValueError(
-                                f"{name} is not taken by model load here; pass it with each generation request."
-                            )
                     self._send_json(200, state.load_model(model_id, unload_first=unload_first))
                     return
                 if path == "/v1/vision/model/unload":

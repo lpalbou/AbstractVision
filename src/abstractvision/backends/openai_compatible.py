@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Sequence, Set, Tuple
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from ..errors import CapabilityNotSupportedError, GenerationCancelledError
@@ -24,7 +25,13 @@ from ..types import (
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
-from .base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend, _option_is_set
+from .base_backend import (
+    OPTIONAL_REQUEST_FIELDS,
+    REQUEST_OPTION_FIELDS,
+    SOUNDTRACK_REQUEST_FIELDS,
+    VisionBackend,
+    _option_is_set,
+)
 
 _INTERNAL_PROGRESS_EXTRA_KEYS = {
     "on_progress",
@@ -40,7 +47,6 @@ _INTERNAL_PROGRESS_EXTRA_KEYS = {
 # without that route the remote is a plain OpenAI image endpoint and gets none of them.
 _VISION_MODELS_PATH = "/vision/models"
 _VISION_JOBS_PATH = "/vision/jobs"
-_AUDIO_FIELDS = ("soundscape", "music", "generate_audio", "audio_shift")
 _VIDEO_TASKS = {"text_to_video", "image_to_video"}
 # How long a GET /vision/models answer is reused, the longest it may take, and the job poll period.
 _DISCOVERY_TTL_S = 30.0
@@ -123,7 +129,12 @@ def _http_error(e: HTTPError) -> Exception:
     except (ValueError, AttributeError):
         err = None
     if isinstance(err, dict) and err.get("code") == "capability_not_supported":
-        return CapabilityNotSupportedError(str(err.get("message") or "The remote refused the request."))
+        field, supported = err.get("field"), err.get("supported")
+        return CapabilityNotSupportedError(
+            str(err.get("message") or "The remote refused the request."),
+            field=str(field) if field is not None else None,
+            supported=supported if isinstance(supported, list) else None,
+        )
     return RuntimeError(_format_http_error(e, body))
 
 
@@ -197,8 +208,12 @@ def _upstream_model_id(model_id: Optional[str]) -> str:
     return model
 
 
-def _looks_like_openai_api(base_url: str) -> bool:
-    return "api.openai.com" in str(base_url or "").lower()
+def looks_like_openai_api(base_url: Optional[str]) -> bool:
+    """Whether `base_url` is the OpenAI API: its parsed host, never a substring of the URL."""
+    try:
+        return urlsplit(str(base_url or "").strip()).hostname == "api.openai.com"
+    except ValueError:
+        return False
 
 
 def _normalise_catalog_token(value: str) -> str:
@@ -413,6 +428,12 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         self._catalog_at: Optional[float] = None
         # Why the last GET /vision/models failed (timeout, connection error, 5xx); None after an answer.
         self._discovery_failure: Optional[str] = None
+        # Whether the remote serves the vision discovery route (AbstractCore's server): learned from
+        # the first definite answer and kept, unlike the catalog's contents. None until then.
+        self._serves_vision_routes: Optional[bool] = None
+        # Whether GET /vision/models was attempted: a request carrying only `extra` asks at most once,
+        # even when that attempt failed.
+        self._vision_routes_asked = False
 
     def get_capabilities(self) -> VisionBackendCapabilities:
         tasks = {"text_to_image", "image_to_image"}
@@ -448,7 +469,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             return frozenset()
         options: Set[str] = {"quantize"}
         if entry.get("supports_audio") and (task is None or str(task) in _VIDEO_TASKS):
-            options.update(str(name) for name in entry.get("audio_fields") or () if name in _AUDIO_FIELDS)
+            audio_fields = entry.get("audio_fields") or ()
+            options.update(str(name) for name in audio_fields if name in SOUNDTRACK_REQUEST_FIELDS)
         return frozenset(options)
 
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
@@ -458,7 +480,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         if not isinstance(data, list):
             raise ValueError("Invalid response: expected JSON object with a data list")
 
-        openai_api = _looks_like_openai_api(self._cfg.base_url)
+        openai_api = looks_like_openai_api(self._cfg.base_url)
         provider_name = "openai" if openai_api else "openai-compatible"
         models: List[ProviderModelInfo] = []
         for item in data:
@@ -516,12 +538,13 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         error, 5xx) keeps the previous answer, records why in `_discovery_failure`, and is made
         again by the next request that needs it.
         """
-        if _looks_like_openai_api(self._cfg.base_url) or _model_family(self._cfg.model_id):
+        if looks_like_openai_api(self._cfg.base_url) or _model_family(self._cfg.model_id):
             return None
         with self._catalog_lock:
             fresh = self._catalog_at is not None and time.monotonic() - self._catalog_at < _DISCOVERY_TTL_S
             if fresh or not refresh:
                 return self._catalog
+            self._vision_routes_asked = True
         timeout = self._control_timeout()
         try:
             answer = self._get_json(
@@ -539,6 +562,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             answer = {}
         catalog = answer if isinstance(answer.get("models"), list) else None
         with self._catalog_lock:
+            if self._serves_vision_routes is None:
+                self._serves_vision_routes = catalog is not None
             self._catalog = catalog
             self._catalog_at = time.monotonic()
             self._discovery_failure = None
@@ -554,30 +579,59 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             return f"GET {_VISION_MODELS_PATH} failed, so what the remote takes is unknown: {failure}"
         return f"the remote does not advertise them (no memory_modes for this model in GET {_VISION_MODELS_PATH})"
 
-    @staticmethod
-    def _extra_fields(request: Any) -> List[str]:
-        extra = getattr(request, "extra", None)
-        return [name for name in OPTIONAL_REQUEST_FIELDS if isinstance(extra, dict) and name in extra]
+    def _with_extra(self, body: Dict[str, Any], extra: Any, *, form: bool) -> Dict[str, Any]:
+        """`body` (a JSON payload or form fields) with the request's `extra`; every body gets it here.
+
+        A remote known to serve the vision discovery route (AbstractCore's server, whose bodies
+        refuse unknown top-level keys) gets `extra` nested: an `extra` object in JSON, an
+        `extra_json` form field. Any other remote, and one whose kind stayed unknown (its
+        discovery failed), gets the keys at the top level (on a form as strings, None dropped),
+        as 0.3.36 sent them. `extra["model"]` selects the model on both.
+        """
+        upstream = _upstream_extra(extra)
+        out = dict(body)
+        if not self._serves_vision_routes:
+            if form:
+                upstream = {key: str(value) for key, value in upstream.items() if value is not None}
+            out.update(upstream)
+        else:
+            if upstream.get("model") is not None:
+                out["model"] = str(upstream["model"]) if form else upstream["model"]
+            upstream.pop("model", None)
+            if upstream:
+                out["extra_json" if form else "extra"] = json.dumps(upstream) if form else upstream
+        if out.get("model") is not None:
+            out["model"] = _upstream_model_id(out.get("model"))
+        return out
 
     def _prepare(self, request: Any, *, task: str) -> Tuple[Any, Dict[str, Any], bool]:
         """Check the request against what the remote takes.
 
         Returns the request, the fields to send and whether to run it as a remote job (a request
-        with a `cancel_event`, on a remote that advertises the vision routes). `memory_mode` is sent
-        when the request (or $ABSTRACTVISION_MEMORY_MODE) names one, the other fields when set; all
-        only to a remote that advertises them. The same keys in `extra` travel with `extra` and are
-        refused for any other remote.
+        with a `cancel_event`, on a remote that advertises the vision routes). The options are
+        resolved from their fields and `extra` by `resolve_memory_request`; `memory_mode` is sent
+        when the request (or $ABSTRACTVISION_MEMORY_MODE) names one, the other options when set,
+        all only to a remote that advertises them.
         """
         extra = getattr(request, "extra", None)
-        named = getattr(request, "memory_mode", None) or (extra or {}).get("memory_mode")
+        extra = extra if isinstance(extra, dict) else {}
+        named = _option_is_set(getattr(request, "memory_mode", None)) or _option_is_set(extra.get("memory_mode"))
         needs_remote_entry = (
             getattr(request, "cancel_event", None) is not None
-            or _option_is_set(named)
             or bool(str(os.environ.get(MEMORY_MODE_ENV_VAR) or "").strip())
-            or bool(self._extra_fields(request))
-            or any(_option_is_set(getattr(request, name, None)) for name in OPTIONAL_REQUEST_FIELDS)
+            or any(_option_is_set(getattr(request, name, None)) for name in REQUEST_OPTION_FIELDS)
+            # `extra["memory_mode"]` is the option on every backend; the other `extra` keys are the
+            # option only for a remote that advertises it, so they never ask on their own.
+            or _option_is_set(extra.get("memory_mode"))
         )
-        if needs_remote_entry:
+        # The body shape of `extra` depends on the remote's kind: the first request that carries
+        # `extra` asks once per backend, a failed attempt included; a later one uses what is known.
+        needs_remote_kind = (
+            bool(set(_upstream_extra(extra)) - {"model"})
+            and self._serves_vision_routes is None
+            and not self._vision_routes_asked
+        )
+        if needs_remote_entry or needs_remote_kind:
             self._remote_entry(refresh=True)
         advertised = self._remote_entry(refresh=False) is not None
         try:
@@ -585,24 +639,18 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         except CapabilityNotSupportedError as e:
             if advertised or self._discovery_failure is None:
                 raise
-            raise CapabilityNotSupportedError(f"{e} {self._unadvertised_reason()}.") from e
+            raise CapabilityNotSupportedError(
+                f"{e} {self._unadvertised_reason()}.", field=e.field, supported=e.supported
+            ) from e
         if not advertised:
-            in_extra = self._extra_fields(request)
-            if in_extra:
-                raise CapabilityNotSupportedError(
-                    f"{type(self).__name__} does not support {', '.join(in_extra)}: {self._unadvertised_reason()}."
-                )
             return request, {}, False
         fields: Dict[str, Any] = {}
-        if _option_is_set(named) or mode != MEMORY_MODE_DEFAULT:
+        if named or mode != MEMORY_MODE_DEFAULT:
             fields["memory_mode"] = mode
         for name in OPTIONAL_REQUEST_FIELDS:
             value = getattr(request, name, None)
-            if not _option_is_set(value):
-                continue
-            if name in (request.extra or {}) and request.extra[name] != value:
-                raise ValueError(f"{name}={value!r} and extra[{name!r}]={request.extra[name]!r} disagree; pass one.")
-            fields[name] = value
+            if _option_is_set(value):
+                fields[name] = value
         return request, fields, getattr(request, "cancel_event", None) is not None
 
     def _send(
@@ -770,9 +818,11 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         else:
             raise ValueError("Invalid response: missing data[0].b64_json or data[0].url")
         media_type = "video" if mime.startswith("video/") else "image"
+        # The mode the remote reports it ran with, under the key every backend uses; absent when
+        # the remote does not say (a plain OpenAI endpoint).
         mode_used = resp.get("memory_mode_used")
         if isinstance(mode_used, str) and mode_used:
-            metadata["memory_mode_used"] = mode_used
+            metadata["memory_mode"] = mode_used
         audio = None
         if media_type == "video":
             audio = _audio_track(
@@ -785,10 +835,12 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         request, remote_fields, as_job = self._prepare(request, task="text_to_image")
         if request.control_image is not None:
             raise CapabilityNotSupportedError(
-                "OpenAI-compatible backend does not support structured control images for text-to-image."
+                "OpenAI-compatible backend does not support structured control images for text-to-image.",
+                field="control_image",
+                supported=(),
             )
         family = _model_family(self._cfg.model_id)
-        openai_api = _looks_like_openai_api(self._cfg.base_url) or family is not None
+        openai_api = looks_like_openai_api(self._cfg.base_url) or family is not None
         payload: Dict[str, Any] = {
             "prompt": request.prompt,
             "n": 1,
@@ -815,9 +867,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             payload["steps"] = int(request.steps)
         if request.guidance_scale is not None and not openai_api:
             payload["guidance_scale"] = float(request.guidance_scale)
-        payload.update(_upstream_extra(request.extra))
-        if payload.get("model") is not None:
-            payload["model"] = _upstream_model_id(payload.get("model"))
+        payload = self._with_extra(payload, request.extra, form=False)
         if family == "gpt-image":
             payload.pop("response_format", None)
         payload.update(remote_fields)
@@ -828,7 +878,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
     def edit_image(self, request: ImageEditRequest) -> GeneratedAsset:
         request, remote_fields, as_job = self._prepare(request, task="image_to_image")
         family = _model_family(self._cfg.model_id)
-        openai_api = _looks_like_openai_api(self._cfg.base_url) or family is not None
+        openai_api = looks_like_openai_api(self._cfg.base_url) or family is not None
         # OpenAI-style image edits use multipart form data.
         fields: Dict[str, str] = {"prompt": request.prompt}
         if self._cfg.model_id:
@@ -850,12 +900,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             fields["steps"] = str(int(request.steps))
         if request.guidance_scale is not None and not openai_api:
             fields["guidance_scale"] = str(float(request.guidance_scale))
-        for k, v in _upstream_extra(request.extra).items():
-            if v is None:
-                continue
-            fields[str(k)] = str(v)
-        if fields.get("model") is not None:
-            fields["model"] = _upstream_model_id(fields.get("model"))
+        fields = self._with_extra(fields, request.extra, form=True)
         fields.update({name: _form_value(value) for name, value in remote_fields.items()})
 
         resp = self._send(self._cfg.image_edits_path, "images/edits", request, as_job, fields=fields, files=files)
@@ -891,9 +936,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             payload["guidance_scale"] = float(request.guidance_scale)
         if request.guidance_2 is not None:
             payload["guidance_2"] = float(request.guidance_2)
-        payload.update(_upstream_extra(request.extra))
-        if payload.get("model") is not None:
-            payload["model"] = _upstream_model_id(payload.get("model"))
+        payload = self._with_extra(payload, request.extra, form=False)
         payload.update(remote_fields)
         resp = self._send(str(self._cfg.text_to_video_path), "videos/generations", request, as_job, payload=payload)
         return self._parse_media(resp, fallback_mime="video/mp4")
@@ -929,9 +972,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                 payload["guidance_scale"] = float(request.guidance_scale)
             if request.guidance_2 is not None:
                 payload["guidance_2"] = float(request.guidance_2)
-            payload.update(_upstream_extra(request.extra))
-            if payload.get("model") is not None:
-                payload["model"] = _upstream_model_id(payload.get("model"))
+            payload = self._with_extra(payload, request.extra, form=False)
             payload.update(remote_fields)
             resp = self._send(str(self._cfg.image_to_video_path), "videos/edits", request, as_job, payload=payload)
             return self._parse_media(resp, fallback_mime="video/mp4")
@@ -959,12 +1000,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             fields["guidance_scale"] = str(float(request.guidance_scale))
         if request.guidance_2 is not None:
             fields["guidance_2"] = str(float(request.guidance_2))
-        for k, v in _upstream_extra(request.extra).items():
-            if v is None:
-                continue
-            fields[str(k)] = str(v)
-        if fields.get("model") is not None:
-            fields["model"] = _upstream_model_id(fields.get("model"))
+        fields = self._with_extra(fields, request.extra, form=True)
         fields.update({name: _form_value(value) for name, value in remote_fields.items()})
 
         files = {"image": ("image.png", bytes(request.image), "image/png")}

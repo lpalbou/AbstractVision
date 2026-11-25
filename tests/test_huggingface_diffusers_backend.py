@@ -1220,6 +1220,8 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
             asset.metadata["applied_lora_adapters"][0]["adapter_name"],
             "style",
         )
+        # The mode the run ran with, "default" included.
+        self.assertEqual(asset.metadata["memory_mode"], "default")
 
     def test_generate_image_applies_rapid_aio_transformer_override(self):
         from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersBackendConfig, HuggingFaceDiffusersVisionBackend

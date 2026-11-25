@@ -68,7 +68,7 @@ from ..types import (
     VideoGenerationRequest,
     VisionBackendCapabilities,
 )
-from .base_backend import VisionBackend, raise_if_cancelled
+from .base_backend import SOUNDTRACK_REQUEST_FIELDS, VisionBackend, raise_if_cancelled
 
 logger = logging.getLogger(__name__)
 
@@ -981,7 +981,6 @@ def _h3_parameter_metadata(row: Mapping[str, Any], *, block_streaming: bool) -> 
     constraints: Dict[str, Any] = {
         "memory_mode": {
             "enum": list(MEMORY_MODES if block_streaming else (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW)),
-            "block_streaming": bool(block_streaming),
         },
         "width": {"multiple_of": multiple},
         "height": {"multiple_of": multiple},
@@ -1028,7 +1027,6 @@ def _mflux_parameter_metadata(
     constraints: Dict[str, Any] = {
         "memory_mode": {
             "enum": list(MEMORY_MODES if streams else (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW)),
-            "block_streaming": streams,
         },
     }
     if model_def.default_guidance is not None:
@@ -2793,7 +2791,7 @@ class MFluxVisionBackend(VisionBackend):
     def supported_request_options(self, task: Optional[str] = None) -> FrozenSet[str]:
         options = {"quantize"}
         if self._configured_family() == "minimax-h3":
-            options |= {"soundscape", "music", "generate_audio", "audio_shift"}
+            options |= set(SOUNDTRACK_REQUEST_FIELDS)
         return frozenset(options)
 
     def get_capabilities(self) -> VisionBackendCapabilities:
@@ -2811,9 +2809,6 @@ class MFluxVisionBackend(VisionBackend):
                 route_field="supports_control_image",
             ),
             memory_modes=self.supported_memory_modes(),
-            supports_block_streaming=(
-                _route_rows_support_block_streaming(routes) if routes else None
-            ),
             quantize_bits=self.quantize_bits(),
             cancellation="step",
             generates_audio=(

@@ -336,7 +336,7 @@ asset_or_ref = vm.generate_video(
 
 | Backend | `low` | `lowest` |
 | --- | --- | --- |
-| MLX-Gen, image and edit routes | MLX-Gen low-RAM mode, as `mlxgen generate --low-ram`: a 1 GB MLX cache from before the model loads to the end of the run, and mlx-gen's `MemorySaver`, which tiles the VAE decode, frees the text encoders before the denoising loop and the transformer after it. | `low` plus transformer block streaming (`--stream-blocks`), on a model whose MLX-Gen routes publish `supports_block_streaming`: accepted for MiniMax-H3, refused on every other current catalog model. |
+| MLX-Gen, image and edit routes | MLX-Gen low-RAM mode, as `mlxgen generate --low-ram`: a 1 GB MLX cache from before the model loads to the end of the run, and mlx-gen's `MemorySaver`, which tiles the VAE decode, frees the text encoders before the denoising loop and the transformer after it. | `low` plus transformer block streaming (`--stream-blocks`), on a model whose MLX-Gen routes stream transformer blocks: accepted for MiniMax-H3, refused on every other current catalog model. |
 | MLX-Gen, Wan video | As `mlxgen generate --low-ram` on one seed: the 1 GB cache, the MLX cache cleared after every step and transformer block, the denoisers released before the decode and, on the A14B models, the inactive expert released. | Refused on every current Wan route. |
 | MLX-Gen, MiniMax-H3 | The 1 GB cache and the transformer freed before the decode (`release_transformer=True`); the model stays loaded. | `low` plus block streaming (`stream_blocks=True`). Refused with load-time `quantize`, and with an adapter that trains the AdaLN projections. |
 | MLX-Gen, SeedVR2 upscale | As `mlxgen upscale --low-ram` on images: the 1 GB cache only. SeedVR2 keeps its own tiling and the loaded model. | Refused (SeedVR2 has no block streaming). |
@@ -350,7 +350,9 @@ model and device raises `CapabilityNotSupportedError` before any model loads or
 any request is sent,
 whether the call comes through `VisionManager`, the AbstractCore plugin or a
 direct backend call. `extra={"memory_mode": ...}` is read the same way as the
-keyword; a keyword and an `extra` value that disagree raise `ValueError`.
+keyword (on a backend that applies `quantize` or the soundtrack fields, so are
+those keys of `extra`; elsewhere they pass through `extra` unchanged); a keyword
+and an `extra` value that disagree raise `ValueError`.
 
 Placement is fixed when a model loads, so a request may only raise it. On
 Diffusers, the CPU offload that runs is the higher of the configured
@@ -373,13 +375,14 @@ whose model, adapters, `quantize` or block streaming differ from the loaded
 instance's releases it, and clears the MLX cache, before the new one loads.
 
 Discovery: `backend.get_capabilities().memory_modes` lists the modes a backend
-can honour for its configured model and device, and `supports_block_streaming`
-says whether the configured MLX-Gen model streams blocks. Each MLX-Gen provider
-catalog entry carries `raw["parameter_constraints"]["memory_mode"]` =
-`{"enum": [...], "block_streaming": <bool>}`, where `enum` holds the modes that
-model can honour. A run with a mode other than `default` records `memory_mode`
-in the result metadata (MLX-Gen also records `low_ram` and `stream_blocks`;
-stable-diffusion.cpp records `offload_to_cpu`; Diffusers records `cpu_offload`).
+can honour for its configured model and device. Each MLX-Gen provider catalog
+entry carries `raw["parameter_constraints"]["memory_mode"]` = `{"enum": [...]}`,
+where `enum` holds the modes that model can honour. The result metadata records
+the mode a run used as `memory_mode`: Diffusers and stable-diffusion.cpp on
+every run, MLX-Gen on a run with a mode other than `default` (MLX-Gen also
+records `low_ram` and `stream_blocks`; stable-diffusion.cpp records
+`offload_to_cpu`; Diffusers records `cpu_offload`), and the OpenAI-compatible
+backend when the remote reports it.
 
 ## Video with sound (MiniMax-H3)
 
@@ -529,7 +532,7 @@ What an application embedding `VisionManager` can rely on:
   for a run (`image_path`, `video_path`, `audio_sidecar_path`) are left out.
 - **Route rows.** `vm.describe_routes(model=None, task=None)` returns MLX-Gen's
   capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,
-  audio, `supports_block_streaming`, `measured_runs`, quantization. Other
+  audio, memory (`measured_runs`, peaks), quantization. Other
   backends return `[]`.
 - **Progress.** `on_progress(event)` receives `VideoProgressEvent` with `phase`,
   `step`, `total_steps` (and `frame`, `total_frames` on video) as MLX-Gen emits

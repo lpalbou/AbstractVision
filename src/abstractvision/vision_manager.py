@@ -196,7 +196,9 @@ class VisionManager:
         if control_image is not None and caps is not None and caps.supports_control_image is False:
             raise CapabilityNotSupportedError(
                 "Backend does not support structured control images for text-to-image. "
-                "Inspect the selected route with `abstractvision show-model <model-id>`."
+                "Inspect the selected route with `abstractvision show-model <model-id>`.",
+                field="control_image",
+                supported=(),
             )
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageGenerationRequest(prompt=prompt, **kwargs)
@@ -240,7 +242,9 @@ class VisionManager:
         if mask is not None and caps is not None and caps.supports_mask is False:
             raise CapabilityNotSupportedError(
                 "Backend does not support masked image edits (mask parameter). "
-                "Inspect the selected route with `abstractvision show-model <model-id>`."
+                "Inspect the selected route with `abstractvision show-model <model-id>`.",
+                field="mask",
+                supported=(),
             )
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageEditRequest(prompt=prompt, image=image, **kwargs)
