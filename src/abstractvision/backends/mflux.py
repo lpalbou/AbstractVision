@@ -272,6 +272,51 @@ def _route_rows_support_block_streaming(
     )
 
 
+@dataclass(frozen=True)
+class MlxGenMemoryFlags:
+    """How one memory_mode runs on MLX-Gen: the engine's `low_ram` and `stream_blocks` flags, as its
+    measured runs record them, and the name mlx-gen's own tables give the mode (`MINIMAX_H3_MODES`)."""
+
+    low_ram: bool
+    stream_blocks: bool
+    engine_mode: str
+
+
+# Each memory_mode as MLX-Gen runs it; `mlx_gen_memory_mode_of_run` reads it the other way.
+MLX_GEN_MEMORY_MODE_FLAGS: Dict[str, MlxGenMemoryFlags] = {
+    MEMORY_MODE_DEFAULT: MlxGenMemoryFlags(low_ram=False, stream_blocks=False, engine_mode="default"),
+    MEMORY_MODE_LOW: MlxGenMemoryFlags(low_ram=True, stream_blocks=False, engine_mode="low_ram"),
+    MEMORY_MODE_LOWEST: MlxGenMemoryFlags(low_ram=True, stream_blocks=True, engine_mode="stream_blocks"),
+}
+
+
+def mlx_gen_memory_mode_of_run(run: Mapping[str, Any]) -> Optional[str]:
+    """The memory_mode of an MLX-Gen measured run (a `measured_runs` entry), from its flags; None
+    when its flags are those of no mode."""
+    flags = (bool(run.get("low_ram")), bool(run.get("stream_blocks")))
+    for mode, mode_flags in MLX_GEN_MEMORY_MODE_FLAGS.items():
+        if (mode_flags.low_ram, mode_flags.stream_blocks) == flags:
+            return mode
+    return None
+
+
+def mlx_gen_memory_modes(*, family: Optional[str], streams_blocks: bool) -> Tuple[str, ...]:
+    """The memory_mode values an MLX-Gen route of `family` honours.
+
+    Every route runs mlx-gen's low-RAM mode ("low"). "lowest" adds block streaming: only on a route
+    whose rows publish `supports_block_streaming` (`streams_blocks`), and never on SeedVR2, whose
+    constructor takes no stream_blocks."""
+    if streams_blocks and family != "seedvr2-upscale":
+        return MEMORY_MODES
+    return (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW)
+
+
+def mlx_gen_route_task(row: Mapping[str, Any]) -> str:
+    """The AbstractVision task (`text_to_video`) of an MLX-Gen capability row (`public_task`
+    `text-to-video`); "" for a row without one."""
+    return str(row.get("public_task") or "").strip().replace("-", "_")
+
+
 def _lazy_import_mlx_gen_memory_saver() -> Any:
     try:
         from mflux.callbacks.instances.memory_saver import MemorySaver  # type: ignore
@@ -480,7 +525,8 @@ class _MFluxModelDef:
     key: str
     config_method: str
     family: str
-    default_steps: int
+    # None where the engine's capability rows decide (MiniMax-H3).
+    default_steps: Optional[int]
     default_guidance: Optional[float]
     supports_negative_prompt: bool = False
     supports_guidance_override: bool = True
@@ -717,13 +763,13 @@ _MFLUX_MODELS: Dict[str, _MFluxModelDef] = {
         default_flow_shift=3.0,
     ),
     # MiniMax-H3 defaults (steps, canvas, frames, shifts) come from MLX-Gen's capability rows
-    # at run time; the numbers here are placeholders the H3 path never reads.
+    # at run time (`_h3_parameter_metadata`, `_normalize_h3_request_values`).
     **{
         key: _MFluxModelDef(
             key=key,
             config_method="",
             family="minimax-h3",
-            default_steps=0,
+            default_steps=None,
             default_guidance=None,
             supports_negative_prompt=False,
             supports_guidance_override=False,
@@ -960,7 +1006,11 @@ _MFLUX_RUNTIME_ALLOWED_TASKS: Dict[str, Tuple[str, ...]] = {
 }
 
 
-def _h3_parameter_metadata(row: Mapping[str, Any], *, block_streaming: bool) -> Dict[str, Any]:
+def _memory_mode_constraint(memory_modes: Sequence[str]) -> Dict[str, Any]:
+    return {"enum": list(memory_modes), "block_streaming": MEMORY_MODE_LOWEST in memory_modes}
+
+
+def _h3_parameter_metadata(row: Mapping[str, Any], *, memory_modes: Sequence[str]) -> Dict[str, Any]:
     # Every number comes from MLX-Gen's capability row for the entry's schedule.
     defaults: Dict[str, Any] = {
         "steps": row.get("default_steps"),
@@ -975,10 +1025,7 @@ def _h3_parameter_metadata(row: Mapping[str, Any], *, block_streaming: bool) -> 
     }
     multiple = row.get("dimension_multiple")
     constraints: Dict[str, Any] = {
-        "memory_mode": {
-            "enum": list(MEMORY_MODES if block_streaming else (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW)),
-            "block_streaming": bool(block_streaming),
-        },
+        "memory_mode": _memory_mode_constraint(memory_modes),
         "width": {"multiple_of": multiple},
         "height": {"multiple_of": multiple},
         "num_frames": {
@@ -1010,23 +1057,16 @@ def _mflux_parameter_metadata(
     block_streaming: bool = False,
     route_capabilities: Optional[Mapping[str, Sequence[Mapping[str, Any]]]] = None,
 ) -> Dict[str, Any]:
+    memory_modes = mlx_gen_memory_modes(family=model_def.family, streams_blocks=bool(block_streaming))
     if model_def.family == "minimax-h3":
         rows = [row for task_rows in (route_capabilities or {}).values() for row in task_rows]
-        row = next((r for r in rows if r.get("public_task") == "text-to-video"), rows[0] if rows else {})
-        return _h3_parameter_metadata(row, block_streaming=block_streaming)
+        row = next((r for r in rows if mlx_gen_route_task(r) == "text_to_video"), rows[0] if rows else {})
+        return _h3_parameter_metadata(row, memory_modes=memory_modes)
     defaults: Dict[str, Any] = {
         "steps": int(model_def.default_steps),
         "memory_mode": MEMORY_MODE_DEFAULT,
     }
-    # The modes this model can honour: "lowest" (block streaming) only where its MLX-Gen
-    # routes publish supports_block_streaming.
-    streams = bool(block_streaming) and model_def.family != "seedvr2-upscale"
-    constraints: Dict[str, Any] = {
-        "memory_mode": {
-            "enum": list(MEMORY_MODES if streams else (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW)),
-            "block_streaming": streams,
-        },
-    }
+    constraints: Dict[str, Any] = {"memory_mode": _memory_mode_constraint(memory_modes)}
     if model_def.default_guidance is not None:
         defaults["guidance_scale"] = float(model_def.default_guidance)
     if model_def.family == "flux2":
@@ -2403,6 +2443,35 @@ def discover_incomplete_mflux_sources(
                     continue
                 add(preset.key, f"incomplete HF cache: {label} ({_display_repo_id(repo_id)})")
     return {key: tuple(values) for key, values in out.items()}
+
+
+def mlx_gen_base_model(*selectors: Any) -> Optional[str]:
+    """The MLX-Gen base model (a `base_model` value such as `minimax-h3-turbo`) that `selectors`
+    (model ids, repo ids, names or local paths) identify, or None."""
+    return _infer_base_model(*selectors)
+
+
+def mlx_gen_schedules(*selectors: Any) -> Tuple[str, ...]:
+    """The schedules (`base_model` values) of the model family `selectors` identify; empty for none.
+
+    `resolve_mlx_gen_schedule_adapter` gives the adapter each one loads."""
+    model_def = _MFLUX_MODELS.get(str(_infer_base_model(*selectors) or ""))
+    if model_def is None:
+        return ()
+    return tuple(sorted(key for key, other in _MFLUX_MODELS.items() if other.family == model_def.family))
+
+
+def mlx_gen_package_schedule(preset: Any, base_model: Any) -> str:
+    """`base_model` as the schedule it names, when that is a schedule of the catalog package `preset`;
+    ValueError naming the package's schedules otherwise."""
+    key = _infer_base_model(base_model)
+    choices = mlx_gen_schedules(preset.repo_id, preset.upstream_repo_id, preset.key)
+    if key not in choices:
+        raise ValueError(
+            f"{base_model!r} is not a schedule of {preset.repo_id}."
+            + (f" Choose one of: {', '.join(choices)}." if choices else "")
+        )
+    return str(key)
 
 
 def _infer_base_model(*values: Any) -> Optional[str]:

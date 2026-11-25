@@ -273,6 +273,15 @@ Discovery, and where each part is visible:
   OpenAI-compatible remote, the modes of its last discovery answer, else
   `default`), without loading a model or sending a request. It is a Python call
   only: AbstractCore's HTTP server does not call `available_providers`.
+- `llm.vision.memory_peaks(model, base_model=None)` returns MLX-Gen's measured
+  memory peaks for one catalog package as JSON rows `{task, memory_mode, width,
+  height, frames, steps, peak_bytes, machine_total_ram_bytes}`, with `task` in
+  AbstractVision's form (`text_to_video`) and `memory_mode` one of its modes.
+  The rows are already kept to that package's stored width and, when
+  `base_model` names one of its schedules, to that schedule's rows, so a host
+  relays them as they are. The list is empty when the model is not a prepared
+  MLX-Gen package of the catalog or when mlx-gen is not installed or publishes
+  nothing, and the call builds no model and reads no weights.
 - With an `artifact_store`, the stored artifact's metadata records `memory_mode`
   (and `low_ram` / `stream_blocks` on MLX-Gen); without one the plugin returns
   bytes only.

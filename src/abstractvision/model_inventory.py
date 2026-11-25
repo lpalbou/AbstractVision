@@ -2,9 +2,10 @@
 
 `preset_status` answers three questions for one preset without touching the network or loading
 weights: what the local Hugging Face cache holds of it (`local_cache_state`), which `memory_mode`
-values does the engine that serves it honour on this host, and, for MLX-Gen models whose capability
-rows publish measured runs, what peak memory each mode reached and the smallest Mac it was tested on.
-Every memory figure comes from the installed mlx-gen; nothing is copied into AbstractVision.
+values does the engine that serves it honour on this host, and, for MLX-Gen packages whose capability
+rows publish measured runs, what peak memory each mode reached (`memory_peaks`) and the smallest Mac
+it was tested on. Every memory figure comes from the installed mlx-gen; nothing is copied into
+AbstractVision.
 """
 
 from __future__ import annotations
@@ -29,26 +30,13 @@ from .model_cache import (
 )
 from .model_downloads import (
     VisionModelDownloadPreset,
-    _model_index_components,
-    _preset_download_patterns,
-    _snapshot_requirements_for_preset,
+    catalog_download_preset,
     format_bytes,
     local_model_profile,
+    model_index_components,
+    preset_download_patterns,
+    snapshot_requirements_for_preset,
 )
-from .types import MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW, MEMORY_MODE_LOWEST
-
-# How each memory_mode runs on MLX-Gen, as the (low_ram, stream_blocks) flags of its measured runs.
-_MLX_GEN_MODE_FLAGS: Dict[str, Tuple[bool, bool]] = {
-    MEMORY_MODE_DEFAULT: (False, False),
-    MEMORY_MODE_LOW: (True, False),
-    MEMORY_MODE_LOWEST: (True, True),
-}
-# The same modes under the names mlx-gen gives them in its smallest-tested-machine table.
-_MLX_GEN_MODE_NAMES: Dict[str, str] = {
-    MEMORY_MODE_DEFAULT: "default",
-    MEMORY_MODE_LOW: "low_ram",
-    MEMORY_MODE_LOWEST: "stream_blocks",
-}
 
 
 @dataclass(frozen=True)
@@ -117,12 +105,59 @@ def preset_status(preset: VisionModelDownloadPreset) -> Dict[str, Any]:
         "snapshot_dir": str(cache.snapshot_dir) if cache.snapshot_dir is not None else None,
         "memory_modes": list(modes) if modes is not None else None,
     }
-    # mlx-gen measures its prepared packages, by width; a source snapshot is not one of them.
-    if str(preset.source) == "abstractframework-mlx-gen" and modes is not None:
-        measurements = _mlx_gen_memory_measurements(preset.repo_id, preset.quantization_bits)
-        if measurements:
-            status["memory_measurements"] = measurements
+    peaks = memory_peaks(preset.repo_id) if modes is not None else []
+    if peaks:
+        status["memory_peaks"] = peaks
+        smallest = _mlx_gen_smallest_tested_memory_gb(preset.repo_id)
+        if smallest:
+            status["smallest_tested_memory_gb"] = smallest
     return status
+
+
+def memory_peaks(repo_id: str, base_model: Optional[str] = None) -> List[Dict[str, Any]]:
+    """MLX-Gen's measured peak memory for one catalog package, per task and memory_mode.
+
+    Each row is `{task, memory_mode, width, height, frames, steps, peak_bytes,
+    machine_total_ram_bytes}`: a completed run from the `measured_runs` of the engine's capability
+    rows for the package (for the `base_model` schedule when given), at the package's stored width.
+    `peak_bytes` is the whole-process footprint; `machine_total_ram_bytes` the memory of the Mac it
+    ran on. Empty for a repository that is not an MLX-Gen package of the catalog, and when mlx-gen
+    is not installed or publishes nothing. No model is built and no weight is read. Raises
+    ValueError when `base_model` is not a schedule of the package."""
+
+    preset = catalog_download_preset(str(repo_id), target="mlx", engine="mlx-gen")
+    # mlx-gen measures its prepared packages, by width; a source snapshot is not one of them.
+    if preset is None or str(preset.source) != "abstractframework-mlx-gen":
+        return []
+    from .backends.mflux import (
+        mlx_gen_memory_mode_of_run,
+        mlx_gen_package_schedule,
+        mlx_gen_route_task,
+    )
+
+    schedule = mlx_gen_package_schedule(preset, base_model) if base_model is not None else None
+    width = _engine_quantize(preset.quantization_bits)
+    peaks: List[Dict[str, Any]] = []
+    for row in _mlx_gen_rows(preset.repo_id, schedule):
+        for run in row.get("measured_runs") or []:
+            if not isinstance(run, dict) or run.get("outcome") != "completed" or run.get("quantize") != width:
+                continue
+            mode = mlx_gen_memory_mode_of_run(run)
+            if mode is None or not isinstance(run.get("footprint_bytes"), int):
+                continue
+            peaks.append(
+                {
+                    "task": mlx_gen_route_task(row),
+                    "memory_mode": mode,
+                    "width": run.get("width"),
+                    "height": run.get("height"),
+                    "frames": run.get("frames"),
+                    "steps": run.get("steps"),
+                    "peak_bytes": run["footprint_bytes"],
+                    "machine_total_ram_bytes": run.get("machine_total_ram_bytes"),
+                }
+            )
+    return peaks
 
 
 def _snapshot_gaps(preset: VisionModelDownloadPreset, snapshot: Path) -> Tuple[str, ...]:
@@ -140,7 +175,7 @@ def _snapshot_gaps(preset: VisionModelDownloadPreset, snapshot: Path) -> Tuple[s
     ]
     if missing_components:
         gaps.append(f"model_index.json names {', '.join(missing_components)}, not in the snapshot")
-    required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
+    required_files, require_weight_files = snapshot_requirements_for_preset(preset)
     for name in required_files:
         if not (snapshot / name).is_file():
             gaps.append(f"no {name}")
@@ -159,10 +194,10 @@ def components_named_by_patterns(preset: VisionModelDownloadPreset, snapshot: Pa
     if not index.is_file():
         return []
     try:
-        components = _model_index_components(json.loads(index.read_text(encoding="utf-8")))
+        components = model_index_components(json.loads(index.read_text(encoding="utf-8")))
     except Exception:
         return []
-    allow, _ignore = _preset_download_patterns(preset)
+    allow, _ignore = preset_download_patterns(preset)
     folders = {str(p).split("/", 1)[0] for p in (allow or ()) if "/" in str(p)}
     return [name for name in components if name in folders]
 
@@ -220,53 +255,6 @@ def _engine_memory_modes(engine: str, repo_id: str) -> Optional[Tuple[str, ...]]
     return None
 
 
-def _mlx_gen_memory_measurements(repo_id: str, bits: Optional[int]) -> Dict[str, Dict[str, Any]]:
-    """Peak memory per memory_mode for one prepared package, from mlx-gen's capability rows.
-
-    Keyed by memory_mode. Each value holds `peak_bytes` (whole-process footprint), the run's
-    `width`, `height`, `frames` and `steps`, and `smallest_tested_machine_gb` when mlx-gen
-    publishes the smallest unified memory that mode completed within. The smallest measured
-    canvas is reported.
-    Empty when mlx-gen is absent or publishes no measurement for the model."""
-
-    rows = _mlx_gen_rows(str(repo_id))
-    runs: List[Dict[str, Any]] = []
-    for row in rows:
-        for run in row.get("measured_runs") or []:
-            if isinstance(run, dict) and run not in runs:
-                runs.append(run)
-    if not runs:
-        return {}
-    width = int(bits) if bits in (4, 8) else None
-    machines = _mlx_gen_smallest_tested_machines(str(repo_id))
-    out: Dict[str, Dict[str, Any]] = {}
-    for mode, (low_ram, stream_blocks) in _MLX_GEN_MODE_FLAGS.items():
-        matching = [
-            run
-            for run in runs
-            if run.get("outcome") == "completed"
-            and run.get("quantize") == width
-            and bool(run.get("low_ram")) == low_ram
-            and bool(run.get("stream_blocks")) == stream_blocks
-            and isinstance(run.get("footprint_bytes"), int)
-        ]
-        if not matching:
-            continue
-        run = min(matching, key=lambda r: (int(r.get("width") or 0) * int(r.get("height") or 0), r["footprint_bytes"]))
-        entry: Dict[str, Any] = {
-            "peak_bytes": int(run["footprint_bytes"]),
-            "width": run.get("width"),
-            "height": run.get("height"),
-            "frames": run.get("frames"),
-            "steps": run.get("steps"),
-        }
-        machine = machines.get(width, {}).get(_MLX_GEN_MODE_NAMES[mode]) if machines else None
-        if isinstance(machine, int):
-            entry["smallest_tested_machine_gb"] = machine
-        out[mode] = entry
-    return out
-
-
 @lru_cache(maxsize=None)
 def _mlx_gen_memory_modes(repo_id: str) -> Optional[Tuple[str, ...]]:
     backend = _mlx_gen_backend(repo_id)
@@ -279,39 +267,63 @@ def _mlx_gen_memory_modes(repo_id: str) -> Optional[Tuple[str, ...]]:
 
 
 @lru_cache(maxsize=None)
-def _mlx_gen_rows(repo_id: str) -> Tuple[Dict[str, Any], ...]:
-    backend = _mlx_gen_backend(repo_id)
+def _mlx_gen_rows(repo_id: str, base_model: Optional[str] = None) -> Tuple[Dict[str, Any], ...]:
+    # The rows a backend configured with this package (and schedule) plans with.
+    backend = _mlx_gen_backend(repo_id, base_model)
     if backend is None:
         return ()
     try:
-        return tuple(row for row in backend.describe_routes(model=repo_id) if isinstance(row, dict))
+        return tuple(row for row in backend.describe_routes() if isinstance(row, dict))
     except Exception:
         return ()
 
 
-def _mlx_gen_backend(repo_id: str) -> Any:
+def _mlx_gen_backend(repo_id: str, base_model: Optional[str] = None) -> Any:
     if local_model_profile() != "apple-silicon" or importlib.util.find_spec("mflux") is None:
         return None
     try:
         from .backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
-        return MFluxVisionBackend(config=MFluxBackendConfig(model=repo_id))
+        return MFluxVisionBackend(config=MFluxBackendConfig(model=repo_id, base_model=base_model))
     except Exception:
         return None
 
 
-def _mlx_gen_smallest_tested_machines(repo_id: str) -> Dict[Optional[int], Dict[str, int]]:
-    # mlx-gen publishes this table for MiniMax-H3 only, next to its measured runs.
-    try:
-        from .backends.mflux import _MFLUX_MODELS, _infer_base_model
+def _engine_quantize(bits: Optional[int]) -> Optional[int]:
+    # A measured run's `quantize`: the package's stored width below 16 bits, None for 16-bit weights.
+    return int(bits) if bits is not None and int(bits) < 16 else None
 
-        model_def = _MFLUX_MODELS.get(str(_infer_base_model(repo_id) or ""))
-        if model_def is None or model_def.family != "minimax-h3":
+
+def _mlx_gen_smallest_tested_memory_gb(repo_id: str) -> Dict[str, int]:
+    """Per memory_mode, the smallest unified memory (GB) mlx-gen completed a run of this package on.
+
+    mlx-gen publishes this for MiniMax-H3 only, as the module constant
+    `mflux.task_inference.MINIMAX_H3_SMALLEST_TESTED_MACHINE` (stored width -> its mode name -> GB)
+    rather than in the capability rows; this function is the one place that reads it."""
+
+    preset = catalog_download_preset(str(repo_id), target="mlx", engine="mlx-gen")
+    if preset is None:
+        return {}
+    try:
+        from .backends.mflux import (
+            MINIMAX_H3_MODEL_KEYS,
+            MLX_GEN_MEMORY_MODE_FLAGS,
+            mlx_gen_base_model,
+        )
+
+        if mlx_gen_base_model(preset.repo_id, preset.upstream_repo_id, preset.key) not in MINIMAX_H3_MODEL_KEYS:
             return {}
         table = getattr(importlib.import_module("mflux.task_inference"), "MINIMAX_H3_SMALLEST_TESTED_MACHINE", None)
     except Exception:
         return {}
-    return table if isinstance(table, dict) else {}
+    by_engine_mode = table.get(_engine_quantize(preset.quantization_bits)) if isinstance(table, dict) else None
+    if not isinstance(by_engine_mode, dict):
+        return {}
+    return {
+        mode: by_engine_mode[flags.engine_mode]
+        for mode, flags in MLX_GEN_MEMORY_MODE_FLAGS.items()
+        if isinstance(by_engine_mode.get(flags.engine_mode), int)
+    }
 
 
 @lru_cache(maxsize=1)

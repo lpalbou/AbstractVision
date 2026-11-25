@@ -460,10 +460,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "LICENSE*",
             *_DIFFUSERS_PIPELINE_DIRS,
         ),
-        notes=(
-            "#FALLBACK: this is a full Diffusers snapshot (not 8-bit). "
-            "FLUX.2 pipeline support may require Diffusers from source (diffusers@main)."
-        ),
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -612,10 +609,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "LICENSE*",
             *_DIFFUSERS_PIPELINE_DIRS,
         ),
-        notes=(
-            "#FALLBACK: this is a full Diffusers snapshot (not 8-bit). "
-            "The 9B repo is gated on Hugging Face and may require HF_TOKEN."
-        ),
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -811,7 +805,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "LICENSE*",
             *_DIFFUSERS_PIPELINE_DIRS,
         ),
-        notes="#FALLBACK: this is a full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -1097,7 +1091,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "LICENSE*",
             *_DIFFUSERS_PIPELINE_DIRS,
         ),
-        notes="#FALLBACK: this is a full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -1135,7 +1129,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("qwen-image-edit-2511", "Qwen/Qwen-Image-Edit-2511"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -1174,7 +1168,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("glm-image", "glm", "zai-org/GLM-Image"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -1196,10 +1190,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "stable-diffusion-v1-5/stable-diffusion-v1-5",
         ),
         allow_patterns=_STABLE_DIFFUSION_DIFFUSERS_PATTERNS,
-        notes=(
-            "#FALLBACK: this is a full Diffusers snapshot (not 8-bit). "
-            "Use the Diffusers backend (`--provider diffusers`) to run it."
-        ),
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -1214,7 +1205,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("sd1.4", "sd14", "stable-diffusion-v1-4", "CompVis/stable-diffusion-v1-4"),
         allow_patterns=_STABLE_DIFFUSION_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1235,7 +1226,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "stable-diffusion-v1-5/stable-diffusion-inpainting",
         ),
         allow_patterns=_STABLE_DIFFUSION_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1250,7 +1241,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="community",
         aliases=("instruct-pix2pix", "pix2pix", "timbrooks/instruct-pix2pix"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=95,
     ),
     VisionModelDownloadPreset(
@@ -1271,7 +1262,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "stabilityai/stable-diffusion-xl-base-1.0",
         ),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1291,7 +1282,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "stabilityai/stable-diffusion-xl-refiner-1.0",
         ),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1306,7 +1297,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("sdxl-inpaint", "sdxl-inpainting", "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -1321,7 +1312,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("sdxl-turbo", "stabilityai/sdxl-turbo"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1336,7 +1327,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("sd-turbo", "stabilityai/sd-turbo"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1451,7 +1442,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "black-forest-labs/FLUX.1-schnell",
         ),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -1466,7 +1457,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("ernie", "ernie-image", "baidu/ERNIE-Image"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -1481,7 +1472,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("ernie-turbo", "ernie-image-turbo", "baidu/ERNIE-Image-Turbo"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -2355,7 +2346,7 @@ def find_model_preset(
     )
 
 
-def _preset_for(repo_id: str, *, target: str, engine: str) -> Optional[VisionModelDownloadPreset]:
+def catalog_download_preset(repo_id: str, *, target: str, engine: str) -> Optional[VisionModelDownloadPreset]:
     """The download preset for one repository, target and engine, or None."""
 
     for preset in _all_presets():
@@ -2364,7 +2355,7 @@ def _preset_for(repo_id: str, *, target: str, engine: str) -> Optional[VisionMod
     return None
 
 
-def _catalog_names_model(name: str) -> bool:
+def catalog_names_model(name: str) -> bool:
     """Whether `name` is a key, alias, repository or upstream model id of any download preset."""
 
     requested = str(name or "").strip().lower()
@@ -2521,7 +2512,7 @@ def _preset_access(preset: VisionModelDownloadPreset) -> Tuple[Optional[bool], s
     return bool(preset.gated), str(preset.license_name or "")
 
 
-def _snapshot_requirements_for_preset(
+def snapshot_requirements_for_preset(
     preset: VisionModelDownloadPreset,
 ) -> tuple[Tuple[str, ...], bool]:
     if not preset.in_catalog:
@@ -2566,7 +2557,7 @@ def _hub_json(repo_id: str, filename: str, *, revision: Optional[str], token: Op
     return response.json()
 
 
-def _model_index_components(index: Any) -> List[str]:
+def model_index_components(index: Any) -> List[str]:
     """The pipeline components a Diffusers `model_index.json` names (entries with a library and class)."""
 
     if not isinstance(index, dict):
@@ -2652,7 +2643,7 @@ def _plan_hub_download(
         keep = set(
             diffusers_download_files(
                 [str(s.rfilename) for s in selected],
-                components=_model_index_components(index),
+                components=model_index_components(index),
                 variant=_diffusers_backend_variant(),
             )
         )
@@ -2879,7 +2870,7 @@ def _diffusers_backend_variant() -> Optional[str]:
     return "fp16" if local_model_profile() in {"cuda", "apple-silicon"} else None
 
 
-def _preset_download_patterns(
+def preset_download_patterns(
     preset: VisionModelDownloadPreset,
 ) -> Tuple[Optional[List[str]], Optional[List[str]]]:
     """(allow, ignore) patterns a preset selects its files with, among those the Hub lists."""
@@ -2905,7 +2896,7 @@ def plan_model_preset_download(
     takes every file its patterns match. Raises `HuggingFaceAccessError` when the Hub refuses the
     repository; a listing that cannot be had otherwise gives a plan with `listing_error`."""
 
-    allow_patterns, ignore_patterns = _preset_download_patterns(preset)
+    allow_patterns, ignore_patterns = preset_download_patterns(preset)
     gated, license_name = _preset_access(preset)
     return _plan_hub_download(
         preset.repo_id,
@@ -2933,7 +2924,7 @@ def legacy_model_tree(
     tree = root / preset.local_dir_name
     if not tree.is_dir():
         return None, ""
-    required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
+    required_files, require_weight_files = snapshot_requirements_for_preset(preset)
     cached = resolve_hf_repo_snapshot(
         preset.repo_id,
         cache_dir=str(default_hf_cache_root()),
@@ -2976,7 +2967,7 @@ def download_model_preset(
 
     tree, action = legacy_model_tree(preset, model_dir=model_dir)
     if tree is not None:
-        required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
+        required_files, require_weight_files = snapshot_requirements_for_preset(preset)
         snapshot = ensure_hf_repo_snapshot(
             preset.repo_id,
             source_dir=tree,
@@ -3007,7 +2998,7 @@ def download_model_preset(
         return _unlisted_cached_snapshot(preset, plan, report=report)
     _require_disk_space(plan)
     resolved = _fetch_plan(plan, token=token, max_workers=max_workers)
-    required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
+    required_files, require_weight_files = snapshot_requirements_for_preset(preset)
     if not hf_snapshot_is_usable(
         resolved,
         required_files=required_files,
@@ -3126,7 +3117,7 @@ def resolve_sdcpp_model_selection(
     bundle = _SDCPP_BUNDLES_BY_REPO_ID.get(str(preset.repo_id).strip().lower(), _SDCPP_BUNDLES.get(preset.key))
     cache_root = default_hf_cache_root()
 
-    required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
+    required_files, require_weight_files = snapshot_requirements_for_preset(preset)
     legacy_dir = default_legacy_model_root() / preset.local_dir_name
     snapshot = ensure_hf_repo_snapshot(
         preset.repo_id,

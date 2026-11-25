@@ -1949,6 +1949,12 @@ class _AbstractVisionCapability:
         except Exception:
             return [MEMORY_MODE_DEFAULT]
 
+    def memory_peaks(self, model: str, base_model: Optional[str] = None) -> List[Dict[str, Any]]:
+        """MLX-Gen's measured memory peaks for one catalog package (`model_inventory.memory_peaks`)."""
+        from ..model_inventory import memory_peaks
+
+        return memory_peaks(model, base_model=base_model)
+
     def list_available_providers(self, *, task: Optional[str] = None) -> Dict[str, Any]:
         return self.available_providers(task=task)
 
