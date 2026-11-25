@@ -389,21 +389,23 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
                         with self.assertRaisesRegex(CapabilityNotSupportedError, "memory_mode='low'"):
                             backend.generate_image(ImageGenerationRequest(prompt="p", extra={"memory_mode": "low"}))
         backend = hd.HuggingFaceDiffusersVisionBackend(config=hd.HuggingFaceDiffusersBackendConfig(model_id="x"))
-        with patch.object(hd, "_lazy_import_torch", side_effect=ImportError("no torch")):
+        with patch.object(hd, "_lazy_import_torch", side_effect=AssertionError("an explicit device needs no torch")):
             self.assertEqual(tuple(backend.supported_memory_modes()), ("default",))
 
-    def test_diffusers_modes_and_provider_availability_import_no_torch(self):
+    def test_diffusers_modes_and_provider_availability_import_no_torch_on_macos(self):
         import subprocess
 
         code = (
             "import json, sys, types\n"
+            "from unittest.mock import patch\n"
             "from abstractvision.backends import huggingface_diffusers as hd\n"
             "from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability\n"
             "out = {}\n"
-            "for device in ('auto', 'cuda:0', 'cpu'):\n"
-            "    b = hd.HuggingFaceDiffusersVisionBackend(config=hd.HuggingFaceDiffusersBackendConfig(model_id='x/y', device=device))\n"
-            "    out[device] = [list(b.supported_memory_modes()), list(b.get_capabilities().memory_modes)]\n"
-            "_AbstractVisionCapability(types.SimpleNamespace(config={})).available_providers()\n"
+            "with patch.object(hd.sys, 'platform', 'darwin'):\n"
+            "    for device in ('auto', 'cuda:0', 'cpu'):\n"
+            "        b = hd.HuggingFaceDiffusersVisionBackend(config=hd.HuggingFaceDiffusersBackendConfig(model_id='x/y', device=device))\n"
+            "        out[device] = [list(b.supported_memory_modes()), list(b.get_capabilities().memory_modes)]\n"
+            "    _AbstractVisionCapability(types.SimpleNamespace(config={})).available_providers()\n"
             "out['torch'] = 'torch' in sys.modules\n"
             "print(json.dumps(out))\n"
         )
@@ -411,29 +413,39 @@ class TestBackendsCheckMemoryModeThemselves(unittest.TestCase):
         result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=120)
         self.assertEqual(result.returncode, 0, result.stderr)
         out = json.loads(result.stdout.strip().splitlines()[-1])
-        self.assertEqual(out["auto"], [["default"], ["default"]])  # not known until torch is imported
+        self.assertEqual(out["auto"], [["default"], ["default"]])  # macOS has no CUDA
         self.assertEqual(out["cuda:0"], [["default", "low", "lowest"]] * 2)
         self.assertEqual(out["cpu"], [["default"], ["default"]])
         self.assertIs(out["torch"], False)
 
-    def test_diffusers_auto_device_is_resolved_by_the_request_it_serves(self):
+    def test_diffusers_auto_device_elsewhere_asks_torch_once_before_any_request(self):
         from abstractvision.backends import huggingface_diffusers as hd
-        from abstractvision.types import MEMORY_MODES, ImageGenerationRequest
+        from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.types import MEMORY_MODES
 
-        class _Loaded(Exception):
-            pass
+        imports = []
 
-        backend = hd.HuggingFaceDiffusersVisionBackend(
-            config=hd.HuggingFaceDiffusersBackendConfig(model_id="runwayml/stable-diffusion-v1-5", device="auto")
-        )
-        fake_torch = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: True))
-        with patch.dict(sys.modules, {"torch": None}), patch.dict("os.environ", NO_ENV), patch.object(
-            hd, "_lazy_import_torch", return_value=fake_torch
-        ), patch.object(backend, "_get_or_load_pipeline", side_effect=_Loaded):
+        def torch_with(cuda):
+            def lazy_import():
+                imports.append(cuda)
+                return types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: cuda))
+
+            return lazy_import
+
+        for cuda, expected in ((True, MEMORY_MODES), (False, ("default",))):
+            imports.clear()
+            backend = hd.HuggingFaceDiffusersVisionBackend(
+                config=hd.HuggingFaceDiffusersBackendConfig(model_id="x/y", device="auto")
+            )
+            with patch.object(hd.sys, "platform", "linux"), patch.object(hd, "_lazy_import_torch", torch_with(cuda)):
+                self.assertEqual(backend.supported_memory_modes(), expected, cuda)
+                self.assertEqual(tuple(backend.get_capabilities().memory_modes), expected, cuda)
+            self.assertEqual(imports, [cuda])
+        backend = hd.HuggingFaceDiffusersVisionBackend(config=hd.HuggingFaceDiffusersBackendConfig(model_id="x/y", device="auto"))
+        with patch.object(hd.sys, "platform", "linux"), patch.object(
+            hd, "_lazy_import_torch", side_effect=OptionalDependencyMissingError("torch")
+        ):
             self.assertEqual(backend.supported_memory_modes(), ("default",))
-            with self.assertRaises(_Loaded):
-                backend.generate_image(ImageGenerationRequest(prompt="p", memory_mode="low"))
-            self.assertEqual(backend.supported_memory_modes(), MEMORY_MODES)
 
     def test_warmups_follow_the_process_default_only_where_it_can_be_honoured(self):
         from abstractvision.backends import huggingface_diffusers as hd

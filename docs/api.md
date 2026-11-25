@@ -385,8 +385,8 @@ instance's releases it, and clears the MLX cache, before the new one loads.
 
 Discovery: `backend.get_capabilities().memory_modes` lists the modes a backend
 can honour for its configured model and device; Diffusers with `device="auto"`
-lists only `"default"` until torch is imported (a request imports it, then
-`low` and `lowest` are listed on CUDA). Each MLX-Gen provider catalog
+lists `"default"` on macOS (no CUDA) without importing torch, and elsewhere
+asks torch, importing it once. Each MLX-Gen provider catalog
 entry carries `raw["parameter_constraints"]["memory_mode"]` = `{"enum": [...]}`,
 where `enum` holds the modes that model can honour. The result metadata records
 the mode a run used as `memory_mode`, `"default"` included: Diffusers,

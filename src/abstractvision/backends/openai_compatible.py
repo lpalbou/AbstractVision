@@ -469,9 +469,9 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         # Whether the remote serves the vision discovery route (AbstractCore's server): learned from
         # the first definite answer and kept, unlike the catalog's contents. None until then.
         self._serves_vision_routes: Optional[bool] = None
-        # Whether GET /vision/models was attempted: a request carrying only `extra` asks at most once,
-        # even when that attempt failed.
-        self._vision_routes_asked = False
+        # When the last GET /vision/models failed; None after an answer. A question asked only to
+        # learn the remote's kind is not asked again within _DISCOVERY_TTL_S of a failure.
+        self._discovery_failed_at: Optional[float] = None
 
     def get_capabilities(self) -> VisionBackendCapabilities:
         tasks = {"text_to_image", "image_to_image"}
@@ -617,16 +617,18 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             return self._catalog
 
     def _learn_remote_kind(self) -> None:
-        """Ask GET /vision/models once per backend, a failed attempt included; a caller that arrives
-        while the first attempt is in flight waits for its answer."""
+        """Ask GET /vision/models until the remote's kind is known, at most once per
+        _DISCOVERY_TTL_S after a failure; a caller that arrives while the question is in flight
+        waits for its answer."""
         if looks_like_openai_api(self._cfg.base_url):
             return
         with self._catalog_lock:
-            if not self._vision_routes_asked:
+            failed_at = self._discovery_failed_at
+            recently_failed = failed_at is not None and time.monotonic() - failed_at < _DISCOVERY_TTL_S
+            if self._serves_vision_routes is None and not recently_failed:
                 self._ask_vision_models_locked()
 
     def _ask_vision_models_locked(self) -> None:
-        self._vision_routes_asked = True
         timeout = self._control_timeout()
         try:
             answer = self._get_json(
@@ -639,6 +641,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             cause = e.__cause__
             if not (isinstance(cause, HTTPError) and int(cause.code) < 500):
                 self._discovery_failure = str(e) or type(e).__name__
+                self._discovery_failed_at = time.monotonic()
                 return
             answer = {}
         catalog = answer if isinstance(answer.get("models"), list) else None
@@ -647,6 +650,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         self._catalog = catalog
         self._catalog_at = time.monotonic()
         self._discovery_failure = None
+        self._discovery_failed_at = None
 
     def _remote_entry(self, model: Optional[str], *, task: Optional[str]) -> Optional[Dict[str, Any]]:
         """The entry of `model` (a string `_sent_model` computed) in the last discovery answer."""
@@ -660,11 +664,16 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         names it routes. Any other remote gets it without `openai/` and `openai-compatible/`
         prefixes.
         """
+        model = self._given_model(extra)
+        if model is None:
+            return None
+        return model if self._serves_vision_routes else _upstream_model_id(model)
+
+    def _given_model(self, extra: Any) -> Optional[str]:
+        """The model a request names: `extra["model"]`, else the configured model."""
         given = extra.get("model") if isinstance(extra, Mapping) else None
         model = given if given is not None else self._cfg.model_id
-        if not model:
-            return None
-        return str(model).strip() if self._serves_vision_routes else _upstream_model_id(model)
+        return str(model).strip() if model else None
 
     def _unadvertised_reason(self) -> str:
         failure = self._discovery_failure
@@ -716,10 +725,12 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             # option only for a remote that advertises it, so they never ask on their own.
             or option_is_set(extra.get("memory_mode"))
         )
+        given = self._given_model(extra)
         if needs_remote_entry:
             self._remote_catalog(refresh=True)
-        elif set(_upstream_extra(extra)) - {"model"}:
-            # The body shape of `extra` depends on the remote's kind.
+        elif set(_upstream_extra(extra)) - {"model"} or (given is not None and _upstream_model_id(given) != given):
+            # The body shape of `extra`, and the string sent for a model named with an `openai/` or
+            # `openai-compatible/` prefix, depend on the remote's kind.
             self._learn_remote_kind()
         entry = self._remote_entry(self._sent_model(extra), task=task)
         advertised = entry is not None
@@ -736,6 +747,14 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             raise CapabilityNotSupportedError(
                 f"{e} {self._unadvertised_reason()}.", field=e.field, supported=e.supported
             ) from e
+        if getattr(request, "cancel_event", None) is not None and self._serves_vision_routes is None and (
+            self._discovery_failure is not None
+        ):
+            # Whether the remote can cancel a run is unknown: the request is not run uncancellable.
+            raise CapabilityNotSupportedError(
+                f"{type(self).__name__} cannot honour cancel_event: {self._unadvertised_reason()}.",
+                field="cancel_event",
+            )
         if not advertised:
             return request, {}, False
         fields: Dict[str, Any] = {}

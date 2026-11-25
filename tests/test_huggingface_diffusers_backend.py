@@ -93,6 +93,17 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
                 "Diffusers backend unit tests require local test deps; install abstractvision[test] or abstractvision[diffusers]."
             ) from e
 
+    def setUp(self):
+        # The models these stand-in pipelines load are in the cache (a snapshot exists); the
+        # refusal of a model that is not is tested on its own.
+        from abstractvision.backends.huggingface_diffusers import HuggingFaceDiffusersVisionBackend
+
+        patcher = patch.object(
+            HuggingFaceDiffusersVisionBackend, "_resolve_any_snapshot_dir", return_value=Path("/hf-cache/snapshot")
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_default_torch_dtype_for_devices(self):
         from abstractvision.backends.huggingface_diffusers import _default_torch_dtype_for_device
 

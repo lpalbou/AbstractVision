@@ -414,13 +414,8 @@ def _provider_adapter_to_dict(info: ProviderAdapterInfo) -> Dict[str, Any]:
 
 
 def _backend_supports_provider_catalog(backend: Any) -> bool:
-    method = getattr(backend, "list_provider_models", None)
-    if not callable(method):
-        return False
-    if isinstance(backend, VisionBackend):
-        impl = getattr(type(backend), "list_provider_models", None)
-        return impl is not VisionBackend.list_provider_models
-    return True
+    # The base answer is "no catalog": a backend has one when it defines its own.
+    return type(backend).list_provider_models is not VisionBackend.list_provider_models
 
 
 # THE VISION BACKENDS ARE CATALOGUED TOGETHER, NOT ONE AFTER ANOTHER.
@@ -483,7 +478,14 @@ def _probe_backends_concurrently(
 
 
 # The methods the plugin calls on every backend it holds; `VisionBackend` provides them all.
-_BACKEND_CONTRACT_METHODS = ("has_loaded_model", "preload", "unload", "supported_memory_modes")
+_BACKEND_CONTRACT_METHODS = (
+    "has_loaded_model",
+    "preload",
+    "unload",
+    "supported_memory_modes",
+    "list_provider_models",
+    "list_provider_adapters",
+)
 
 
 def _require_backend_contract(backend: Any) -> None:
@@ -712,7 +714,8 @@ class _AbstractVisionCapability:
     def __init__(self, owner: Any, *, backend_id: Optional[str] = None):
         self._owner = owner
         self.backend_id = backend_id or type(self).backend_id
-        self._backend = None
+        # An injected backend is taken, and checked against the plugin's contract, here and once.
+        self._backend = self._injected_backend()
         self._routed_backends: Dict[tuple[Any, ...], Any] = {}
         self._state_lock = threading.RLock()
         # What only the plugin knows about the loads of its local backends, per backend key: the
@@ -1511,24 +1514,22 @@ class _AbstractVisionCapability:
         )
         return StableDiffusionCppVisionBackend(config=cfg)
 
-    def _get_backend(self):
-        if self._backend is not None:
-            return self._backend
-
-        # Injection hook (useful for tests and advanced embedding).
-        injected: Any = None
-        try:
-            cfg = getattr(self._owner, "config", None)
-            if isinstance(cfg, dict):
-                injected = cfg.get("vision_backend_instance")
-                factory = cfg.get("vision_backend_factory")
-                if injected is None and callable(factory):
-                    injected = factory(self._owner)
-        except Exception:
-            injected = None
+    def _injected_backend(self) -> Any:
+        """The owner's `vision_backend_instance`, else what its `vision_backend_factory` returns
+        (called once), checked against the plugin's contract; None when neither is configured."""
+        cfg = getattr(self._owner, "config", None)
+        if not isinstance(cfg, dict):
+            return None
+        injected = cfg.get("vision_backend_instance")
+        factory = cfg.get("vision_backend_factory")
+        if injected is None and callable(factory):
+            injected = factory(self._owner)
         if injected is not None:
             _require_backend_contract(injected)
-            self._backend = injected
+        return injected
+
+    def _get_backend(self):
+        if self._backend is not None:
             return self._backend
 
         # Prefer AbstractCore config keys when present; fall back to standard OpenAI env vars.
@@ -1719,9 +1720,7 @@ class _AbstractVisionCapability:
             active_backend = self._get_backend()
             backends.append((active_backend, _provider_id_for_backend(active_backend)))
         except Exception:
-            # A default backend that cannot be built is skipped; an injected one that fails is an error.
-            if injected_backend:
-                raise
+            pass
 
         active_provider = backends[0][1] if backends else None
 
@@ -1835,9 +1834,7 @@ class _AbstractVisionCapability:
                 active_backend = self._get_backend()
                 backends.append((active_backend, _provider_id_for_backend(active_backend)))
             except Exception:
-                # A default backend that cannot be built is skipped; an injected one that fails is an error.
-                if injected_backend:
-                    raise
+                pass
 
             active_provider = backends[0][1] if backends else None
             if not injected_backend and active_provider != "mlx-gen":
@@ -1887,12 +1884,9 @@ class _AbstractVisionCapability:
                 self._owner, backend_provider, backend
             ):
                 continue
-            method = getattr(backend, "list_provider_adapters", None)
-            if not callable(method):
-                continue
             attempted = True
             try:
-                adapters = list(method(model=model, task=task) or [])
+                adapters = list(backend.list_provider_adapters(model=model, task=task) or [])
             except Exception as exc:
                 last_error = exc
                 continue
@@ -2030,7 +2024,12 @@ class _AbstractVisionCapability:
         # Loaded as requests with this memory_mode / quantize load it, so they reuse it; passed only
         # when given, so a backend whose preload takes neither keeps working.
         options = {name: payload[name] for name in ("memory_mode", "quantize") if payload.get(name) is not None}
-        binding["backend"].preload(**options)
+        try:
+            binding["backend"].preload(**options)
+        except BaseException:
+            # What a failed preload leaves held is listed, unpinned.
+            self._note_load(binding, task=task, pinned=False)
+            raise
         record = self._note_load(binding, task=task, pinned=True)
         if record is None:
             record = self._absent_record(
@@ -2075,9 +2074,11 @@ class _AbstractVisionCapability:
                     "Unload request did not identify a model. Specify `load_id`, or include both "
                     "provider/backend and model."
                 )
-            provider = payload.get("provider") or payload.get("backend") or payload.get("backend_kind")
-            model = payload.get("model") or payload.get("load_id")
-            binding = self._resolve_backend_binding(provider=provider, model=model)
+            binding = self._configured_binding_matching(payload)
+            if binding is None:
+                provider = payload.get("provider") or payload.get("backend") or payload.get("backend_kind")
+                model = payload.get("model") or payload.get("load_id")
+                binding = self._resolve_backend_binding(provider=provider, model=model)
             self._ensure_local_residency_supported(binding)
             backend_key, record, backend = tuple(binding["backend_key"]), binding, binding["backend"]
             task = _normalize_residency_task(payload.get("task"))
@@ -2092,11 +2093,17 @@ class _AbstractVisionCapability:
             # A backend a running request holds is unloaded when that request ends.
             unload_now = self._retire_backend_locked(backend)
         self._unload_backend(unload_now)
-        with self._state_lock:
-            live = self._live_loads_locked()
-            if backend_key in live:
-                return self._loaded_record(live[backend_key][0])
-        return self._absent_record(record, task=task, state="unloaded")
+        # Reported as listed now: a model a running request still holds stays listed until it ends.
+        held = self._note_load({**record, "backend_key": backend_key}, task=None, pinned=False)
+        return held if held is not None else self._absent_record(record, task=task, state="unloaded")
+
+    def _configured_binding_matching(self, filters: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+        """The configured backend's binding when the plugin holds that backend and the unload
+        selector names it; it is reached by no provider/model route of its own."""
+        if self._backend is None:
+            return None
+        binding = self._resolve_backend_binding()
+        return binding if self._match_loaded_record(binding, filters) else None
 
     # Aliases for Core route adapters that prefer load/list/unload naming.
     def load_model(self, request: Mapping[str, Any]) -> Dict[str, Any]:

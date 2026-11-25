@@ -1798,9 +1798,6 @@ print("ok")
 
         # A local backend as the 0.3.36 test file wrote one: preload and unload, no has_loaded_model.
         class FakeBackend:
-            def __init__(self):
-                self.generated = 0
-
             def preload(self):
                 pass
 
@@ -1808,28 +1805,9 @@ print("ok")
                 pass
 
             def generate_image(self, request):
-                self.generated += 1
+                raise AssertionError("never called")
 
-        class _Plain:
-            pass
-
-        for backend, missing in (
-            (FakeBackend(), "has_loaded_model, supported_memory_modes"),
-            (_Plain(), "has_loaded_model, preload, unload, supported_memory_modes"),
-        ):
-            for key, value in (
-                ("vision_backend_instance", backend),
-                ("vision_backend_factory", lambda owner, backend=backend: backend),
-            ):
-                with self.subTest(backend=type(backend).__name__, hook=key):
-                    owner = types.SimpleNamespace(config={key: value, "vision_backend": "diffusers"})
-                    cap = _AbstractVisionCapability(owner)
-                    with self.assertRaises(TypeError) as ctx:
-                        cap.t2i("a red square")
-                    self.assertEqual(str(ctx.exception), message.format(name=type(backend).__name__, missing=missing))
-        self.assertEqual(FakeBackend().generated, 0)
-
-        # The injected backend of the 0.3.36 catalog test, verbatim: refused when the catalog takes it too.
+        # The injected backend of the 0.3.36 catalog test, verbatim.
         class _Cfg:
             base_url = "https://api.openai.com/v1"
 
@@ -1839,23 +1817,76 @@ print("ok")
             def list_provider_models(self, *, task=None):
                 raise RuntimeError("catalog failed")
 
-        owner = types.SimpleNamespace(config={"vision_backend_instance": _FailingOpenAIBackend()})
-        with self.assertRaises(TypeError) as ctx:
-            _AbstractVisionCapability(owner).list_provider_models(task="text_to_image")
-        self.assertEqual(
-            str(ctx.exception),
-            message.format(name="_FailingOpenAIBackend", missing="has_loaded_model, preload, unload, supported_memory_modes"),
-        )
+        for backend, missing in (
+            (FakeBackend(), "has_loaded_model, supported_memory_modes, list_provider_models, list_provider_adapters"),
+            (_FailingOpenAIBackend(), "has_loaded_model, preload, unload, supported_memory_modes, list_provider_adapters"),
+        ):
+            products = []
 
+            def factory(owner, backend=backend, products=products):
+                products.append(backend)
+                return backend
+
+            for key, value in (("vision_backend_instance", backend), ("vision_backend_factory", factory)):
+                with self.subTest(backend=type(backend).__name__, hook=key):
+                    owner = types.SimpleNamespace(config={key: value, "vision_backend": "diffusers"})
+                    # Refused when the capability is built: nothing it answers can use the backend.
+                    with self.assertRaises(TypeError) as ctx:
+                        _AbstractVisionCapability(owner)
+                    self.assertEqual(str(ctx.exception), message.format(name=type(backend).__name__, missing=missing))
+            self.assertEqual(len(products), 1)  # the factory is called once, at construction
+
+        # A VisionBackend subclass that overrides none of them is accepted, and holds nothing.
         class _Bare(VisionBackend):
             def generate_image(self, request):
                 raise NotImplementedError
 
             edit_image = generate_angles = generate_video = image_to_video = generate_image
 
-        owner = types.SimpleNamespace(config={"vision_backend_instance": _Bare(), "vision_backend": "diffusers"})
-        state = _AbstractVisionCapability(owner).load_resident_model({"task": "text_to_image"})
+        products = []
+
+        def bare_factory(owner):
+            products.append(_Bare())
+            return products[-1]
+
+        cap = _AbstractVisionCapability(types.SimpleNamespace(config={"vision_backend_factory": bare_factory, "vision_backend": "diffusers"}))
+        state = cap.load_resident_model({"task": "text_to_image"})
         self.assertEqual((state["state"], state["resident"]), ("not_loaded", False))
+        cap.list_loaded_models()
+        cap.available_providers()
+        self.assertEqual(len(products), 1)  # the product is kept
+
+    def test_unload_reaches_an_injected_backend_the_listing_does_not_show(self):
+        from abstractvision.backends.base_backend import VisionBackend
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        # Written against 0.3.36: it loads in preload and never answers has_loaded_model itself.
+        class _Sub036(VisionBackend):
+            def __init__(self):
+                self.loaded = False
+                self.unloaded = 0
+
+            def preload(self):
+                self.loaded = True
+
+            def unload(self):
+                self.loaded = False
+                self.unloaded += 1
+
+            def generate_image(self, request):
+                raise NotImplementedError
+
+            edit_image = generate_angles = generate_video = image_to_video = generate_image
+
+        for selector in ({"provider": "diffusers"}, {"backend": "diffusers"}, {"load_id": "diffusers/runwayml/stable-diffusion-v1-5"}):
+            with self.subTest(selector=selector):
+                backend = _Sub036()
+                owner = types.SimpleNamespace(config={"vision_backend_instance": backend, "vision_backend": "diffusers"})
+                cap = _AbstractVisionCapability(owner)
+                with patch.object(cap, "_make_diffusers_backend", side_effect=AssertionError("another backend built")):
+                    self.assertEqual(cap.load_resident_model({"task": "text_to_image"})["state"], "not_loaded")
+                    out = cap.unload_resident_model(dict(selector))
+                self.assertEqual((out["state"], backend.unloaded, backend.loaded), ("unloaded", 1, False))
 
     def test_abstractcore_plugin_rejects_http_backends_for_model_residency(self):
         from abstractvision.errors import AbstractVisionError

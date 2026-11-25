@@ -13,7 +13,7 @@ import types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -185,7 +185,9 @@ class TestOptionMergedWithExtra(unittest.TestCase):
         # Neither Diffusers nor torch runs here: the base CI job has neither.
         with patch.dict("os.environ", NO_ENV), patch.object(
             hd, "_lazy_import_diffusers", return_value=(MagicMock(), t2i, MagicMock(), MagicMock(), "0.0.0")
-        ), patch.object(hd, "_lazy_import_torch", return_value=types.SimpleNamespace()):
+        ), patch.object(hd, "_lazy_import_torch", return_value=types.SimpleNamespace()), patch.object(
+            hd.HuggingFaceDiffusersVisionBackend, "_resolve_any_snapshot_dir", return_value=Path("/hf-cache/snapshot")
+        ):
             hd.HuggingFaceDiffusersVisionBackend(
                 config=hd.HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
             ).generate_image(ImageGenerationRequest(prompt="fox", extra=dict(OPAQUE_EXTRA)))
@@ -335,6 +337,43 @@ class TestLoadedModelsAreDerivedFromTheBackends(unittest.TestCase):
                 self.assertEqual((out["state"], self.backend.unloaded, self.backend.loaded), ("unloaded", 1, False))
                 self.assertEqual(self.cap.list_loaded_models(), [])
 
+    def test_a_preload_that_fails_but_keeps_a_model_lists_it_unpinned(self):
+        def preload():
+            self.backend.loaded = True
+            raise RuntimeError("warm-up failed after the load")
+
+        self.backend.preload = preload
+        with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
+            self._load()
+        (record,) = self.cap.list_loaded_models()
+        self.assertEqual((record["state"], record["resident"]), ("active", False))
+
+    def test_an_unload_during_a_first_request_reports_what_is_held_when_it_returns(self):
+        started, finish = threading.Event(), threading.Event()
+
+        def generate_image(request):
+            from abstractvision.types import GeneratedAsset
+
+            self.backend.loaded = True
+            started.set()
+            finish.wait(5)
+            return GeneratedAsset(media_type="image", data=b"png", mime_type="image/png", metadata={})
+
+        self.backend.generate_image = generate_image
+        run = threading.Thread(target=self._t2i)
+        run.start()
+        try:
+            self.assertTrue(started.wait(5))
+            out = self.cap.unload_resident_model({"provider": "mlx-gen", "model": self.MODEL})
+            # The running request holds the model: it is listed, and unloaded when the request ends.
+            self.assertEqual((out["state"], out["loaded"], self.backend.unloaded), ("active", True, 0))
+            self.assertEqual([record["state"] for record in self.cap.list_loaded_models()], ["active"])
+        finally:
+            finish.set()
+            run.join(5)
+        self.assertEqual((self.backend.unloaded, self.backend.loaded), (1, False))
+        self.assertEqual(self.cap.list_loaded_models(), [])
+
     def test_a_backend_that_holds_nothing_is_never_called_resident(self):
         # The base answer of `has_loaded_model`: a 0.3.36-era subclass, or sd-cli, holds nothing here.
         self.backend.has_loaded_model = lambda: False
@@ -429,27 +468,29 @@ class TestExplicitDownloadRepositoriesAreNeverFetchedByGeneration(unittest.TestC
         for repo in ("black-forest-labs/FLUX.2-klein-4B", "", "MiniMaxAI"):
             self.assertIsNone(registry.explicit_download_model(repo), repo)
 
-    def test_diffusers_loads_them_from_the_cache_only_even_with_allow_download(self):
+    def test_diffusers_decides_before_loading_from_the_cache_and_the_download_rule(self):
         import os
 
         from abstractvision.backends import huggingface_diffusers as hd
         from abstractvision.types import ImageGenerationRequest
 
         loads = []
+        load_error = {"error": _Stop()}
 
         def from_pretrained(model_id, **kwargs):
             loads.append((model_id, kwargs["local_files_only"], os.environ.get("HF_HUB_OFFLINE")))
-            raise _Stop()
+            raise load_error["error"]
 
         pipeline_cls = MagicMock()
         pipeline_cls.from_pretrained.side_effect = from_pretrained
         fake_torch = types.SimpleNamespace(float32="float32", float16="float16", bfloat16="bfloat16")
         empty_cache = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, empty_cache, True)
-        for model_id, fetched in (("MiniMaxAI/MiniMax-H3", False), ("some/model", True)):
+
+        def generate(model_id, *, allow_download, cached=False):
             backend = hd.HuggingFaceDiffusersVisionBackend(
                 config=hd.HuggingFaceDiffusersBackendConfig(
-                    model_id=model_id, device="cpu", allow_download=True, cache_dir=empty_cache
+                    model_id=model_id, device="cpu", allow_download=allow_download, cache_dir=empty_cache
                 )
             )
             loads.clear()
@@ -457,11 +498,28 @@ class TestExplicitDownloadRepositoriesAreNeverFetchedByGeneration(unittest.TestC
                 hd, "_lazy_import_diffusers", return_value=(pipeline_cls, pipeline_cls, MagicMock(), MagicMock(), "0.0.0")
             ), patch.object(hd, "_lazy_import_torch", return_value=fake_torch), patch.object(
                 backend, "_hf_cache_roots", return_value=[Path(empty_cache)]
-            ), self.assertRaises(_Stop):
+            ), patch.object(
+                backend, "_resolve_snapshot_dir", return_value=Path(empty_cache) if cached else None
+            ), patch.object(backend, "_resolve_any_snapshot_dir", return_value=None):
                 backend.generate_image(ImageGenerationRequest(prompt="fox"))
-            self.assertTrue(loads, model_id)
-            for loaded, local_only, offline in loads:
-                self.assertEqual((loaded, local_only, offline), (model_id, not fetched, "0" if fetched else "1"))
+
+        # Not cached, and generation may not fetch it: refused before anything loads.
+        with self.assertRaisesRegex(ValueError, "generation never downloads it: the catalog marks it for explicit"):
+            generate("MiniMaxAI/MiniMax-H3", allow_download=True)
+        with self.assertRaisesRegex(ValueError, "is not available locally and downloads are disabled"):
+            generate("some/model", allow_download=False)
+        self.assertEqual(loads, [])
+        # A model generation may fetch loads online.
+        with self.assertRaises(_Stop):
+            generate("some/model", allow_download=True)
+        self.assertEqual(loads[0], ("some/model", False, "0"))
+        # A cached model's own load error reaches the caller as it is, whatever it says.
+        load_error["error"] = OSError("some/model does not appear to have a file named model_index.json")
+        with self.assertRaises(OSError) as ctx:
+            generate("some/model", allow_download=False, cached=True)
+        self.assertIs(ctx.exception, load_error["error"])
+        self.assertTrue(loads)
+        self.assertTrue(all(load == (empty_cache, True, "1") for load in loads), loads)
 
 
 class _Pipe:
@@ -848,6 +906,8 @@ class TestTheEntryIsTheModelSent(unittest.TestCase):
                 self.gets.append(req.full_url)
                 if self.discovery is None:
                     raise HTTPError(req.full_url, 404, "status", {}, io.BytesIO(b"{}"))
+                if self.discovery == "down":
+                    raise URLError("connection refused")
                 return _Response(json.dumps(self.discovery).encode())
             self.posts.append(json.loads(req.data))
             return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
@@ -888,6 +948,75 @@ class TestTheEntryIsTheModelSent(unittest.TestCase):
         backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"quality": "low"}))
         backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"model": "openai/other", "quality": "low"}))
         self.assertEqual([body["model"] for body in self.posts], ["remote-sd", "other"])
+
+
+    def test_the_model_sent_does_not_depend_on_what_was_asked_before(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        for discovery, sent in ((_CATALOG, "openai/gpt-image-1"), (None, "gpt-image-1")):
+            with self.subTest(remote="vision routes" if discovery else "plain"):
+                self.discovery, self.gets[:] = discovery, []
+                backend = self._backend("openai/gpt-image-1")
+                backend.generate_image(ImageGenerationRequest(prompt="fox"))  # the first, plain request
+                backend.generate_image(ImageGenerationRequest(prompt="fox", memory_mode="default"))
+                backend.generate_image(ImageGenerationRequest(prompt="fox"))
+                self.assertEqual([body["model"] for body in self.posts[-3:]], [sent] * 3)
+        # A model named without such a prefix is sent as given, and nothing is asked for it.
+        self.gets[:] = []
+        self._backend("remote-sd").generate_image(ImageGenerationRequest(prompt="fox"))
+        self.assertEqual((self.posts[-1]["model"], self.gets), ("remote-sd", []))
+
+    def test_a_failed_question_about_the_remote_s_kind_is_asked_again_after_the_cache_period(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        self.discovery = "down"
+        backend = self._backend("p/m")
+        for _ in range(2):
+            backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"sampler": "a"}))
+        self.assertEqual((len(self.gets), self.posts[-1]["sampler"]), (1, "a"))  # asked once in the period
+        self.discovery = _CATALOG
+        backend._discovery_failed_at -= 3600  # the period ends
+        backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"sampler": "a"}))
+        self.assertEqual((len(self.gets), self.posts[-1]["extra"]), (2, {"sampler": "a"}))
+        self.discovery = "down"  # a definite answer is kept for the backend's life
+        backend._catalog_at -= 3600
+        backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"sampler": "a"}))
+        self.assertEqual((len(self.gets), self.posts[-1]["extra"]), (2, {"sampler": "a"}))
+
+    def test_cancel_event_is_refused_when_the_remote_s_kind_is_unknown(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageGenerationRequest
+
+        self.discovery = "down"
+        backend = self._backend("p/m")
+        with self.assertRaises(CapabilityNotSupportedError) as ctx:
+            backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+        self.assertEqual(ctx.exception.field, "cancel_event")
+        self.assertIn("connection refused", str(ctx.exception))
+        self.assertEqual(self.posts, [])
+        # A remote known to be plain runs it, checking the event before it starts.
+        self.discovery = None
+        plain = self._backend("p/m")
+        plain.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+        self.assertEqual(len(self.posts), 1)
+
+    def test_a_boolean_or_fractional_quantize_is_not_a_bit_width(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        self.discovery = {"models": [{"routed_model": "p/m", "memory_modes": ["default"]}]}
+        backend = self._backend("p/m")
+        for request in (
+            ImageGenerationRequest(prompt="fox", quantize=True),
+            ImageGenerationRequest(prompt="fox", quantize=8.5),
+            ImageGenerationRequest(prompt="fox", memory_mode="default", extra={"quantize": False}),
+        ):
+            with self.subTest(request=request.quantize or request.extra), self.assertRaisesRegex(
+                ValueError, "quantize must be an integer bit width"
+            ):
+                backend.generate_image(request)
+        self.assertEqual(self.posts, [])
+        backend.generate_image(ImageGenerationRequest(prompt="fox", quantize=8))
+        self.assertEqual(self.posts[-1]["quantize"], 8)
 
 
 class TestTheRemoteKindIsAskedOnce(unittest.TestCase):
