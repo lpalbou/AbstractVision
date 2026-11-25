@@ -10,10 +10,37 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-PNG_1X1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X9+QAAAABJRU5ErkJggg=="
-)
+
+
+def _png(width, height):
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (width, height), (200, 120, 40)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# A keyframe the backend can decode (it opens every keyframe before any weights load).
+PNG_1X1 = _png(16, 9)
 MP4 = b"\x00\x00\x00\x18ftypmp42h3"
+
+
+def _wav_bytes():
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as handle:
+        handle.setnchannels(2)
+        handle.setsampwidth(2)
+        handle.setframerate(32000)
+        handle.writeframes(b"\x00\x00" * 2 * 32)
+    return buf.getvalue()
+
+
+_WAV_BYTES = _wav_bytes()
 
 
 def _h3_row(task, **overrides):
@@ -55,14 +82,21 @@ def _h3_capabilities(**overrides):
 
 
 class _FakeH3Video:
-    def __init__(self, kwargs, *, mux=True):
+    def __init__(self, kwargs, *, mux=True, model=None):
         self.kwargs = kwargs
         self.mux = mux
+        self.model = model
 
     def save(self, path=None, export_json_metadata=False, overwrite=True):
         path = Path(path)
         path.write_bytes(MP4)
+        init = self.model.init_kwargs if self.model is not None else {}
         metadata = {
+            # As MLX-Gen writes them: the model and adapter paths it read, the keyframe path it was given.
+            "model": init.get("model_path"),
+            "lora_paths": init.get("lora_paths"),
+            "image_path": self.kwargs.get("image_path"),
+            "video_path": None,
             "seed": self.kwargs["seed"],
             "prompt": "integrated_multimodal_description: " + self.kwargs["prompt"],
             "steps": self.kwargs.get("num_inference_steps", 8),
@@ -89,10 +123,11 @@ class _FakeH3Video:
                 metadata.update(audio_muxed=True, audio_codec="aac", audio_mux_mode="ffmpeg_copy_video_aac_audio")
             else:
                 wav = path.with_suffix(".wav")
-                wav.write_bytes(b"RIFF....WAVE")
+                wav.write_bytes(_WAV_BYTES)
                 metadata.update(audio_muxed=False, audio_mux_reason="boom", audio_sidecar_path=str(wav))
         if export_json_metadata:
-            path.with_suffix(".json").write_text(json.dumps(metadata))
+            # MLX-Gen's sidecar name (GeneratedVideo.save_metadata): clip.mp4 -> clip.metadata.json.
+            path.with_suffix(".metadata.json").write_text(json.dumps(metadata))
         return path
 
 
@@ -100,22 +135,69 @@ class _FakeMiniMaxH3:
     instances = []
     mux = True
     during_step = None
+    # Called with the backend-visible state at construction (see the model-key switch test).
+    on_init = None
+    streams = True
+    # Raised as MLX-Gen's preflights do: "init" from the constructor, "run" from generate_video.
+    memory_error = None
 
     def __init__(self, **kwargs):
+        if _FakeMiniMaxH3.on_init is not None:
+            _FakeMiniMaxH3.on_init()
+        if _FakeMiniMaxH3.memory_error == "init":
+            raise MemoryError("MiniMax-H3: the weights need about 70 GiB, and this machine has 64 GiB.")
         self.init_kwargs = dict(kwargs)
-        self.block_stream = object() if kwargs.get("stream_blocks") else None
+        self.block_stream = object() if kwargs.get("stream_blocks") and _FakeMiniMaxH3.streams else None
+        self.transformer = object()
+        self.transformer_loads = 1
         self.generate_calls = []
         _FakeMiniMaxH3.instances.append(self)
 
     def generate_video(self, **kwargs):
         self.generate_calls.append(dict(kwargs))
+        if self.transformer is None:
+            # As MLX-Gen: a released transformer is read again by the next run.
+            self.transformer = object()
+            self.transformer_loads += 1
+        if _FakeMiniMaxH3.memory_error == "run":
+            raise MemoryError("MiniMax-H3: 1344x768 at 345 frames needs about 140 GiB, so the run cannot fit.")
         progress = kwargs.get("progress_callback")
+
+        def emit(phase, step):
+            if progress is not None:
+                progress(SimpleNamespace(phase=phase, step=step, total_steps=3, total_frames=124, frame=None, task=None, timestep=None))
+
         for step in range(3):
             if _FakeMiniMaxH3.during_step is not None:
                 _FakeMiniMaxH3.during_step(step)
-            if progress is not None:
-                progress(SimpleNamespace(phase="denoise", step=step + 1, total_steps=3, total_frames=124, frame=None, task=None, timestep=None))
-        return _FakeH3Video(kwargs, mux=_FakeMiniMaxH3.mux)
+            emit("denoise", step + 1)
+        emit("decode", 3)
+        if kwargs.get("release_transformer") and self.block_stream is None:
+            self.transformer = None
+        if _FakeMiniMaxH3.during_step is not None:
+            _FakeMiniMaxH3.during_step("decode")
+        emit("generated", 3)
+        return _FakeH3Video(kwargs, mux=_FakeMiniMaxH3.mux, model=self)
+
+
+class _FakeH3Planning:
+    """MLX-Gen's pure MiniMax-H3 planning (prompt composition, aspect window, adapter check)."""
+
+    min_aspect_ratio = 1 / 4
+    max_aspect_ratio = 4.0
+    quantization_bits = (8, 4)
+
+    @staticmethod
+    def compose_prompt(prompt, soundscape=None, music=None):
+        lines = [line.lstrip() for line in prompt.strip().splitlines()]
+        for field, value in (("overall_soundscape", soundscape), ("non_diegetic_music", music)):
+            if value and value.strip() and any(line.startswith(f"{field}:") for line in lines):
+                raise ValueError(f"The prompt already carries a `{field}:` section.")
+        return prompt
+
+    @staticmethod
+    def adapter_targets_modulation(path):
+        return Path(path).read_bytes() == b"adaln"
 
 
 class _FakeModelConfig:
@@ -129,6 +211,9 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         _FakeMiniMaxH3.instances = []
         _FakeMiniMaxH3.mux = True
         _FakeMiniMaxH3.during_step = None
+        _FakeMiniMaxH3.on_init = None
+        _FakeMiniMaxH3.streams = True
+        _FakeMiniMaxH3.memory_error = None
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
         self.tmp = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
@@ -151,6 +236,10 @@ class TestMiniMaxH3Backend(unittest.TestCase):
             patch("abstractvision.backends.mflux._lazy_import_mflux_minimax_h3", return_value=_FakeMiniMaxH3)
         )
         self.stack.enter_context(
+            patch("abstractvision.backends.mflux._lazy_import_mlx_gen_h3_planning", return_value=_FakeH3Planning)
+        )
+        self.cache_clears = []
+        self.stack.enter_context(
             patch(
                 "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
                 side_effect=lambda: (lambda **kwargs: self.caps, None),
@@ -164,7 +253,9 @@ class TestMiniMaxH3Backend(unittest.TestCase):
             )
         )
         self.stack.enter_context(patch("abstractvision.backends.mflux._apply_mlx_gen_default_cache_limit"))
-        self.stack.enter_context(patch("abstractvision.backends.mflux._clear_mlx_cache"))
+        self.stack.enter_context(
+            patch("abstractvision.backends.mflux._clear_mlx_cache", side_effect=lambda: self.cache_clears.append(1))
+        )
 
     def _backend(self, path=None, base_model="minimax-h3-turbo-544p"):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -207,7 +298,8 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertEqual(asset.mime_type, "video/mp4")
         self.assertEqual((asset.audio.sample_rate, asset.audio.channels, asset.audio.muxed, asset.audio.codec), (32000, 2, True, "aac"))
         self.assertIsNone(asset.audio.data)
-        self.assertEqual(asset.metadata["audio"]["sample_rate"], 32000)
+        self.assertEqual(asset.audio_summary()["sample_rate"], 32000)
+        self.assertNotIn("audio", asset.metadata)  # the summary is the asset's; a store records it
         self.assertEqual(asset.metadata["prompt"], "integrated_multimodal_description: A red fox trots through snow.")
         self.assertEqual(asset.metadata["mlx_gen"]["runtime_memory"], {"process_peak_footprint_bytes": 123})
         self.assertEqual(asset.metadata["task"], "text_to_video")
@@ -245,6 +337,10 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         for request, pattern in (
             (VideoGenerationRequest(prompt="fox", num_frames=346), "346 rounds to 362"),
             (VideoGenerationRequest(prompt="fox", width=650, height=352), "multiples of 32"),
+        ):
+            with self.assertRaisesRegex(CapabilityNotSupportedError, pattern):
+                backend.generate_video(request)
+        for request, pattern in (
             (VideoGenerationRequest(prompt="fox", width=640), "together"),
             (VideoGenerationRequest(prompt="  "), "needs a prompt"),
         ):
@@ -318,9 +414,10 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         _FakeMiniMaxH3.mux = False
         asset = self._backend().generate_video(VideoGenerationRequest(prompt="fox"))
         self.assertFalse(asset.audio.muxed)
-        self.assertEqual(asset.audio.data, b"RIFF....WAVE")
+        self.assertEqual(asset.audio.data, _WAV_BYTES)
         self.assertEqual(asset.audio.mime_type, "audio/wav")
-        self.assertFalse(asset.metadata["audio"]["muxed"])
+        self.assertFalse(asset.audio_summary()["muxed"])
+        self.assertEqual(asset.audio_summary()["wav"], _WAV_BYTES)
 
     def test_silent_clip_has_no_audio_track(self):
         from abstractvision.types import VideoGenerationRequest
@@ -355,7 +452,13 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         with self.assertRaises(GenerationCancelledError):
             backend.generate_video(VideoGenerationRequest(prompt="fox", cancel_event=cancel))
         self.assertTrue(backend.has_loaded_model())
-        self.assertEqual(self.limits[-1], 555)  # the cache limit is restored
+        # The run's cache-limit hold is released and the limit found before it is set back.
+        from abstractvision.backends import mflux
+
+        self.assertEqual(mflux._MLX_CACHE_LIMIT_HOLDS, {})
+        self.assertIsNone(mflux._mlx_cache_limit_before_holds)
+        self.assertEqual(len(self.limits), 2)
+        self.assertEqual(self.limits[-1], 555)
         # A request whose event is already set never starts.
         with self.assertRaises(GenerationCancelledError):
             backend.generate_video(VideoGenerationRequest(prompt="fox", cancel_event=cancel))
@@ -375,7 +478,7 @@ class TestMiniMaxH3Backend(unittest.TestCase):
                 VideoGenerationRequest(prompt="fox", extra={"on_progress": callback})
             )
         self.assertEqual(asset.data, MP4)
-        self.assertEqual(seen, [1, 2, 3])
+        self.assertEqual(seen, [1, 2, 3, 3, 3])  # three steps, the decode, the generated clip
         self.assertEqual(len(logs.output), 1)
 
     def test_lora_adapters_go_to_the_transformer_role_only(self):
@@ -432,6 +535,500 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertEqual(metadata["parameter_defaults"]["width"], 960)
         self.assertEqual(metadata["parameter_constraints"]["num_frames"]["values"][:2], [124, 141])
         self.assertEqual(metadata["parameter_constraints"]["memory_mode"]["enum"], ["default", "low", "lowest"])
+
+
+    # --- preload -------------------------------------------------------------------------------
+
+    def test_preload_loads_the_video_model_and_runs_no_image_warmup(self):
+        backend = self._backend()
+        backend.preload()
+        self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
+        self.assertEqual(_FakeMiniMaxH3.instances[0].generate_calls, [])
+        self.assertTrue(backend.has_loaded_model())
+        backend.preload()  # already loaded and warm: nothing more
+        self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
+
+    def test_a_failure_inside_preload_leaves_no_model_resident(self):
+        from abstractvision.backends.mflux import MFluxVisionBackend
+
+        backend = self._backend()
+        with patch.object(MFluxVisionBackend, "_mark_preloaded", side_effect=RuntimeError("boom")):
+            with self.assertRaisesRegex(RuntimeError, "boom"):
+                backend.preload()
+        self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_plugin_load_resident_model_records_minimax_h3_and_unloads_it(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        owner = SimpleNamespace(
+            config={
+                "vision_backend": "mflux",
+                "vision_mflux_model": str(self.package),
+                "vision_mlx_gen_base_model": "minimax-h3-turbo-544p",
+            }
+        )
+        with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": ""}, clear=True):
+            cap = _AbstractVisionCapability(owner)
+            record = cap.load_resident_model({})
+            self.assertTrue(record["loaded"])
+            self.assertEqual(len(cap.list_resident_models()), 1)
+            self.assertEqual(_FakeMiniMaxH3.instances[0].generate_calls, [])
+            backend = cap._get_backend()
+            self.assertTrue(backend.has_loaded_model())
+            unloaded = cap.unload_resident_model({"load_id": record["load_id"]})
+            self.assertEqual(unloaded["state"], "unloaded")
+            self.assertEqual(cap.list_resident_models(), [])
+            self.assertFalse(backend.has_loaded_model())
+
+            # A preload that fails after the load leaves neither the model nor a record.
+            cap.load_resident_model({})
+            from abstractvision.backends.mflux import MFluxVisionBackend
+
+            with patch.object(MFluxVisionBackend, "_mark_preloaded", side_effect=RuntimeError("boom")):
+                backend._warmed_model_key = None
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    cap.load_resident_model({})
+            self.assertFalse(backend.has_loaded_model())
+            self.assertEqual(cap.list_loaded_models(), [])
+
+    # --- batches through VisionManager ---------------------------------------------------------
+
+    def test_batches_through_vision_manager_keep_one_instance_until_the_last_item(self):
+        from abstractvision import VisionManager
+
+        for task in ("text_to_video", "image_to_video"):
+            for mode in (None, "low"):
+                with self.subTest(task=task, memory_mode=mode):
+                    _FakeMiniMaxH3.instances = []
+                    backend = self._backend()
+                    vm = VisionManager(backend=backend)
+                    kwargs = {"seeds": [1, 2, 3]} | ({"memory_mode": mode} if mode else {})
+                    if task == "text_to_video":
+                        assets = vm.generate_video_batch("A fox.", count=3, **kwargs)
+                    else:
+                        assets = vm.image_to_video_batch(PNG_1X1, prompt="The fox turns.", count=3, **kwargs)
+                    self.assertEqual(len(assets), 3)
+                    self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
+                    calls = _FakeMiniMaxH3.instances[0].generate_calls
+                    self.assertEqual([call["seed"] for call in calls], [1, 2, 3])
+                    # As `mlxgen generate --low-ram` with several seeds: each run frees the transformer
+                    # before its decode and the next one reads it again; the instance stays.
+                    self.assertEqual([call["release_transformer"] for call in calls], [mode == "low"] * 3)
+                    self.assertTrue(backend.has_loaded_model())
+                    self.assertIsNone(backend._low_ram_batch_id)
+                    self.assertEqual([asset.metadata["task"] for asset in assets], [task] * 3)
+
+    def test_memory_mode_in_extra_is_accepted_on_direct_backend_calls(self):
+        from abstractvision.types import ImageToVideoRequest, VideoGenerationRequest
+
+        backend = self._backend()
+        backend.generate_video(VideoGenerationRequest(prompt="fox", extra={"memory_mode": "low"}))
+        backend.image_to_video(ImageToVideoRequest(image=PNG_1X1, prompt="fox", extra={"memory_mode": "low"}))
+        self.assertEqual([call["release_transformer"] for call in _FakeMiniMaxH3.instances[0].generate_calls], [True, True])
+
+    def test_tools_leave_unset_values_to_the_schedule(self):
+        import sys
+        import types
+
+        from abstractvision import LocalAssetStore, VisionManager
+        from abstractvision.integrations.abstractcore import make_vision_tools
+
+        fake_core = types.ModuleType("abstractcore")
+        fake_core.tool = lambda **kw: (lambda fn: fn)
+        for base_model in ("minimax-h3-turbo-544p", "minimax-h3"):
+            for name, args in (
+                ("vision_text_to_video", ("A fox.",)),
+                ("vision_text_to_video_batch", ("A fox.",)),
+                ("vision_image_to_video", ()),
+                ("vision_image_to_video_batch", ()),
+            ):
+                with self.subTest(base_model=base_model, tool=name):
+                    _FakeMiniMaxH3.instances = []
+                    vm = VisionManager(
+                        backend=self._backend(base_model=base_model), store=LocalAssetStore(self.tmp / "store")
+                    )
+                    with patch.dict(sys.modules, {"abstractcore": fake_core}):
+                        tools = {fn.__name__: fn for fn in make_vision_tools(vision_manager=vm, model_id="MiniMaxAI/MiniMax-H3")}
+                    kwargs = {} if args else {"image_b64": base64.b64encode(PNG_1X1).decode(), "prompt": "The fox turns."}
+                    tools[name](*args, **kwargs)
+                    call = _FakeMiniMaxH3.instances[0].generate_calls[0]
+                    # The catalog lists steps, width, height and flow_shift without a default:
+                    # MLX-Gen applies the schedule's (8 steps on Turbo, 50 on the base model).
+                    for engine_name in ("num_inference_steps", "width", "height", "video_shift"):
+                        self.assertNotIn(engine_name, call)
+
+    # --- switching the model key ---------------------------------------------------------------
+
+    def test_a_new_model_key_releases_the_old_instance_before_building_the_new_one(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        backend = self._backend()
+        seen = []
+        _FakeMiniMaxH3.on_init = lambda: seen.append((backend._model is None, len(self.cache_clears)))
+        backend.generate_video(VideoGenerationRequest(prompt="fox"))
+        clears_after_first = len(self.cache_clears)
+        backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest"))
+        self.assertEqual(len(_FakeMiniMaxH3.instances), 2)
+        self.assertTrue(seen[1][0], "the default instance was still held while the lowest one was built")
+        self.assertGreater(seen[1][1], clears_after_first, "the MLX cache was not cleared before the build")
+        self.assertIs(backend._model, _FakeMiniMaxH3.instances[1])
+
+    def test_lowest_on_weights_that_cannot_stream_is_refused_and_leaves_no_model(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import VideoGenerationRequest
+
+        _FakeMiniMaxH3.streams = False
+        backend = self._backend()
+        with self.assertRaisesRegex(CapabilityNotSupportedError, "lowest"):
+            backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest"))
+        self.assertFalse(backend.has_loaded_model())
+        self.assertEqual(_FakeMiniMaxH3.instances[0].generate_calls, [])
+
+    # --- request validation before any load ----------------------------------------------------
+
+    def test_bad_values_are_refused_before_loading_naming_the_field(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import VideoGenerationRequest
+
+        backend = self._backend()
+        out_of_range = CapabilityNotSupportedError
+        cases = (
+            (dict(width=0, height=0), out_of_range, "width"),
+            (dict(width=-32, height=-32), out_of_range, "width"),
+            (dict(width=32, height=4096), out_of_range, "aspect ratio"),
+            (dict(width=2048, height=352), out_of_range, "aspect ratio"),
+            (dict(width="wide", height=352), ValueError, "width"),
+            (dict(width=True, height=352), ValueError, "width"),
+            (dict(width=640.5, height=352), ValueError, "width"),
+            (dict(num_frames=0), out_of_range, "num_frames"),
+            (dict(num_frames=-5), out_of_range, "num_frames"),
+            (dict(num_frames=124.7), ValueError, "num_frames"),
+            (dict(num_frames="many"), ValueError, "num_frames"),
+            (dict(steps=0), out_of_range, "steps"),
+            (dict(steps="x"), ValueError, "steps"),
+            (dict(steps=2.5), ValueError, "steps"),
+            (dict(flow_shift="abc"), ValueError, "flow_shift"),
+            (dict(flow_shift=-1.0), out_of_range, "flow_shift"),
+            (dict(flow_shift=float("nan")), ValueError, "flow_shift"),
+            (dict(audio_shift=0.0), out_of_range, "audio_shift"),
+            (dict(audio_shift="loud"), ValueError, "audio_shift"),
+            (dict(soundscape=123), ValueError, "soundscape"),
+            (dict(music=["a"]), ValueError, "music"),
+            (dict(generate_audio="false"), ValueError, "generate_audio"),
+            (dict(generate_audio=0), ValueError, "generate_audio"),
+            (dict(seed="abc"), ValueError, "seed"),
+            (dict(seed=-1), ValueError, "seed"),
+            (dict(seed=True), ValueError, "seed"),
+            (dict(fps="fast"), ValueError, "fps"),
+        )
+        for overrides, error, field in cases:
+            with self.subTest(**{key: repr(value) for key, value in overrides.items()}):
+                with self.assertRaisesRegex(error, field):
+                    backend.generate_video(VideoGenerationRequest(prompt="fox", **overrides))
+        self.assertEqual(_FakeMiniMaxH3.instances, [])
+
+    def test_accepted_values_reach_the_engine_as_numbers(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        self._backend().generate_video(
+            VideoGenerationRequest(
+                prompt="fox", width=640.0, height=352, num_frames=141.0, steps=8, flow_shift=12, audio_shift=3,
+                seed=7, generate_audio=False, fps=24.0,
+            )
+        )
+        call = _FakeMiniMaxH3.instances[0].generate_calls[0]
+        self.assertEqual(
+            {k: (call[k], type(call[k])) for k in ("width", "num_frames", "num_inference_steps", "video_shift", "audio_shift", "seed")},
+            {"width": (640, int), "num_frames": (141, int), "num_inference_steps": (8, int), "video_shift": (12.0, float), "audio_shift": (3.0, float), "seed": (7, int)},
+        )
+        self.assertIs(call["generate_audio"], False)
+
+    def test_a_prompt_section_and_the_same_field_are_refused_before_loading(self):
+        from abstractvision.types import ImageToVideoRequest, VideoGenerationRequest
+
+        backend = self._backend()
+        with self.assertRaisesRegex(ValueError, "soundscape.*overall_soundscape"):
+            backend.generate_video(
+                VideoGenerationRequest(prompt="overall_soundscape: rain\nA fox", soundscape="wind")
+            )
+        with self.assertRaisesRegex(ValueError, "music.*non_diegetic_music"):
+            backend.image_to_video(
+                ImageToVideoRequest(image=PNG_1X1, prompt="A fox\nnon_diegetic_music: none", music="piano")
+            )
+        self.assertEqual(_FakeMiniMaxH3.instances, [])
+        # The section alone, or the field alone, is fine.
+        backend.generate_video(VideoGenerationRequest(prompt="overall_soundscape: rain\nA fox", music="piano"))
+
+    def test_the_keyframe_is_decoded_before_loading(self):
+        from abstractvision.types import ImageToVideoRequest
+
+        backend = self._backend()
+        for image, pattern in ((b"", "image.*empty"), (b"garbage", "image.*decode"), ("notbytes", "image.*bytes")):
+            with self.subTest(image=image):
+                with self.assertRaisesRegex(ValueError, pattern):
+                    backend.image_to_video(ImageToVideoRequest(image=image, prompt="fox"))
+        self.assertEqual(_FakeMiniMaxH3.instances, [])
+
+    def test_a_keyframe_outside_the_aspect_window_is_refused_when_the_canvas_is_unset(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageToVideoRequest
+
+        buf = BytesIO()
+        Image.new("RGB", (100, 10)).save(buf, format="PNG")
+        with self.assertRaisesRegex(CapabilityNotSupportedError, "aspect ratio"):
+            self._backend().image_to_video(ImageToVideoRequest(image=buf.getvalue(), prompt="fox"))
+        self.assertEqual(_FakeMiniMaxH3.instances, [])
+
+    def test_lowest_refuses_an_adapter_that_trains_the_adaln_projections_before_loading(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import LoRAAdapterSpec, VideoGenerationRequest
+
+        adaln = self.tmp / "motion-adaln.safetensors"
+        adaln.write_bytes(b"adaln")
+        backend = self._backend()
+        with self.assertRaisesRegex(CapabilityNotSupportedError, "motion-adaln.safetensors.*AdaLN"):
+            backend.generate_video(
+                VideoGenerationRequest(prompt="fox", memory_mode="lowest", lora_adapters=(LoRAAdapterSpec(source=str(adaln)),))
+            )
+        self.assertEqual(_FakeMiniMaxH3.instances, [])
+        # The same adapter is fine where the transformer stays in memory.
+        backend.generate_video(
+            VideoGenerationRequest(prompt="fox", memory_mode="low", lora_adapters=(LoRAAdapterSpec(source=str(adaln)),))
+        )
+
+    def test_planning_comes_from_the_installed_mlx_gen(self):
+        import importlib
+
+        from abstractvision.backends import mflux as backend_module
+
+        try:
+            importlib.import_module("mflux.models.minimax_h3.variants.minimax_h3")
+        except Exception:
+            self.skipTest("mlx-gen with MiniMax-H3 is not installed")
+        self.stack.close()  # the real planning, not the fake
+        planning = backend_module._lazy_import_mlx_gen_h3_planning()
+        self.assertLess(planning.min_aspect_ratio, 1.0)
+        self.assertGreater(planning.max_aspect_ratio, 1.0)
+        with self.assertRaises(ValueError):
+            planning.compose_prompt("overall_soundscape: rain\nA fox", "wind", None)
+        self.assertTrue(callable(planning.adapter_targets_modulation))
+        self.assertEqual(set(planning.quantization_bits), {4, 8})
+
+    # --- the soundtrack on the store, plugin and tool paths --------------------------------------
+
+    def test_audio_summary_is_one_object_for_every_layer(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        base = {"present": True, "sample_rate": 32000, "channels": 2, "duration_seconds": 5.1667}
+        muxed = self._backend().generate_video(VideoGenerationRequest(prompt="fox"))
+        self.assertEqual(muxed.audio_summary(), {**base, "codec": "aac", "muxed": True})
+        _FakeMiniMaxH3.mux = False
+        loose = self._backend().generate_video(VideoGenerationRequest(prompt="fox"))
+        # The WAV MLX-Gen writes is 16-bit PCM; the codec is read from the file itself.
+        self.assertEqual(
+            loose.audio_summary(), {**base, "codec": "pcm_s16le", "muxed": False, "wav": _WAV_BYTES}
+        )
+        self.assertEqual(loose.audio_summary(wav={"$artifact": "a" * 32})["wav"], {"$artifact": "a" * 32})
+        silent = self._backend().generate_video(VideoGenerationRequest(prompt="fox", generate_audio=False))
+        self.assertIsNone(silent.audio_summary())
+
+    def test_an_unmuxed_soundtrack_is_stored_as_a_second_artifact(self):
+        from abstractvision import LocalAssetStore, VisionManager
+
+        _FakeMiniMaxH3.mux = False
+        store = LocalAssetStore(self.tmp / "store")
+        ref = VisionManager(backend=self._backend(), store=store).generate_video("A fox.")
+        wav_ref = ref["audio"]["wav"]
+        self.assertEqual(wav_ref["content_type"], "audio/wav")
+        self.assertEqual(store.load_bytes(wav_ref["$artifact"]), _WAV_BYTES)
+        stored = store.get_metadata(ref["$artifact"])["metadata"]
+        self.assertEqual(stored["audio"], ref["audio"])
+        self.assertEqual(stored["audio"]["muxed"], False)
+        self.assertEqual(store.get_metadata(wav_ref["$artifact"])["tags"]["modality"], "audio")
+
+    def test_a_muxed_soundtrack_is_described_in_the_stored_metadata(self):
+        from abstractvision import LocalAssetStore, VisionManager
+
+        store = LocalAssetStore(self.tmp / "store")
+        ref = VisionManager(backend=self._backend(), store=store).generate_video("A fox.")
+        self.assertNotIn("wav", ref["audio"])
+        stored = store.get_metadata(ref["$artifact"])["metadata"]
+        self.assertEqual(
+            stored["audio"],
+            {"present": True, "sample_rate": 32000, "channels": 2, "codec": "aac", "muxed": True, "duration_seconds": 5.1667},
+        )
+
+    def test_plugin_and_tools_return_the_soundtrack_artifact(self):
+        import sys
+        import types
+
+        from abstractvision import LocalAssetStore, VisionManager
+        from abstractvision.integrations.abstractcore import make_vision_tools
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        _FakeMiniMaxH3.mux = False
+        fake_core = types.ModuleType("abstractcore")
+        fake_core.tool = lambda **kw: (lambda fn: fn)
+        store = LocalAssetStore(self.tmp / "store")
+        with patch.dict(sys.modules, {"abstractcore": fake_core}):
+            tools = {
+                fn.__name__: fn
+                for fn in make_vision_tools(
+                    vision_manager=VisionManager(backend=self._backend(), store=store), model_id="MiniMaxAI/MiniMax-H3"
+                )
+            }
+        ref = tools["vision_text_to_video"]("A fox.")
+        self.assertEqual(store.load_bytes(ref["audio"]["wav"]["$artifact"]), _WAV_BYTES)
+        refs = tools["vision_text_to_video_batch"]("A fox.", count=2)
+        self.assertTrue(all("$artifact" in item["audio"]["wav"] for item in refs))
+
+        class _RuntimeStore:
+            def __init__(self):
+                self.blobs = {}
+
+            def store(self, content, *, content_type, run_id=None, tags=None, artifact_id=None):
+                artifact_id = f"{len(self.blobs):032x}"
+                self.blobs[artifact_id] = (content, content_type)
+                return {"artifact_id": artifact_id}
+
+        owner = SimpleNamespace(
+            config={
+                "vision_backend": "mflux",
+                "vision_mflux_model": str(self.package),
+                "vision_mlx_gen_base_model": "minimax-h3-turbo-544p",
+            }
+        )
+        runtime_store = _RuntimeStore()
+        with patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": ""}, clear=True):
+            cap = _AbstractVisionCapability(owner)
+            out = cap.t2v("A fox.", artifact_store=runtime_store)
+            wav_id = out["audio"]["wav"]["$artifact"]
+            self.assertEqual(runtime_store.blobs[wav_id], (_WAV_BYTES, "audio/wav"))
+            self.assertEqual(out["metadata"]["audio"], out["audio"])
+            batch = cap.t2v_batch("A fox.", count=2, artifact_store=runtime_store)
+            self.assertTrue(all("$artifact" in item["audio"]["wav"] for item in batch))
+            # Without an artifact store the plugin returns the MP4 bytes and says the track is not in them.
+            with self.assertLogs("abstractvision.integrations.abstractcore_plugin", level="WARNING"):
+                self.assertEqual(cap.t2v("A fox."), MP4)
+
+    # --- metadata ------------------------------------------------------------------------------
+
+    def test_metadata_carries_no_local_paths(self):
+        from abstractvision import VisionManager
+        from abstractvision.types import LoRAAdapterSpec
+
+        _FakeMiniMaxH3.mux = False  # MLX-Gen then records the WAV it wrote next to the clip
+        lora = self.tmp / "style.safetensors"
+        lora.write_bytes(b"x")
+        asset = VisionManager(backend=self._backend()).image_to_video(
+            PNG_1X1, prompt="The fox turns.", lora_adapters=(LoRAAdapterSpec(source=str(lora)),)
+        )
+        text = json.dumps(asset.metadata)
+        self.assertNotIn(str(self.tmp), text)
+        self.assertNotIn(tempfile.gettempdir(), text)
+        self.assertEqual(asset.metadata["model"], "minimax-h3-8bit")
+        self.assertEqual(asset.metadata["mlx_gen"]["model"], "minimax-h3-8bit")
+        self.assertEqual(asset.metadata["mlx_gen"]["lora_paths"], ["style.safetensors"])
+        self.assertEqual(asset.metadata["lora_paths"], ["style.safetensors"])
+        for name in ("image_path", "video_path", "audio_sidecar_path"):
+            self.assertNotIn(name, asset.metadata["mlx_gen"])
+
+    def test_a_cached_package_is_reported_by_its_repo_id(self):
+        from abstractvision.backends.mflux import _public_model_name
+
+        snapshot = self.tmp / "hub" / "models--AbstractFramework--minimax-h3-8bit" / "snapshots" / "abc123"
+        self.assertEqual(_public_model_name(str(snapshot)), "AbstractFramework/minimax-h3-8bit")
+        self.assertEqual(
+            _public_model_name(str(self.tmp / "hub" / "models--lightx2v--Minimax-h3-Turbo" / "snapshots" / "abc" / "turbo.safetensors")),
+            "lightx2v/Minimax-h3-Turbo:turbo.safetensors",
+        )
+        self.assertEqual(_public_model_name("AbstractFramework/minimax-h3-8bit"), "AbstractFramework/minimax-h3-8bit")
+        self.assertIsNone(_public_model_name(None))
+
+    # --- failure, cancel and memory ------------------------------------------------------------
+
+    def test_failure_and_cancel_clear_the_mlx_cache(self):
+        from abstractvision.errors import GenerationCancelledError
+        from abstractvision.types import VideoGenerationRequest
+
+        backend = self._backend()
+        backend.preload()
+        cancel = threading.Event()
+        _FakeMiniMaxH3.during_step = lambda step: cancel.set() if step == 1 else None
+        before = len(self.cache_clears)
+        with self.assertRaises(GenerationCancelledError):
+            backend.generate_video(VideoGenerationRequest(prompt="fox", cancel_event=cancel))
+        self.assertGreater(len(self.cache_clears), before)
+
+        def fail(step):
+            raise RuntimeError("engine failure")
+
+        _FakeMiniMaxH3.during_step = fail
+        before = len(self.cache_clears)
+        with self.assertRaisesRegex(RuntimeError, "engine failure"):
+            backend.generate_video(VideoGenerationRequest(prompt="fox"))
+        self.assertGreater(len(self.cache_clears), before)
+        self.assertTrue(backend.has_loaded_model())
+
+    def test_cancel_in_low_mode_after_the_transformer_is_released_keeps_a_usable_model(self):
+        from abstractvision.errors import GenerationCancelledError
+        from abstractvision.types import VideoGenerationRequest
+
+        cancel = threading.Event()
+        _FakeMiniMaxH3.during_step = lambda step: cancel.set() if step == "decode" else None
+        backend = self._backend()
+        with self.assertRaises(GenerationCancelledError):
+            backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low", cancel_event=cancel))
+        model = _FakeMiniMaxH3.instances[0]
+        self.assertIsNone(model.transformer)  # released before the decode, as MLX-Gen does
+        self.assertTrue(backend.has_loaded_model())
+        _FakeMiniMaxH3.during_step = None
+        backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low"))
+        self.assertEqual(len(_FakeMiniMaxH3.instances), 1)
+        self.assertEqual(model.transformer_loads, 2)
+
+    def test_mlx_gen_memory_errors_become_the_out_of_memory_error_naming_memory_mode(self):
+        from abstractvision.errors import GpuOutOfMemoryError
+        from abstractvision.types import VideoGenerationRequest
+
+        for where in ("init", "run"):
+            with self.subTest(where=where):
+                _FakeMiniMaxH3.instances = []
+                _FakeMiniMaxH3.memory_error = where
+                backend = self._backend()
+                with self.assertRaisesRegex(GpuOutOfMemoryError, "memory_mode='default'.*low.*lowest"):
+                    backend.generate_video(VideoGenerationRequest(prompt="fox"))
+        _FakeMiniMaxH3.memory_error = "run"
+        with self.assertRaisesRegex(GpuOutOfMemoryError, "memory_mode='lowest'") as caught:
+            self._backend().generate_video(VideoGenerationRequest(prompt="fox", memory_mode="lowest"))
+        self.assertIsInstance(caught.exception.__cause__, MemoryError)
+
+    # --- quantize, version floor ---------------------------------------------------------------
+
+    def test_quantize_bits_without_rows_lists_no_width_minimax_h3_cannot_take(self):
+        self.caps = SimpleNamespace(capabilities=())
+        source = self._backend(path=self.source)
+        self.assertNotIn(3, source.quantize_bits())
+        self.assertNotIn(6, source.quantize_bits())
+        self.assertTrue(set(source.quantize_bits()) <= {4, 8})
+
+    def test_minimax_h3_needs_mlx_gen_0_40_1(self):
+        from abstractvision.backends import mflux
+        from abstractvision.errors import OptionalDependencyMissingError
+
+        self.assertEqual(mflux.MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "0.40.1")
+        with patch("abstractvision.backends.mflux._installed_mlx_gen_version", return_value="0.40.0"):
+            with self.assertRaisesRegex(OptionalDependencyMissingError, r"mlx-gen>=0\.40\.1"):
+                mflux._require_mlx_gen_version(mflux.MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MiniMax-H3")
+        with patch("abstractvision.backends.mflux._installed_mlx_gen_version", return_value="0.40.1"):
+            mflux._require_mlx_gen_version(mflux.MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MiniMax-H3")
+        with patch("abstractvision.backends.mflux._installed_mlx_gen_version", return_value="0.40.10"):
+            mflux._require_mlx_gen_version(mflux.MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MiniMax-H3")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import replace
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence, Tuple, TypeVar
@@ -27,6 +28,12 @@ from ..errors import CapabilityNotSupportedError, GenerationCancelledError
 logger = logging.getLogger(__name__)
 
 _Request = TypeVar("_Request")
+
+# The fallbacks of $ABSTRACTVISION_MEMORY_MODE already logged in this process, as
+# (backend type, mode, supported modes): the AbstractCore plugin and the CLI build a backend per
+# request, so a flag on the instance would log the same fallback at every request.
+_DEGRADED_PROCESS_MEMORY_MODES_LOGGED: set = set()
+_DEGRADED_PROCESS_MEMORY_MODES_LOCK = threading.Lock()
 
 # Typed request options a backend must apply or refuse (never ignore).
 OPTIONAL_REQUEST_FIELDS: Tuple[str, ...] = (
@@ -87,8 +94,11 @@ class VisionBackend(ABC):
 
     def _degrade_process_memory_mode(self, mode: str, supported: Sequence[str]) -> str:
         degraded = highest_memory_mode_at_or_below(mode, supported)
-        if not getattr(self, "_memory_mode_degrade_logged", False):
-            self._memory_mode_degrade_logged = True
+        key = (type(self).__name__, mode, tuple(supported))
+        with _DEGRADED_PROCESS_MEMORY_MODES_LOCK:
+            first = key not in _DEGRADED_PROCESS_MEMORY_MODES_LOGGED
+            _DEGRADED_PROCESS_MEMORY_MODES_LOGGED.add(key)
+        if first:
             logger.warning(
                 "%s cannot honour $%s=%s with its configured model and device; requests that name "
                 "no memory_mode run as %r (supported: %s).",

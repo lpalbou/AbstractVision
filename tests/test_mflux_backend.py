@@ -1466,6 +1466,53 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertIn("832x480", str(ctx.exception))
 
+    def test_wan_refuses_malformed_values_and_keyframes_like_minimax_h3(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageToVideoRequest, VideoGenerationRequest
+
+        _FakeWan.last_init = None
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True), patch(
+                "abstractvision.backends.mflux._lazy_import_mflux", return_value=self._lazy_import_return()
+            ), patch("abstractvision.backends.mflux._lazy_import_mflux_wan", return_value=_FakeWan):
+                for request, error, pattern in (
+                    (VideoGenerationRequest(prompt="fox", width="wide", height=480), ValueError, "width"),
+                    (VideoGenerationRequest(prompt="fox", width=832.5, height=480), ValueError, "width"),
+                    (VideoGenerationRequest(prompt="fox", num_frames="many"), ValueError, "num_frames"),
+                    (VideoGenerationRequest(prompt="fox", steps="x"), ValueError, "steps"),
+                    (VideoGenerationRequest(prompt="fox", seed="abc"), ValueError, "seed"),
+                    (VideoGenerationRequest(prompt="fox", width=-16, height=480), CapabilityNotSupportedError, "width"),
+                    (ImageToVideoRequest(image=b"", prompt="fox"), ValueError, "image.*empty"),
+                    (ImageToVideoRequest(image=b"garbage", prompt="fox"), ValueError, "image.*decode"),
+                ):
+                    with self.subTest(request=type(request).__name__, pattern=pattern):
+                        run = backend.generate_video if isinstance(request, VideoGenerationRequest) else backend.image_to_video
+                        with self.assertRaisesRegex(error, pattern):
+                            run(request)
+        self.assertIsNone(_FakeWan.last_init)
+
+    def test_a_failed_preload_warmup_leaves_no_model_resident(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        class _FailingFlux2(_FakeFlux2):
+            def generate_image(self, **kwargs):
+                raise RuntimeError("warm-up failed")
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True), patch(
+                "abstractvision.backends.mflux._lazy_import_mflux",
+                return_value=self._lazy_import_return(flux_cls=_FailingFlux2),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
+                    backend.preload()
+        self.assertFalse(backend.has_loaded_model())
+        self.assertIsNone(backend._model_key)
+
     def test_wan_ti2v_explicit_flow_shift_is_preserved(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import VideoGenerationRequest

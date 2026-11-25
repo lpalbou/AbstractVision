@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import math
 import random
 import os
 import tempfile
@@ -18,6 +19,7 @@ from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Mapping, Opti
 from ..errors import (
     CapabilityNotSupportedError,
     GenerationCancelledError,
+    GpuOutOfMemoryError,
     OptionalDependencyMissingError,
 )
 from ..host import total_physical_memory_bytes
@@ -48,6 +50,7 @@ from ..model_cache import (
     resolve_hf_repo_snapshot,
 )
 from ..types import (
+    BATCH_EXTRA_KEY,
     MEMORY_MODE_DEFAULT,
     MEMORY_MODE_LOW,
     MEMORY_MODE_LOWEST,
@@ -72,6 +75,8 @@ logger = logging.getLogger(__name__)
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
 MLX_GEN_VERSION_FLOOR = "0.40.0"
+# MiniMax-H3 runs on the MLX-Gen release that checks its VAE files at every use (0.40.1).
+MINIMAX_H3_MLX_GEN_VERSION_FLOOR = "0.40.1"
 WAN_TI2V_MODEL_KEY = "wan2.2-ti2v-5b"
 WAN_T2V_A14B_MODEL_KEY = "wan2.2-t2v-a14b"
 WAN_I2V_A14B_MODEL_KEY = "wan2.2-i2v-a14b"
@@ -1244,6 +1249,122 @@ def _json_safe_route_value(value: Any) -> Any:
 _PROGRESS_EXTRA_KEYS = frozenset(
     {"on_progress", "progress_event_callback", "progress_callback", "_step_progress_callback"}
 )
+# `extra` keys every route accepts: the progress callbacks, and what `resolve_memory_request`
+# reads and strips (the memory mode and VisionManager's batch marker).
+_ROUTING_EXTRA_KEYS = _PROGRESS_EXTRA_KEYS | {"memory_mode", BATCH_EXTRA_KEY}
+_VIDEO_FAMILIES = frozenset({"wan-video", "minimax-h3"})
+# MLX's random key is a 64-bit unsigned seed.
+_MAX_SEED = 2**64 - 1
+
+
+def _request_int(name: str, value: Any, *, label: str) -> int:
+    """`value` as an int, or ValueError naming the field: ints, integral floats, decimal strings."""
+    if isinstance(value, bool):
+        raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f"{label} {name} must be an integer, got {value!r}.")
+        return int(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} {name} must be an integer, got {value!r}.") from None
+
+
+def _request_number(name: str, value: Any, *, label: str) -> float:
+    """`value` as a finite float, or ValueError naming the field."""
+    if isinstance(value, bool):
+        raise ValueError(f"{label} {name} must be a number, got {value!r}.")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} {name} must be a number, got {value!r}.") from None
+    if not math.isfinite(number):
+        raise ValueError(f"{label} {name} must be a finite number, got {value!r}.")
+    return number
+
+
+def _request_seed(value: Any, *, label: str) -> Optional[int]:
+    if value is None:
+        return None
+    seed = _request_int("seed", value, label=label)
+    if not 0 <= seed <= _MAX_SEED:
+        raise ValueError(f"{label} seed must lie in [0, 2**64 - 1], got {seed}.")
+    return seed
+
+
+def _checked_keyframe_size(image: Any) -> Tuple[int, int]:
+    """Open and decode a conditioning image before any weights load; its (width, height)."""
+    if not isinstance(image, (bytes, bytearray)):
+        raise ValueError(f"image must be the image file's bytes, got {type(image).__name__}.")
+    if not image:
+        raise ValueError("image is empty (0 bytes).")
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        with Image.open(BytesIO(bytes(image))) as img:
+            img.load()
+            return int(img.width), int(img.height)
+    except UnidentifiedImageError:
+        raise ValueError("image could not be decoded as a picture: not an image format Pillow reads.") from None
+    except (OSError, ValueError, SyntaxError) as e:
+        raise ValueError(f"image could not be decoded as a picture: {e}") from None
+
+
+def _wav_codec(wav: Optional[bytes]) -> Optional[str]:
+    """The PCM codec of a WAV file (pcm_s16le for MLX-Gen's), read from its header."""
+    if not wav:
+        return None
+    import wave
+
+    try:
+        with wave.open(BytesIO(wav), "rb") as handle:
+            bits = int(handle.getsampwidth()) * 8
+    except (wave.Error, EOFError):
+        return None
+    return "pcm_u8" if bits == 8 else f"pcm_s{bits}le"
+
+
+def _public_model_name(value: Any) -> Optional[str]:
+    """What metadata reports for a model or adapter location: never an absolute local path.
+
+    A Hugging Face cache path becomes its repo id (`org/name`, and `org/name:file` for a file in
+    it), another local path its last component; a repo id or name is returned unchanged.
+    """
+    if value is None:
+        return None
+    text = str(value)
+    path = Path(text)
+    if not path.is_absolute():
+        return text
+    parts = path.parts
+    for index, part in enumerate(parts):
+        if part.startswith("models--") and index + 2 < len(parts) and parts[index + 1] == "snapshots":
+            repo_id = part[len("models--") :].replace("--", "/", 1)
+            inner = parts[index + 3 :]
+            return f"{repo_id}:{'/'.join(inner)}" if inner else repo_id
+    return path.name
+
+
+# Engine metadata keys that name temporary files AbstractVision wrote and deleted.
+_TEMPORARY_PATH_METADATA_KEYS = ("image_path", "video_path", "audio_sidecar_path")
+
+
+def _public_engine_metadata(metadata: Mapping[str, Any]) -> Dict[str, Any]:
+    """MLX-Gen's metadata without local paths: model and adapters by name, no temporaries."""
+    public = {key: value for key, value in metadata.items() if key not in _TEMPORARY_PATH_METADATA_KEYS}
+    if "model" in public:
+        public["model"] = _public_model_name(public["model"])
+    if isinstance(public.get("lora_paths"), (list, tuple)):
+        public["lora_paths"] = [_public_model_name(item) for item in public["lora_paths"]]
+    return public
+
+
+def _public_lora_adapters(adapters: Sequence[Any]) -> List[Dict[str, Any]]:
+    return [
+        {**item, "source": _public_model_name(item.get("source"))}
+        for item in serialize_lora_adapters(adapters)
+    ]
 
 
 def _h3_aligned_frames(requested: int, row: Mapping[str, Any]) -> int:
@@ -1272,20 +1393,10 @@ def _h3_audio_track(engine: Mapping[str, Any], wav: Optional[bytes]) -> Optional
         channels=int(engine.get("audio_channels") or 0),
         duration_seconds=float(engine.get("audio_duration_seconds") or 0.0),
         muxed=muxed,
-        codec=engine.get("audio_codec") if muxed else None,
+        codec=engine.get("audio_codec") if muxed else _wav_codec(wav),
         data=None if muxed else wav,
         mime_type=None if muxed else ("audio/wav" if wav else None),
     )
-
-
-def _audio_track_metadata(track: GeneratedAudioTrack) -> Dict[str, Any]:
-    return {
-        "sample_rate": track.sample_rate,
-        "channels": track.channels,
-        "duration_seconds": track.duration_seconds,
-        "muxed": track.muxed,
-        "codec": track.codec,
-    }
 
 
 def _requires_explicit_download(base_model: Optional[str]) -> bool:
@@ -1305,15 +1416,74 @@ def _explicit_download_note(base_model: Optional[str]) -> str:
     )
 
 
+def _installed_mlx_gen_version() -> Optional[str]:
+    from importlib import metadata
+
+    try:
+        return metadata.version("mlx-gen")
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def _release_numbers(version: str) -> Tuple[int, ...]:
+    # The release segment of a PEP 440 version ("0.40.1" of "0.40.1.dev3").
+    numbers: List[int] = []
+    for part in str(version).split("."):
+        if not part.isdigit():
+            break
+        numbers.append(int(part))
+    return tuple(numbers)
+
+
+def _require_mlx_gen_version(floor: str, what: str) -> None:
+    installed = _installed_mlx_gen_version()
+    if installed is not None and _release_numbers(installed) < _release_numbers(floor):
+        raise OptionalDependencyMissingError(
+            f"{what} requires mlx-gen>={floor} (installed: {installed}). "
+            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"`.'
+        )
+
+
 def _lazy_import_mflux_minimax_h3() -> Any:
+    _require_mlx_gen_version(MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MLX-Gen MiniMax-H3 video generation")
     try:
         from mflux.models.minimax_h3.variants.minimax_h3 import MiniMaxH3  # type: ignore
     except Exception as e:  # pragma: no cover
         raise OptionalDependencyMissingError(
-            f"MLX-Gen MiniMax-H3 video generation requires mlx-gen>={MLX_GEN_VERSION_FLOOR}. "
+            f"MLX-Gen MiniMax-H3 video generation requires mlx-gen>={MINIMAX_H3_MLX_GEN_VERSION_FLOOR}. "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"`.'
         ) from e
     return MiniMaxH3
+
+
+def _lazy_import_mlx_gen_h3_planning() -> Any:
+    """MLX-Gen's own MiniMax-H3 rules a request is checked against before any weights load.
+
+    `compose_prompt` (its verdict on a prompt section given twice), the aspect-ratio window, the
+    adapter check for AdaLN projections, and the load-time quantization widths.
+    """
+    _require_mlx_gen_version(MINIMAX_H3_MLX_GEN_VERSION_FLOOR, "MLX-Gen MiniMax-H3 video generation")
+    try:
+        from mflux.models.minimax_h3.latent_creator import h3_layout  # type: ignore
+        from mflux.models.minimax_h3.minimax_h3_initializer import MiniMaxH3Initializer  # type: ignore
+        from mflux.models.minimax_h3.variants.minimax_h3 import compose_prompt  # type: ignore
+        from mflux.models.minimax_h3.weights.h3_weight_definition import (  # type: ignore
+            MiniMaxH3WeightDefinition,
+        )
+    except Exception as e:  # pragma: no cover
+        raise OptionalDependencyMissingError(
+            f"MLX-Gen MiniMax-H3 video generation requires mlx-gen>={MINIMAX_H3_MLX_GEN_VERSION_FLOOR}. "
+            'Install/upgrade it with `pip install "abstractvision[mlx-gen]"`.'
+        ) from e
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        compose_prompt=compose_prompt,
+        min_aspect_ratio=float(h3_layout.MIN_ASPECT_RATIO),
+        max_aspect_ratio=float(h3_layout.MAX_ASPECT_RATIO),
+        adapter_targets_modulation=MiniMaxH3Initializer.adapter_targets_modulation,
+        quantization_bits=tuple(int(bits) for bits in MiniMaxH3WeightDefinition.QUANTIZATION_BITS),
+    )
 
 
 def _lazy_import_mflux_seedvr2() -> Tuple[Any, Any, Any, Any]:
@@ -2341,11 +2511,17 @@ class MFluxVisionBackend(VisionBackend):
         # mlx-gen refuses to generate with it again. Forget it so the next request
         # builds a fresh one. The resolved model path/base/bits stay: they describe
         # the request just served.
+        self._release_model()
+        self._low_ram_batch_id = None
+
+    def _release_model(self) -> None:
+        # Forget the held instance and return its memory, before anything else is loaded: also
+        # when it is replaced (another model key: stream_blocks, quantize, adapters, variant), so
+        # two instances are never in memory together. A batch keeping the instance is unchanged.
         self._model = None
         self._model_key = None
         self._warmed_model_key = None
         self._low_ram_saver = None
-        self._low_ram_batch_id = None
         import gc
 
         gc.collect()
@@ -2586,11 +2762,7 @@ class MFluxVisionBackend(VisionBackend):
 
     def supported_request_options(self, task: Optional[str] = None) -> FrozenSet[str]:
         options = {"quantize"}
-        base_model = str(
-            self._resolved_base_model or _infer_base_model(self._cfg.base_model, self._cfg.model) or ""
-        )
-        model_def = _MFLUX_MODELS.get(base_model)
-        if model_def is not None and model_def.family == "minimax-h3":
+        if self._configured_family() == "minimax-h3":
             options |= {"soundscape", "music", "generate_audio", "audio_shift"}
         return frozenset(options)
 
@@ -2625,11 +2797,7 @@ class MFluxVisionBackend(VisionBackend):
         # Every route runs mlx-gen's low-RAM mode. "lowest" needs block streaming, which only
         # a route that publishes supports_block_streaming accepts: MiniMax-H3, and no other
         # current catalog model. SeedVR2's constructor has no stream_blocks.
-        base_model = str(
-            self._resolved_base_model or _infer_base_model(self._cfg.base_model, self._cfg.model) or ""
-        )
-        model_def = _MFLUX_MODELS.get(base_model)
-        if model_def is not None and model_def.family == "seedvr2-upscale":
+        if self._configured_family() == "seedvr2-upscale":
             return (MEMORY_MODE_DEFAULT, MEMORY_MODE_LOW)
         if task:
             streams = bool(self._route_option_support(task, "supports_block_streaming"))
@@ -2790,7 +2958,7 @@ class MFluxVisionBackend(VisionBackend):
             metadata = get_metadata()
         except Exception:
             return {}
-        return metadata if isinstance(metadata, dict) else {}
+        return _public_engine_metadata(metadata) if isinstance(metadata, dict) else {}
 
     def _route_capabilities_for_model(
         self, model_selector: str, *, base_model: Optional[str] = None
@@ -3445,6 +3613,7 @@ class MFluxVisionBackend(VisionBackend):
         )
         if self._model is not None and self._model_key == key:
             return self._model, model_def
+        self._release_model()
 
         ModelConfig, _DownloadRequiredError, Flux2Klein, _Flux2KleinEdit, ZImage, ZImageTurbo = (
             _lazy_import_mflux()
@@ -3496,7 +3665,7 @@ class MFluxVisionBackend(VisionBackend):
             raise
         if stream_blocks and getattr(self._model, "block_stream", True) is None:
             # MLX-Gen keeps the transformer in memory when the weights cannot stream.
-            self._model = None
+            self._release_model()
             raise CapabilityNotSupportedError(
                 "memory_mode='lowest' needs weights that stream from disk (a prepared package, or the "
                 "16-bit source without quantize); MLX-Gen could not stream these."
@@ -3519,7 +3688,22 @@ class MFluxVisionBackend(VisionBackend):
         validated = sorted(
             {int(bits) for row in rows for bits in (row.get("validated_quantization_bits") or ())}
         )
-        return tuple(validated) if validated else _mlx_gen_quantize_choices()
+        if validated:
+            return tuple(validated)
+        if self._configured_family() == "minimax-h3":
+            # Without rows, MiniMax-H3's own quantization policies (never the generic choices).
+            try:
+                return tuple(sorted(_lazy_import_mlx_gen_h3_planning().quantization_bits))
+            except OptionalDependencyMissingError:
+                return ()
+        return _mlx_gen_quantize_choices()
+
+    def _configured_family(self) -> Optional[str]:
+        base_model = str(
+            self._resolved_base_model or _infer_base_model(self._cfg.base_model, self._cfg.model) or ""
+        )
+        model_def = _MFLUX_MODELS.get(base_model)
+        return model_def.family if model_def is not None else None
 
     def _checked_load_quantize(self, quantize: Any, *, model_path: str) -> int:
         try:
@@ -3565,6 +3749,7 @@ class MFluxVisionBackend(VisionBackend):
         key = (model_path, base_model, "seedvr2-upscale", quantize)
         if self._model is not None and self._model_key == key:
             return self._model, model_def
+        self._release_model()
 
         ModelConfig, SeedVR2, _ScaleFactor, _TilingConfig = _lazy_import_mflux_seedvr2()
         model_config = self._model_config_for_definition(ModelConfig, model_def)
@@ -3596,20 +3781,33 @@ class MFluxVisionBackend(VisionBackend):
         )
 
     def _preload_impl(self) -> None:
+        try:
+            self._preload_model()
+        except BaseException:
+            # A model loaded by a preload that then failed is dropped, never left in memory
+            # without the caller knowing it is there.
+            self._unload_impl()
+            raise
+
+    def _preload_model(self) -> None:
         if self._low_ram_batch_id is not None:
             self._drop_released_model()
         model_def = self._resolved_model_def()
         if model_def.family == "seedvr2-upscale":
             self._ensure_seedvr2_model_impl(quantize=self._default_upscale_quantize())
-            self._warmed_model_key = self._model_key
+            self._mark_preloaded()
             return
         _model, model_def = self._ensure_model_impl()
         if self._model_key is not None and self._warmed_model_key == self._model_key:
             return
-        if model_def.family == "wan-video":
-            self._warmed_model_key = self._model_key
+        if model_def.family in _VIDEO_FAMILIES:
+            # A video model has no image warm-up; its first run compiles its own kernels.
+            self._mark_preloaded()
             return
         self._generate_impl(self._warmup_request(model_def))
+
+    def _mark_preloaded(self) -> None:
+        self._warmed_model_key = self._model_key
 
     def _resolved_model_def(self) -> _MFluxModelDef:
         _model_path, base_model = self._resolve_model()
@@ -3795,24 +3993,35 @@ class MFluxVisionBackend(VisionBackend):
             task=task_name,
             model=model_def.key,
         )
+        label = "Wan"
         steps = (
-            int(request.steps)
+            _request_int("steps", request.steps, label=label)
             if request.steps is not None
             else int(adapter_defaults.get("steps") or model_def.default_steps)
         )
         if steps < 1:
             steps = 1
         guidance = (
-            float(request.guidance_scale)
+            _request_number("guidance_scale", request.guidance_scale, label=label)
             if request.guidance_scale is not None
             else model_def.default_guidance
         )
-        width = int(request.width) if request.width is not None else int(model_def.default_width)
-        height = int(request.height) if request.height is not None else int(model_def.default_height)
+        width = (
+            _request_int("width", request.width, label=label)
+            if request.width is not None
+            else int(model_def.default_width)
+        )
+        height = (
+            _request_int("height", request.height, label=label)
+            if request.height is not None
+            else int(model_def.default_height)
+        )
         self._validate_wan_video_dimensions(model_def=model_def, width=width, height=height)
-        fps = int(request.fps) if request.fps is not None else int(model_def.default_fps)
+        fps = _request_int("fps", request.fps, label=label) if request.fps is not None else int(model_def.default_fps)
         num_frames = (
-            int(request.num_frames) if request.num_frames is not None else int(model_def.default_frames)
+            _request_int("num_frames", request.num_frames, label=label)
+            if request.num_frames is not None
+            else int(model_def.default_frames)
         )
         if fps < 1:
             fps = int(model_def.default_fps)
@@ -3824,7 +4033,11 @@ class MFluxVisionBackend(VisionBackend):
                 extra["max_sequence_length"] = max(1, int(max_sequence_length))
             except Exception:
                 extra.pop("max_sequence_length", None)
-        flow_shift = request.flow_shift
+        flow_shift = (
+            _request_number("flow_shift", request.flow_shift, label=label)
+            if request.flow_shift is not None
+            else None
+        )
         if flow_shift is None and extra.get("flow_shift") is not None:
             try:
                 flow_shift = float(extra.get("flow_shift"))
@@ -3846,6 +4059,7 @@ class MFluxVisionBackend(VisionBackend):
             "fps": fps,
             "num_frames": num_frames,
             "flow_shift": flow_shift,
+            "seed": _request_seed(request.seed, label=label),
             "extra": extra,
         }
 
@@ -3854,20 +4068,23 @@ class MFluxVisionBackend(VisionBackend):
         if not rows:
             raise CapabilityNotSupportedError(
                 f"MLX-Gen publishes no MiniMax-H3 {task} route in this build; "
-                f"upgrade mlx-gen to {MLX_GEN_VERSION_FLOOR} or later."
+                f"upgrade mlx-gen to {MINIMAX_H3_MLX_GEN_VERSION_FLOOR} or later."
             )
         return next((row for row in rows if row.get("default_for_task")), rows[0])
 
     def _normalize_h3_request_values(
         self, *, request: Union[VideoGenerationRequest, ImageToVideoRequest]
     ) -> Dict[str, Any]:
-        """Check a MiniMax-H3 request against MLX-Gen's capability row, before any weights load.
+        """Check a MiniMax-H3 request against MLX-Gen's capability row and its own planning rules.
 
-        Values the caller left unset stay unset, so MLX-Gen applies the entry's own defaults
-        (steps, canvas, frames, shifts), as `mlxgen generate` does. What the route cannot apply
-        is refused, never dropped.
+        Runs before any weights load. Values the caller left unset stay unset, so MLX-Gen applies
+        the entry's own defaults (steps, canvas, frames, shifts), as `mlxgen generate` does; what
+        is set reaches the engine as the type it takes. What the route cannot apply, or a value
+        outside what it accepts, is refused with CapabilityNotSupportedError; a value of the wrong
+        type, or two fields that contradict each other, with ValueError. Both name the field.
         """
         task = "image_to_video" if isinstance(request, ImageToVideoRequest) else "text_to_video"
+        label = "MiniMax-H3"
         row = self._h3_route_row(task)
         refused = []
         if request.negative_prompt and not row.get("supports_negative_prompt"):
@@ -3878,48 +4095,102 @@ class MFluxVisionBackend(VisionBackend):
             if request.guidance_2 is not None:
                 refused.append("guidance_2")
         output_fps = row.get("output_fps")
-        if request.fps is not None and (output_fps is None or float(request.fps) != float(output_fps)):
-            refused.append(f"fps={request.fps} (the route writes {output_fps} fps)")
+        if request.fps is not None:
+            fps = _request_number("fps", request.fps, label=label)
+            if output_fps is None or fps != float(output_fps):
+                refused.append(f"fps={request.fps} (the route writes {output_fps} fps)")
         extra = dict(request.extra or {})
-        unknown = sorted(key for key in extra if key not in _PROGRESS_EXTRA_KEYS)
+        unknown = sorted(key for key in extra if key not in _ROUTING_EXTRA_KEYS)
         if unknown:
             refused.append(f"extra keys {', '.join(unknown)}")
         if refused:
             raise CapabilityNotSupportedError(
                 f"MiniMax-H3 {task} does not support: {'; '.join(refused)}."
             )
-        if not str(request.prompt or "").strip():
+        prompt = request.prompt
+        if prompt is not None and not isinstance(prompt, str):
+            raise ValueError(f"MiniMax-H3 prompt must be a string, got {type(prompt).__name__}.")
+        if not str(prompt or "").strip():
             raise ValueError("MiniMax-H3 needs a prompt (the integrated_multimodal_description).")
+        texts = {}
+        for name in ("soundscape", "music"):
+            value = getattr(request, name)
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"MiniMax-H3 {name} must be a string, got {type(value).__name__}.")
+            texts[name] = value
+        generate_audio = request.generate_audio
+        if generate_audio is not None and not isinstance(generate_audio, bool):
+            raise ValueError(
+                f"MiniMax-H3 generate_audio must be true or false, got {generate_audio!r}."
+            )
+        width = height = None
         if (request.width is None) != (request.height is None):
             raise ValueError("MiniMax-H3 width and height must be given together, or neither.")
-        multiple = int(row.get("dimension_multiple") or 1)
-        if request.width is not None and (int(request.width) % multiple or int(request.height) % multiple):
-            raise ValueError(
-                f"MiniMax-H3 width and height must be multiples of {multiple}, "
-                f"got {request.width}x{request.height}."
-            )
+        if request.width is not None:
+            width = _request_int("width", request.width, label=label)
+            height = _request_int("height", request.height, label=label)
+            multiple = int(row.get("dimension_multiple") or 1)
+            if width <= 0 or height <= 0 or width % multiple or height % multiple:
+                raise CapabilityNotSupportedError(
+                    f"MiniMax-H3 width and height must be positive multiples of {multiple}, "
+                    f"got {width}x{height}."
+                )
+        num_frames = None
         if request.num_frames is not None:
+            num_frames = _request_int("num_frames", request.num_frames, label=label)
             accepted = _h3_frame_counts(row)
-            aligned = _h3_aligned_frames(int(request.num_frames), row)
-            if aligned not in accepted:
-                raise ValueError(
+            aligned = _h3_aligned_frames(num_frames, row)
+            if num_frames < 1 or aligned not in accepted:
+                raise CapabilityNotSupportedError(
                     f"MiniMax-H3 num_frames rounds up to the next "
                     f"{row.get('frame_multiple')}n+{row.get('frame_remainder')} count; "
-                    f"{request.num_frames} rounds to {aligned}, outside the accepted counts "
+                    f"{num_frames} rounds to {aligned}, outside the accepted counts "
                     f"{', '.join(str(count) for count in accepted)}."
                 )
-        if request.steps is not None and int(request.steps) < 1:
-            raise ValueError("MiniMax-H3 steps must be at least 1.")
+        steps = None
+        if request.steps is not None:
+            steps = _request_int("steps", request.steps, label=label)
+            if steps < 1:
+                raise CapabilityNotSupportedError(f"MiniMax-H3 steps must be at least 1, got {steps}.")
+        shifts = {}
+        for name in ("flow_shift", "audio_shift"):
+            value = getattr(request, name)
+            shifts[name] = None if value is None else _request_number(name, value, label=label)
+            if shifts[name] is not None and shifts[name] <= 0:
+                # The rectified-flow time shift is a positive factor.
+                raise CapabilityNotSupportedError(f"MiniMax-H3 {name} must be positive, got {value!r}.")
+        seed = _request_seed(request.seed, label=label)
+        planning = _lazy_import_mlx_gen_h3_planning()
+        if width is not None:
+            self._check_h3_aspect_ratio(width, height, planning=planning, what="width x height")
+        try:
+            # MLX-Gen's own composition, for its verdict on a section given twice.
+            planning.compose_prompt(str(prompt), texts["soundscape"], texts["music"])
+        except ValueError as e:
+            fields = [name for name in ("soundscape", "music") if texts[name] and texts[name].strip()]
+            raise ValueError(f"MiniMax-H3 prompt and {' / '.join(fields) or 'prompt'}: {e}") from None
         return {
-            "steps": request.steps,
+            "steps": steps,
             "guidance_scale": None,
-            "width": request.width,
-            "height": request.height,
+            "width": width,
+            "height": height,
             "fps": request.fps,
-            "num_frames": request.num_frames,
-            "flow_shift": request.flow_shift,
+            "num_frames": num_frames,
+            "flow_shift": shifts["flow_shift"],
+            "audio_shift": shifts["audio_shift"],
+            "seed": seed,
+            "generate_audio": generate_audio,
             "extra": extra,
         }
+
+    @staticmethod
+    def _check_h3_aspect_ratio(width: int, height: int, *, planning: Any, what: str) -> None:
+        low, high = float(planning.min_aspect_ratio), float(planning.max_aspect_ratio)
+        if not low <= width / height <= high:
+            raise CapabilityNotSupportedError(
+                f"MiniMax-H3 aspect ratio ({what} = {width}x{height}) must lie within "
+                f"[{low:g}, {high:g}] (MLX-Gen's window)."
+            )
 
     def _validate_wan_video_dimensions(
         self,
@@ -3951,35 +4222,13 @@ class MFluxVisionBackend(VisionBackend):
         self,
         request: VideoGenerationRequest,
     ) -> VideoGenerationRequest:
-        values = self._normalize_video_request_values(request=request)
-        return replace(
-            request,
-            steps=values["steps"],
-            guidance_scale=values["guidance_scale"],
-            width=values["width"],
-            height=values["height"],
-            fps=values["fps"],
-            num_frames=values["num_frames"],
-            flow_shift=values["flow_shift"],
-            extra=values["extra"],
-        )
+        return replace(request, **self._normalize_video_request_values(request=request))
 
     def normalize_image_to_video_request(
         self,
         request: ImageToVideoRequest,
     ) -> ImageToVideoRequest:
-        values = self._normalize_video_request_values(request=request)
-        return replace(
-            request,
-            steps=values["steps"],
-            guidance_scale=values["guidance_scale"],
-            width=values["width"],
-            height=values["height"],
-            fps=values["fps"],
-            num_frames=values["num_frames"],
-            flow_shift=values["flow_shift"],
-            extra=values["extra"],
-        )
+        return replace(request, **self._normalize_video_request_values(request=request))
 
     def _normalize_upscale_scale_value(self, value: Any) -> Optional[str]:
         if value is None:
@@ -4431,7 +4680,7 @@ class MFluxVisionBackend(VisionBackend):
             control_strength_used = (
                 kwargs.get("controlnet_strength") if tmp_control_path is not None else None
             )
-            requested_loras = serialize_lora_adapters(effective_loras)
+            requested_loras = _public_lora_adapters(effective_loras)
             return GeneratedAsset(
                 media_type="image",
                 data=data,
@@ -4441,7 +4690,7 @@ class MFluxVisionBackend(VisionBackend):
                     "engine": MLX_GEN_RUNTIME,
                     "legacy_engine": MFLUX_PROVIDER,
                     "runtime_package": MLX_GEN_RUNTIME,
-                    "model": self._resolved_model_path,
+                    "model": _public_model_name(self._resolved_model_path),
                     "base_model": self._resolved_base_model,
                     "quantization_bits": self._resolved_quantization_bits,
                     "seed": seed,
@@ -4643,7 +4892,7 @@ class MFluxVisionBackend(VisionBackend):
                 mlx_metadata = self._generated_image_metadata(generated)
                 buf = BytesIO()
                 pil_image.save(buf, format="PNG")
-                requested_loras = serialize_lora_adapters(effective_loras)
+                requested_loras = _public_lora_adapters(effective_loras)
                 return GeneratedAsset(
                     media_type="image",
                     data=buf.getvalue(),
@@ -4653,7 +4902,7 @@ class MFluxVisionBackend(VisionBackend):
                         "engine": MLX_GEN_RUNTIME,
                         "legacy_engine": MFLUX_PROVIDER,
                         "runtime_package": MLX_GEN_RUNTIME,
-                        "model": self._resolved_model_path,
+                        "model": _public_model_name(self._resolved_model_path),
                         "base_model": self._resolved_base_model,
                         "quantization_bits": self._resolved_quantization_bits,
                         "seed": seed,
@@ -4779,7 +5028,7 @@ class MFluxVisionBackend(VisionBackend):
                 "legacy_engine": MFLUX_PROVIDER,
                 "runtime_package": MLX_GEN_RUNTIME,
                 "task": "image_upscale",
-                "model": self._resolved_model_path,
+                "model": _public_model_name(self._resolved_model_path),
                 "base_model": self._resolved_base_model,
                 "quantization_bits": self._resolved_quantization_bits,
                 "seed": seed,
@@ -4845,7 +5094,9 @@ class MFluxVisionBackend(VisionBackend):
                 if isinstance(loaded, dict):
                     engine_metadata = loaded
                     break
-            if not engine_metadata:
+            if engine_metadata:
+                engine_metadata = _public_engine_metadata(engine_metadata)
+            else:
                 engine_metadata = self._generated_video_metadata(generated)
             wav_files = sorted(Path(tmp_dir).glob("*.wav"))
             audio_wav = wav_files[0].read_bytes() if wav_files else None
@@ -4859,7 +5110,7 @@ class MFluxVisionBackend(VisionBackend):
             metadata = get_metadata()
         except Exception:
             return {}
-        return metadata if isinstance(metadata, dict) else {}
+        return _public_engine_metadata(metadata) if isinstance(metadata, dict) else {}
 
     def _generate_video_impl(
         self,
@@ -4901,11 +5152,14 @@ class MFluxVisionBackend(VisionBackend):
         if self._resolved_model_def().family == "minimax-h3":
             return self._generate_h3_run(request, memory_plan, task=task, image_path=image_path)
         effective_loras = self._effective_request_lora_adapters(request)
-        model, model_def = self._ensure_model_impl(
-            lora_adapters=effective_loras,
-            stream_blocks=memory_plan.stream_blocks,
-            quantize=request.quantize,
-        )
+        try:
+            model, model_def = self._ensure_model_impl(
+                lora_adapters=effective_loras,
+                stream_blocks=memory_plan.stream_blocks,
+                quantize=request.quantize,
+            )
+        except MemoryError as e:
+            raise self._out_of_memory_error(e, memory_plan, task=task) from e
         if model_def.family != "wan-video":
             raise CapabilityNotSupportedError(
                 f"MLX-Gen {task} is only implemented for Wan video models today (got {model_def.family!r})."
@@ -4984,6 +5238,8 @@ class MFluxVisionBackend(VisionBackend):
             try:
                 relay.check_cancelled()
                 generated = model.generate_video(**kwargs)
+            except MemoryError as e:
+                raise self._out_of_memory_error(e, memory_plan, task=task) from e
             except Exception as e:
                 cancelled = relay.cancelled_error(e)
                 if cancelled is not None:
@@ -5005,7 +5261,7 @@ class MFluxVisionBackend(VisionBackend):
                 _clear_mlx_cache()
         if not release_denoisers and self._model_key is not None:
             self._warmed_model_key = self._model_key
-        requested_loras = serialize_lora_adapters(effective_loras)
+        requested_loras = _public_lora_adapters(effective_loras)
         return GeneratedAsset(
             media_type="video",
             data=data,
@@ -5016,7 +5272,7 @@ class MFluxVisionBackend(VisionBackend):
                 "legacy_engine": MFLUX_PROVIDER,
                 "runtime_package": MLX_GEN_RUNTIME,
                 "task": task,
-                "model": self._resolved_model_path,
+                "model": _public_model_name(self._resolved_model_path),
                 "base_model": self._resolved_base_model,
                 "quantization_bits": self._resolved_quantization_bits,
                 "seed": seed,
@@ -5070,11 +5326,16 @@ class MFluxVisionBackend(VisionBackend):
                 f"MiniMax-H3 adapters apply to {', '.join(sorted(roles)) or 'no role'}, "
                 f"not {', '.join(wrong_roles)}."
             )
-        model, model_def = self._ensure_model_impl(
-            lora_adapters=effective_loras,
-            stream_blocks=memory_plan.stream_blocks,
-            quantize=request.quantize,
-        )
+        if memory_plan.stream_blocks:
+            self._refuse_h3_adapters_that_keep_the_transformer(effective_loras)
+        try:
+            model, _model_def = self._ensure_model_impl(
+                lora_adapters=effective_loras,
+                stream_blocks=memory_plan.stream_blocks,
+                quantize=request.quantize,
+            )
+        except MemoryError as e:
+            raise self._out_of_memory_error(e, memory_plan, task=task) from e
         extra = dict(request.extra or {})
         relay = _ProgressRelay(extra, task=task, cancel_event=request.cancel_event)
         seed = int(request.seed) if request.seed is not None else random.randint(0, 1_000_000_000)
@@ -5101,22 +5362,27 @@ class MFluxVisionBackend(VisionBackend):
         if relay.active:
             kwargs["progress_callback"] = relay
         try:
-            relay.check_cancelled()
-            generated = model.generate_video(**kwargs)
-        except Exception as e:
-            cancelled = relay.cancelled_error(e)
-            if cancelled is not None:
-                raise cancelled from e
-            if _is_mlx_gen_download_required(e):
-                raise _wrap_mlx_gen_download_required(e) from e
-            raise
-        saved = self._save_generated_video(generated)
-        _clear_mlx_cache()
+            try:
+                relay.check_cancelled()
+                generated = model.generate_video(**kwargs)
+            except MemoryError as e:
+                raise self._out_of_memory_error(e, memory_plan, task=task) from e
+            except Exception as e:
+                cancelled = relay.cancelled_error(e)
+                if cancelled is not None:
+                    raise cancelled from e
+                if _is_mlx_gen_download_required(e):
+                    raise _wrap_mlx_gen_download_required(e) from e
+                raise
+            saved = self._save_generated_video(generated)
+        finally:
+            # As on the Wan path: whatever the outcome, the run's freed buffers leave the cache.
+            _clear_mlx_cache()
         if self._model_key is not None:
             self._warmed_model_key = self._model_key
         engine = saved.engine_metadata
         audio_track = _h3_audio_track(engine, saved.audio_wav)
-        requested_loras = serialize_lora_adapters(effective_loras)
+        requested_loras = _public_lora_adapters(effective_loras)
         return GeneratedAsset(
             media_type="video",
             data=saved.data,
@@ -5128,7 +5394,7 @@ class MFluxVisionBackend(VisionBackend):
                 "legacy_engine": MFLUX_PROVIDER,
                 "runtime_package": MLX_GEN_RUNTIME,
                 "task": task,
-                "model": self._resolved_model_path,
+                "model": _public_model_name(self._resolved_model_path),
                 "base_model": self._resolved_base_model,
                 "quantization_bits": self._resolved_quantization_bits,
                 "seed": seed,
@@ -5142,12 +5408,42 @@ class MFluxVisionBackend(VisionBackend):
                 "video_shift": engine.get("video_shift"),
                 "audio_shift": engine.get("audio_shift"),
                 "prompt": engine.get("prompt"),
-                **({"audio": _audio_track_metadata(audio_track)} if audio_track is not None else {}),
                 **({"requested_lora_adapters": requested_loras} if requested_loras else {}),
                 **(_extract_lora_metadata(engine) if engine else {}),
                 **({"mlx_gen": engine} if engine else {}),
                 **memory_plan.metadata(),
             },
+        )
+
+    def _refuse_h3_adapters_that_keep_the_transformer(self, adapters: Sequence[Any]) -> None:
+        """memory_mode='lowest' streams the blocks; an adapter on their AdaLN projections cannot."""
+        paths = self._mlx_gen_lora_init_kwargs(tuple(adapters)).get("lora_paths") or ()
+        local = [str(path) for path in paths if Path(str(path)).is_file()]
+        if not local:
+            return
+        planning = _lazy_import_mlx_gen_h3_planning()
+        for path in local:
+            if planning.adapter_targets_modulation(path):
+                raise CapabilityNotSupportedError(
+                    f"memory_mode='lowest' streams the transformer blocks from disk, but the adapter "
+                    f"{_public_model_name(path)} trains their AdaLN projections, which MLX-Gen must "
+                    "then hold in memory with the whole transformer. Run it with memory_mode='low' "
+                    "or 'default', or without that adapter."
+                )
+
+    def _out_of_memory_error(
+        self, error: MemoryError, memory_plan: _MemoryPlan, *, task: str
+    ) -> GpuOutOfMemoryError:
+        modes = tuple(self.supported_memory_modes(task))
+        lower = [mode for mode in modes[modes.index(memory_plan.mode) + 1 :]] if memory_plan.mode in modes else []
+        advice = (
+            f"memory_mode={' or '.join(repr(mode) for mode in lower)} lowers the peak; "
+            if lower
+            else "this is the lowest memory mode; "
+        )
+        return GpuOutOfMemoryError(
+            f"MLX-Gen cannot fit this {task} run in memory with memory_mode={memory_plan.mode!r}: "
+            f"{error} {advice}a shorter clip or a smaller canvas does too."
         )
 
     def generate_video(self, request: VideoGenerationRequest) -> GeneratedAsset:
@@ -5165,7 +5461,16 @@ class MFluxVisionBackend(VisionBackend):
         return self.generate_video(replace(request, extra=extra))
 
     def _image_to_video_impl(self, request: ImageToVideoRequest) -> GeneratedAsset:
+        keyframe_width, keyframe_height = _checked_keyframe_size(request.image)
         request = self.normalize_image_to_video_request(request)
+        if self._resolved_model_def().family == "minimax-h3" and request.width is None:
+            # MLX-Gen maps the keyframe's own aspect ratio onto its canvas, within its window.
+            self._check_h3_aspect_ratio(
+                keyframe_width,
+                keyframe_height,
+                planning=_lazy_import_mlx_gen_h3_planning(),
+                what="the keyframe's width x height",
+            )
         suffix = self._sniff_image_suffix(request.image)
         with tempfile.NamedTemporaryFile(mode="wb", suffix=suffix, delete=False) as fp:
             tmp_path = Path(fp.name)
