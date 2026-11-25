@@ -480,10 +480,12 @@ MLX-Gen's preflight finds that a run cannot fit, the backend raises
 to try.
 
 The weights are never downloaded during generation, even with
-`allow_download=True`: the AbstractFramework packages are gated, and the MiniMax
-H3 Community License's grant excludes the European Union, the United Kingdom, the
-Republic of Korea and the United States of America (the source repository
-`MiniMaxAI/MiniMax-H3` is not gated; the same licence applies). Accept the
+`allow_download=True`: the catalog marks the downloads that only an explicit
+download fetches (`explicit_download: true`), today the three AbstractFramework
+packages and the source repository `MiniMaxAI/MiniMax-H3`. The packages are gated,
+and the MiniMax H3 Community License's grant excludes the European Union, the
+United Kingdom, the Republic of Korea and the United States of America (the
+source repository is not gated; the same licence applies). Accept the
 licence on the package page while logged in to Hugging Face and download
 explicitly: `abstractvision download MiniMaxAI/MiniMax-H3` fetches the
 recommended 8-bit package (`--bits 4` or `--bits 16` the others), and
@@ -517,15 +519,17 @@ What an application embedding `VisionManager` can rely on:
 - **Load-time quantize.** `quantize` (bits) on generation requests.
   `get_capabilities().quantize_bits` lists the widths the configured model
   accepts: the route's `validated_quantization_bits`, else MLX-Gen's `--quantize`
-  choices (for MiniMax-H3, its own 8 and 4). A prepared (already quantized)
-  package, and the other local backends, refuse it; the OpenAI-compatible backend
-  sends it to a remote that advertises it.
+  choices (for MiniMax-H3, its own 8 and 4). A prepared package (its shards carry
+  MLX-Gen's metadata, or the catalog lists it as a prepared or sub-16-bit package)
+  lists none and refuses it, as do the other local backends; the OpenAI-compatible
+  backend sends it to a remote that advertises it.
 - **Metadata without local paths.** MLX-Gen results report the model as its repo
   id (a Hugging Face cache snapshot) or its directory name (another local path),
   and adapters the same way (`org/name:file.safetensors`, or the file name):
-  every absolute path in the engine's metadata, whatever field carries it
-  (`model`, `lora_paths`, `lora_application_reports`, ...), in `metadata["mlx_gen"]`
-  and its top-level copies, and `requested_lora_adapters`; the paths of the temporary files AbstractVision wrote
+  every field of the engine's metadata that holds a path (`model`, `lora_paths`,
+  `lora_application_reports`, the reference, mask and control image paths, the file
+  `video_health` checked, the `original_*` fields an upscale copies from its input),
+  in `metadata["mlx_gen"]` and its top-level copies, and `requested_lora_adapters`; the paths of the temporary files AbstractVision wrote
   for a run (`image_path`, `video_path`, `audio_sidecar_path`) are left out.
 - **Route rows.** `vm.describe_routes(model=None, task=None)` returns MLX-Gen's
   capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,

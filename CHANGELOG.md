@@ -128,9 +128,10 @@ except for the changes listed below.
 - AbstractCore plugin: `guidance_2` on `t2i` or `i2i` raises `CapabilityNotSupportedError` (it raised `TypeError`), as
   do the soundtrack options on an image call. Every other unknown keyword stays a backend `extra` parameter.
 - MLX-Gen result metadata names the model and adapters by repo id (a Hugging Face cache snapshot) or by file or
-  directory name, never by local path: every absolute path in the engine's metadata, whatever field carries it
-  (`model`, `lora_paths`, `lora_application_reports`, ...), in `metadata["mlx_gen"]` and its top-level copies, and
-  `requested_lora_adapters`. The paths of the temporary files written for a run are left out.
+  directory name, never by local path: every field of the engine's metadata that holds a path (`model`,
+  `lora_paths`, `lora_application_reports`, the reference, mask and control image paths, the video file checked by
+  `video_health`, and the `original_*` fields an upscale copies from its input), in `metadata["mlx_gen"]` and its
+  top-level copies, and `requested_lora_adapters`. The paths of the temporary files written for a run are left out.
 - MLX-Gen video requests are type-checked: a width, height, frame count, fps or step count that is not an integer, or
   a seed outside `[0, 2**64 - 1]`, raises `ValueError` naming the field instead of being truncated; an image-to-video
   first frame that cannot be decoded raises `ValueError` naming `image`.

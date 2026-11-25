@@ -87,10 +87,6 @@ MINIMAX_H3_TURBO_MODEL_KEY = "minimax-h3-turbo"
 MINIMAX_H3_TURBO_544P_MODEL_KEY = "minimax-h3-turbo-544p"
 MINIMAX_H3_MODEL_KEYS = (MINIMAX_H3_MODEL_KEY, MINIMAX_H3_TURBO_MODEL_KEY, MINIMAX_H3_TURBO_544P_MODEL_KEY)
 MINIMAX_H3_REPO_ID = "MiniMaxAI/MiniMax-H3"
-# Base models whose weights AbstractVision never downloads on its own, even with allow_download:
-# MiniMax-H3 is gated on Hugging Face and its licence grant excludes some territories, so the
-# weights come only from an explicit `abstractvision download` / `mlxgen download`.
-_EXPLICIT_DOWNLOAD_ONLY_BASE_MODELS = frozenset(MINIMAX_H3_MODEL_KEYS)
 WAN_DEFAULT_GUIDANCE = 5.0
 
 
@@ -1216,12 +1212,64 @@ def _mlx_gen_quantize_choices() -> Tuple[int, ...]:
         return (3, 4, 5, 6, 8)
 
 
-def _is_prepared_mlx_gen_package(model_path: Any) -> bool:
-    path = Path(str(model_path or ""))
-    if _infer_bits_from_text(path.name) is not None:
+# The catalog `source` of the packages AbstractFramework prepares with MLX-Gen.
+_ABSTRACTFRAMEWORK_MLX_GEN_SOURCE = "abstractframework-mlx-gen"
+
+
+def _is_prepared_mlx_gen_package(location: Any, selector: Any) -> bool:
+    """Whether the model is a prepared package, whose stored weights MLX-Gen loads as they are.
+
+    The one answer behind `quantize_bits()` and the load-time `quantize` refusal. `location` is
+    the model directory when known, `selector` the configured model. On disk, MLX-Gen's own shard
+    metadata decides (`_engine_reports_prepared`); a repository the catalog lists (a cache
+    snapshot's repo id, else the selector) decides by its catalog fields. A folder name never does.
+    """
+    path = Path(str(location)).expanduser() if location else None
+    local = path is not None and path.is_dir()
+    if local and _engine_reports_prepared(path):
         return True
-    card = _read_card_frontmatter(path / "README.md") if path.is_dir() else {}
-    return str(card.get("library_name") or "").strip().lower() in {"mlx-gen", "mflux"}
+    names = [_hf_cache_repo_id(path) if local else None]
+    if selector and not Path(str(selector)).expanduser().exists():
+        names.append(str(selector))
+    for name in names:
+        preset = _preset_for(name) if name else None
+        if preset is not None:
+            # Written by `mlxgen prepare` (AbstractFramework packages, 16-bit ones included), or
+            # stored below 16 bits (the prepacked 2-bit Bonsai: no MLX-Gen metadata in its shards).
+            prepared_source = preset.source == _ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
+            return prepared_source or int(preset.quantization_bits or 16) < 16
+    return False
+
+
+def _engine_reports_prepared(path: Path) -> bool:
+    # MLX-Gen loads a component as stored when its first shard's safetensors header carries the
+    # metadata `mlxgen prepare` writes (StreamingWeightLoader.is_prepared; WeightLoader applies the
+    # same test). Only headers are read. A shard the engine cannot read is not a prepared one; the
+    # load reports it.
+    try:
+        StreamingWeightLoader, header_error = _lazy_import_mlx_gen_weight_loader()
+    except OptionalDependencyMissingError:
+        return False
+    for component in sorted(child for child in path.iterdir() if child.is_dir()):
+        try:
+            if StreamingWeightLoader.is_prepared(component):
+                return True
+        except (header_error, OSError, ValueError):
+            continue
+    return False
+
+
+def _lazy_import_mlx_gen_weight_loader() -> Tuple[Any, Any]:
+    try:
+        from mflux.models.common.weights.loading.streaming_weight_loader import (  # type: ignore
+            StreamingWeightLoader,
+        )
+        from safetensors import SafetensorError  # type: ignore
+    except ImportError as e:
+        raise OptionalDependencyMissingError(
+            f"Reading MLX-Gen package metadata requires mlx-gen>={MLX_GEN_VERSION_FLOOR}."
+        ) from e
+    return StreamingWeightLoader, SafetensorError
 
 
 def _json_safe_route_value(value: Any) -> Any:
@@ -1346,30 +1394,51 @@ def _public_model_name(value: Any) -> Optional[str]:
 
 # Engine metadata keys that name temporary files AbstractVision wrote and deleted.
 _TEMPORARY_PATH_METADATA_KEYS = ("image_path", "video_path", "audio_sidecar_path")
-# What the user wrote is kept as written, even when it starts with "/".
-_USER_TEXT_METADATA_KEYS = ("prompt", "negative_prompt")
+# The fields that carry a local path in the metadata mlx-gen 0.40.1 writes on the routes
+# AbstractVision runs (GeneratedImage._get_metadata, GeneratedVideo.build_metadata, LoRAFileReport,
+# VideoUtil's video_health, and the `original_*` copies an upscale takes from its input's
+# metadata), as positions: a key, "[]" for each item of a list, then a key inside it.
+_PATH_METADATA_FIELDS = (
+    ("model",),
+    ("lora_paths", "[]"),
+    ("lora_application_reports", "[]", "requested_path"),
+    ("lora_application_reports", "[]", "resolved_path"),
+    ("image_paths", "[]"),
+    ("controlnet_image_path",),
+    ("masked_image_path",),
+    ("original_model",),
+    ("original_lora_paths", "[]"),
+    ("original_lora_application_reports", "[]", "requested_path"),
+    ("original_lora_application_reports", "[]", "resolved_path"),
+    ("video_health", "file", "source"),
+)
 
 
 def _public_engine_metadata(metadata: Mapping[str, Any]) -> Dict[str, Any]:
     """MLX-Gen's metadata without local paths and without the temporaries AbstractVision wrote.
 
-    Every string value at any depth that is an absolute path is replaced by `_public_model_name`,
-    whichever field carries it (`model`, `lora_paths`, `lora_application_reports`, a later one),
-    except the user's own text.
+    Each field of `_PATH_METADATA_FIELDS` is reported through `_public_model_name`; every other
+    value is kept as the engine wrote it.
     """
+    out: Dict[str, Any] = {
+        key: value for key, value in metadata.items() if key not in _TEMPORARY_PATH_METADATA_KEYS
+    }
+    for position in _PATH_METADATA_FIELDS:
+        out = _public_path_field(out, position)
+    return out
 
-    def public(value: Any) -> Any:
-        if isinstance(value, str):
-            return _public_model_name(value) if os.path.isabs(value) else value
-        if isinstance(value, Mapping):
-            return {
-                key: item if key in _USER_TEXT_METADATA_KEYS else public(item) for key, item in value.items()
-            }
-        if isinstance(value, (list, tuple)):
-            return [public(item) for item in value]
-        return value
 
-    return public({key: value for key, value in metadata.items() if key not in _TEMPORARY_PATH_METADATA_KEYS})
+def _public_path_field(value: Any, position: Tuple[str, ...]) -> Any:
+    if not position:
+        return _public_model_name(value) if isinstance(value, str) else value
+    head, rest = position[0], position[1:]
+    if head == "[]":
+        if not isinstance(value, (list, tuple)):
+            return value
+        return [_public_path_field(item, rest) for item in value]
+    if isinstance(value, Mapping) and head in value:
+        return {**value, head: _public_path_field(value[head], rest)}
+    return value
 
 
 def _public_lora_adapters(adapters: Sequence[Any]) -> List[Dict[str, Any]]:
@@ -1411,20 +1480,47 @@ def _h3_audio_track(engine: Mapping[str, Any], wav: Optional[bytes]) -> Optional
     )
 
 
-def _requires_explicit_download(base_model: Optional[str]) -> bool:
-    return str(base_model or "") in _EXPLICIT_DOWNLOAD_ONLY_BASE_MODELS
+def _explicit_download_model(repo_id: str) -> Optional[Any]:
+    """The catalog model whose download of `repo_id` is marked `explicit_download`, else None.
+
+    Generation never fetches such a repository, even with allow_download (today the MiniMax-H3
+    packages and source, whose licence grant excludes some territories). `gated` is a separate
+    fact: it decides what `download` says about access, not what generation fetches. Adapters are
+    never fetched during generation either: MLX-Gen raises DownloadRequiredError for them.
+    """
+    registry = _mflux_capability_registry()
+    wanted = str(repo_id or "").strip().lower()
+    if registry is None or not wanted:
+        return None
+    for model_id in registry.list_models():
+        spec = registry.get(model_id)
+        for download in spec.downloads:
+            if download.explicit_download and str(download.repo_id).strip().lower() == wanted:
+                return spec
+    return None
 
 
-def _explicit_download_note(base_model: Optional[str]) -> str:
-    if not _requires_explicit_download(base_model):
+def _explicit_download_note(repo_id: str, base_model: Optional[str]) -> str:
+    """Why generation does not download `repo_id` and the command that does; "" when it may."""
+    spec = _explicit_download_model(repo_id)
+    if spec is None:
         return ""
+    try:
+        adapter = _mlx_gen_schedule_adapter(base_model) if base_model else None
+    except (ValueError, OptionalDependencyMissingError):
+        adapter = None
+    command = f"`abstractvision download {repo_id}`"
+    if adapter:
+        command = (
+            f"`abstractvision download {repo_id} --base-model {base_model}` "
+            "(which also caches the adapter that schedule loads)"
+        )
+    licence = spec.license_name or "its licence"
     return (
-        " MiniMax-H3 weights are never downloaded during generation, even with allow_download: "
-        "the AbstractFramework packages are gated and the MiniMax H3 Community License excludes "
-        "the European Union, the United Kingdom, the Republic of Korea and the United States from "
-        "its grant. Accept the licence on the package page, then download explicitly, for example "
-        "`abstractvision download AbstractFramework/minimax-h3-8bit --base-model "
-        "minimax-h3-turbo-544p` (which also caches the Turbo adapter that schedule loads)."
+        f" {spec.model_id} weights are never downloaded during generation, even with "
+        f"allow_download: the catalog marks {repo_id} for explicit download only ({licence}). "
+        "Accept the licence (on the repository page while logged in to Hugging Face, for a "
+        f"gated repository), then download explicitly: {command}."
     )
 
 
@@ -1588,11 +1684,12 @@ def _looks_like_mflux_packaged_repo(value: Any) -> bool:
 
 
 def _is_mlx_gen_download_required(exc: BaseException) -> bool:
-    return (
-        exc.__class__.__name__ == "DownloadRequiredError"
-        or hasattr(exc, "download_command")
-        or hasattr(exc, "prepare_command")
-    )
+    # What MLX-Gen raises for weights, tokenizers and adapters it would have to download.
+    try:
+        from mflux.models.common.download_policy import DownloadRequiredError  # type: ignore
+    except ImportError:
+        return False
+    return isinstance(exc, DownloadRequiredError)
 
 
 def _wrap_mlx_gen_download_required(exc: BaseException) -> OptionalDependencyMissingError:
@@ -2309,64 +2406,106 @@ def discover_incomplete_mflux_sources(
 
 
 def _infer_base_model(*values: Any) -> Optional[str]:
-    for value in values:
-        s = _norm(value)
-        if not s:
-            continue
-        if s in _KNOWN_MODEL_ALIASES:
-            return _KNOWN_MODEL_ALIASES[s]
-        if "qwen" in s and "image-edit" in s:
-            if "2509" in s:
-                return "qwen-image-edit-2509"
-            return "qwen-image-edit-2511"
-        if "qwen" in s and "image" in s:
-            return "qwen-image"
-        if "bonsai" in s:
-            return "bonsai-image-ternary"
-        if "z-image-turbo" in s or "zimage-turbo" in s:
-            return "z-image-turbo"
-        if "z-image" in s or "zimage" in s:
-            return "z-image"
-        if "ernie" in s and "image" in s:
-            return "ernie-image-turbo"
-        if "fibo" in s and "edit" in s and "rmbg" in s:
-            return "fibo-edit-rmbg"
-        if "fibo" in s and "edit" in s:
-            return "fibo-edit"
-        if "fibo" in s and "lite" in s:
-            return "fibo-lite"
-        if "fibo" in s:
-            return "fibo"
-        if "minimax" in s and "h3" in s:
-            if "turbo-544p" in s or "turbo_544p" in s:
-                return MINIMAX_H3_TURBO_544P_MODEL_KEY
-            if "turbo" in s:
-                return MINIMAX_H3_TURBO_MODEL_KEY
-            return MINIMAX_H3_MODEL_KEY
-        if "seedvr2" in s:
-            if "7b" in s:
-                return SEEDVR2_7B_MODEL_KEY
-            return SEEDVR2_3B_MODEL_KEY
-        if "wan" in s and ("t2v-a14b" in s or "t2v_a14b" in s or "t2v-a14" in s):
-            return WAN_T2V_A14B_MODEL_KEY
-        if "wan" in s and ("i2v-a14b" in s or "i2v_a14b" in s or "i2v-a14" in s):
-            return WAN_I2V_A14B_MODEL_KEY
-        if (
-            s == "wan"
-            or "wan2.2-ti2v" in s
-            or "wan2-2-ti2v" in s
-            or "wan-ti2v" in s
-            or "wan-video" in s
-        ):
-            return WAN_TI2V_MODEL_KEY
-        if "klein-base-4b" in s or "kleinbase4b" in s:
-            return "flux2-klein-base-4b"
-        if "klein-base-9b" in s or "kleinbase9b" in s:
-            return "flux2-klein-base-9b"
-        if "klein-4b" in s or "klein4b" in s:
-            return "flux2-klein-4b"
-        if "klein-9b" in s or "klein9b" in s:
-            return "flux2-klein-9b"
+    """The MLX-Gen base model `values` (model ids, repo ids, names or local paths) identify.
+
+    Exact identification is tried on every value before anything else: the value as an alias,
+    then the repo id of a Hugging Face cache snapshot path or the last path component as an alias,
+    then a local package's own card (`base_model`). A parent directory never decides. Name matching
+    is the last resort, for the families 0.3.36 resolved that way (`_legacy_base_model_match`).
+    """
+    for identify in (_exact_base_model, _card_base_model, _legacy_base_model_match):
+        for value in values:
+            key = identify(value)
+            if key:
+                return key
+    return None
+
+
+def _exact_base_model(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    path = Path(text)
+    for name in (text, _hf_cache_repo_id(path), path.name):
+        key = _KNOWN_MODEL_ALIASES.get(_norm(name))
+        if key:
+            return key
+    return None
+
+
+def _hf_cache_repo_id(path: Path) -> Optional[str]:
+    # A Hugging Face cache snapshot: <root>/models--<org>--<name>/snapshots/<revision>.
+    if path.parent.name != "snapshots":
+        return None
+    return _repo_id_from_cache_dir_name(path.parent.parent.name)
+
+
+def _card_base_model(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    path = Path(text).expanduser()
+    if not path.is_dir():
+        return None
+    for name in _frontmatter_list(_read_card_frontmatter(path / "README.md"), "base_model"):
+        key = _KNOWN_MODEL_ALIASES.get(_norm(name))
+        if key:
+            return key
+    return None
+
+
+def _legacy_base_model_match(value: Any) -> Optional[str]:
+    # Name matching over the whole value, as 0.3.36 resolved these families; MiniMax-H3 (new in
+    # 0.3.37) is identified only exactly or by its card.
+    s = _norm(value)
+    if not s:
+        return None
+    if "qwen" in s and "image-edit" in s:
+        if "2509" in s:
+            return "qwen-image-edit-2509"
+        return "qwen-image-edit-2511"
+    if "qwen" in s and "image" in s:
+        return "qwen-image"
+    if "bonsai" in s:
+        return "bonsai-image-ternary"
+    if "z-image-turbo" in s or "zimage-turbo" in s:
+        return "z-image-turbo"
+    if "z-image" in s or "zimage" in s:
+        return "z-image"
+    if "ernie" in s and "image" in s:
+        return "ernie-image-turbo"
+    if "fibo" in s and "edit" in s and "rmbg" in s:
+        return "fibo-edit-rmbg"
+    if "fibo" in s and "edit" in s:
+        return "fibo-edit"
+    if "fibo" in s and "lite" in s:
+        return "fibo-lite"
+    if "fibo" in s:
+        return "fibo"
+    if "seedvr2" in s:
+        if "7b" in s:
+            return SEEDVR2_7B_MODEL_KEY
+        return SEEDVR2_3B_MODEL_KEY
+    if "wan" in s and ("t2v-a14b" in s or "t2v_a14b" in s or "t2v-a14" in s):
+        return WAN_T2V_A14B_MODEL_KEY
+    if "wan" in s and ("i2v-a14b" in s or "i2v_a14b" in s or "i2v-a14" in s):
+        return WAN_I2V_A14B_MODEL_KEY
+    if (
+        s == "wan"
+        or "wan2.2-ti2v" in s
+        or "wan2-2-ti2v" in s
+        or "wan-ti2v" in s
+        or "wan-video" in s
+    ):
+        return WAN_TI2V_MODEL_KEY
+    if "klein-base-4b" in s or "kleinbase4b" in s:
+        return "flux2-klein-base-4b"
+    if "klein-base-9b" in s or "kleinbase9b" in s:
+        return "flux2-klein-base-9b"
+    if "klein-4b" in s or "klein4b" in s:
+        return "flux2-klein-4b"
+    if "klein-9b" in s or "klein9b" in s:
+        return "flux2-klein-9b"
     return None
 
 
@@ -3482,15 +3621,15 @@ class MFluxVisionBackend(VisionBackend):
                     return str(snapshot_dir), _base_model_for_preset(
                         configured_base, configured_model, preset
                     )
-                if not self._cfg.allow_download or _requires_explicit_download(
-                    _base_model_for_preset(configured_base, configured_model, preset)
-                ):
+                explicit_note = _explicit_download_note(
+                    preset.repo_id,
+                    _base_model_for_preset(configured_base, configured_model, preset),
+                )
+                if not self._cfg.allow_download or explicit_note:
                     raise OptionalDependencyMissingError(
                         f"MLX-Gen model preset {configured_model!r} is not available in the Hugging Face cache. "
                         f"Run: abstractvision download {preset.repo_id} --provider mlx-gen"
-                        + _explicit_download_note(
-                            _base_model_for_preset(configured_base, configured_model, preset)
-                        )
+                        + explicit_note
                     )
                 try:
                     downloaded = download_hf_repo_snapshot(
@@ -3539,10 +3678,11 @@ class MFluxVisionBackend(VisionBackend):
                         "Could not infer MLX-Gen base model. Set vision_mflux_base_model / "
                         "ABSTRACTVISION_MFLUX_BASE_MODEL."
                     )
-                if _requires_explicit_download(base):
+                explicit_note = _explicit_download_note(configured_model, base)
+                if explicit_note:
                     raise OptionalDependencyMissingError(
                         f"MLX-Gen model repo {configured_model!r} is not cached locally."
-                        + _explicit_download_note(base)
+                        + explicit_note
                     )
                 try:
                     downloaded = download_hf_repo_snapshot(
@@ -3712,8 +3852,11 @@ class MFluxVisionBackend(VisionBackend):
         """Load-time `quantize` widths the configured model accepts (empty: refused).
 
         A route that publishes `validated_quantization_bits` accepts those; other routes accept
-        MLX-Gen's `--quantize` choices. A prepared (already quantized) package accepts none.
+        MLX-Gen's `--quantize` choices. A prepared package accepts none.
         """
+        location = self._resolved_model_path or self._cfg.model
+        if _is_prepared_mlx_gen_package(location, self._cfg.model):
+            return ()
         rows = self._route_rows(task)
         validated = sorted(
             {int(bits) for row in rows for bits in (row.get("validated_quantization_bits") or ())}
@@ -3740,11 +3883,8 @@ class MFluxVisionBackend(VisionBackend):
             bits = int(quantize)
         except (TypeError, ValueError):
             raise ValueError(f"quantize must be an integer bit width (got {quantize!r}).") from None
-        # The package directory says so (bits in its name, or an MLX-Gen model card), or the width
-        # the catalog entry or the configured id gives is below 16 (a cache snapshot of a
-        # third-party package whose card does not name MLX-Gen, such as the 2-bit Bonsai).
-        stored_bits = self._resolved_quantization_bits
-        if _is_prepared_mlx_gen_package(model_path) or (stored_bits is not None and int(stored_bits) < 16):
+        # The same answer quantize_bits() reports, from the directory about to load.
+        if _is_prepared_mlx_gen_package(model_path, self._cfg.model):
             raise CapabilityNotSupportedError(
                 f"{model_path} is a prepared MLX-Gen package whose stored weights are its quantization; "
                 "load it without quantize, or quantize the source snapshot."

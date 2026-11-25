@@ -80,6 +80,8 @@ class VisionModelDownloadPreset:
     gated: bool = False
     recommended: bool = False
     license_name: str = ""
+    # From the catalog: generation never fetches this repository, even with allow_download.
+    explicit_download: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         out = asdict(self)
@@ -1792,6 +1794,7 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
 
     recommended: set[tuple[str, str, str, str]] = set()
     gated: set[str] = set()
+    explicit: set[str] = set()
     license_names: Dict[str, str] = {}
     for model_id in reg.list_models():
         spec = reg.get(model_id)
@@ -1801,6 +1804,8 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
                 recommended.add(key)
             if dl.gated:
                 gated.add(str(dl.repo_id))
+            if dl.explicit_download:
+                explicit.add(str(dl.repo_id))
             if spec.license_name:
                 license_names.setdefault(str(dl.repo_id), spec.license_name)
             if key in seen:
@@ -1850,6 +1855,7 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
         replace(
             p,
             gated=p.repo_id in gated,
+            explicit_download=p.repo_id in explicit,
             recommended=(p.key, p.engine, p.target, p.repo_id) in recommended,
             license_name=license_names.get(p.repo_id, ""),
         )
