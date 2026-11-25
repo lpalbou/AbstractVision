@@ -720,8 +720,9 @@ class TestAbstractCorePluginMemoryMode(unittest.TestCase):
         def fake_urlopen(req, timeout=None):
             transport.append(req.full_url)
             if req.full_url.endswith("/vision/models"):
-                entry = {"id": "stand-in/h3", "memory_modes": ["default", "low"]}
-                return _FakeHTTPResponse(json.dumps({"models": [entry], "active": entry}).encode())
+                # As AbstractCore's server publishes it: a request addresses the entry by `routed_model`.
+                entry = {"id": "h3", "routed_model": "stand-in/h3", "memory_modes": ["default", "low"]}
+                return _FakeHTTPResponse(json.dumps({"models": [entry], "defaults": {}}).encode())
             return _FakeHTTPResponse(json.dumps({"data": [{"id": "stand-in/h3"}]}).encode())
 
         with patch.dict("os.environ", {"ABSTRACTVISION_ASSUME_OFFLINE": "1"}, clear=True), patch.object(

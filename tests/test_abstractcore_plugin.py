@@ -13,6 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
+from abstractvision.errors import CapabilityNotSupportedError  # noqa: E402
+
 
 def _make_hf_snapshot(root: Path, repo_id: str, *, snapshot_name: str = "abc123") -> Path:
     repo_dir = root / f"models--{repo_id.replace('/', '--')}"
@@ -1867,6 +1869,8 @@ print("ok")
 
         self.assertIn("catalog failed", str(ctx.exception))
         self.assertNotIn("gpt-image-1", str(ctx.exception))
+        # A failure of the provider is not "no catalog".
+        self.assertNotIsInstance(ctx.exception, CapabilityNotSupportedError)
 
     def test_abstractcore_plugin_available_providers_excludes_openai_when_offline(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
@@ -1938,7 +1942,6 @@ print("ok")
 
     def test_abstractcore_plugin_provider_models_requires_catalog_backend(self):
         from abstractvision.backends.base_backend import VisionBackend
-        from abstractvision.errors import AbstractVisionError
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import (
             GeneratedAsset,
@@ -1970,10 +1973,49 @@ print("ok")
                 self.config = {"vision_backend_instance": _NoCatalogBackend()}
 
         cap = _AbstractVisionCapability(_DummyOwner())
-        with self.assertRaises(AbstractVisionError) as ctx:
+        with self.assertRaises(CapabilityNotSupportedError) as ctx:
             cap.list_provider_models(task="text_to_image")
 
         self.assertIn("does not support provider model catalogs", str(ctx.exception))
+
+    def test_a_backend_without_a_model_catalog_is_that_answer_not_a_failure(self):
+        from abstractvision.errors import AbstractVisionError
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        no_catalog = CapabilityNotSupportedError("The remote has no model catalog: GET /models answered HTTP 404.")
+
+        class _Stub:
+            def __init__(self, outcome):
+                self.outcome = outcome
+
+            def list_provider_models(self, *, task=None):
+                if isinstance(self.outcome, Exception):
+                    raise self.outcome
+                return self.outcome
+
+        class _DummyOwner:
+            config = {}
+
+        def catalog(remote, local):
+            cap = _AbstractVisionCapability(_DummyOwner())
+            with patch.object(cap, "_get_backend", return_value=_Stub(remote)), patch.object(
+                _AbstractVisionCapability, "_make_mflux_backend", return_value=_Stub(local)
+            ), patch.object(
+                _AbstractVisionCapability, "_make_diffusers_backend", side_effect=RuntimeError("disabled")
+            ), patch.dict("os.environ", {"ABSTRACTVISION_ASSUME_OFFLINE": "1"}, clear=True):
+                return cap.list_provider_models(task="text_to_image")
+
+        # The only backend asked has no catalog: the plugin says exactly that, typed.
+        with self.assertRaises(CapabilityNotSupportedError) as ctx:
+            catalog(no_catalog, no_catalog)
+        self.assertIs(ctx.exception, no_catalog)
+        # Another backend answered (an empty catalog): that is the answer.
+        self.assertEqual(catalog(no_catalog, []), [])
+        # Another backend failed: the failure, untyped as before.
+        with self.assertRaises(AbstractVisionError) as ctx:
+            catalog(no_catalog, RuntimeError("scan failed"))
+        self.assertNotIsInstance(ctx.exception, CapabilityNotSupportedError)
+        self.assertIn("scan failed", str(ctx.exception))
 
     def test_abstractcore_plugin_capability_with_injected_backend_bytes_and_artifact(self):
         from abstractvision.backends.base_backend import VisionBackend

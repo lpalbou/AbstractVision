@@ -1660,6 +1660,9 @@ class _AbstractVisionCapability:
         )
         skipped_remote_catalog = False
         attempted_catalog = False
+        # A backend that states it has no model catalog (CapabilityNotSupportedError) neither
+        # answered nor failed; when no backend did either, that is the answer.
+        no_catalog: Optional[CapabilityNotSupportedError] = None
         try:
             owner_cfg = getattr(self._owner, "config", None)
             injected_backend = isinstance(owner_cfg, dict) and (
@@ -1718,8 +1721,11 @@ class _AbstractVisionCapability:
                 continue
             if not outcome.get("attempted"):
                 continue
-            attempted_catalog = True
             error = outcome.get("error")
+            if isinstance(error, CapabilityNotSupportedError):
+                no_catalog = error
+                continue
+            attempted_catalog = True
             if error is not None:
                 last_error = error
                 continue
@@ -1745,7 +1751,7 @@ class _AbstractVisionCapability:
             return []
         if attempted_catalog or skipped_remote_catalog:
             return []
-        raise AbstractVisionError(
+        raise no_catalog or CapabilityNotSupportedError(
             "The selected AbstractVision backend does not support provider model catalogs."
         )
 

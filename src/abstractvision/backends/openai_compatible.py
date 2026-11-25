@@ -52,6 +52,8 @@ _VIDEO_TASKS = {"text_to_video", "image_to_video"}
 _DISCOVERY_TTL_S = 30.0
 _DISCOVERY_TIMEOUT_S = 10.0
 _JOB_POLL_INTERVAL_S = 0.5
+# The statuses by which a remote says it has no such route (absent, not for GET, not implemented).
+_NO_ROUTE_STATUSES = {404, 405, 501}
 
 
 def _join_url(base_url: str, path: str) -> str:
@@ -118,6 +120,18 @@ def _format_http_error(e: HTTPError, body: Optional[str] = None) -> str:
     return f"OpenAI-compatible provider request failed (status={getattr(e, 'code', 'unknown')}){suffix}"
 
 
+def _refusal(code: Any, message: Any, field: Any, supported: Any) -> Optional[CapabilityNotSupportedError]:
+    """The CapabilityNotSupportedError a remote's structured error states; None unless its code is
+    `capability_not_supported`. One reading for a synchronous error body and a failed job snapshot."""
+    if code != "capability_not_supported":
+        return None
+    return CapabilityNotSupportedError(
+        str(message or "The remote refused the request."),
+        field=str(field) if field is not None else None,
+        supported=supported if isinstance(supported, list) else None,
+    )
+
+
 def _http_error(e: HTTPError) -> Exception:
     """The exception for an HTTP error; a remote 422 `capability_not_supported` keeps its meaning."""
     try:
@@ -128,13 +142,10 @@ def _http_error(e: HTTPError) -> Exception:
         err = json.loads(body).get("error") if body.strip() else None
     except (ValueError, AttributeError):
         err = None
-    if isinstance(err, dict) and err.get("code") == "capability_not_supported":
-        field, supported = err.get("field"), err.get("supported")
-        return CapabilityNotSupportedError(
-            str(err.get("message") or "The remote refused the request."),
-            field=str(field) if field is not None else None,
-            supported=supported if isinstance(supported, list) else None,
-        )
+    if isinstance(err, dict):
+        refusal = _refusal(err.get("code"), err.get("message"), err.get("field"), err.get("supported"))
+        if refusal is not None:
+            return refusal
     return RuntimeError(_format_http_error(e, body))
 
 
@@ -144,18 +155,24 @@ def _form_value(value: Any) -> str:
     return str(value)
 
 
-def _discovery_entry(catalog: Mapping[str, Any], model_id: Optional[str]) -> Optional[Dict[str, Any]]:
-    """The GET /vision/models entry of `model_id`, or of the remote's active model when None.
+def _discovery_entry(
+    catalog: Mapping[str, Any], model_id: Optional[str], task: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    """The GET /vision/models entry of the model a request sends as `model`.
 
-    Only an entry that lists `memory_modes` advertises the memory and sound fields.
+    A named model selects the entry whose `routed_model` is the string sent (`provider/model`, the
+    one name the server resolves to that entry, `<provider>/default` for a task's default); no model
+    selects `defaults[task]`, the model the server runs for a request that names none. Only an
+    entry that lists `memory_modes` advertises the memory and sound fields.
     """
-    wanted = {str(model_id or "").strip(), _upstream_model_id(model_id)} - {""}
-    candidates = [catalog.get("active")] + (list(catalog.get("models") or []) if wanted else [])
+    model = _upstream_model_id(model_id)
+    defaults = catalog.get("defaults")
+    default = defaults.get(task) if isinstance(defaults, Mapping) and task else None
+    candidates = [*(catalog.get("models") or []), default] if model else [default]
     for entry in candidates:
         if not isinstance(entry, Mapping) or not isinstance(entry.get("memory_modes"), list):
             continue
-        ids = {str(entry.get(key) or "").strip() for key in ("id", "model_id", "load_id", "model")}
-        if not wanted or wanted.intersection(ids):
+        if not model or str(entry.get("routed_model") or "").strip() == model:
             return dict(entry)
     return None
 
@@ -441,7 +458,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             tasks.add("text_to_video")
         if self._cfg.image_to_video_path:
             tasks.add("image_to_video")
-        entry = self._remote_entry(refresh=False)
+        entry = self._remote_entry(refresh=False, task=None)
         return VisionBackendCapabilities(
             supported_tasks=sorted(tasks),
             supports_mask=True,
@@ -454,17 +471,17 @@ class OpenAICompatibleVisionBackend(VisionBackend):
         )
 
     def supported_memory_modes(self, task: Optional[str] = None) -> Tuple[str, ...]:
-        """The default mode plus the modes the remote lists for the configured model.
+        """The default mode plus the modes the remote lists for the configured model (with none
+        configured, for the remote's default of `task`).
 
         Read from the last GET /vision/models answer (no I/O here, nor in `get_capabilities()`);
         `list_provider_models()` and a request that sets one of the fields refresh it.
         """
-        _ = task
-        entry = self._remote_entry(refresh=False) or {}
+        entry = self._remote_entry(refresh=False, task=task) or {}
         return tuple(dict.fromkeys([MEMORY_MODE_DEFAULT, *(str(m) for m in entry.get("memory_modes") or ())]))
 
     def supported_request_options(self, task: Optional[str] = None) -> FrozenSet[str]:
-        entry = self._remote_entry(refresh=False)
+        entry = self._remote_entry(refresh=False, task=task)
         if entry is None:
             return frozenset()
         options: Set[str] = {"quantize"}
@@ -475,7 +492,16 @@ class OpenAICompatibleVisionBackend(VisionBackend):
 
     def list_provider_models(self, *, task: Optional[str] = None) -> Sequence[ProviderModelInfo]:
         catalog = self._remote_catalog(refresh=True)
-        resp = self._get_json(path=str(self._cfg.models_path or "/models"))
+        models_path = str(self._cfg.models_path or "/models")
+        try:
+            resp = self._get_json(path=models_path)
+        except RuntimeError as e:
+            status = e.__cause__.code if isinstance(e.__cause__, HTTPError) else None
+            if status in _NO_ROUTE_STATUSES:
+                raise CapabilityNotSupportedError(
+                    f"The remote at {self._cfg.base_url} has no model catalog: GET {models_path} answered HTTP {status}."
+                ) from e
+            raise
         data = resp.get("data")
         if not isinstance(data, list):
             raise ValueError("Invalid response: expected JSON object with a data list")
@@ -493,7 +519,7 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             model_id = raw.get("id") or raw.get("model") or raw.get("name")
             if not isinstance(model_id, str) or not model_id.strip():
                 continue
-            entry = _discovery_entry(catalog, str(model_id)) if catalog is not None else None
+            entry = _discovery_entry(catalog, str(model_id), task) if catalog is not None else None
             for key in ("memory_modes", "supports_audio", "audio_fields"):
                 if entry is not None and key in entry:
                     raw.setdefault(key, entry[key])
@@ -569,9 +595,9 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             self._discovery_failure = None
         return catalog
 
-    def _remote_entry(self, *, refresh: bool) -> Optional[Dict[str, Any]]:
+    def _remote_entry(self, *, refresh: bool, task: Optional[str]) -> Optional[Dict[str, Any]]:
         catalog = self._remote_catalog(refresh=refresh)
-        return _discovery_entry(catalog, self._cfg.model_id) if catalog is not None else None
+        return _discovery_entry(catalog, self._cfg.model_id, task) if catalog is not None else None
 
     def _unadvertised_reason(self) -> str:
         failure = self._discovery_failure
@@ -632,8 +658,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             and not self._vision_routes_asked
         )
         if needs_remote_entry or needs_remote_kind:
-            self._remote_entry(refresh=True)
-        advertised = self._remote_entry(refresh=False) is not None
+            self._remote_catalog(refresh=True)
+        advertised = self._remote_entry(refresh=False, task=task) is not None
         try:
             request, mode, _batch = self.resolve_memory_request(request, task=task)
         except CapabilityNotSupportedError as e:
@@ -724,9 +750,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
                     raise GenerationCancelledError(f"Remote job {job_id} was cancelled.")
                 if state == "failed":
                     message = str(snap.get("error") or "unknown error")
-                    if snap.get("error_code") == "capability_not_supported":
-                        raise CapabilityNotSupportedError(message)
-                    raise RuntimeError(f"Remote job {job_id} failed: {message}")
+                    refusal = _refusal(snap.get("error_code"), message, snap.get("error_field"), snap.get("error_supported"))
+                    raise refusal or RuntimeError(f"Remote job {job_id} failed: {message}")
                 time.sleep(_JOB_POLL_INTERVAL_S)
         except BaseException:
             if not ended:
