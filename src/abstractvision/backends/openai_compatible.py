@@ -30,6 +30,7 @@ from .base_backend import (
     REQUEST_OPTION_FIELDS,
     SOUNDTRACK_REQUEST_FIELDS,
     VisionBackend,
+    check_quantize,
     option_is_set,
 )
 
@@ -757,6 +758,8 @@ class OpenAICompatibleVisionBackend(VisionBackend):
             )
         if not advertised:
             return request, {}, False
+        if option_is_set(getattr(request, "quantize", None)):
+            check_quantize(request.quantize)
         fields: Dict[str, Any] = {}
         if named or mode != MEMORY_MODE_DEFAULT:
             fields["memory_mode"] = mode

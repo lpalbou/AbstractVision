@@ -178,8 +178,6 @@ class VisionBackend(ABC):
                 extra.pop(name, None)
             else:
                 options[name] = typed
-        if "quantize" in listed and option_is_set(options["quantize"]):
-            check_quantize(options["quantize"])
         mode, from_env = resolve_memory_mode_with_source(options.pop("memory_mode"))
         if from_env and mode not in supported:
             mode = self._degrade_process_memory_mode(mode, supported)
