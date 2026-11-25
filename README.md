@@ -164,7 +164,13 @@ components, but they remain the default prepared choice.
 
 The downloader stores curated presets in the Hugging Face cache by default and
 imports older `~/models/<preset>` trees on first use. Generation stays
-cache-only unless you explicitly enable runtime downloads.
+cache-only unless you explicitly enable runtime downloads. `catalog` and
+`show-model` give each download's size, whether its repository is gated, whether
+it is installed (with its size on disk) and the memory modes this machine can run;
+for MLX-Gen packages with published measurements, `show-model` adds the peak
+memory of each mode. `download` checks the free disk space before it starts,
+resumes an interrupted download, and `--dry-run` prints the plan without
+downloading. See [Downloads](docs/reference/configuration.md#downloads).
 
 ```bash
 pip install "abstractvision[models,mlx-gen]"
@@ -191,6 +197,11 @@ abstractvision download AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit --provid
 abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen
 abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provider mlx-gen
 abstractvision download AbstractFramework/seedvr2-3b-8bit --provider mlx-gen
+# MiniMax-H3 (video with sound): gated, accept the licence on the package page first.
+# The model id fetches the recommended 8-bit package; --base-model also caches the Turbo adapter.
+abstractvision show-model MiniMaxAI/MiniMax-H3
+abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p --dry-run
+abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p
 abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-4bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-8bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-4bit --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75

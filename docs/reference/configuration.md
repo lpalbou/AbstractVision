@@ -14,9 +14,11 @@ See also:
 
 Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py):
 
-- `abstractvision models` — list known registry model ids
+- `abstractvision models` — list known registry model ids (one per line); `--json` adds each model's downloads with the fields `show-model` prints
 - `abstractvision tasks` — list known tasks
-- `abstractvision show-model <id>` — print a model’s tasks + params
+- `abstractvision show-model <id> [--json]` — print a model’s tasks + params and, for each download, its size, whether the Hugging Face repository is gated (and the licence to accept), whether it is in the local cache (and its size there), the `memory_mode` values this host can run and, for MLX-Gen packages whose capability rows publish measured runs, the peak memory of each mode and the smallest memory it was tested on; for MiniMax-H3 it also lists the schedules (`base_model`) and the adapter each loads
+- `abstractvision catalog [--provider ...] [--task ...] [--json]` — browse the downloadable models: target, engine, bits (`*` marks the recommended package), download size, access (gated or open), cache state and the memory modes this host can run
+- `abstractvision download <model id or repo id> [--bits N] [--base-model SCHEDULE] [--dry-run]` — download a curated preset into the Hugging Face cache (see [Downloads](#downloads))
 - `abstractvision adapters --provider mlx-gen --model <id> --task <task>` — list backend-discovered cached adapters for one exact route
 - `abstractvision provider-models --openai --task text_to_image` — explicitly query the official OpenAI `/models` catalog
 - `abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image` — explicitly query an OpenAI-compatible provider catalog
@@ -135,6 +137,42 @@ The interactive CLI state object (`_ReplState` in [`../../src/abstractvision/cli
 Note:
 - Curated `abstractvision download ...` presets are written to the Hugging Face cache by default, and older `~/models/<preset>` trees are imported into that same cache on first use.
 
+### Downloads
+
+`abstractvision download` takes an exact package repo id (`AbstractFramework/minimax-h3-4bit`), its
+short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`). A model id with several
+packages selects the one the catalog marks as recommended (`*` in `catalog`), or the width
+`--bits 4|8|16` names; `--allow-non-8bit` selects a model's source snapshot. A model id with several
+packages and no recommendation asks for an exact repo id or `--bits`. On Apple silicon `--target auto`
+is `mlx` (MLX-Gen packages first).
+
+- Size and disk space: before anything is fetched, the files the preset selects are listed on the
+  Hugging Face Hub (metadata only) and compared with the free space of the cache disk; a download that
+  does not fit stops with a message naming its size. Without the listing (offline), the size packaged
+  in `assets/vision_model_hub_facts.json` is used.
+- Resume: files already in the cache, complete or partial, are kept; running the same command again
+  resumes an interrupted download. A download that ends with files missing says so and how to resume.
+- Gated repositories (for example the `AbstractFramework/minimax-h3-*` packages): accept the licence on
+  the repository page while logged in to Hugging Face, then authenticate (`hf auth login`, `HF_TOKEN`, or
+  `--token`). A refused download ends with a message naming the page and the licence.
+- `--base-model <schedule>`: for MLX-Gen models whose schedules load an adapter, also fetches that
+  adapter into mlx-gen's LoRA cache. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and
+  `minimax-h3-turbo` load a lightx2v Turbo LoRA; `minimax-h3` loads none. Without `--base-model`, the
+  command prints the schedules whose adapter is not cached.
+- `--dry-run`: prints the selection, size, access, cache state, free disk space and adapter state, and
+  downloads nothing.
+- Generation never downloads gated MiniMax-H3 weights or their adapters, even with
+  `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`.
+
+```bash
+abstractvision show-model MiniMaxAI/MiniMax-H3
+abstractvision download MiniMaxAI/MiniMax-H3 --dry-run
+abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p
+abstractvision download MiniMaxAI/MiniMax-H3 --bits 4
+```
+
+- `ABSTRACTVISION_HUB_FACTS_PATH` — optional filesystem path to a replacement `vision_model_hub_facts.json` (per repository: `gated`, and `download_bytes` per preset target). `scripts/refresh_hub_facts.py` rewrites the packaged file from the Hub's public metadata.
+
 ### OpenAI / OpenAI-Compatible HTTP Backend
 
 - `OPENAI_BASE_URL` — optional OpenAI-compatible `/v1` endpoint override; when unset, the official OpenAI profile uses `https://api.openai.com/v1`
@@ -165,7 +203,7 @@ Playground-only Diffusers vars:
 ### MLX-Gen backend (Apple-first)
 
 - `ABSTRACTVISION_MFLUX_MODEL` — exact published MLX-Gen repo id, local model path, or custom repo id (examples: `AbstractFramework/flux.2-klein-4b-4bit`, `AbstractFramework/ernie-image-turbo-8bit`, `briaai/FIBO`, `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, `briaai/Fibo-Edit`, `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit`, `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`, `/path/to/preset-dir`)
-- `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional base family for local paths or custom repos (`flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`, `flux2-klein-base-9b`, `bonsai-image-ternary`, `z-image`, `z-image-turbo`, `qwen-image`, `qwen-image-edit-2511`, `ernie-image-turbo`, `fibo`, `fibo-lite`, `fibo-edit`, `fibo-edit-rmbg`, `wan2.2-ti2v-5b`, `wan2.2-t2v-a14b`, `wan2.2-i2v-a14b`)
+- `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional base family for local paths or custom repos (`flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`, `flux2-klein-base-9b`, `bonsai-image-ternary`, `z-image`, `z-image-turbo`, `qwen-image`, `qwen-image-edit-2511`, `ernie-image-turbo`, `fibo`, `fibo-lite`, `fibo-edit`, `fibo-edit-rmbg`, `wan2.2-ti2v-5b`, `wan2.2-t2v-a14b`, `wan2.2-i2v-a14b`), or the MiniMax-H3 schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`)
 - `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root only; curated downloads now land in the Hugging Face cache
 - `ABSTRACTVISION_MLX_GEN_LORA_PATHS` / `ABSTRACTVISION_MFLUX_LORA_PATHS` — optional default LoRA adapters applied by the MLX-Gen backend when a request does not carry its own `lora_adapters`

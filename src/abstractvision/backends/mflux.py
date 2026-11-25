@@ -1408,11 +1408,11 @@ def _explicit_download_note(base_model: Optional[str]) -> str:
         return ""
     return (
         " MiniMax-H3 weights are never downloaded during generation, even with allow_download: "
-        "the repositories are gated and the MiniMax H3 Community License excludes the European "
-        "Union, the United Kingdom, the Republic of Korea and the United States from its grant. "
-        "Accept the licence on the model page, then download explicitly, for example "
-        "`mlxgen download --model AbstractFramework/minimax-h3-8bit --base-model "
-        "minimax-h3-turbo-544p` (which also caches the Turbo adapter)."
+        "the AbstractFramework packages are gated and the MiniMax H3 Community License excludes "
+        "the European Union, the United Kingdom, the Republic of Korea and the United States from "
+        "its grant. Accept the licence on the package page, then download explicitly, for example "
+        "`abstractvision download AbstractFramework/minimax-h3-8bit --base-model "
+        "minimax-h3-turbo-544p` (which also caches the Turbo adapter that schedule loads)."
     )
 
 
@@ -1442,6 +1442,54 @@ def _require_mlx_gen_version(floor: str, what: str) -> None:
             f"{what} requires mlx-gen>={floor} (installed: {installed}). "
             'Install/upgrade it with `pip install "abstractvision[mlx-gen]"`.'
         )
+
+
+def mlx_gen_schedule_adapter(base_model: str) -> Optional[str]:
+    """The adapter an MLX-Gen schedule attaches on its own (`hf:<repo>/<file>`), or None.
+
+    The MiniMax-H3 Turbo schedules (`minimax-h3-turbo`, `minimax-h3-turbo-544p`) attach a
+    lightx2v Turbo LoRA; the value comes from mlx-gen's catalog entry for the schedule."""
+
+    key = _infer_base_model(base_model)
+    if not key or key not in _MFLUX_MODELS:
+        raise ValueError(
+            f"Unknown MLX-Gen base model {base_model!r}. Supported: {', '.join(sorted(_MFLUX_MODELS))}"
+        )
+    if _MFLUX_MODELS[key].family != "minimax-h3":
+        return None
+    ModelConfig = _lazy_import_mflux()[0]
+    try:
+        overrides = getattr(ModelConfig.from_name(key), "transformer_overrides", None) or {}
+    except Exception:
+        return None
+    adapter = overrides.get("turbo_lora") if isinstance(overrides, Mapping) else None
+    return str(adapter) if adapter else None
+
+
+def resolve_mlx_gen_schedule_adapter(base_model: str, *, download: bool = False) -> Optional[Tuple[str, Optional[str]]]:
+    """(adapter, local path) for the adapter a schedule attaches; None when it attaches none.
+
+    The path is None when the adapter is not cached. `download=True` fetches it into mlx-gen's
+    LoRA cache, as `mlxgen download --base-model <schedule>` does; generation never does."""
+
+    adapter = mlx_gen_schedule_adapter(base_model)
+    if adapter is None:
+        return None
+    try:
+        from mflux.models.common.download_policy import allow_downloads  # type: ignore
+        from mflux.models.common.resolution.lora_resolution import LoraResolution  # type: ignore
+    except Exception as e:
+        raise OptionalDependencyMissingError(
+            f"Resolving the {base_model} adapter requires mlx-gen>={MLX_GEN_VERSION_FLOOR}. "
+            'Install it with `pip install "abstractvision[mlx-gen]"`.'
+        ) from e
+    if download:
+        with allow_downloads():
+            return adapter, str(LoraResolution.resolve(adapter))
+    try:
+        return adapter, str(LoraResolution.resolve(adapter))
+    except Exception:
+        return adapter, None
 
 
 def _lazy_import_mflux_minimax_h3() -> Any:

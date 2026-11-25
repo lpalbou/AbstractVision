@@ -120,6 +120,7 @@ The validator enforces a “soft schema”:
 - Each model entry includes:
   - `provider` (string)
   - `license` (string; informational)
+  - optional `license_name` (the licence's display name, used where access requires accepting it)
   - optional `downloads` (list of downloadable artifacts; informational metadata used by `abstractvision show-model`)
   - `tasks` (map of task name → task spec)
 - Each task spec includes:
@@ -145,6 +146,14 @@ Some models include a `downloads` list to document what AbstractVision considers
 - `bits`: typically `8` (quantized) or `16` (full snapshot)
 - `repo_id`: Hugging Face repo id to download
 - optional `source`, `notes`
+- optional `recommended: true`: the package `download <model id>` selects when the model has several
+  packages for one engine and no `--bits` is given
+
+Hugging Face facts about each download repository are kept apart, in
+`assets/vision_model_hub_facts.json`: `gated`, and `download_bytes` per preset target (the bytes
+`download` fetches with that preset's patterns; Diffusers presets have none, since what they fetch
+depends on the host). `scripts/refresh_hub_facts.py` rewrites it from the Hub's public metadata API;
+`--check` reports differences without writing.
 
 This metadata is descriptive, but in this repo it is maintained to align with the curated
 download surfaces exposed by `abstractvision catalog`, `abstractvision model-presets`, and

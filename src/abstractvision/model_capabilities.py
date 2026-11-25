@@ -22,6 +22,8 @@ class VisionModelDownloadSpec:
     source: str = ""
     notes: str = ""
     aliases: List[str] = field(default_factory=list)
+    # The package `download <model id>` picks among several of one engine when no width is named.
+    recommended: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,8 @@ class VisionModelSpec:
     tasks: Dict[str, VisionTaskSpec]
     notes: str = ""
     downloads: List[VisionModelDownloadSpec] = field(default_factory=list)
+    # Human-readable licence name (`license` is its identifier), used where access needs it accepted.
+    license_name: str = ""
 
 
 class VisionModelCapabilitiesRegistry:
@@ -117,7 +121,8 @@ class VisionModelCapabilitiesRegistry:
                                 str(alias).strip()
                                 for alias in item.get("aliases", [])
                                 if isinstance(alias, str) and str(alias).strip()
-                            ]
+                            ],
+                            recommended=item.get("recommended") is True,
                         )
                     )
                     for alias in [key, repo_id, *downloads[-1].aliases]:
@@ -150,6 +155,7 @@ class VisionModelCapabilitiesRegistry:
                 tasks=tasks,
                 notes=notes,
                 downloads=downloads,
+                license_name=str(spec.get("license_name") or "").strip(),
             )
 
         self._models = parsed
