@@ -20,6 +20,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from _mlx_gen_versions import setUpModule, tearDownModule  # noqa: F401
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 

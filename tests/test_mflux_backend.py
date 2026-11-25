@@ -9,12 +9,21 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from _mlx_gen_versions import real_runtime_versions, setUpModule, tearDownModule  # noqa: F401
+
 try:
     import yaml  # noqa: F401
 
     _YAML_INSTALLED = True
 except ImportError:
     _YAML_INSTALLED = False
+
+try:
+    import packaging.specifiers  # noqa: F401
+
+    _PACKAGING_INSTALLED = True
+except ImportError:
+    _PACKAGING_INSTALLED = False
 
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X9+QAAAABJRU5ErkJggg=="
@@ -2440,15 +2449,18 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         _FakeQwenImage.last_init = None
         backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit"))
-        for request in (
-            ImageGenerationRequest(prompt="hello", control_image=PNG_1X1, control_strength=0.9),
-            ImageGenerationRequest(prompt="hello", extra={"control_image": PNG_1X1}),
+        for request, field in (
+            (ImageGenerationRequest(prompt="hello", control_image=PNG_1X1, control_strength=0.9), "control_image"),
+            (ImageGenerationRequest(prompt="hello", extra={"control_image": PNG_1X1}), "control_image"),
+            # The strength alone applies to nothing: refused the same way, not ignored.
+            (ImageGenerationRequest(prompt="hello", control_strength=0.9), "control_strength"),
+            (ImageGenerationRequest(prompt="hello", extra={"control_strength": 0.9}), "control_strength"),
         ):
-            with self.subTest(request=request.extra):
+            with self.subTest(field=field, extra=sorted(request.extra)):
                 with patch.object(MFluxVisionBackend, "_find_configured_model", side_effect=AssertionError("resolved")):
                     with self.assertRaises(CapabilityNotSupportedError) as caught:
                         backend.generate_image(request)
-                self.assertEqual((caught.exception.field, caught.exception.supported), ("control_image", ()))
+                self.assertEqual((caught.exception.field, caught.exception.supported), (field, ()))
         self.assertIsNone(_FakeQwenImage.last_init)
         self.assertFalse(backend.has_loaded_model())
 
@@ -4161,44 +4173,67 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         return patch("importlib.metadata.version", side_effect=version)
 
-    def test_runtime_versions_outside_the_pins_are_refused_when_the_runtime_is_first_imported(self):
+    @unittest.skipUnless(_PACKAGING_INSTALLED, "packaging is not installed (it comes with huggingface_hub)")
+    def test_runtime_versions_outside_the_pins_are_refused_before_the_model_is_looked_for(self):
+        import contextlib
+
         from abstractvision.backends import mflux
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.types import ImageGenerationRequest, ImageUpscaleRequest
 
         self.addCleanup(mflux._require_runtime_versions.cache_clear)
         refused = {
-            "mlx-gen too old": ("darwin", {"mlx_gen": "0.38.0", "mlx": "0.32.5"}, "mlx-gen>=0.40.1,<0.41.0", "mlx-gen 0.38.0"),
-            "mlx-gen too new": ("linux", {"mlx_gen": "0.41.0"}, "mlx-gen>=0.40.1,<0.41.0", "mlx-gen 0.41.0"),
-            "mlx too old on macOS": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}, "mlx>=0.32.4 on macOS", "mlx 0.31.2"),
+            "mlx-gen too old": ("darwin", {"mlx_gen": "0.38.0", "mlx": "0.32.5"}, "mlx-gen>=0.40.1,<0.41.0", "0.38.0"),
+            "mlx-gen a pre-release of the floor": ("linux", {"mlx_gen": "0.40.1rc1"}, "mlx-gen>=0.40.1,<0.41.0", "0.40.1rc1"),
+            "mlx-gen too new": ("linux", {"mlx_gen": "0.41.0"}, "mlx-gen>=0.40.1,<0.41.0", "0.41.0"),
+            "mlx-gen a pre-release of the ceiling": ("linux", {"mlx_gen": "0.41.0rc1"}, "mlx-gen>=0.40.1,<0.41.0", "0.41.0rc1"),
+            "mlx too old on macOS": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}, "mlx>=0.32.4 on macOS", "0.31.2"),
+            "mlx a pre-release of the floor": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.32.4.dev20261101"}, "mlx>=0.32.4 on macOS", "0.32.4.dev20261101"),
         }
-        for case, (platform, versions, required, installed) in refused.items():
-            for runtime_import in (mflux._lazy_import_mflux, mflux._lazy_import_mflux_seedvr2):
-                with self.subTest(case=case, runtime_import=runtime_import.__name__):
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            stack.enter_context(patch.object(mflux, "_require_runtime_versions", real_runtime_versions()))
+            # Nothing is cached: without the check, these would answer that the model is not cached.
+            calls = {
+                "generate_image": lambda backend: backend.generate_image(ImageGenerationRequest(prompt="fox")),
+                "preload": lambda backend: backend.preload(),
+                "upscale_image": lambda backend: backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1)),
+            }
+            for case, (platform, versions, required, installed) in refused.items():
+                for call_name, call in calls.items():
+                    with self.subTest(case=case, call=call_name):
+                        mflux._require_runtime_versions.cache_clear()
+                        model = "AbstractFramework/seedvr2-3b-8bit" if call_name == "upscale_image" else "AbstractFramework/flux.2-klein-4b-8bit"
+                        backend = MFluxVisionBackend(config=MFluxBackendConfig(model=model))
+                        with patch.object(mflux.sys, "platform", platform), self._installed(**versions):
+                            with self.assertRaises(OptionalDependencyMissingError) as caught:
+                                call(backend)
+                        message = str(caught.exception)
+                        self.assertIn(required, message)
+                        self.assertIn(f" {installed} is installed", message)
+                        self.assertIn('pip install -U "abstractvision[mlx-gen]"', message)
+            accepted = {
+                "in range": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.32.4"}),
+                "in range, a later patch and its pre-release": ("darwin", {"mlx_gen": "0.40.2rc1", "mlx": "0.33.0"}),
+                "old mlx off macOS": ("linux", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}),
+                "engine absent": ("darwin", {}),
+            }
+            for case, (platform, versions) in accepted.items():
+                with self.subTest(case=case):
                     mflux._require_runtime_versions.cache_clear()
                     with patch.object(mflux.sys, "platform", platform), self._installed(**versions):
-                        with self.assertRaises(OptionalDependencyMissingError) as caught:
-                            runtime_import()
-                    message = str(caught.exception)
-                    self.assertIn(required, message)
-                    self.assertIn(f"{installed} is installed", message)
-                    self.assertIn('pip install -U "abstractvision[mlx-gen]"', message)
-        accepted = {
-            "in range": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.32.4"}),
-            "in range, later patch": ("darwin", {"mlx_gen": "0.40.9", "mlx": "0.33.0"}),
-            "old mlx off macOS": ("linux", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}),
-            "engine absent": ("darwin", {}),
-        }
-        for case, (platform, versions) in accepted.items():
-            with self.subTest(case=case):
-                mflux._require_runtime_versions.cache_clear()
-                with patch.object(mflux.sys, "platform", platform), self._installed(**versions):
-                    self.assertIsNone(mflux._require_runtime_versions())
+                        self.assertIsNone(mflux._require_runtime_versions())
 
     def test_a_catalog_read_needs_no_runtime_within_the_pins(self):
         # The schedule's adapter is read from mlx-gen's catalog, which an out-of-range engine still answers.
         import importlib
 
         from abstractvision.backends import mflux
+
+        stack = patch.object(mflux, "_require_runtime_versions", real_runtime_versions())
+        stack.start()
+        self.addCleanup(stack.stop)
 
         try:
             importlib.import_module("mflux.models.common.config")
@@ -4280,6 +4315,194 @@ class TestMFluxVisionBackend(unittest.TestCase):
             "MLX-Gen cannot fit this text_to_video run in memory with memory_mode='low' (needs 61 GB). "
             "This is the lowest memory mode; what lowers the peak is a shorter clip or a smaller canvas.",
         )
+
+    def test_a_boolean_or_non_integral_quantize_is_a_value_error_on_every_family_and_preload(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import (
+            ImageEditRequest,
+            ImageGenerationRequest,
+            ImageUpscaleRequest,
+            VideoGenerationRequest,
+        )
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(
+                stack, td, caps=_route_capabilities("text-to-image", "image-to-image", "text-to-video", "image-upscale")
+            )
+            root = Path(td)
+            flux = MFluxBackendConfig(model=str(self._make_model_dir(root, "klein")), base_model="flux2-klein-4b")
+            wan = MFluxBackendConfig(model=str(self._make_model_dir(root, "wan-src")), base_model="wan2.2-t2v-a14b")
+            seedvr2 = MFluxBackendConfig(model=str(self._make_model_dir(root, "upscaler")), base_model="seedvr2-3b")
+            runs = {
+                "text_to_image": (flux, lambda b, q: b.generate_image(ImageGenerationRequest(prompt="fox", steps=2, quantize=q))),
+                "image_to_image": (flux, lambda b, q: b.edit_image(ImageEditRequest(prompt="fox", image=PNG_1X1, steps=2, quantize=q))),
+                "text_to_video": (
+                    wan,
+                    lambda b, q: b.generate_video(
+                        VideoGenerationRequest(prompt="fox", num_frames=5, steps=2, quantize=q, extra={"vae_tiling": False})
+                    ),
+                ),
+                "image_upscale": (seedvr2, lambda b, q: b.upscale_image(ImageUpscaleRequest(image=PNG_1X1, quantize=q))),
+                "image_upscale (extra)": (
+                    seedvr2,
+                    lambda b, q: b.upscale_image(ImageUpscaleRequest(image=PNG_1X1, extra={"quantize": q})),
+                ),
+                "preload (image)": (flux, lambda b, q: b.preload(quantize=q)),
+                "preload (upscale)": (seedvr2, lambda b, q: b.preload(quantize=q)),
+            }
+            for name, (config, run) in runs.items():
+                # False is an unquantized spelling on the upscale route (`test_upscale_quantize_values_read_as_0_3_36_read_them`).
+                values = (True, 8.5, "8.5") if name.startswith("image_upscale") else (True, False, 8.5, "8.5")
+                for value in values:
+                    with self.subTest(run=name, quantize=value):
+                        backend = MFluxVisionBackend(config=config)
+                        with self.assertRaisesRegex(ValueError, "quantize must be an integer"):
+                            run(backend, value)
+                        self.assertFalse(backend.has_loaded_model())
+                with self.subTest(run=name, quantize=8.0):
+                    backend = MFluxVisionBackend(config=config)
+                    run(backend, 8.0)
+                    self.assertEqual(backend._model_key.quantize, 8)
+
+    def test_upscale_quantize_values_read_as_0_3_36_read_them(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageUpscaleRequest
+
+        def published(value):
+            # 0.3.36's `MFluxVisionBackend._normalize_upscale_quantize` (commit eea267d), the reference outcome.
+            if value is None:
+                return None
+            text = str(value).strip().lower()
+            if text in {"", "0", "none", "false", "off", "no"}:
+                return None
+            try:
+                quantize = int(value)
+            except Exception as exc:
+                raise ValueError("image_upscale quantize must be 3, 4, 5, 6, 8, or none.") from exc
+            if quantize not in {3, 4, 5, 6, 8}:
+                raise ValueError("image_upscale quantize must be 3, 4, 5, 6, 8, or none.")
+            return quantize
+
+        def outcome(run, value):
+            try:
+                result = run(value)
+            except (ValueError, CapabilityNotSupportedError) as error:
+                return type(error).__name__
+            return "unquantized" if result is None else result
+
+        table = (
+            "", " ", "0", 0, "none", "None", " NONE ", "false", "False", False, "off", "OFF", "no", " No ",
+            3, 4, 5, 6, 8, "4", " 8 ", 8.0,
+            True, 1, 2, 7, 16, -8, "7", 0.0, 8.5, 3.9, "8.0", "8.5", "true", "yes", "auto", "abc",
+        )
+        # The intended differences from 0.3.36, and only these:
+        intended = {
+            # A non-integral number is a ValueError (0.3.36 truncated it to a width).
+            8.5: (8, "ValueError"),
+            3.9: (3, "ValueError"),
+            # An integer that is not one of the engine's widths is refused by the one check every family uses, which
+            # names the field and the accepted widths (0.3.36 raised ValueError). The widths are the engine's
+            # (`--quantize` choices); with mlx-gen 0.40.1 they are 0.3.36's hard-coded {3, 4, 5, 6, 8}.
+            1: ("ValueError", "CapabilityNotSupportedError"),
+            2: ("ValueError", "CapabilityNotSupportedError"),
+            7: ("ValueError", "CapabilityNotSupportedError"),
+            16: ("ValueError", "CapabilityNotSupportedError"),
+            -8: ("ValueError", "CapabilityNotSupportedError"),
+            "7": ("ValueError", "CapabilityNotSupportedError"),
+            0.0: ("ValueError", "CapabilityNotSupportedError"),
+        }
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("image-upscale"))
+            source = MFluxVisionBackend(
+                config=MFluxBackendConfig(model=str(self._make_model_dir(Path(td), "upscaler")), base_model="seedvr2-3b")
+            )
+
+            def upscale(value):
+                source.upscale_image(ImageUpscaleRequest(image=PNG_1X1, quantize=value))
+                return _FakeSeedVR2.last_init["quantize"]
+
+            for value in table:
+                with self.subTest(quantize=value):
+                    before, now = outcome(published, value), outcome(upscale, value)
+                    key = next((k for k in intended if type(k) is type(value) and k == value), None)
+                    self.assertEqual((before, now), intended[key] if key is not None else (before, before))
+            # Unset is the model's default: 8 on the source.
+            self.assertEqual(upscale(None), 8)
+
+    def test_a_refused_preload_leaves_a_held_model_held(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            source = self._make_model_dir(Path(td), "klein")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=str(source), base_model="flux2-klein-4b"))
+            backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2))
+            held = backend._model
+            for options, error in (
+                ({"memory_mode": "lowest"}, CapabilityNotSupportedError),
+                ({"memory_mode": "bogus"}, ValueError),
+                ({"quantize": True}, ValueError),
+                ({"quantize": 7}, CapabilityNotSupportedError),
+            ):
+                with self.subTest(options=options):
+                    with self.assertRaises(error):
+                        backend.preload(**options)
+                    self.assertIs(backend._model, held)
+            self.assertEqual(len(_LowRamFlux2.instances), 1)
+
+            # A preload that fails after reusing the held instance keeps it; one that fails after building an
+            # instance drops what it built.
+            backend._warmed_model_key = None
+            with patch.object(MFluxVisionBackend, "_generate_impl", side_effect=RuntimeError("warm-up failed")):
+                with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
+                    backend.preload()
+                self.assertIs(backend._model, held)
+                with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
+                    backend.preload(quantize=8)
+            self.assertFalse(backend.has_loaded_model())
+            self.assertEqual(len(_LowRamFlux2.instances), 2)
+
+    def test_every_numeric_wan_option_is_a_finite_number_typed_or_from_extra(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-video"))
+            source = self._make_model_dir(Path(td), "wan-src")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=str(source), base_model="wan2.2-t2v-a14b"))
+            refused = {
+                "guidance_2": {"guidance_2": float("nan")},
+                "flow_shift": {"flow_shift": float("inf")},
+            }
+            refused_extra = {
+                "flow_shift": {"flow_shift": "nan"},
+                "max_sequence_length": {"max_sequence_length": "long"},
+            }
+            for field, values in refused.items():
+                with self.subTest(typed=field):
+                    with self.assertRaisesRegex(ValueError, f"Wan {field} must be"):
+                        backend.normalize_video_generation_request(VideoGenerationRequest(prompt="fox", **values))
+            for field, extra in refused_extra.items():
+                with self.subTest(extra=field):
+                    with self.assertRaisesRegex(ValueError, f"Wan {field} must be"):
+                        backend.normalize_video_generation_request(VideoGenerationRequest(prompt="fox", extra=extra))
+            normalized = backend.normalize_video_generation_request(
+                VideoGenerationRequest(prompt="fox", guidance_2="3", extra={"flow_shift": "5", "max_sequence_length": 0})
+            )
+            self.assertEqual((normalized.guidance_2, normalized.flow_shift), (3.0, 5.0))
+            self.assertEqual(normalized.extra["max_sequence_length"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from _mlx_gen_versions import setUpModule, tearDownModule  # noqa: F401
+
 
 def _mlx_gen_installed() -> bool:
     try:

@@ -1164,38 +1164,34 @@ class MFluxBackendConfig:
 
 @lru_cache(maxsize=1)
 def _require_runtime_versions() -> None:
-    """Refuse an installed mlx-gen outside [MLX_GEN_VERSION_FLOOR, MLX_GEN_VERSION_CEILING), and on macOS an MLX
-    below MLX_VERSION_FLOOR; checked once, when the MLX-Gen runtime is first imported.
+    """Refuse an installed mlx-gen outside `>=MLX_GEN_VERSION_FLOOR,<MLX_GEN_VERSION_CEILING`, and on macOS an MLX
+    below MLX_VERSION_FLOOR, as pip reads those specifiers (a pre-release of a floor is below it).
 
-    A distribution that is not installed is not refused here: the runtime import that follows reports it.
+    Checked once, before the backend resolves a model to run, so before any answer about the model's files. A
+    distribution that is not installed is not refused here: the engine import that follows reports it. The
+    `packaging` library comes with huggingface_hub, which every MLX-Gen install has.
     """
     from importlib import metadata
 
-    # (distribution, floor, exclusive ceiling or None, where the bound applies)
-    bounds = [("mlx-gen", MLX_GEN_VERSION_FLOOR, MLX_GEN_VERSION_CEILING, "")]
+    # (distribution, specifier, where the bound applies)
+    bounds = [("mlx-gen", f">={MLX_GEN_VERSION_FLOOR},<{MLX_GEN_VERSION_CEILING}", "")]
     if sys.platform == "darwin":
-        bounds.append(("mlx", MLX_VERSION_FLOOR, None, " on macOS"))
-    for distribution, floor, ceiling, where in bounds:
+        bounds.append(("mlx", f">={MLX_VERSION_FLOOR}", " on macOS"))
+    for distribution, specifier, where in bounds:
         try:
             installed = metadata.version(distribution)
         except metadata.PackageNotFoundError:
             continue
-        release = _release_numbers(installed)
-        if release < _release_numbers(floor) or (ceiling is not None and release >= _release_numbers(ceiling)):
-            required = f"{distribution}>={floor}" + (f",<{ceiling}" if ceiling is not None else "")
+        from packaging.specifiers import SpecifierSet
+
+        if not SpecifierSet(specifier).contains(installed, prereleases=True):
             raise OptionalDependencyMissingError(
-                f"The MLX-Gen backend needs {required}{where}; {distribution} {installed} is installed. "
-                'Install the matching versions with `pip install -U "abstractvision[mlx-gen]"`.'
+                f"The MLX-Gen backend needs {distribution}{specifier}{where}; {distribution} {installed} is "
+                'installed. Install the matching versions with `pip install -U "abstractvision[mlx-gen]"`.'
             )
 
 
-def _release_numbers(version: str) -> Tuple[int, ...]:
-    # The release segment of a version ("0.32.4rc1" -> (0, 32, 4)).
-    return tuple(int("".join(itertools.takewhile(str.isdigit, part)) or 0) for part in version.split(".")[:3])
-
-
 def _lazy_import_mflux() -> Tuple[Any, Any, Any, Any, Any, Any]:
-    _require_runtime_versions()
     try:
         import mlxgen as _mlxgen  # noqa: F401
 
@@ -1376,6 +1372,9 @@ _PROGRESS_EXTRA_KEYS = frozenset(
 # `extra` keys every route accepts: the progress callbacks, and what `resolve_memory_request`
 # reads and strips (the memory mode).
 _ROUTING_EXTRA_KEYS = _PROGRESS_EXTRA_KEYS | {"memory_mode"}
+# The values an upscale request's `quantize` reads as "load unquantized", compared as `str(value).strip().lower()`
+# (so 0 and False too): the upscale route's published spellings. They apply to that route only.
+_UPSCALE_UNQUANTIZED_SPELLINGS = frozenset({"", "0", "none", "false", "off", "no"})
 _PRELOAD_TASK_ORDER = ("text_to_image", "image_to_image", "text_to_video", "image_to_video", "image_upscale")
 # MLX's random key is a 64-bit unsigned seed.
 _MAX_SEED = 2**64 - 1
@@ -1693,7 +1692,6 @@ def _lazy_import_mlx_gen_h3_planning() -> Any:
 
 
 def _lazy_import_mflux_seedvr2() -> Tuple[Any, Any, Any, Any]:
-    _require_runtime_versions()
     try:
         from mflux.models.common.config import ModelConfig  # type: ignore
         from mflux.models.common.vae.tiling_config import TilingConfig  # type: ignore
@@ -2786,9 +2784,8 @@ class MFluxVisionBackend(VisionBackend):
             gc.collect()
         except Exception:
             pass
-        # The dropped weights sit in MLX's allocator cache until something
-        # returns it to the OS -- exactly the 2026-09-25 "0 models loaded,
-        # 86 GB held" failure. Clear it here, at the release point.
+        # The dropped weights stay in MLX's allocator cache, held by the process, until the cache is
+        # cleared: clear it here, at the release point.
         try:
             import mlx.core as mx  # type: ignore
 
@@ -3676,6 +3673,7 @@ class MFluxVisionBackend(VisionBackend):
         # resolved directory is gone: finding a model scans the caches, and whether it is a prepared
         # package reads its shard headers.
         source = (self._cfg, str(_cache_root(self._cfg.cache_dir)), tuple(str(r) for r in framework_hf_cache_roots()))
+        _require_runtime_versions()
         cached = self._resolution
         if cached is not None and cached.source == source and Path(cached.model_path).exists():
             return cached
@@ -3999,13 +3997,11 @@ class MFluxVisionBackend(VisionBackend):
         return _MFLUX_MODELS.get(base_model)
 
     def _checked_load_quantize(self, quantize: Any) -> int:
-        """The one check of a load-time `quantize`, for every family, against the resolved model."""
-        try:
-            if isinstance(quantize, bool):
-                raise TypeError
-            bits = int(quantize)
-        except (TypeError, ValueError):
-            raise ValueError(f"quantize must be an integer bit width (got {quantize!r}).") from None
+        """The one check of a load-time `quantize`, for every family, against the resolved model.
+
+        A bool or a non-integral number is a ValueError naming the field, as for every integer option.
+        """
+        bits = _request_int("quantize", quantize, label="MLX-Gen")
         resolution = self._resolve()
         if resolution.prepared:
             raise CapabilityNotSupportedError(
@@ -4070,18 +4066,20 @@ class MFluxVisionBackend(VisionBackend):
         )
 
     def _preload_impl(self, memory_mode: Optional[str], quantize: Optional[int]) -> None:
+        # The values are checked as a request of the model's task carrying them is, before the model is
+        # resolved (which may download it) or anything loads: a refused preload leaves the backend as it was.
+        mode, quantize = self._resolve_preload_options(memory_mode, quantize, task=self._preload_task())
+        held = self._model
         try:
-            self._preload_model(memory_mode, quantize)
+            self._preload_model(mode, quantize)
         except BaseException:
-            # A model loaded by a preload that then failed is dropped, never left in memory
-            # without the caller knowing it is there.
-            self._unload_impl()
+            # The instance this preload built is dropped, never left in memory without the caller knowing it
+            # is there; one held before the call, which the preload reused, stays.
+            if self._model is not None and self._model is not held:
+                self._release_model()
             raise
 
-    def _preload_model(self, memory_mode: Optional[str], quantize: Optional[int]) -> None:
-        # The values are checked as a request of the model's task carrying them is, before the
-        # model is resolved (which may download it).
-        mode, quantize = self._resolve_preload_options(memory_mode, quantize, task=self._preload_task())
+    def _preload_model(self, mode: str, quantize: Optional[int]) -> None:
         model_def = self._resolved_model_def()
         task = self._preload_task()
         plan = self._memory_plan(mode)
@@ -4173,12 +4171,13 @@ class MFluxVisionBackend(VisionBackend):
         )
 
     def _normalize_image_generation(self, request: ImageGenerationRequest) -> ImageGenerationRequest:
-        if request.control_image is not None or (request.extra or {}).get("control_image") is not None:
-            raise CapabilityNotSupportedError(
-                "The MLX-Gen backend does not support structured control images (control_image).",
-                field="control_image",
-                supported=(),
-            )
+        for name in ("control_image", "control_strength"):
+            if getattr(request, name) is not None or (request.extra or {}).get(name) is not None:
+                raise CapabilityNotSupportedError(
+                    f"The MLX-Gen backend does not support structured control images ({name}).",
+                    field=name,
+                    supported=(),
+                )
         # The mode and options are checked before the model is resolved, which may download it.
         request, _mode = self.resolve_memory_request(request, task="text_to_image")
         model_def = self._resolved_model_def()
@@ -4343,22 +4342,17 @@ class MFluxVisionBackend(VisionBackend):
             fps = int(model_def.default_fps)
         if num_frames < 1:
             num_frames = 1
-        max_sequence_length = extra.get("max_sequence_length")
-        if max_sequence_length is not None:
-            try:
-                extra["max_sequence_length"] = max(1, int(max_sequence_length))
-            except Exception:
-                extra.pop("max_sequence_length", None)
-        flow_shift = (
-            _request_number("flow_shift", request.flow_shift, label=label)
-            if request.flow_shift is not None
-            else None
+        if extra.get("max_sequence_length") is not None:
+            extra["max_sequence_length"] = max(
+                1, _request_int("max_sequence_length", extra["max_sequence_length"], label=label)
+            )
+        guidance_2 = (
+            _request_number("guidance_2", request.guidance_2, label=label) if request.guidance_2 is not None else None
         )
-        if flow_shift is None and extra.get("flow_shift") is not None:
-            try:
-                flow_shift = float(extra.get("flow_shift"))
-            except Exception:
-                flow_shift = None
+        flow_shift_value = request.flow_shift if request.flow_shift is not None else extra.get("flow_shift")
+        flow_shift = (
+            _request_number("flow_shift", flow_shift_value, label=label) if flow_shift_value is not None else None
+        )
         if flow_shift is None and model_def.key == WAN_TI2V_MODEL_KEY:
             longer = max(width, height)
             shorter = min(width, height)
@@ -4375,6 +4369,7 @@ class MFluxVisionBackend(VisionBackend):
             "fps": fps,
             "num_frames": num_frames,
             "flow_shift": flow_shift,
+            "guidance_2": guidance_2,
             "seed": _request_seed(request.seed, label=label),
             "extra": extra,
         }
@@ -4604,17 +4599,6 @@ class MFluxVisionBackend(VisionBackend):
             return True
         return bool(value)
 
-    def _normalize_upscale_quantize(self, value: Any) -> Optional[int]:
-        if value is None:
-            return None
-        text = str(value).strip().lower()
-        if text in {"", "0", "none", "false", "off", "no"}:
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            raise ValueError(f"image_upscale quantize must be a bit width or none (got {value!r}).") from None
-
     def _default_upscale_quantize(self) -> Optional[int]:
         # A prepared package already stores its quantization; the 16-bit source is quantized to 8.
         resolution = self._resolve()
@@ -4656,12 +4640,15 @@ class MFluxVisionBackend(VisionBackend):
             softness_f = 0.0
         if softness_f > 1.0:
             softness_f = 1.0
+        # Unset: the model's default (8 on the source, none on a prepared package); an unquantized spelling: loaded
+        # unquantized; any other value goes as given to the load's one check (`_checked_load_quantize`).
         quantize_raw = request.quantize if request.quantize is not None else extra.pop("quantize", None)
-        quantize_value = (
-            self._default_upscale_quantize()
-            if quantize_raw is None
-            else self._normalize_upscale_quantize(quantize_raw)
-        )
+        if quantize_raw is None:
+            quantize_value = self._default_upscale_quantize()
+        elif str(quantize_raw).strip().lower() in _UPSCALE_UNQUANTIZED_SPELLINGS:
+            quantize_value = None
+        else:
+            quantize_value = quantize_raw
         vae_tiling_raw = request.vae_tiling if request.vae_tiling is not None else extra.pop("vae_tiling", None)
         vae_tiling_value = (
             None if vae_tiling_raw is None else self._normalize_upscale_bool(vae_tiling_raw, default=False)
