@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
 from ..backends.base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend
+from ..backends.openai_compatible import looks_like_openai_api
 from ..errors import AbstractVisionError, CapabilityNotSupportedError
 from ..types import (
     MEMORY_MODE_DEFAULT,
@@ -149,10 +150,6 @@ def _owner_cfg_bool(owner: Any, key: str, default: bool = False) -> bool:
     if v is None:
         return bool(default)
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _looks_like_openai_api(base_url: Optional[str]) -> bool:
-    return "api.openai.com" in str(base_url or "").lower()
 
 
 def _openai_api_key() -> Optional[str]:
@@ -309,7 +306,7 @@ def _configured_openai_base_url(owner: Any) -> Optional[str]:
 
 
 def _base_url_implies_openai_compatible(base_url: Any) -> bool:
-    return bool(str(base_url or "").strip()) and not _looks_like_openai_api(str(base_url or ""))
+    return bool(str(base_url or "").strip()) and not looks_like_openai_api(str(base_url or ""))
 
 
 def _truncate_string(value: str) -> str:
@@ -492,7 +489,7 @@ def _provider_id_for_backend(backend: Any) -> Optional[str]:
         return "sdcpp"
     if "openai" in name:
         base_url = getattr(getattr(backend, "_cfg", None), "base_url", None)
-        return "openai" if _looks_like_openai_api(str(base_url or "")) else "openai-compatible"
+        return "openai" if looks_like_openai_api(str(base_url or "")) else "openai-compatible"
     return None
 
 
@@ -655,7 +652,9 @@ def _refuse_misplaced_typed_options(request_cls: Any, kwargs: Mapping[str, Any],
     if misplaced:
         raise CapabilityNotSupportedError(
             f"{method}() does not take {', '.join(misplaced)}: "
-            f"{'it is an option' if len(misplaced) == 1 else 'they are options'} of other tasks."
+            f"{'it is an option' if len(misplaced) == 1 else 'they are options'} of other tasks.",
+            field=misplaced[0] if len(misplaced) == 1 else None,
+            supported=() if len(misplaced) == 1 else None,
         )
 
 
@@ -700,7 +699,10 @@ class _AbstractVisionCapability:
         self._backend = None
         self._routed_backends: Dict[tuple[Any, ...], Any] = {}
         self._state_lock = threading.RLock()
-        self._loaded_models: Dict[tuple[Any, ...], Dict[str, Any]] = {}
+        # What only the plugin knows about the loads of its local backends, per backend key: the
+        # binding, the tasks served, whether a load pinned it, when. Whether a model is loaded is
+        # the backend's answer (`has_loaded_model`), read whenever the loads are listed.
+        self._load_facts: Dict[tuple[Any, ...], Dict[str, Any]] = {}
         self._active_request_backend: Any = None
         self._active_request_backend_key: Optional[tuple[Any, ...]] = None
         self._backend_refcounts: Dict[int, int] = {}
@@ -1081,107 +1083,109 @@ class _AbstractVisionCapability:
             ),
         )
 
-    def _find_loaded_backends(self, filters: Mapping[str, Any]) -> List[tuple[tuple[Any, ...], Dict[str, Any], Any]]:
-        matches: List[tuple[tuple[Any, ...], Dict[str, Any], Any]] = []
-        with self._state_lock:
-            for backend_key, record in self._loaded_models.items():
-                if not self._match_loaded_record(record, filters):
-                    continue
-                backend = None
-                if self._active_request_backend_key == backend_key:
-                    backend = self._active_request_backend
-                elif backend_key in self._routed_backends:
-                    backend = self._routed_backends.get(backend_key)
-                elif backend_key and backend_key[0] == "configured":
-                    backend = self._backend
-                matches.append((backend_key, dict(record), backend))
-        return matches
+    def _held_backend_locked(self, backend_key: tuple[Any, ...]) -> Any:
+        if self._active_request_backend_key == backend_key:
+            return self._active_request_backend
+        if backend_key in self._routed_backends:
+            return self._routed_backends.get(backend_key)
+        if backend_key and backend_key[0] == "configured":
+            return self._backend
+        return None
 
-    def _record_loaded_model(
-        self,
-        binding: Mapping[str, Any],
-        *,
-        task: Optional[str],
-        resident: bool,
-        source: str,
-        loaded_at: Optional[float] = None,
+    @staticmethod
+    def _holds_model(backend: Any) -> bool:
+        # The backend's own answer; an object without the method answers as the base: nothing held.
+        has_loaded_model = getattr(backend, "has_loaded_model", None)
+        if callable(has_loaded_model):
+            return bool(has_loaded_model())
+        return VisionBackend.has_loaded_model(backend)
+
+    def _live_loads_locked(self) -> Dict[tuple[Any, ...], tuple[Dict[str, Any], Any]]:
+        """The loads the plugin's backends hold now: backend key -> (the plugin's facts, backend).
+
+        A load whose backend holds no model any more ended (a run or a failed preload released
+        it, or the backend was unloaded): its facts go, so the next load of that binding starts
+        afresh, unpinned.
+        """
+        live: Dict[tuple[Any, ...], tuple[Dict[str, Any], Any]] = {}
+        for backend_key, facts in list(self._load_facts.items()):
+            backend = self._held_backend_locked(backend_key)
+            if backend is None or not self._holds_model(backend):
+                del self._load_facts[backend_key]
+                continue
+            live[backend_key] = (facts, backend)
+        return live
+
+    @staticmethod
+    def _loaded_record(facts: Mapping[str, Any]) -> Dict[str, Any]:
+        pinned = bool(facts["pinned"])
+        return {
+            "task": facts["task"],
+            "tasks": sorted(facts["tasks"]),
+            "provider": facts["provider"],
+            "model": facts["model"],
+            "load_id": facts["load_id"],
+            "backend_kind": facts["backend_kind"],
+            "scope": "process",
+            "state": "resident" if pinned else "active",
+            "resident": pinned,
+            "loaded": True,
+            "source": "explicit_preload" if pinned else "request",
+            "loaded_at": facts["loaded_at"],
+            "last_used_at": facts["last_used_at"],
+            "error": None,
+        }
+
+    def _note_load(
+        self, binding: Mapping[str, Any], *, task: Optional[str], pinned: bool
     ) -> Dict[str, Any]:
+        """Record the plugin's facts about a load it used: a request that served `task`, or a preload."""
         now = time.time()
         backend_key = tuple(binding["backend_key"])
         with self._state_lock:
-            existing = dict(self._loaded_models.get(backend_key, {}))
-            merged_tasks = {
-                str(item)
-                for item in (existing.get("tasks") or [])
-                if str(item).strip()
-            }
-            if task:
-                merged_tasks.add(str(task))
-            record = {
-                "task": task,
-                "tasks": sorted(merged_tasks),
+            live = self._live_loads_locked()
+            facts = live[backend_key][0] if backend_key in live else {
                 "provider": binding.get("provider"),
                 "model": binding.get("model"),
                 "load_id": binding.get("load_id"),
                 "backend_kind": binding.get("backend_kind"),
-                "scope": "process",
-                "state": "resident" if resident else "active",
-                "resident": bool(resident),
-                "loaded": True,
-                "source": str(source),
-                "loaded_at": (
-                    existing.get("loaded_at")
-                    if existing.get("loaded_at") is not None
-                    else (loaded_at if loaded_at is not None else now)
-                ),
-                "last_used_at": now,
-                "error": None,
+                "task": None,
+                "tasks": set(),
+                "pinned": False,
+                "loaded_at": now,
             }
-            if existing.get("resident"):
-                record["resident"] = True
-                record["state"] = "resident"
-                record["source"] = "explicit_preload"
-            if existing.get("task") and record.get("task") is None:
-                record["task"] = existing.get("task")
-            if not record["tasks"] and record.get("task"):
-                record["tasks"] = [str(record["task"])]
-            self._loaded_models[backend_key] = record
-            return dict(record)
+            if task:
+                facts["task"] = str(task)
+                facts["tasks"].add(str(task))
+            facts["pinned"] = bool(facts["pinned"] or pinned)
+            facts["last_used_at"] = now
+            self._load_facts[backend_key] = facts
+            return self._loaded_record(facts)
 
-    def _record_request_run(
-        self, binding: Mapping[str, Any], backend: Any, *, task: str, succeeded: bool
-    ) -> None:
-        # Runs after every request, failed ones included. A run can release the model it ran on
-        # (memory_mode "low"/"lowest" on MLX-Gen, the Wan TI2V denoiser release, a failed low-RAM
-        # run): the backend then holds no model, so the record goes, resident or not, and the next
-        # request loads it again. Only a run that succeeded records the model as loaded.
-        has_loaded_model = getattr(backend, "has_loaded_model", None)
-        if callable(has_loaded_model) and not has_loaded_model():
-            with self._state_lock:
-                self._remove_loaded_model_locked(tuple(binding["backend_key"]))
-            return
+    def _record_request_run(self, binding: Mapping[str, Any], *, task: str, succeeded: bool) -> None:
+        # The plugin's facts about a request: the task a succeeded run served on its binding, and
+        # when. Whether the model is still loaded afterwards is read from the backend when listed.
         if succeeded:
-            self._record_loaded_model(binding, task=task, resident=False, source="request")
-
-    def _remove_loaded_model_locked(self, backend_key: tuple[Any, ...]) -> Optional[Dict[str, Any]]:
-        existing = self._loaded_models.pop(backend_key, None)
-        return dict(existing) if existing is not None else None
+            self._note_load(binding, task=task, pinned=False)
 
     def _activate_request_backend(self, binding: Mapping[str, Any]) -> Any:
         backend = binding["backend"]
         backend_key = tuple(binding["backend_key"])
         unload_after_lock: Optional[Any] = None
         with self._state_lock:
+            # Read at every request start: a load that ended since (its backend released the
+            # model) does not lend its facts to the load this request may start.
+            live = self._live_loads_locked()
             previous = self._active_request_backend
             previous_key = self._active_request_backend_key
             self._active_request_backend = backend
             self._active_request_backend_key = backend_key
             if previous is None or previous is backend:
                 return backend
-            previous_record = self._loaded_models.get(previous_key or ())
-            if previous_record and bool(previous_record.get("resident")):
+            previous_load = live.get(previous_key or ())
+            if previous_load is not None and previous_load[0]["pinned"]:
                 return backend
-            self._remove_loaded_model_locked(previous_key or ())
+            self._load_facts.pop(previous_key or (), None)
             unload_after_lock = self._retire_backend_locked(previous)
         self._unload_backend(unload_after_lock)
         return backend
@@ -1964,27 +1968,11 @@ class _AbstractVisionCapability:
         self._ensure_local_residency_supported(binding)
         backend = binding["backend"]
         with self._state_lock:
-            existing = self._loaded_models.get(tuple(binding["backend_key"]))
-            already_loaded = bool(existing and existing.get("loaded"))
+            already_loaded = tuple(binding["backend_key"]) in self._live_loads_locked()
         preload = getattr(backend, "preload", None)
         if callable(preload):
-            try:
-                preload()
-            except BaseException:
-                # A backend drops what a failed preload loaded; a record must not outlive it.
-                has_loaded_model = getattr(backend, "has_loaded_model", None)
-                if callable(has_loaded_model) and not has_loaded_model():
-                    with self._state_lock:
-                        self._remove_loaded_model_locked(tuple(binding["backend_key"]))
-                raise
-        loaded_at = time.time()
-        record = self._record_loaded_model(
-            binding,
-            task=task,
-            resident=True,
-            source="explicit_preload",
-            loaded_at=loaded_at,
-        )
+            preload()
+        record = self._note_load(binding, task=task, pinned=True)
         # Per-operation fact (not stored in the loaded-model record): whether this call loaded the
         # model or found it already in memory. Core and Runtime read it as the load's `loaded_new`.
         record["loaded_new"] = not already_loaded
@@ -1993,7 +1981,7 @@ class _AbstractVisionCapability:
     def list_loaded_models(self, filters: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
         filter_map = self._normalize_loaded_filters(filters)
         with self._state_lock:
-            records = [dict(item) for item in self._loaded_models.values()]
+            records = [self._loaded_record(facts) for facts, _ in self._live_loads_locked().values()]
         filtered = [item for item in records if self._match_loaded_record(item, filter_map)]
         return self._sorted_loaded_records(filtered)
 
@@ -2004,9 +1992,13 @@ class _AbstractVisionCapability:
 
     def unload_resident_model(self, request: Mapping[str, Any]) -> Dict[str, Any]:
         payload = self._normalize_loaded_filters(request)
-        matched = self._find_loaded_backends(payload)
+        with self._state_lock:
+            loads = [
+                (backend_key, self._loaded_record(facts), backend)
+                for backend_key, (facts, backend) in self._live_loads_locked().items()
+            ]
+        matched = [load for load in loads if self._match_loaded_record(load[1], payload)]
         unload_after_lock: Optional[Any] = None
-        removed: Optional[Dict[str, Any]] = None
         if len(matched) > 1:
             raise AbstractVisionError(
                 "Ambiguous unload request: more than one loaded local model matched. "
@@ -2015,7 +2007,7 @@ class _AbstractVisionCapability:
         if len(matched) == 1:
             backend_key, matched_record, backend = matched[0]
             with self._state_lock:
-                removed = self._remove_loaded_model_locked(backend_key)
+                self._load_facts.pop(backend_key, None)
                 if backend is not None and self._active_request_backend is backend:
                     self._active_request_backend = None
                     self._active_request_backend_key = None
@@ -2048,7 +2040,7 @@ class _AbstractVisionCapability:
         binding = self._resolve_backend_binding(provider=provider, model=model)
         self._ensure_local_residency_supported(binding)
         return {
-            "task": removed.get("task") if isinstance(removed, dict) else _normalize_residency_task(payload.get("task")),
+            "task": _normalize_residency_task(payload.get("task")),
             "provider": binding.get("provider"),
             "model": binding.get("model"),
             "load_id": binding.get("load_id"),
@@ -2057,9 +2049,9 @@ class _AbstractVisionCapability:
             "state": "unloaded",
             "resident": False,
             "loaded": False,
-            "source": removed.get("source") if isinstance(removed, dict) else None,
+            "source": None,
             "loaded_at": None,
-            "last_used_at": removed.get("last_used_at") if isinstance(removed, dict) else None,
+            "last_used_at": None,
             "error": None,
         }
 
@@ -2107,7 +2099,7 @@ class _AbstractVisionCapability:
             return _media_bytes(out)
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="text_to_image", succeeded=succeeded)
+                self._record_request_run(binding, task="text_to_image", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def t2i_batch(self, prompt: str, **kwargs: Any):
@@ -2152,7 +2144,7 @@ class _AbstractVisionCapability:
             return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="text_to_image", succeeded=succeeded)
+                self._record_request_run(binding, task="text_to_image", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def i2i(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2201,7 +2193,7 @@ class _AbstractVisionCapability:
             return _media_bytes(out)
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="image_to_image", succeeded=succeeded)
+                self._record_request_run(binding, task="image_to_image", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def i2i_batch(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2257,7 +2249,7 @@ class _AbstractVisionCapability:
             return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="image_to_image", succeeded=succeeded)
+                self._record_request_run(binding, task="image_to_image", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def multi_view_image(self, prompt: str, **kwargs: Any):
@@ -2305,7 +2297,7 @@ class _AbstractVisionCapability:
             return _media_bytes(out)
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="image_upscale", succeeded=succeeded)
+                self._record_request_run(binding, task="image_upscale", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def image_upscale(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2346,7 +2338,7 @@ class _AbstractVisionCapability:
             return _media_bytes(out)
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="text_to_video", succeeded=succeeded)
+                self._record_request_run(binding, task="text_to_video", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def t2v_batch(self, prompt: str, **kwargs: Any):
@@ -2389,7 +2381,7 @@ class _AbstractVisionCapability:
             return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="text_to_video", succeeded=succeeded)
+                self._record_request_run(binding, task="text_to_video", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def i2v(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2426,7 +2418,7 @@ class _AbstractVisionCapability:
             return _media_bytes(out)
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="image_to_video", succeeded=succeeded)
+                self._record_request_run(binding, task="image_to_video", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
     def i2v_batch(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
@@ -2468,7 +2460,7 @@ class _AbstractVisionCapability:
             return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             if binding.get("local_control"):
-                self._record_request_run(binding, backend, task="image_to_video", succeeded=succeeded)
+                self._record_request_run(binding, task="image_to_video", succeeded=succeeded)
             self._release_backend_snapshot(backend)
 
 

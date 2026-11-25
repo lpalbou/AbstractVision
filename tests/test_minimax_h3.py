@@ -392,7 +392,6 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         backend = self._backend()
         caps = backend.get_capabilities()
         self.assertEqual(tuple(caps.memory_modes), ("default", "low", "lowest"))
-        self.assertTrue(caps.supports_block_streaming)
         self.assertTrue(caps.generates_audio)
 
         low = backend.generate_video(VideoGenerationRequest(prompt="fox", memory_mode="low"))

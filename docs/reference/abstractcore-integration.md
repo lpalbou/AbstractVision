@@ -225,8 +225,8 @@ builds AbstractVision backends and calls them directly, and every backend reads
 and checks the value itself, so the same refusal applies there.
 
 On MLX-Gen, a `"low"` run frees parts of the model and drops the instance, so
-the plugin removes its loaded-model record, a resident one included, whether
-the run succeeded or failed; the next request loads the model again. The same
+the plugin no longer lists the model as loaded, a resident one included, whether
+the run succeeded or failed; the next request loads the model again, unpinned. The same
 holds after every Wan TI2V-5B run, which releases its denoiser before the decode.
 
 Two facts about the current AbstractCore server, which this plugin does not change:
@@ -259,14 +259,14 @@ and logs a warning when the soundtrack is not in them.
 
 `load_resident_model(...)` / `load_model(...)` preload the backend; on MLX-Gen a
 video model (Wan, MiniMax-H3) is loaded without a warm-up run. When the preload
-fails, the backend drops what it loaded and no loaded-model record is kept.
+fails, the backend drops what it loaded and the plugin does not list it.
 
 Discovery, and where each part is visible:
 
 - Every MLX-Gen entry of `llm.vision.list_provider_models(...)`, which the
   AbstractCore HTTP model listing also returns, carries
-  `parameter_constraints["memory_mode"]` = `{"enum": [...], "block_streaming": <bool>}`;
-  `enum` holds the modes that model can honour.
+  `parameter_constraints["memory_mode"]` = `{"enum": [...]}`; `enum` holds the
+  modes that model can honour.
 - `llm.vision.available_providers()["details"][<provider>]["memory_modes"]`
   lists what the backend a request for that provider runs on reports with its
   configured model and device (`supported_memory_modes()`; for an
@@ -391,7 +391,9 @@ Notes:
 
 `list_loaded_models()` reports both explicitly preloaded resident models and transient currently
 loaded local models from recent generation requests. `list_resident_models()`
-returns the explicit pinned subset.
+returns the explicit pinned subset. Both ask each backend, when called, whether it holds its model
+(`VisionBackend.has_loaded_model()`): a model a run, a failed preload or an unload released is not
+listed, and its next load starts unpinned.
 
 Each loaded-model entry includes stable routing metadata such as `load_id`, `backend_kind`,
 `resident`, and a `tasks` list of observed task aliases using that loaded backend.
