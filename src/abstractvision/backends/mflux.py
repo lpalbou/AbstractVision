@@ -1559,23 +1559,8 @@ def _h3_audio_track(engine: Mapping[str, Any], wav: Optional[bytes]) -> Optional
 
 
 def _explicit_download_model(repo_id: str) -> Optional[Any]:
-    """The catalog model whose download of `repo_id` is marked `explicit_download`, else None.
-
-    Generation never fetches such a repository, even with allow_download (today the MiniMax-H3
-    packages and source, whose licence grant excludes some territories). `gated` is a separate
-    fact: it decides what `download` says about access, not what generation fetches. Adapters are
-    never fetched during generation either: MLX-Gen raises DownloadRequiredError for them.
-    """
     registry = _mflux_capability_registry()
-    wanted = str(repo_id or "").strip().lower()
-    if registry is None or not wanted:
-        return None
-    for model_id in registry.list_models():
-        spec = registry.get(model_id)
-        for download in spec.downloads:
-            if download.explicit_download and str(download.repo_id).strip().lower() == wanted:
-                return spec
-    return None
+    return registry.explicit_download_model(repo_id) if registry is not None else None
 
 
 def _explicit_download_note(repo_id: str, base_model: Optional[str]) -> str:
