@@ -340,7 +340,7 @@ asset_or_ref = vm.generate_video(
 | Diffusers on CUDA | Model CPU offload. | Sequential CPU offload. |
 | Diffusers on CPU or MPS | Refused. | Refused. |
 | stable-diffusion.cpp | CPU offload of the model parameters: `--offload-to-cpu` for `sd-cli`, `offload_params_to_cpu` for the Python binding. | Refused. |
-| OpenAI-compatible | Refused. | Refused. |
+| OpenAI-compatible | Sent to a remote that lists the mode for the model in `GET /vision/models` (AbstractCore's server); refused otherwise. | As `low`. |
 
 A mode named on the request that the backend cannot honour for its configured
 model and device raises `CapabilityNotSupportedError` before any model loads or
@@ -417,8 +417,10 @@ What the route cannot apply is refused with `CapabilityNotSupportedError`:
 `negative_prompt`, `guidance_scale`, `guidance_2`, an `fps` other than 24, and
 any `extra` key. Every number the backend checks (frame grid, canvas multiple,
 defaults) comes from MLX-Gen's capability row; `describe_routes()` returns it.
-Wan and the other backends refuse `soundscape`, `music`, `generate_audio` and
-`audio_shift`.
+Wan and the other local backends refuse `soundscape`, `music`, `generate_audio` and
+`audio_shift`; the OpenAI-compatible backend sends them to a remote that advertises
+them for its model and refuses them otherwise
+([backends](reference/backends.md#openai-compatible-http-backend)).
 
 The result is the MP4 with its AAC soundtrack. `GeneratedAsset.audio` is a
 `GeneratedAudioTrack` (`sample_rate`, `channels`, `duration_seconds`, `muxed`,
@@ -455,13 +457,15 @@ What an application embedding `VisionManager` can rely on:
   such as `threading.Event`). A set event stops an MLX-Gen run at its next
   progress event, between denoising steps, and raises `GenerationCancelledError`;
   the model stays loaded (in `memory_mode="low"` on image, edit and Wan routes it
-  was already being released). Other backends check the event before a run starts.
+  was already being released). Other backends check the event before a run starts;
+  the OpenAI-compatible backend also cancels its remote job on a remote that
+  advertises the vision routes.
   `get_capabilities().cancellation` is `"step"` or `"start"`.
 - **Load-time quantize.** `quantize` (bits) on generation requests.
   `get_capabilities().quantize_bits` lists the widths the configured model
   accepts: the route's `validated_quantization_bits`, else MLX-Gen's `--quantize`
-  choices. A prepared (already quantized) package, and every non-MLX-Gen backend,
-  refuse it.
+  choices. A prepared (already quantized) package, and the other local backends,
+  refuse it; the OpenAI-compatible backend sends it to a remote that advertises it.
 - **Route rows.** `vm.describe_routes(model=None, task=None)` returns MLX-Gen's
   capability rows (schema 17) as JSON: canvas and frame rules, defaults, LoRA,
   audio, `supports_block_streaming`, `measured_runs`, quantization. Other
