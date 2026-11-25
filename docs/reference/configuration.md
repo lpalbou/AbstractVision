@@ -29,7 +29,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision upscale ...` — one-shot SeedVR2 image upscaling; defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --resolution 2x --softness 0.25` and supports `--scale`, `--resolution`, `--softness`, `--seed`, optional source-weight `--quantize`, and `--vae-tiling`
 
 Note:
-- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` run on this machine's local engine by default with FLUX.2 [klein] 4B in 8 bits (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor); `--base-url` selects the OpenAI-compatible HTTP backend and `--provider` picks another local engine.
+- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` run on this machine's local engine by default with FLUX.2 [klein] 4B: the 8-bit MLX-Gen package on Apple silicon, the Q8_0 GGUF on stable-diffusion.cpp on an NVIDIA card, the 16-bit Diffusers pipeline (run in float32) on a processor; `--base-url` selects the OpenAI-compatible HTTP backend and `--provider` picks another local engine.
 - Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 - One-shot image commands write to `ABSTRACTVISION_STORE_DIR` or `--store-dir` and print JSON artifact metadata followed by the local content path. They do not take an `--output` path flag.
 - One-shot generation/edit/video commands support `--count` plus optional `--seeds` for reproducible batch orchestration above the exact single-run request surface.
@@ -144,18 +144,21 @@ short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`), and sele
 
 - A model with a single package selects it, whatever its width (`stabilityai/stable-diffusion-xl-base-1.0`
   selects its Diffusers pipeline, `briaai/Fibo-Edit` its 16-bit MLX-Gen snapshot).
-- A model with several packages of one engine selects the one the catalog marks as recommended (`*` in
-  `catalog`; for MiniMax-H3 the 8-bit package), or the width `--bits 2|4|8|16` names. With several and
-  no recommendation the command stops and lists them: name one, or pass `--bits`.
 - Across targets, the host's order decides (Apple silicon: `mlx`, `gguf`, `diffusers`, `hf-snapshot`;
   NVIDIA: `gguf`, `diffusers`, `hf-snapshot`; processor only: `diffusers`, `hf-snapshot`, `gguf`),
-  preferring an 8-bit package.
-  `--target` or `--provider` restricts the choice to one target or engine; a name with no package for
-  it is refused, with the packages it has.
-- `--allow-non-8bit` drops the 8-bit preference. A repository named exactly then selects that
-  repository instead of a package made from it: `abstractvision download MiniMaxAI/MiniMax-H3
-  --allow-non-8bit` fetches the MiniMax-H3 source repository, which the model id alone does not (it
-  selects the recommended 8-bit package), and on Apple silicon `stabilityai/sdxl-turbo` selects that
+  preferring an 8-bit package. `--target` or `--provider` restricts the choice to one target or engine;
+  a name with no package for it is refused, with the packages it has. `--bits 2|4|8|16` keeps one width.
+- Within the chosen target, several packages select the one the catalog marks as recommended (`*` in
+  `catalog`: MiniMax-H3's 8-bit package, and where 0.3.36 selected one package of several, that package:
+  Qwen-Image-2512's 4-bit MLX-Gen package, GGUF and Diffusers pipeline, FIBO's 4-bit package, SeedVR2's
+  8-bit packages). With several and no recommendation the command stops and lists them, whatever
+  `--bits`, `--provider` or `--allow-non-8bit` narrowed them to (`tencent/HunyuanVideo-1.5` lists its eight
+  Diffusers pipelines; FLUX.2 [klein] its 4-bit and 8-bit packages): name one.
+- `--allow-non-8bit`, or naming the MLX-Gen engine (`--provider mlx-gen`), drops the 8-bit preference. A
+  repository named exactly then selects that repository instead of a package made from it, on every host
+  (`abstractvision download briaai/FIBO --provider mlx-gen` is the FIBO source repository): `abstractvision download
+  MiniMaxAI/MiniMax-H3 --allow-non-8bit` fetches the MiniMax-H3 source repository, which the model id
+  alone does not (it selects the recommended 8-bit package), and `stabilityai/sdxl-turbo` selects that
   Diffusers pipeline instead of its GGUF package. Where the host's order puts a target without an 8-bit
   package first (processor only: `diffusers`), that target is chosen (`Qwen/Qwen-Image` then selects the
   Diffusers pipeline instead of the GGUF package). A model with a single package needs no flag.
@@ -179,7 +182,7 @@ What the command does:
   updated during the download cannot mix two commits; the cache then records that commit as the
   repository's `main`. When nothing is to fetch, the command says every file is already present and
   fetches nothing. Ctrl-C exits with code 130; the files that completed stay in the cache, and the same
-  command fetches the rest. A download that ends with files missing names them.
+  command fetches the rest. A download that ends with files missing gives their count and one of them.
 - Without the Hub listing, nothing is sized or fetched, and the command says why and what to do:
   offline mode (`HF_HUB_OFFLINE`), the Hub unreachable, an HTTP error, huggingface_hub (or a module it
   imports) not installed, or a listing without file sizes (huggingface.co gives every size; a mirror set
@@ -200,7 +203,8 @@ What the command does:
   `--base-model` that is not a schedule of the package, or an adapter that cannot be named because
   mlx-gen is not installed, stops the command before anything is fetched. Without `--base-model`, the
   command prints the schedules whose adapter is absent, with the command that fetches it.
-- `--dry-run`: prints the selection and the same plan, writes nothing and exits 0; when the download
+- `--dry-run`: prints the selection and the same plan (with the commit of each repository the fetch would
+  take), writes nothing and exits 0; when the download
   would not fit, its last line says so.
 - `catalog` and `show-model` show each download's cache state from a local look, offline: `cached` is a
   snapshot with no gap that look can see (a partial file, a link without content, a weight file an index

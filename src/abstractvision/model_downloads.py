@@ -351,6 +351,10 @@ class HubDownloadPlan:
             f"{_files(len(self.fetch_files))} to fetch ({format_bytes(self.fetch_bytes)}{partial})"
         )
 
+    def commit_line(self) -> str:
+        named = f"{self.revision!r}" if self.revision else "the default branch"
+        return f"commit: {self.commit} ({named} as listed; the files are fetched from this commit)"
+
     def summary_lines(self) -> List[str]:
         return DownloadPlan(parts=(DownloadPart("package", self),)).summary_lines()
 
@@ -456,6 +460,7 @@ class DownloadPlan:
                         f"into {plan.cache_dir}"
                     )
                     lines.append(plan.cache_line())
+                    lines.append(plan.commit_line())
                 continue
             head = f"{part.role}: {plan.repo_id}; {plan.access_line()}"
             if not plan.listed:
@@ -464,7 +469,8 @@ class DownloadPlan:
                 lines.append(f"{head}; the Hub lists no file of it that this download selects")
             else:
                 lines.append(
-                    f"{head}; {format_bytes(plan.total_bytes)} in {_files(len(plan.files))}; {plan.cache_line()}"
+                    f"{head}; {format_bytes(plan.total_bytes)} in {_files(len(plan.files))}; {plan.cache_line()}; "
+                    f"{plan.commit_line()}"
                 )
         if self.adapter_path is not None:
             lines.append(f"adapter ({self.base_model}): {self.adapter}, cached at {self.adapter_path}")
@@ -2333,7 +2339,16 @@ def find_model_preset(
     engine: Optional[str] = None,
     require_8bit: bool = True,
     bits: Optional[int] = None,
+    download_rule: bool = False,
 ) -> VisionModelDownloadPreset:
+    """The catalog preset `name` selects for a target and engine.
+
+    Across targets the host's order decides. Within the chosen target, several packages select the one
+    the catalog recommends; without one, the catalog's own order picks (a curated key such as
+    `qwen-image` resolves to its preferred pipeline, as a backend configured with it does).
+    `download_rule` applies the `download` command's rule instead: a repository named exactly is that
+    repository, and several packages with none recommended raise ValueError listing them."""
+
     raw_target = str(target or "auto").strip().lower()
     requested = str(name or "").strip().lower()
     if requested.startswith("mlx/"):
@@ -2410,18 +2425,6 @@ def find_model_preset(
             if picked is not None:
                 return picked
         if mlx_gen_matches:
-            if requested in {"seedvr2", "seedvr2-3b", "seedvr2-7b"}:
-                preferred = [
-                    p
-                    for p in mlx_gen_matches
-                    if int(p.quantization_bits or 0) == 8
-                    and str(p.repo_id).lower().startswith("abstractframework/seedvr2")
-                ]
-                if preferred:
-                    return sorted(
-                        preferred,
-                        key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
-                    )[0]
             repo_choices = {p.repo_id for p in mlx_gen_matches}
             if len(repo_choices) == 1:
                 return sorted(
@@ -2442,6 +2445,29 @@ def find_model_preset(
     def _sort_key(preset: VisionModelDownloadPreset) -> tuple[int, int, str]:
         return (target_rank.get(preset.target, len(target_rank)), preset.source_priority, preset.repo_id)
 
+    def _choose(choices: Sequence[VisionModelDownloadPreset]) -> VisionModelDownloadPreset:
+        # A repository named exactly is that repository. Otherwise the host's target order picks the
+        # target; within it, several packages select the one the catalog recommends, or stop and are
+        # listed, whatever narrowed them.
+        ordered = sorted(choices, key=_sort_key)
+        exact = [p for p in ordered if p.repo_id.lower() == requested]
+        if download_rule and exact:
+            return exact[0]
+        top = [p for p in ordered if p.target == ordered[0].target]
+        repos = sorted({p.repo_id for p in top})
+        if len(repos) == 1:
+            return ordered[0]
+        flagged = [p for p in top if p.recommended]
+        if len({p.repo_id for p in flagged}) == 1:
+            return flagged[0]
+        if not download_rule:
+            return ordered[0]
+        widths = {p.quantization_bits for p in top}
+        raise ValueError(
+            f"{name!r} names several {ordered[0].target} packages and the catalog recommends none of them: "
+            f"name one of {', '.join(repos)}" + (", or pass --bits." if len(widths) > 1 else ".")
+        )
+
     candidates = [
         p
         for p in presets
@@ -2454,7 +2480,7 @@ def find_model_preset(
     if bits is not None:
         candidates = [p for p in candidates if int(p.quantization_bits or 0) == int(bits)]
     if candidates:
-        return sorted(candidates, key=_sort_key)[0]
+        return _choose(candidates)
 
     any_engine_matches = [p for p in presets if matches(p)]
     target_matches = [
@@ -2473,6 +2499,10 @@ def find_model_preset(
             fallback_target = possible_targets[0]
             fallback = [p for p in any_engine_matches if p.target == fallback_target]
             packages = [p for p in fallback if _is_abstractframework_mlx_gen_preset(p)]
+            exact = [p for p in fallback if p.repo_id.lower() == requested]
+            if download_rule and not require_8bit and exact and bits is None:
+                # As on a host whose targets include it: a repository named exactly is that repository.
+                return sorted(exact, key=_sort_key)[0]
             if packages and (bits is not None or any(p.recommended for p in packages)):
                 picked = _pick_package(name, packages, bits=bits)
                 if picked is not None:
@@ -2481,13 +2511,7 @@ def find_model_preset(
                 quantized = [p for p in fallback if _is_default_quantized_preset(p)]
                 if quantized:
                     fallback = quantized
-                elif fallback_target != "hf-snapshot" and len({p.repo_id for p in fallback}) > 1:
-                    raise ValueError(
-                        f"No 8-bit preset for {name!r}. Available target/engine choices: "
-                        + ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
-                        + ". Use --allow-non-8bit, or select an explicit --target/--provider that has an 8-bit artifact."
-                    )
-            return sorted(fallback, key=_sort_key)[0]
+            return _choose(fallback)
 
     if target_matches and bits is None and len({p.repo_id for p in target_matches}) == 1:
         # One repository: a model with a single package selects it, whatever its width.
@@ -2618,22 +2642,22 @@ def select_download_preset(
     catalog recommends, else `bits` picks by width and otherwise the packages are listed. Across
     targets the host's order decides, preferring an 8-bit package unless `allow_non_8bit`; with
     `allow_non_8bit` a repository named exactly selects that repository instead of a package made from it.
-    A Diffusers or snapshot target, or an MLX-Gen engine named explicitly, does not require 8 bits. A
+    A Diffusers or snapshot target, or an MLX-Gen engine or target named explicitly, does not require 8 bits
+    (so `briaai/FIBO --provider mlx-gen` is that source repository, as in 0.3.36). A
     Hugging Face `owner/name` the catalog does not name is the whole repository (`repository_preset`)."""
 
     raw_target = str(target or "auto").strip().lower()
     raw_engine = str(engine or "auto").strip().lower().replace("_", "-")
     require_8bit = not (
-        allow_non_8bit or raw_target in {"diffusers", "hf-snapshot"} or raw_engine in {"diffusers", "transformers"}
+        allow_non_8bit
+        or raw_target in {"diffusers", "hf-snapshot", *_MLX_TARGET_NAMES}
+        or raw_engine in {"diffusers", "transformers", *_MLX_GEN_ENGINE_NAMES}
     )
     try:
-        return find_model_preset(name, target=target, engine=engine, require_8bit=require_8bit, bits=bits)
+        return find_model_preset(
+            name, target=target, engine=engine, require_8bit=require_8bit, bits=bits, download_rule=True
+        )
     except ValueError as refusal:
-        if require_8bit and (raw_engine in _MLX_GEN_ENGINE_NAMES or raw_target in _MLX_TARGET_NAMES):
-            try:
-                return find_model_preset(name, target=target, engine=engine, require_8bit=False, bits=bits)
-            except ValueError:
-                pass
         if bits is None and not catalog_names_model(name) and looks_like_hf_repo_id(name):
             return repository_preset(name)
         raise refusal
@@ -2645,12 +2669,18 @@ def download_command(repo_id: str, *, engine: Optional[str] = None, base_model: 
 
     Each form of the command is checked with `select_download_preset`, so the command printed is one
     that selects this repository: a model id that is also a source repository needs `--allow-non-8bit`,
-    because the model id alone selects its recommended package. ValueError when no form selects it, or
-    when `base_model` is not a schedule of that package."""
+    because the model id alone selects its recommended package. ValueError when no form selects it, when
+    the catalog lists the repository but not for `engine` (no command would fetch what that engine loads),
+    or when `base_model` is not a schedule of that package. A repository outside the catalog is fetched
+    whole, whatever the engine."""
 
     repo = str(repo_id).strip()
     wanted_engine = normalize_model_engine(engine) if engine else None
-    listed = [p for p in _all_presets() if p.repo_id == repo and (wanted_engine is None or p.engine == wanted_engine)]
+    in_catalog = [p for p in _all_presets() if p.repo_id == repo]
+    listed = [p for p in in_catalog if wanted_engine is None or p.engine == wanted_engine]
+    if in_catalog and not listed:
+        engines = ", ".join(sorted({p.engine for p in in_catalog}))
+        raise ValueError(f"The catalog lists {repo} for {engines}, not for {wanted_engine}.")
     if base_model is not None:
         if not listed or listed[0].engine != "mlx-gen":
             raise ValueError(f"--base-model names an MLX-Gen schedule; {repo} is not an MLX-Gen package of the catalog.")
@@ -2686,7 +2716,8 @@ def _hub_refusal_status(exc: BaseException) -> Optional[int]:
     if status in (401, 403):
         return int(status)
     try:
-        from huggingface_hub.errors import RepositoryNotFoundError
+        # `huggingface_hub.utils` exports it in 0.x and 1.x; `huggingface_hub.errors` only from 0.25.
+        from huggingface_hub.utils import RepositoryNotFoundError
     except ImportError:
         return None
     if isinstance(exc, RepositoryNotFoundError):
@@ -2715,7 +2746,9 @@ def _hub_endpoint() -> str:
         return "https://huggingface.co"
 
 
-def _hub_unavailable_reason(exc: BaseException, repo_id: str, *, gated: bool, license_name: str) -> str:
+def _hub_unavailable_reason(
+    exc: BaseException, repo_id: str, *, gated: bool, license_name: str, revision: Optional[str] = None
+) -> str:
     """Why a Hub request failed and what to do, for a plan without a listing; read from the exception type
     and HTTP status, never from the message. A refusal raises HuggingFaceAccessError.
 
@@ -2732,11 +2765,18 @@ def _hub_unavailable_reason(exc: BaseException, repo_id: str, *, gated: bool, li
     first_line = next((line.strip() for line in str(exc).splitlines() if line.strip()), "")
     detail = f"{type(exc).__name__}: {first_line}" if first_line else type(exc).__name__
     try:
-        from huggingface_hub.utils import HfHubHTTPError, OfflineModeIsEnabled
+        from huggingface_hub.utils import (
+            HfHubHTTPError,
+            OfflineModeIsEnabled,
+            RevisionNotFoundError,
+        )
     except ImportError:
         return detail
     if isinstance(exc, OfflineModeIsEnabled):
         return "offline mode is on (HF_HUB_OFFLINE), so the Hugging Face Hub was not contacted; unset HF_HUB_OFFLINE to download"
+    if isinstance(exc, RevisionNotFoundError):
+        named = f" {revision!r}" if revision else ""
+        return f"{repo_id} has no revision{named} on the Hugging Face Hub at {_hub_endpoint()}; name an existing branch, tag or commit"
     if isinstance(exc, HfHubHTTPError):
         code = getattr(getattr(exc, "response", None), "status_code", None)
         return f"the Hugging Face Hub at {_hub_endpoint()} answered HTTP {code}; try again later"
@@ -2792,7 +2832,11 @@ def _free_bytes(cache_root: Path) -> Optional[int]:
 
 
 def _hub_json(repo_id: str, filename: str, *, revision: Optional[str], token: Optional[str]) -> Any:
-    """A small JSON file of a repository, read from the Hub into memory: the cache is not written."""
+    """A small JSON file of a repository, read from the Hub into memory: the cache is not written.
+
+    The request goes through huggingface_hub's own session, as its `HfApi` calls do, with only the
+    arguments both of its session types take (`requests.Session` in 0.x, `httpx.Client` in 1.x); each
+    follows redirects as huggingface_hub configures it."""
 
     from huggingface_hub import hf_hub_url
     from huggingface_hub.utils import build_hf_headers, get_session, hf_raise_for_status
@@ -2800,7 +2844,6 @@ def _hub_json(repo_id: str, filename: str, *, revision: Optional[str], token: Op
     response = get_session().get(
         hf_hub_url(str(repo_id), filename, revision=revision),
         headers=build_hf_headers(token=resolve_hf_token(token)),
-        follow_redirects=True,
     )
     hf_raise_for_status(response)
     return response.json()
@@ -2883,7 +2926,9 @@ def _plan_hub_download(
             token=resolve_hf_token(token),
         )
     except Exception as e:
-        return unlisted(_hub_unavailable_reason(e, repo_id, gated=bool(gated), license_name=license_name), gated)
+        return unlisted(
+            _hub_unavailable_reason(e, repo_id, gated=bool(gated), license_name=license_name, revision=revision), gated
+        )
     access = gated if gated is not None else bool(getattr(info, "gated", False))
     commit = str(getattr(info, "sha", "") or "")
     selected = list(
@@ -2898,7 +2943,10 @@ def _plan_hub_download(
         try:
             index = _hub_json(repo_id, "model_index.json", revision=commit or None, token=token)
         except Exception as e:
-            return unlisted(_hub_unavailable_reason(e, repo_id, gated=bool(access), license_name=license_name), access)
+            return unlisted(
+                _hub_unavailable_reason(e, repo_id, gated=bool(access), license_name=license_name, revision=commit or None),
+                access,
+            )
         keep = set(
             diffusers_download_files(
                 [str(s.rfilename) for s in selected],
@@ -3496,13 +3544,18 @@ def _gguf_patterns_for_preset(preset: VisionModelDownloadPreset) -> Tuple[str, .
     return out or ("*.gguf",)
 
 
-def _sdcpp_bundle_download_hint(name: str) -> str:
-    return f"abstractvision download {name} --provider sdcpp"
+def _sdcpp_bundle_download_hint(repo_id: str) -> str:
+    # The command that fetches this GGUF package with its companions (`download_command`).
+    try:
+        return f"Run `{download_command(repo_id, engine='stable-diffusion.cpp')}` first."
+    except ValueError:
+        return f"No `abstractvision download` command selects {repo_id} on this host; fetch it from https://huggingface.co/{repo_id}."
 
 
 def _resolve_cached_sdcpp_companion(
     *,
     requested_name: str,
+    package_repo_id: str,
     role: str,
     repo_id: str,
     allow_patterns: Sequence[str],
@@ -3521,7 +3574,7 @@ def _resolve_cached_sdcpp_companion(
         if not allow_download:
             raise RuntimeError(
                 f"Missing cached stable-diffusion.cpp companion artifact for {requested_name!r}: "
-                f"{role} from {repo_id!r}. Run `{_sdcpp_bundle_download_hint(requested_name)}` first."
+                f"{role} from {repo_id!r}. {_sdcpp_bundle_download_hint(package_repo_id)}"
             )
         snapshot = download_hf_repo_snapshot(
             repo_id,
@@ -3575,7 +3628,7 @@ def resolve_sdcpp_model_selection(
         if not allow_download:
             raise RuntimeError(
                 f"Missing cached stable-diffusion.cpp model artifact for {requested!r} ({preset.repo_id!r}). "
-                f"Run `{_sdcpp_bundle_download_hint(requested)}` first."
+                f"{_sdcpp_bundle_download_hint(preset.repo_id)}"
             )
         snapshot = download_model_preset(
             preset,
@@ -3604,6 +3657,7 @@ def resolve_sdcpp_model_selection(
         component_values[component.role] = str(
             _resolve_cached_sdcpp_companion(
                 requested_name=requested,
+                package_repo_id=preset.repo_id,
                 role=component.role,
                 repo_id=component.repo_id,
                 allow_patterns=component.allow_patterns,

@@ -234,3 +234,19 @@ class TestModelCache(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCacheRefs(unittest.TestCase):
+    def test_a_nested_ref_is_written_and_a_name_leaving_refs_is_refused(self):
+        from abstractvision.model_cache import write_hf_ref
+
+        with tempfile.TemporaryDirectory() as td:
+            repo_dir = Path(td) / "models--org--repo"
+            write_hf_ref(repo_dir, "refs/pr/1", "c0ffee")  # a pull-request revision, as huggingface_hub writes it
+            write_hf_ref(repo_dir, "main", "c0ffee")
+            self.assertEqual((repo_dir / "refs" / "refs" / "pr" / "1").read_text(), "c0ffee")
+            for name in ("../../escape", "/etc/x", "a/../../b", "a//b", ".", "..\\escape"):
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    write_hf_ref(repo_dir, name, "c0ffee")
+            self.assertEqual(sorted(str(p.relative_to(td)) for p in Path(td).rglob("*") if p.is_file()),
+                             ["models--org--repo/refs/main", "models--org--repo/refs/refs/pr/1"])

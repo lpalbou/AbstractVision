@@ -175,7 +175,8 @@ parameter for the second-stage/low-noise guidance path. Pass it directly to
 `control_image=<bytes>` and `control_strength=<float>` reach the request as
 typed fields, but in this release every built-in backend, MLX-Gen included,
 refuses a `control_image` with `CapabilityNotSupportedError`
-(`field="control_image"`) instead of ignoring it.
+(`field="control_image"`), and a `control_strength` given alone the same way,
+instead of ignoring them.
 
 The same applies to LoRA adapters. Prefer the shared typed contract:
 
@@ -265,7 +266,8 @@ request's `memory_mode` and `quantize` when it carries them (checked as a
 generation request's are, before anything loads), so that requests with those
 values reuse the model; on MLX-Gen a video model (Wan, MiniMax-H3) is loaded
 without a warm-up run. When the preload
-fails, the backend drops what it loaded and the plugin does not list it.
+fails, the backend drops what it loaded (a model it held before the call stays
+loaded) and the plugin does not list a model the failed preload dropped.
 
 Discovery, and where each part is visible:
 
@@ -278,8 +280,9 @@ Discovery, and where each part is visible:
   configured model and device (`supported_memory_modes()`; for an
   OpenAI-compatible remote, the modes of its last discovery answer, else
   `default`), without loading a model, importing torch or sending a request.
-  Diffusers with `device="auto"` lists `low` and `lowest` once torch is imported
-  (a request imports it), `default` until then. AbstractCore's HTTP server
+  Diffusers with `device="auto"` answers `default` on macOS without importing
+  torch, and elsewhere imports torch to answer (`low` and `lowest` on a CUDA
+  host). AbstractCore's HTTP server
   reads it for `GET /v1/vision/providers/` and for the `memory_modes` of the
   entries of `GET /v1/vision/models`.
 - `llm.vision.memory_peaks(model)` returns MLX-Gen's measured memory peaks for
@@ -365,6 +368,8 @@ stacked `lora_adapters=[...]`, explicit `seeds=[...]`, optional base `seed`
 expansion, and typed video controls such as `guidance_2` / `flow_shift`.
 
 ```python
+from abstractvision import LoRAAdapterSpec
+
 videos = llm.vision.t2v_batch(
     "A compact silver spaceship lifts off from an icy canyon at dawn.",
     provider="mlx-gen",

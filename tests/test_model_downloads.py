@@ -29,11 +29,16 @@ class TestModelDownloads(unittest.TestCase):
         self.assertEqual((preset.target, preset.engine), ("mlx", "mlx-gen"))
         self.assertEqual(preset.repo_id, "AbstractFramework/qwen-image-2512-4bit")
 
-    def test_mlx_gen_family_aliases_are_rejected_as_ambiguous(self):
+    def test_mlx_gen_family_aliases_select_the_recommended_package_or_are_rejected_as_ambiguous(self):
         from abstractvision.model_downloads import find_model_preset
 
+        # The catalog marks the package 0.3.36 selected for `qwen-image` recommended; `flux2-klein-4b` has none.
+        self.assertEqual(
+            find_model_preset("qwen-image", target="mlx", engine="mlx-gen", require_8bit=True).repo_id,
+            "AbstractFramework/qwen-image-2512-4bit",
+        )
         with self.assertRaisesRegex(ValueError, "names several MLX-Gen packages and the catalog recommends none"):
-            find_model_preset("qwen-image", target="mlx", engine="mlx-gen", require_8bit=True)
+            find_model_preset("flux2-klein-4b", target="mlx", engine="mlx-gen", require_8bit=True)
 
     def test_mlx_gen_catalog_covers_abstractframework_q4_q8_collection(self):
         from abstractvision.model_downloads import model_presets
@@ -475,7 +480,8 @@ class TestModelDownloads(unittest.TestCase):
                         resolve_sdcpp_model_selection("flux2-klein-base-4b", allow_download=False)
 
         self.assertIn("flux2-klein-base-4b", str(ctx.exception))
-        self.assertIn("download flux2-klein-base-4b --provider sdcpp", str(ctx.exception))
+        # The command named fetches exactly that GGUF package with its companions.
+        self.assertIn("Run `abstractvision download leejet/FLUX.2-klein-base-4B-GGUF` first.", str(ctx.exception))
 
     def test_resolve_sdcpp_model_selection_supports_legacy_qwen_image_repo_id(self):
         from abstractvision.model_cache import import_directory_to_hf_cache

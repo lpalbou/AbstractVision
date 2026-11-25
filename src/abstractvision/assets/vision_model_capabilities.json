@@ -1655,6 +1655,7 @@
           "target": "mlx",
           "bits": 4,
           "repo_id": "AbstractFramework/qwen-image-2512-4bit",
+          "recommended": true,
           "source": "abstractframework-mlx-gen",
           "notes": "AbstractFramework MLX-Gen prepared Qwen folder. Qwen prepared folders may mix q4/q8 components; default Apple Silicon recommendation."
         },
@@ -1673,6 +1674,7 @@
           "target": "diffusers",
           "bits": 16,
           "repo_id": "Qwen/Qwen-Image-2512",
+          "recommended": true,
           "source": "official",
           "notes": "Official Diffusers pipeline snapshot (full model weights)."
         },
@@ -1682,6 +1684,7 @@
           "target": "gguf",
           "bits": 8,
           "repo_id": "unsloth/Qwen-Image-2512-GGUF",
+          "recommended": true,
           "source": "curated-community-gguf",
           "notes": "Qwen Image GGUF bundle for stable-diffusion.cpp; requires a separate VAE safetensors file and a Qwen2.5-VL text encoder (safetensors or GGUF) at runtime."
         }
@@ -4258,6 +4261,7 @@
           "target": "mlx",
           "bits": 8,
           "repo_id": "AbstractFramework/seedvr2-3b-8bit",
+          "recommended": true,
           "source": "abstractframework-mlx-gen",
           "aliases": [
             "seedvr2",
@@ -4361,6 +4365,7 @@
           "target": "mlx",
           "bits": 8,
           "repo_id": "AbstractFramework/seedvr2-7b-8bit",
+          "recommended": true,
           "source": "abstractframework-mlx-gen",
           "aliases": [
             "seedvr2-7b",
@@ -5123,6 +5128,7 @@
           "target": "mlx",
           "bits": 4,
           "repo_id": "AbstractFramework/fibo-4bit",
+          "recommended": true,
           "source": "abstractframework-mlx-gen",
           "notes": "AbstractFramework MLX-Gen prepared 4-bit folder for FIBO.",
           "gated": true

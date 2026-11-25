@@ -446,6 +446,7 @@ class TestCliSmoke(unittest.TestCase):
             rc = main(["download-model", "qwen-image", "--provider", "diffusers"])
 
         self.assertEqual(rc, 0)
+        # `qwen-image` names two Diffusers pipelines; the catalog recommends Qwen-Image-2512, which 0.3.36 selected.
         self.assertEqual(calls["repo_id"], "Qwen/Qwen-Image-2512")
 
     def test_diffusers_provider_uses_cached_snapshot_and_migrates_legacy_tree(self):
