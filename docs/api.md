@@ -380,7 +380,7 @@ model included; MiniMax-H3 runs in `lowest` are dropped the same way. A batch
 (`generate_image_batch`, `generate_video_batch`, ...) is a series of such
 requests: each item loads the model, frees it and drops it, so every item peaks
 as one `low` run, at the cost of one load per item (building the instance took
-2.1 to 3.1 s for MiniMax-H3 8-bit, 0.5 to 1.9 s for FLUX.2 [klein] 9B 8-bit and
+1.3 to 3.1 s for MiniMax-H3 8-bit, 0.5 to 2.5 s for FLUX.2 [klein] 9B 8-bit and
 1.4 to 2.7 s for Wan 2.2 T2V-A14B 8-bit; the weights are then read during the
 run). SeedVR2's `low` is the cache limit alone, and it keeps its instance. `low` and `lowest` hold a 1 GB MLX cache limit for the run, never
 above a limit already in force; `default` runs leave the limit to MLX-Gen. MLX-Gen holds one instance at a time: a request

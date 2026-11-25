@@ -48,7 +48,7 @@ except for the changes listed below.
     logs that the soundtrack is not in them.
   - `memory_mode="low"` frees the transformer before the decode, and the next request, a batch item included, loads
     the model again: with the 8-bit package, a 640x352, 124-frame clip peaked at 24.7 GiB alone, in sequence and
-    in a batch, and building the instance again took 2.1 to 3.1 s per clip. `"lowest"` adds transformer block streaming (10.6 GiB on the
+    in a batch, and building the instance again took 1.3 to 3.1 s per clip. `"lowest"` adds transformer block streaming (10.6 GiB on the
     same clip; the next request also loads the model again) and is refused with load-time `quantize` and with an
     adapter that trains the AdaLN projections.
   - The AbstractFramework packages are gated on Hugging Face, and the MiniMax H3 Community License's grant excludes
@@ -79,7 +79,7 @@ except for the changes listed below.
     is dropped when the run ends, whatever its outcome; the next request loads it again, and the AbstractCore plugin
     no longer lists it as loaded. A batch is a series of such requests: each item loads the model and drops it,
     so every item peaks as one `low` run and under 1.3 GiB stays held between items. Measured per item of a `low`
-    batch: FLUX.2 [klein] 9B 8-bit at 1024x1024, 4 steps, 13.2 to 15.4 GiB and 0.5 to 1.9 s to build the instance;
+    batch: FLUX.2 [klein] 9B 8-bit at 1024x1024, 4 steps, 13.2 to 15.4 GiB and 0.5 to 2.5 s to build the instance;
     Wan 2.2 T2V-A14B 8-bit at 480x240, 17 frames, 4 steps, 29.0 to 29.5 GiB and 1.4 to 2.7 s (the weights are then
     read during the run). SeedVR2's `low` is the cache limit alone and keeps its model.
   - `low` and `lowest` hold MLX-Gen's 1 GB MLX cache limit from before the model loads to the end of the run, never
