@@ -1796,7 +1796,7 @@ print("ok")
             "every backend. Inherit abstractvision.backends.base_backend.VisionBackend, which provides them."
         )
 
-        # A local backend as the 0.3.36 test file wrote one: preload and unload, no has_loaded_model.
+        # A local backend with preload and unload but no has_loaded_model.
         class FakeBackend:
             def preload(self):
                 pass
@@ -1807,7 +1807,7 @@ print("ok")
             def generate_image(self, request):
                 raise AssertionError("never called")
 
-        # The injected backend of the 0.3.36 catalog test, verbatim.
+        # A backend with a provider-model listing (which fails) and none of the residency methods.
         class _Cfg:
             base_url = "https://api.openai.com/v1"
 
@@ -1860,7 +1860,7 @@ print("ok")
         from abstractvision.backends.base_backend import VisionBackend
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
 
-        # Written against 0.3.36: it loads in preload and never answers has_loaded_model itself.
+        # A VisionBackend subclass that loads in preload and keeps the base class's has_loaded_model() (False).
         class _Sub036(VisionBackend):
             def __init__(self):
                 self.loaded = False

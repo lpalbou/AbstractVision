@@ -423,12 +423,50 @@ class TestPackageSelection(unittest.TestCase):
         self.assertEqual(md.select_download_preset("black-forest-labs/FLUX.1-dev").target, "diffusers")
 
     def test_several_packages_and_none_recommended_are_listed_with_the_source_repository(self):
+        source = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
         with self.assertRaises(ValueError) as ctx:
-            md.select_download_preset("ByteDance-Seed/SeedVR2-3B")
+            md.select_download_preset(source)
         message = str(ctx.exception)
-        self.assertIn("AbstractFramework/seedvr2-3b-4bit, AbstractFramework/seedvr2-3b-8bit, or pass --bits", message)
-        self.assertIn("the source repository ByteDance-Seed/SeedVR2-3B: add --allow-non-8bit", message)
-        self.assertEqual(md.select_download_preset("ByteDance-Seed/SeedVR2-3B", allow_non_8bit=True).repo_id, "ByteDance-Seed/SeedVR2-3B")
+        self.assertIn(
+            "AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit, AbstractFramework/wan2.2-ti2v-5b-diffusers-bf16, or pass --bits",
+            message,
+        )
+        self.assertIn(f"the source repository {source}: add --allow-non-8bit", message)
+        self.assertEqual(md.select_download_preset(source, allow_non_8bit=True).repo_id, source)
+
+    def test_an_mlx_gen_engine_named_explicitly_keeps_a_source_repository(self):
+        # As in 0.3.36 (`download briaai/FIBO --provider mlx-gen` is a README example): naming the MLX-Gen engine
+        # drops the 8-bit preference, so the source repository named exactly is that repository, while the
+        # same name without flags selects the package the catalog recommends.
+        for profile in ("apple-silicon", "cuda", "cpu"):
+            with patch.object(md, "local_model_profile", return_value=profile):
+                for source, package in (
+                    ("briaai/FIBO", "AbstractFramework/fibo-4bit"),
+                    ("ByteDance-Seed/SeedVR2-3B", "AbstractFramework/seedvr2-3b-8bit"),
+                ):
+                    with self.subTest(profile=profile, source=source):
+                        self.assertEqual(md.select_download_preset(source, engine="mlx-gen").repo_id, source)
+                        self.assertEqual(md.select_download_preset(source).repo_id, package)
+
+    def test_several_packages_stop_whatever_flags_narrowed_them(self):
+        # tencent/HunyuanVideo-1.5 has eight 16-bit Diffusers packages and recommends none of them.
+        for profile in ("apple-silicon", "cuda", "cpu"):
+            with patch.object(md, "local_model_profile", return_value=profile):
+                for flags in ({"allow_non_8bit": True}, {"bits": 16}, {"engine": "diffusers"}):
+                    with self.subTest(profile=profile, flags=flags), self.assertRaises(ValueError) as ctx:
+                        md.select_download_preset("tencent/HunyuanVideo-1.5", **flags)
+                    self.assertIn("names several diffusers packages and the catalog recommends none of them", str(ctx.exception))
+                    self.assertIn("hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-720p_t2v", str(ctx.exception))
+                # One of them named exactly selects it.
+                exact = "hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v"
+                self.assertEqual(md.select_download_preset(exact).repo_id, exact)
+
+    def test_a_repository_named_exactly_with_allow_non_8bit_is_that_repository_on_every_host(self):
+        for profile in ("apple-silicon", "cuda", "cpu"):
+            with patch.object(md, "local_model_profile", return_value=profile):
+                for repo_id in ("ByteDance-Seed/SeedVR2-3B", "stabilityai/sdxl-turbo", "black-forest-labs/FLUX.2-klein-4B"):
+                    with self.subTest(profile=profile, repo=repo_id):
+                        self.assertEqual(md.select_download_preset(repo_id, allow_non_8bit=True).repo_id, repo_id)
 
     def test_a_provider_that_serves_none_of_the_packages_is_refused(self):
         with self.assertRaisesRegex(ValueError, "with engine 'stable-diffusion.cpp'.*diffusers/diffusers:stabilityai/stable-diffusion-xl-base-1.0"):
@@ -455,10 +493,10 @@ class TestDownloadCommandOfARepository(unittest.TestCase):
             # The model id alone selects the recommended package, not the source repository.
             self.assertEqual(md.select_download_preset("MiniMaxAI/MiniMax-H3").repo_id, "AbstractFramework/minimax-h3-8bit")
         with patch.object(md, "local_model_profile", return_value="cuda"):
-            # Another host's target order leaves MLX out: the command names the engine.
+            # Another host's target order leaves MLX out; the repository named exactly is still that repository.
             self.assertEqual(
                 md.download_command("MiniMaxAI/MiniMax-H3", engine="mlx-gen"),
-                "abstractvision download MiniMaxAI/MiniMax-H3 --provider mlx-gen --allow-non-8bit",
+                "abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit",
             )
 
     def test_every_command_selects_the_repository_it_names(self):
@@ -484,6 +522,13 @@ class TestDownloadCommandOfARepository(unittest.TestCase):
                     )
                     self.assertEqual((chosen.repo_id, chosen.engine), (preset.repo_id, preset.engine), command)
 
+    def test_an_engine_the_catalog_does_not_list_the_repository_for_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "lists MiniMaxAI/MiniMax-H3 for mlx-gen, not for diffusers"):
+            md.download_command("MiniMaxAI/MiniMax-H3", engine="diffusers")
+        # A repository outside the catalog is fetched whole, whatever engine loads it.
+        self.assertEqual(md.download_command("someone/not-in-the-catalog", engine="diffusers"),
+                         "abstractvision download someone/not-in-the-catalog")
+
     def test_a_schedule_is_appended_and_checked(self):
         self.assertEqual(
             md.download_command("MiniMaxAI/MiniMax-H3", engine="mlx-gen", base_model="minimax-h3-turbo-544p"),
@@ -500,7 +545,8 @@ class TestCatalogAccessFacts(unittest.TestCase):
             self.assertTrue(presets[repo_id].gated, repo_id)
             self.assertEqual(presets[repo_id].license_name, "MiniMax H3 Community License")
         self.assertFalse(presets["MiniMaxAI/MiniMax-H3"].gated)
-        self.assertEqual([r for r, p in presets.items() if p.recommended], ["AbstractFramework/minimax-h3-8bit"])
+        h3 = [r for r, p in presets.items() if "minimax" in r.lower() and p.recommended]
+        self.assertEqual(h3, ["AbstractFramework/minimax-h3-8bit"])
 
     def test_every_preset_of_a_gated_catalog_repository_is_gated(self):
         from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry
@@ -774,6 +820,17 @@ class TestDownloadPlanAgainstTheCache(unittest.TestCase):
             _rc, out = _run_cli(["download", self.REPO, "--dry-run"])
         self.assertIn(f"disk: needs 64.2 GiB ({md.DISK_RULE}); enough free space", out)
 
+    def test_the_dry_run_names_the_commit_the_fetch_takes(self):
+        with _Env(_FakeHub(H3_8BIT_FILES)):
+            _rc, out = _run_cli(["download", self.REPO, "--dry-run"])
+        self.assertIn(f"commit: {_FakeHub.SHA} (the default branch as listed; the files are fetched from this commit)", out)
+
+    def test_the_cli_prints_its_version(self):
+        from abstractvision import __version__
+
+        code, out, _err = _run_cli_exit(["--version"])
+        self.assertEqual((code, out.strip()), (0, f"abstractvision {__version__}"))
+
     def test_the_fetch_takes_the_commit_the_listing_named_and_records_it(self):
         hub = _FakeHub(SD_TURBO_GGUF_FILES)
         with _Env(hub) as env, patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="sd-cli"):
@@ -964,6 +1021,16 @@ class TestHubUnreachableByType(unittest.TestCase):
             reason = self._reason(connect_error("[Errno 8] nodename nor servname provided"))
         self.assertIn("the Hugging Face Hub could not be reached at", reason)
         self.assertIn("(ConnectError: [Errno 8] nodename nor servname provided)", reason)
+
+    def test_a_revision_the_hub_does_not_have_is_named(self):
+        import httpx
+        from huggingface_hub.utils import RevisionNotFoundError
+
+        url = "https://huggingface.co/api/models/some-org/some-model/revision/nope"
+        error = RevisionNotFoundError("404 Client Error.", response=httpx.Response(404, request=httpx.Request("GET", url)))
+        reason = md._hub_unavailable_reason(error, "some-org/some-model", gated=False, license_name="", revision="nope")
+        self.assertIn("some-org/some-model has no revision 'nope' on the Hugging Face Hub", reason)
+        self.assertNotIn("try again later", reason)
 
     def test_standard_library_errors_and_the_installed_transport(self):
         import httpx
@@ -1510,6 +1577,63 @@ class TestMlxGenFindsTheAdapterTheDownloadFetches(unittest.TestCase):
                 resolved = resolve_mlx_gen_schedule_adapter("minimax-h3-turbo-544p")
                 self.assertEqual(resolved[0], adapter)
                 self.assertEqual(Path(resolved[1]).resolve(), (snapshot / filename).resolve())
+
+
+class TestModelIndexIsReadThroughEitherSessionType(unittest.TestCase):
+    """`_hub_json` reads `model_index.json` through huggingface_hub's own session: `requests.Session` in
+    huggingface_hub 0.x, `httpx.Client` in 1.x. Both real session types run here, with a transport that
+    answers locally (a redirect, then the file), so no request leaves the process."""
+
+    INDEX = {"_class_name": "StableDiffusionPipeline", "unet": ["diffusers", "UNet2DConditionModel"]}
+
+    def _read(self, session):
+        with patch("huggingface_hub.utils.get_session", return_value=session):
+            return md._hub_json("some-org/some-pipeline", "model_index.json", revision="c0ffee", token=None)
+
+    def test_a_requests_session_as_huggingface_hub_0x_uses(self):
+        try:
+            import requests
+            from requests.adapters import BaseAdapter
+        except ImportError:
+            self.skipTest("requests is not installed")
+        index, seen = self.INDEX, []
+
+        class Local(BaseAdapter):
+            def send(self, request, **kwargs):
+                seen.append(request.url)
+                response = requests.Response()
+                response.request, response.url = request, request.url
+                if "/resolve/" in request.url:  # the Hub redirects a resolve URL; requests follows by default
+                    response.status_code, response.headers["Location"] = 302, "https://cdn.example/model_index.json"
+                else:
+                    response.status_code, response._content = 200, json.dumps(index).encode()
+                return response
+
+            def close(self):
+                pass
+
+        session = requests.Session()
+        session.mount("https://", Local())
+        self.assertEqual(self._read(session), index)
+        self.assertEqual(len(seen), 2)
+
+    def test_an_httpx_client_as_huggingface_hub_1x_uses(self):
+        try:
+            import httpx
+        except ImportError:
+            self.skipTest("httpx is not installed")
+        index, seen = self.INDEX, []
+
+        def answer(request):
+            seen.append(str(request.url))
+            if "/resolve/" in str(request.url):
+                return httpx.Response(302, headers={"Location": "https://cdn.example/model_index.json"})
+            return httpx.Response(200, json=index)
+
+        # huggingface_hub 1.x builds its client with follow_redirects=True (`default_client_factory`).
+        client = httpx.Client(transport=httpx.MockTransport(answer), follow_redirects=True)
+        self.assertEqual(self._read(client), index)
+        self.assertEqual(len(seen), 2)
 
 
 class TestWithoutOptionalDependencies(unittest.TestCase):

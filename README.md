@@ -2,7 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/abstractvision.svg)](https://pypi.org/project/abstractvision/)
 [![CI](https://github.com/lpalbou/AbstractVision/actions/workflows/ci.yml/badge.svg)](https://github.com/lpalbou/AbstractVision/actions/workflows/ci.yml)
-[![Tested Python](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Flpalbou%2FAbstractVision%2Fmain%2F.github%2Fworkflows%2Fci.yml&query=%24.jobs.test.strategy.matrix%5B%22python-version%22%5D&label=tested%20python&color=blue)](https://github.com/lpalbou/AbstractVision/actions/workflows/ci.yml)
+[![Tested Python](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Flpalbou%2FAbstractVision%2Fmain%2F.github%2Fworkflows%2Fci.yml&query=%24.jobs%5B%22test-base%22%5D.strategy.matrix%5B%22python-version%22%5D&label=tested%20python&color=blue)](https://github.com/lpalbou/AbstractVision/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/lpalbou/AbstractVision)](https://github.com/lpalbou/AbstractVision/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/lpalbou/AbstractVision?style=social)](https://github.com/lpalbou/AbstractVision/stargazers)
 
@@ -84,6 +84,11 @@ pip install abstractvision            # light: no dependency
 pip install "abstractvision[apple]"   # Apple Silicon
 pip install "abstractvision[gpu]"     # NVIDIA / Linux
 ```
+
+The MLX-Gen extras (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) install `mlx-gen>=0.40.1,<0.41.0` and,
+on macOS, `mlx>=0.32.4`. Upgrade with the extra (`pip install -U "abstractvision[apple]"`): an upgrade without it
+keeps the installed mlx-gen and MLX, and the MLX-Gen backend then refuses them at the first model load
+([Troubleshooting](docs/troubleshooting.md#mlx-gen-refuses-the-installed-mlx-gen-or-mlx-version)).
 
 The base install is lightweight. It includes the shared API, capability
 registry, artifact helpers, CLI, AbstractCore plugin entry point, and the
@@ -657,10 +662,11 @@ Current behavior:
 - Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
-One-shot commands pick this machine's local engine and FLUX.2 [klein] 4B in 8 bits when you give no provider, model
-or base URL: MLX-Gen with `AbstractFramework/flux.2-klein-4b-8bit` on Apple silicon, stable-diffusion.cpp with the Q8_0
-GGUF of `black-forest-labs/FLUX.2-klein-4B` on an NVIDIA card, Diffusers with the same model on a processor-only host
-(download the model once with `abstractvision download <model id>`; the command prints the choice). A configured
+One-shot commands pick this machine's local engine and FLUX.2 [klein] 4B when you give no provider, model or base
+URL: MLX-Gen with the 8-bit package `AbstractFramework/flux.2-klein-4b-8bit` on Apple silicon, stable-diffusion.cpp
+with the Q8_0 (8-bit) GGUF of `black-forest-labs/FLUX.2-klein-4B` on an NVIDIA card, Diffusers with that model's
+16-bit pipeline (run in float32 on the processor) on a processor-only host. The command prints its choice and the
+`abstractvision download` command that fetches it. A configured
 `--base-url` (or `$OPENAI_BASE_URL`) selects the OpenAI-compatible HTTP backend instead, and `--provider` always wins:
 
 ```bash

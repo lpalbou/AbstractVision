@@ -468,8 +468,14 @@ def _legacy_snapshot_name(repo_id: str, source_dir: Path) -> str:
 
 def write_hf_ref(repo_dir: Path, ref_name: str, snapshot_name: str) -> None:
     """Record that the revision `ref_name` (a branch or tag) is the snapshot `snapshot_name`, as
-    huggingface_hub does: `refs/<ref_name>` holds it. An unchanged ref is not rewritten."""
+    huggingface_hub does: `refs/<ref_name>` holds it. An unchanged ref is not rewritten.
 
+    A name with `/` (`refs/pr/1`, `release/v1`) is a nested ref, as huggingface_hub writes it; a name
+    that would leave `refs/` (an absolute path, an empty, `.` or `..` component) raises ValueError."""
+
+    parts = str(ref_name).replace("\\", "/").split("/")
+    if str(ref_name).startswith(("/", "\\")) or any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"{ref_name!r} is not a revision name a cache ref can hold.")
     ref = repo_dir / "refs" / ref_name
     if ref.is_file() and ref.read_text(encoding="utf-8").strip() == snapshot_name:
         return

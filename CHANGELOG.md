@@ -91,10 +91,13 @@ except for the changes listed below.
     request). Diffusers with `device="auto"` lists `default` on macOS (no CUDA) without importing torch; elsewhere
     it asks torch, importing it once.
 - **Downloads.**
-  - `abstractvision download <model id>` selects one package: a model with a single package selects it; with
-    several packages of one engine, the one the catalog marks as recommended (for MiniMax-H3, the 8-bit one), or the
-    width `--bits 2|4|8|16` names; with several and none recommended, the command stops and lists them. A repository
-    named exactly with `--allow-non-8bit` selects that repository (`abstractvision download MiniMaxAI/MiniMax-H3
+  - `abstractvision download <model id>` selects one package. The host's target order picks the target (preferring
+    an 8-bit package unless `--allow-non-8bit`; `--provider` or `--target` restricts it); within that target, a single
+    package is selected, and several select the one the catalog marks as recommended (for MiniMax-H3, the 8-bit
+    one; for Qwen-Image-2512, FIBO and SeedVR2, the package 0.3.36 selected); with none recommended, the command
+    stops and lists them, whatever `--bits`, `--provider` or `--allow-non-8bit` narrowed them to. `--bits 2|4|8|16`
+    selects by width. A repository named exactly with `--allow-non-8bit`, or with its MLX-Gen engine named
+    (`--provider mlx-gen`), selects that repository on every host (`abstractvision download MiniMaxAI/MiniMax-H3
     --allow-non-8bit` fetches the MiniMax-H3 source repository, which the model id alone does not).
   - Every download is planned before anything is written, for every repository it fetches from: the package, a
     stable-diffusion.cpp bundle's companions (the text encoder and VAE a GGUF diffusion model needs), and with
@@ -114,14 +117,15 @@ except for the changes listed below.
     into huggingface_hub's cache, where mlx-gen finds it. Without `--base-model`, `download` lists the schedules
     whose adapter is absent, with the command that fetches it.
   - Ctrl-C ends the command with exit code 130 and says that the files that completed stay in the cache and that
-    the same command continues with the rest. A download that ends with files missing names them.
+    the same command continues with the rest. A download that ends with files missing gives their count and one of
+    them.
   - Without the Hub listing, `download` fetches nothing and says why (offline mode, the Hub unreachable, an HTTP
     error, huggingface_hub or a module it imports not installed, or a listing without file sizes, which huggingface.co
     always gives but a mirror set with `HF_ENDPOINT` may not), and what to do. It reports what the cache holds as it
     is, not compared with the Hub; when a local look sees a gap or a repository is missing, it stops. Generation with
     `allow_download` that finds the model cached makes no Hub request, as before.
-  - `--dry-run` prints the same plan; it writes nothing and exits 0, and when the download would not fit, its last
-    line says so.
+  - `--dry-run` prints the same plan, the commit of each repository the fetch would take included; it writes
+    nothing and exits 0, and when the download would not fit, its last line says so.
   - A Hugging Face `owner/name` the catalog does not list downloads the whole repository through the same plan,
     size and disk check, with its access from the listing.
   - The catalog marks gated repositories (`gated: true`). `download` says so before it starts, and a gated
@@ -130,7 +134,7 @@ except for the changes listed below.
     does not exist, is private, or is gated, and the Hub does not say which.
   - Python: `select_download_preset(name, *, target, engine, bits, allow_non_8bit)` (the selection `download`
     makes), `download_command(repo_id, *, engine, base_model)` (the command that selects exactly that repository on
-    this host), `find_model_preset(..., bits=)`, `plan_model_preset_download(preset, *, base_model, model_dir, token,
+    this host), `find_model_preset(..., bits=, download_rule=)`, `plan_model_preset_download(preset, *, base_model, model_dir, token,
     all_files)` (a `DownloadPlan` of `DownloadPart`s, each with its `HubDownloadPlan`), `download_model_preset(...,
     base_model=, report=)`, `repository_preset(repo_id)`, `abstractvision.model_inventory.preset_status(preset)` and
     `local_cache_state(preset)`, and `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model,
@@ -165,8 +169,8 @@ except for the changes listed below.
     in the API guide; the error carries no traceback of the run, so a caller that keeps it holds none of its memory.
   - Load-time `quantize` (bits) on generation requests, as `--quantize` and as an AbstractCore plugin keyword,
     validated against the route (`get_capabilities().quantize_bits`) and refused on prepared packages and on the
-    other local backends. A bool or a non-integral number raises `ValueError` naming `quantize` (on an upscale
-    request `False` keeps its 0.3.36 meaning, an unquantized load).
+    other local backends. A bool or a non-integral number raises `ValueError` naming `quantize` on MLX-Gen and on a
+    remote that advertises it (an upscale request still reads `False` as an unquantized load, see Changed).
   - `VisionManager.describe_routes(model=..., task=...)` returns MLX-Gen's capability rows as JSON, so a host can
     build its controls and memory planning without importing MLX-Gen.
   - MLX-Gen results carry the engine's metadata under `metadata["mlx_gen"]` on every route, upscaling included.
@@ -189,7 +193,8 @@ except for the changes listed below.
     anything loads, and the model loads as a request carrying them loads it, so that request reuses it; a backend
     that takes no load-time quantize refuses it. The AbstractCore plugin's `load_resident_model(...)` passes a
     request's `memory_mode` and `quantize`. On MLX-Gen the load runs under that request's cache hold; in a mode
-    whose runs drop the model (`low`, `lowest`), the preloaded instance serves one request and no warm-up runs.
+    whose runs drop the model (`low`, `lowest`, and every mode on Wan TI2V-5B, which releases its denoiser before
+    the decode), the preloaded instance serves one request and no warm-up runs.
     Only a text-to-image model kept by its mode runs one warm-up generation, in that mode; an edit-only model is
     loaded for edits.
   - MLX-Gen records `memory_mode` (with `low_ram` and `stream_blocks`) in every result's metadata, `"default"`
@@ -199,7 +204,8 @@ except for the changes listed below.
     A task the configured model has no route for (an image task on MiniMax-H3) is refused before anything is read.
   - `VisionBackend.has_loaded_model()` says whether this process holds a backend's model weights now (MLX-Gen,
     Diffusers and stable-diffusion.cpp's Python binding answer; the default, `False`, is the answer of a backend
-    that loads nothing here). The AbstractCore plugin's loaded-model listings ask it when called.
+    that loads nothing here). The AbstractCore plugin lists and pins loaded models by it, asking it when called, and
+    a load whose backend answers `False` returns `state: "not_loaded"` with a `reason`.
 
 ### Changed
 
@@ -207,10 +213,18 @@ except for the changes listed below.
   `briaai/Fibo-Edit`, the alias `stable-diffusion`) selects that package without flags and fetches the files it
   selects (for a Diffusers pipeline, those the backend loads), where 0.3.36 fetched the whole repository of an
   `owner/name` and refused any other name without `--allow-non-8bit` (which selected the same package).
-- `download` of a model id with several packages and none recommended (FLUX.2 [klein], Qwen-Image, Z-Image,
-  ERNIE-Image-Turbo, FIBO, SeedVR2, the Wan 2.2 models, HunyuanVideo-1.5) stops and lists them, where 0.3.36
-  fetched the whole upstream repository; name a package, pass `--bits`, or, for a source repository,
-  `--allow-non-8bit`.
+- `download` without flags selects the package 0.3.36 selected for every name it selected one for, on every host:
+  where several packages of one target remain, the catalog now marks that package `recommended` (Qwen-Image-2512's
+  4-bit MLX-Gen package, GGUF and Diffusers pipeline, FIBO's 4-bit package, SeedVR2's 8-bit packages), so `catalog`
+  shows the `*` on these rows too. A model id for which 0.3.36 fetched the whole upstream repository unfiltered and
+  that has several packages in the chosen target and none recommended (FLUX.2 [klein], Qwen-Image, Qwen-Image-Edit,
+  Z-Image, ERNIE-Image-Turbo, the Wan 2.2 models, HunyuanVideo-1.5) stops and lists them; so does
+  `tencent/HunyuanVideo-1.5` with `--provider diffusers` or `--allow-non-8bit`, where 0.3.36 took the first of its
+  eight pipelines by name. Name a package, or, for a source repository, name it with `--allow-non-8bit`.
+- `download <owner/name> --allow-non-8bit` selects that repository on every host, where 0.3.36 did so on Apple
+  silicon and picked the host's first target or package elsewhere (on an NVIDIA host, the GGUF package of
+  `black-forest-labs/FLUX.2-klein-4B` rather than that Diffusers pipeline; on NVIDIA and processor-only hosts, the
+  SeedVR2 8-bit and FIBO 4-bit packages rather than `ByteDance-Seed/SeedVR2-3B`, `-7B` and `briaai/FIBO`).
 - `download <owner/name> --provider <engine>` (or `--target`) for a model with no package of that engine stops and
   lists the packages it has, where 0.3.36 ignored the provider and fetched the whole repository.
 - A name that is neither in the catalog nor an `owner/name` points to `abstractvision catalog` instead of listing
@@ -257,8 +271,8 @@ except for the changes listed below.
 - OpenAI-compatible backend: `list_provider_models()` and a request that sets a memory, sound or `quantize` field
   or a `cancel_event` (or runs under `ABSTRACTVISION_MEMORY_MODE`) also query `GET {base_url}/vision/models` (10 s
   timeout, answer reused for 30 s; never for the OpenAI API); `get_capabilities()` reads
-  the last answer without a request, and a request that sets none of them and carries no `extra` makes the same
-  HTTP calls as before. A discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: the
+  the last answer without a request, and a request that sets none of them, carries no `extra` and names its model
+  without an `openai/` or `openai-compatible/` prefix makes the same HTTP calls as before. A discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: the
   previous answer stays in use, and without one a request that names a memory mode other than `default`,
   `quantize`, a soundtrack field or a `cancel_event` is refused with the reason. A remote HTTP 422 with the error code `capability_not_supported`, and
   a remote job that fails with that `error_code`, raise `CapabilityNotSupportedError` with the remote's message,
@@ -273,29 +287,29 @@ except for the changes listed below.
   the selected backend cannot list models, instead of `AbstractVisionError`; a backend without one is skipped when
   another answers.
 - OpenAI-compatible backend: a request that carries `extra` (keys other than `model`), or names its model with an
-  `openai/` or `openai-compatible/` prefix, asks the remote with `GET {base_url}/vision/models` whether it serves
-  the vision routes, until it answers: the answer is kept for the backend's life, and a failed question is asked
-  again after 30 s. A server that does receives `extra` nested (an `extra` object in JSON, an `extra_json` form
-  field) and the model as named; any other remote, or one whose answer is still unknown, receives `extra` unchanged
-  and the model without the prefix. A model named without such a prefix is sent as given and asks nothing.
+  `openai/` or `openai-compatible/` prefix, first asks the remote with `GET {base_url}/vision/models` whether it
+  serves the vision routes (never the OpenAI API). The answer to that question is kept for the backend's life (the
+  memory modes and options it lists are still reused for 30 s, as above); a question that fails
+  (timeout, connection error, HTTP 5xx) is asked again after 30 s, and until then the remote's kind is unknown. A
+  remote that serves them receives `extra` nested, as described under New, and the model as named; any other
+  remote, or one whose kind is unknown, receives `extra` at the top level and the model without the prefix. A model
+  named without such a prefix is sent as given to every remote.
 - OpenAI-compatible backend and AbstractCore plugin: a base URL is the OpenAI API when its host is `api.openai.com`
   or one of its subdomains (such as `eu.api.openai.com`); a URL that has `api.openai.com` only in its path or
   query, or a look-alike host, is an OpenAI-compatible remote.
-- `VisionBackend.has_loaded_model()` is part of the backend contract: the AbstractCore plugin lists, pins and
-  unloads by it, and a load whose backend answers `False` returns `state: "not_loaded"` with a `reason`.
 - AbstractCore plugin: a backend given through `vision_backend_instance` or `vision_backend_factory` (called once,
   when the capability is built) that lacks `has_loaded_model`, `preload`, `unload`, `supported_memory_modes`,
   `list_provider_models` or `list_provider_adapters` is refused when the capability is built, with a `TypeError`
   that names the missing methods and says to inherit `abstractvision.backends.base_backend.VisionBackend`, which
   provides them. Unloading the configured backend by provider or `load_id` calls its `unload()` whether or not it
   is listed.
-- A boolean or fractional `quantize` raises `ValueError` on every backend that takes `quantize`, a remote that
-  advertises it included.
 - Diffusers refuses a model that is not in the cache and that generation may not download (downloads off, or a
   repository marked `explicit_download`) before loading anything; a cached model's own load error is raised as it is.
-- The `catalog` table has three more columns (`access`, `cache`, `memory_modes`).
 - `HuggingFaceAccessError` says that the repository is gated and names the licence when the catalog marks it gated,
   otherwise what the HTTP status tells (401, 403, 404), and keeps the first line of the upstream error.
+- Diffusers recognises a CUDA out-of-memory by its type (`torch.cuda.OutOfMemoryError`), no longer by the words
+  "CUDA out of memory" in a message, and its `GpuOutOfMemoryError` no longer says how much more memory the run
+  needed (that figure was read from torch's message).
 
 ### Fixed
 
@@ -307,11 +321,14 @@ except for the changes listed below.
 - A failed MLX-Gen `preload()` drops the model it loaded before raising, and the AbstractCore plugin does not list
   it as loaded. A preload refused for its values, or one that fails after reusing the model already held, leaves
   that model held.
-- AbstractCore plugin: `control_image` and `control_strength` reach `t2i` (they were dropped), where a backend that
-  cannot apply them refuses them.
+- AbstractCore plugin: `control_image` and `control_strength` reach `t2i` (they were dropped), where every built-in
+  backend refuses `control_image`, and MLX-Gen also refuses `control_strength` given alone (the other built-in
+  backends do not use it).
 
 ### Removed
 
+- `abstractvision.cli.looks_like_hf_repo_id`, a name the CLI module imported: use
+  `abstractvision.model_downloads.looks_like_hf_repo_id`, where it is defined.
 - `abstractvision.cli.download_hf_repo_snapshot`, a name the CLI module imported: use
   `abstractvision.model_downloads.download_hf_repo_snapshot`, where it is defined (it now plans and checks the disk
   before fetching).

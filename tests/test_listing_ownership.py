@@ -109,7 +109,7 @@ class TestOneMemoryModeRule(unittest.TestCase):
             self.assertEqual(constraint, {"enum": expected}, key)
 
 
-# The Diffusers snapshots whose catalog note `download` printed as this text in 0.3.37's release head.
+# The Diffusers snapshots whose catalog note `download` prints as this text.
 _CURATED_DIFFUSERS_NOTE = "Official curated Diffusers snapshot (16-bit)."
 _CURATED_DIFFUSERS = (
     ("ernie-image", "baidu/ERNIE-Image"),

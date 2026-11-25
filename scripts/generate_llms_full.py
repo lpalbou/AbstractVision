@@ -25,6 +25,7 @@ BUNDLE: list[BundleItem] = [
     BundleItem("docs/api.md"),
     BundleItem("docs/architecture.md"),
     BundleItem("docs/faq.md"),
+    BundleItem("docs/troubleshooting.md"),
     BundleItem("docs/reference/backends.md"),
     BundleItem("docs/reference/configuration.md"),
     BundleItem("docs/reference/capabilities-registry.md"),

@@ -29,6 +29,7 @@ from .model_cache import (
     iter_hf_repo_snapshots,
 )
 from .model_downloads import (
+    ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
     VisionModelDownloadPreset,
     catalog_download_preset,
     format_bytes,
@@ -128,7 +129,7 @@ def memory_peaks(repo_id: str) -> List[Dict[str, Any]]:
 
     preset = catalog_download_preset(str(repo_id), target="mlx", engine="mlx-gen")
     # mlx-gen measures its prepared packages, by width; a source snapshot is not one of them.
-    if preset is None or str(preset.source) != "abstractframework-mlx-gen":
+    if preset is None or str(preset.source) != ABSTRACTFRAMEWORK_MLX_GEN_SOURCE:
         return []
     from .backends.mflux import mlx_gen_memory_mode_of_run, mlx_gen_route_task
 

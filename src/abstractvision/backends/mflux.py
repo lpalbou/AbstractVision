@@ -35,6 +35,7 @@ from ..lora_adapters import (
 )
 from ..model_capabilities import VisionModelCapabilitiesRegistry
 from ..model_downloads import (
+    ABSTRACTFRAMEWORK_MLX_GEN_SOURCE as _ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
     download_command,
     download_hf_repo_snapshot,
     find_model_preset,
@@ -1284,10 +1285,6 @@ def _mlx_gen_quantize_choices() -> Tuple[int, ...]:
             'Load-time quantize needs the MLX-Gen runtime: `pip install "abstractvision[mlx-gen]"`.'
         ) from e
     return tuple(sorted(int(value) for value in defaults.QUANTIZE_CHOICES))
-
-
-# The catalog `source` of the packages AbstractFramework prepares with MLX-Gen.
-_ABSTRACTFRAMEWORK_MLX_GEN_SOURCE = "abstractframework-mlx-gen"
 
 
 def _is_prepared_mlx_gen_package(location: Any, selector: Any) -> bool:

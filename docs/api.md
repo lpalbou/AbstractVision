@@ -159,7 +159,9 @@ packaging.
 `ImageGenerationRequest` includes typed `control_image` and `control_strength`
 fields: a structure guide such as edges, sketch, or pose, not a source-image edit
 input. No built-in backend applies them; each one, MLX-Gen included, refuses a
-`control_image` with `CapabilityNotSupportedError` (`field="control_image"`).
+`control_image` with `CapabilityNotSupportedError` (`field="control_image"`). MLX-Gen
+also refuses a `control_strength` given alone (`field="control_strength"`); the other
+built-in backends do not use it.
 
 ### Local example (MLX-Gen backend)
 
@@ -169,7 +171,7 @@ for example `abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers
 ```python
 from pathlib import Path
 
-from abstractvision import VisionManager
+from abstractvision import LoRAAdapterSpec, VisionManager
 from abstractvision.backends import MLXGenBackendConfig, MLXGenVisionBackend
 
 def on_progress(event):
@@ -327,12 +329,14 @@ the same refusals; `memory_mode=None` is the process default under the same rule
 A backend that takes no load-time quantize refuses `quantize` there. On
 MLX-Gen, `preload()` loads the model as the first request with those values
 starts it (under the same 1 GB cache hold in `"low"` and `"lowest"`) into the
-instance that request reuses, so in a mode whose runs drop the model the
-preloaded instance serves one request. A text-to-image model loaded for a mode
+instance that request reuses, so in a mode whose runs drop the model (`"low"`,
+`"lowest"`, and every mode on Wan TI2V-5B, which releases its denoiser before
+the decode) the preloaded instance serves one request. A text-to-image model loaded for a mode
 that keeps it also runs one image generation in that mode as its warm-up;
 edit-only, video (Wan, MiniMax-H3) and upscale (SeedVR2) models load without one.
 When anything in a preload fails, the model it loaded is dropped before the error
-is raised.
+is raised. A preload refused for its values, or one that fails after reusing the
+model already held, leaves that model held.
 
 ```python
 asset_or_ref = vm.generate_video(
@@ -651,18 +655,22 @@ snapshot_dir = download_model_preset(preset, base_model="minimax-h3-turbo-544p",
 ```
 
 - `select_download_preset(name, *, target, engine, bits, allow_non_8bit)`: the preset `abstractvision
-  download` fetches, with its flags. A model with a single package selects it; with several packages of
-  one engine, the one the catalog marks `recommended`, else the width `bits` names, else `ValueError`
-  listing them. Across targets the host's order decides, preferring an 8-bit package unless
-  `allow_non_8bit`, with which a repository named exactly selects that repository instead of a package
-  made from it. A Hugging Face `owner/name` the catalog does not name is the whole repository
-  (`repository_preset`). `find_model_preset(name, *, target, engine, require_8bit, bits)` is the catalog
-  lookup it is built on.
+  download` fetches, with its flags. The host's order picks the target, preferring an 8-bit package
+  unless `allow_non_8bit` or an MLX-Gen engine or target is named (`target` or `engine` restricts it;
+  `bits` keeps one width). Within that target
+  a single package is selected, and several select the one the catalog marks `recommended`; with none
+  recommended, `ValueError` lists them, whatever the flags narrowed them to. Without the 8-bit preference a
+  repository named exactly selects that repository instead of a package made from it, on every host. A
+  Hugging Face `owner/name` the catalog does not name is the whole repository (`repository_preset`).
+  `find_model_preset(name, *, target, engine, require_8bit, bits, download_rule=False)` is the catalog
+  lookup it is built on; without `download_rule` (as the backends resolve a configured model), several
+  packages with none recommended resolve by the catalog's own order (`qwen-image` to Qwen-Image-2512).
 - `download_command(repo_id, *, engine=None, base_model=None)`: the `abstractvision download` command
   that selects exactly `repo_id` on this host, checked with `select_download_preset`:
   `abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit` for the MiniMax-H3 source repository,
   `abstractvision download AbstractFramework/minimax-h3-8bit` for a package; `ValueError` when no form
-  of the command selects it.
+  of the command selects it, or when the catalog lists the repository but not for `engine` (a repository
+  outside the catalog is fetched whole, whatever the engine).
 - `plan_model_preset_download(preset, *, base_model, model_dir, token, all_files)`: a `DownloadPlan`,
   read from the Hub listings without writing anything. `parts` are the repositories the download fetches
   from (`DownloadPart`: `role`, `plan`): the package, a stable-diffusion.cpp bundle's companions (`vae`,

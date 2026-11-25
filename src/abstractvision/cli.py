@@ -26,6 +26,7 @@ from .errors import OptionalDependencyMissingError
 from .lora_adapters import resolve_request_lora_adapters
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_downloads import (
+    ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
     catalog_download_preset,
     catalog_target_scope,
     default_model_target,
@@ -375,11 +376,16 @@ def default_local_model_id(provider_kind: str) -> str:
 
 
 def _local_default_download_command(provider_kind: str) -> str:
-    """The `download` command that fetches what `provider_kind` loads for this machine's local default:
-    the engine is named, since the model id alone selects by the host's target order (on a processor-only
-    host, the GGUF package rather than the Diffusers pipeline Diffusers loads)."""
+    """The `download` command that fetches the package `provider_kind` loads for this machine's local
+    default (`download_command` of the package that engine selects; the model id alone selects by the
+    host's target order, which on a processor-only host is the GGUF package, not the Diffusers pipeline)."""
 
-    return f"abstractvision download {default_local_model_id(provider_kind)} --provider {provider_kind}"
+    model = default_local_model_id(provider_kind)
+    try:
+        preset = select_download_preset(model, engine=provider_kind)
+        return download_command(preset.repo_id, engine=preset.engine)
+    except ValueError:
+        return f"no `abstractvision download` command selects it on this host; see `abstractvision show-model {model}`"
 
 
 def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
@@ -1089,7 +1095,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                 str(p.repo_id)
                 if p.target == "mlx"
                 and p.engine == "mlx-gen"
-                and p.source == "abstractframework-mlx-gen"
+                and p.source == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
                 else str(p.upstream_repo_id or p.repo_id)
             )
             for p in presets
@@ -1102,7 +1108,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
             str(preset.repo_id)
             if preset.target == "mlx"
             and preset.engine == "mlx-gen"
-            and preset.source == "abstractframework-mlx-gen"
+            and preset.source == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
             else registry_model_id
         )
         try:
@@ -1167,7 +1173,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                 str(p.repo_id)
                 if p.target == "mlx"
                 and p.engine == "mlx-gen"
-                and p.source == "abstractframework-mlx-gen"
+                and p.source == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
                 else str(p.upstream_repo_id or p.repo_id)
             )
             for p in presets
@@ -1180,7 +1186,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                     str(p.repo_id)
                     if p.target == "mlx"
                     and p.engine == "mlx-gen"
-                    and p.source == "abstractframework-mlx-gen"
+                    and p.source == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
                     else str(p.upstream_repo_id or p.repo_id)
                 )
                 == model_id
@@ -3325,6 +3331,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="abstractvision", description="AbstractVision CLI (capabilities + generation)."
     )
+    import abstractvision
+
+    p.add_argument("--version", action="version", version=f"abstractvision {abstractvision.__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     models_parser = sub.add_parser("models", help="List known model ids (from capability registry).")

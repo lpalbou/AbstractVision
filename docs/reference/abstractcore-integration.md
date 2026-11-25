@@ -175,7 +175,8 @@ parameter for the second-stage/low-noise guidance path. Pass it directly to
 `control_image=<bytes>` and `control_strength=<float>` reach the request as
 typed fields, but in this release every built-in backend, MLX-Gen included,
 refuses a `control_image` with `CapabilityNotSupportedError`
-(`field="control_image"`) instead of ignoring it.
+(`field="control_image"`) instead of ignoring it; MLX-Gen also refuses a
+`control_strength` given alone, which the other built-in backends do not use.
 
 The same applies to LoRA adapters. Prefer the shared typed contract:
 
@@ -265,7 +266,9 @@ request's `memory_mode` and `quantize` when it carries them (checked as a
 generation request's are, before anything loads), so that requests with those
 values reuse the model; on MLX-Gen a video model (Wan, MiniMax-H3) is loaded
 without a warm-up run. When the preload
-fails, the backend drops what it loaded and the plugin does not list it.
+fails, the backend drops what it loaded and the plugin does not list it; a
+preload refused for its values, or one that fails after reusing the model
+already held, leaves that model held (and listed).
 
 Discovery, and where each part is visible:
 
@@ -365,6 +368,8 @@ stacked `lora_adapters=[...]`, explicit `seeds=[...]`, optional base `seed`
 expansion, and typed video controls such as `guidance_2` / `flow_shift`.
 
 ```python
+from abstractvision import LoRAAdapterSpec
+
 videos = llm.vision.t2v_batch(
     "A compact silver spaceship lifts off from an icy canyon at dawn.",
     provider="mlx-gen",
