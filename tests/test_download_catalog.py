@@ -9,6 +9,7 @@ names (sizes included), writes huggingface_hub's cache layout, and refuses acces
 from __future__ import annotations
 
 import contextlib
+import importlib
 import io
 import json
 import os
@@ -935,19 +936,28 @@ class TestListings(unittest.TestCase):
         self.stack.enter_context(patch.dict("os.environ", {"HF_HUB_CACHE": str(self.cache)}, clear=True))
         self.stack.enter_context(patch.object(inv, "framework_hf_cache_roots", return_value=[]))
 
+    # mlx-gen's table, under its own mode names; the bf16 package is its None width.
+    SMALLEST = {None: {"default": 96, "low_ram": 64, "stream_blocks": 32}, 8: {"default": 48, "low_ram": 36, "stream_blocks": 24}, 4: {"low_ram": 32}}
+
     def _mlx_gen(self, available=True):
         backend = SimpleNamespace(
             supported_memory_modes=lambda: ("default", "low", "lowest"),
             describe_routes=lambda model=None: list(self.ROWS),
         )
-        self.stack.enter_context(patch.object(self.inv, "_mlx_gen_backend", return_value=backend if available else None))
-        self.stack.enter_context(
-            patch.object(
-                self.inv,
-                "_mlx_gen_smallest_tested_machines",
-                return_value={8: {"default": 48, "low_ram": 36, "stream_blocks": 24}},
-            )
-        )
+        self.backend_configs = []
+
+        def build(repo_id, base_model=None):
+            self.backend_configs.append((repo_id, base_model))
+            return backend if available else None
+
+        self.stack.enter_context(patch.object(self.inv, "_mlx_gen_backend", side_effect=build))
+        engine = SimpleNamespace(MINIMAX_H3_SMALLEST_TESTED_MACHINE=self.SMALLEST)
+        import_module = importlib.import_module
+
+        def engine_module(name, *args, **kwargs):
+            return engine if name == "mflux.task_inference" else import_module(name, *args, **kwargs)
+
+        self.stack.enter_context(patch.object(self.inv.importlib, "import_module", side_effect=engine_module))
 
     def _install(self, repo_id, size):
         repo_dir = self.cache / f"models--{repo_id.replace('/', '--')}"
@@ -971,14 +981,21 @@ class TestListings(unittest.TestCase):
         self.assertTrue(package["gated"])
         self.assertTrue(package["recommended"])
         self.assertEqual(package["memory_modes"], ["default", "low", "lowest"])
-        measured = package["memory_measurements"]
-        self.assertEqual(measured["default"]["peak_bytes"], 37 * GIB)
-        self.assertEqual((measured["default"]["width"], measured["default"]["height"]), (960, 544))
-        self.assertEqual(measured["low"]["smallest_tested_machine_gb"], 36)
-        self.assertEqual(measured["lowest"]["peak_bytes"], 11 * GIB)
+        # The 8-bit package's completed runs, labelled by mode: never another width's.
+        self.assertEqual(
+            [(p["task"], p["memory_mode"], p["width"], p["height"], p["peak_bytes"]) for p in package["memory_peaks"]],
+            [
+                ("text_to_video", "default", 1344, 768, 40 * GIB),
+                ("text_to_video", "default", 960, 544, 37 * GIB),
+                ("text_to_video", "low", 960, 544, 26 * GIB),
+                ("text_to_video", "lowest", 960, 544, 11 * GIB),
+            ],
+        )
+        self.assertEqual(package["memory_peaks"], self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit"))
+        self.assertEqual(package["smallest_tested_memory_gb"], {"default": 48, "low": 36, "lowest": 24})
         self.assertEqual(downloads["AbstractFramework/minimax-h3-4bit"]["cache"], "absent")
-        self.assertNotIn("memory_measurements", downloads["AbstractFramework/minimax-h3-4bit"])
-        self.assertNotIn("memory_measurements", downloads["MiniMaxAI/MiniMax-H3"])
+        self.assertNotIn("memory_peaks", downloads["AbstractFramework/minimax-h3-4bit"])
+        self.assertNotIn("memory_peaks", downloads["MiniMaxAI/MiniMax-H3"])
 
     def test_show_model_text_without_mlx_gen_says_not_available(self):
         self._mlx_gen(available=False)
@@ -992,10 +1009,54 @@ class TestListings(unittest.TestCase):
     def test_show_model_text_with_mlx_gen_shows_peaks_and_the_smallest_tested_memory(self):
         self._mlx_gen()
         rc, out = _run_cli(["show-model", "MiniMaxAI/MiniMax-H3"])
-        self.assertIn(
-            "memory (low, measured by mlx-gen): peak 26.0 GiB at 960x544, 124 frames, 8 steps; smallest tested memory: 36 GB",
-            out,
+        self.assertIn("memory (low, measured by mlx-gen): peak 26.0 GiB at 960x544, 124 frames, 8 steps (text_to_video)", out)
+        self.assertIn("smallest memory mlx-gen tested: default 48 GB, low 36 GB, lowest 24 GB", out)
+
+    def test_memory_peaks_are_one_package_width_and_schedule(self):
+        self._mlx_gen()
+        peaks = self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit", base_model="h3-turbo")
+        self.assertEqual(self.backend_configs, [("AbstractFramework/minimax-h3-8bit", "minimax-h3-turbo")])
+        self.assertEqual(
+            peaks[2],
+            {
+                "task": "text_to_video",
+                "memory_mode": "low",
+                "width": 960,
+                "height": 544,
+                "frames": 124,
+                "steps": 8,
+                "peak_bytes": 26 * GIB,
+                "machine_total_ram_bytes": None,
+            },
         )
+        json.dumps(peaks)
+        self.assertEqual(self.inv.memory_peaks("AbstractFramework/minimax-h3-4bit"), [])  # its only run was killed
+        self.assertEqual(self.inv.memory_peaks("MiniMaxAI/MiniMax-H3"), [])  # a source snapshot, not a package
+        self.assertEqual(self.inv.memory_peaks("someone/not-in-the-catalog"), [])
+        with self.assertRaisesRegex(ValueError, "not a schedule of AbstractFramework/minimax-h3-8bit"):
+            self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit", base_model="flux2-klein-4b")
+
+    def test_memory_peaks_are_empty_without_the_engine(self):
+        self._mlx_gen(available=False)
+        self.assertEqual(self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit"), [])
+
+    def test_the_smallest_tested_memory_is_read_for_the_package_width(self):
+        self._mlx_gen()
+        smallest = self.inv._mlx_gen_smallest_tested_memory_gb
+        self.assertEqual(smallest("AbstractFramework/minimax-h3-bf16"), {"default": 96, "low": 64, "lowest": 32})
+        self.assertEqual(smallest("AbstractFramework/minimax-h3-4bit"), {"low": 32})
+        self.assertEqual(smallest("AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"), {})  # not MiniMax-H3
+
+    def test_the_plugin_relays_memory_peaks(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        self._mlx_gen()
+        cap = _AbstractVisionCapability(SimpleNamespace(config={}))
+        self.assertEqual(
+            cap.memory_peaks("AbstractFramework/minimax-h3-8bit", base_model="minimax-h3-turbo"),
+            self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit", base_model="minimax-h3-turbo"),
+        )
+        self.assertEqual(len(cap.memory_peaks("AbstractFramework/minimax-h3-8bit")), 4)
 
     def test_catalog_marks_installed_packages_and_lists_memory_modes(self):
         self._mlx_gen()

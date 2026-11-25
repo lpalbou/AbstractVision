@@ -25,8 +25,8 @@ from .backends import (
 from .lora_adapters import resolve_request_lora_adapters
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_downloads import (
-    _catalog_names_model,
-    _preset_for,
+    catalog_download_preset,
+    catalog_names_model,
     catalog_target_scope,
     default_model_target,
     download_model_preset,
@@ -544,7 +544,7 @@ def _download_entry(dl: Any, spec: Any) -> Dict[str, Any]:
         "license_name": spec.license_name or None,
         "notes": dl.notes,
     }
-    preset = _preset_for(dl.repo_id, target=dl.target, engine=dl.engine)
+    preset = catalog_download_preset(dl.repo_id, target=dl.target, engine=dl.engine)
     if preset is not None:
         entry.update(preset_status(preset))
     return entry
@@ -717,8 +717,7 @@ def _download_detail_lines(entry: Dict[str, Any]) -> List[str]:
     lines.append("  ".join(facts))
     if "memory_modes" in entry:
         lines.append(f"memory modes on this host: {_memory_modes_label(entry)}")
-    for mode, measurement in (entry.get("memory_measurements") or {}).items():
-        lines.append(f"memory ({mode}, measured by mlx-gen): {_describe_measurement(measurement)}")
+    lines.extend(_memory_peak_lines(entry))
     return lines
 
 
@@ -741,24 +740,25 @@ def _memory_modes_label(status: Dict[str, Any]) -> str:
     return ",".join(modes) if modes else "not available on this host"
 
 
-def _describe_measurement(entry: Dict[str, Any]) -> str:
-    text = (
-        f"peak {format_bytes(entry.get('peak_bytes'))} at {entry.get('width')}x{entry.get('height')}, "
-        f"{entry.get('frames')} frames, {entry.get('steps')} steps"
-    )
-    if entry.get("smallest_tested_machine_gb"):
-        text += f"; smallest tested memory: {entry['smallest_tested_machine_gb']} GB"
-    return text
+def _memory_peak_lines(status: Dict[str, Any]) -> List[str]:
+    """`memory_peaks` (and the smallest memory tested) as listing lines; a run mlx-gen publishes on
+    several tasks' rows is one line naming them."""
 
-
-def _family_schedules(*selectors: Any) -> List[str]:
-    """The MLX-Gen schedules (base_model values) of the model family `selectors` name; empty for none."""
-
-    from .backends.mflux import _MFLUX_MODELS, _infer_base_model
-
-    key = _infer_base_model(*selectors)
-    family = _MFLUX_MODELS[key].family if key in _MFLUX_MODELS else None
-    return sorted(k for k, d in _MFLUX_MODELS.items() if family is not None and d.family == family)
+    tasks_of: Dict[Tuple[Any, ...], List[str]] = {}
+    for peak in status.get("memory_peaks") or []:
+        run = tuple(peak.get(key) for key in ("memory_mode", "width", "height", "frames", "steps", "peak_bytes"))
+        tasks_of.setdefault(run, []).append(str(peak.get("task")))
+    lines = [
+        f"memory ({mode}, measured by mlx-gen): peak {format_bytes(peak_bytes)} at {width}x{height}, "
+        f"{frames} frames, {steps} steps ({', '.join(tasks)})"
+        for (mode, width, height, frames, steps, peak_bytes), tasks in tasks_of.items()
+    ]
+    smallest = status.get("smallest_tested_memory_gb") or {}
+    if smallest:
+        lines.append(
+            "smallest memory mlx-gen tested: " + ", ".join(f"{mode} {gb} GB" for mode, gb in smallest.items())
+        )
+    return lines
 
 
 def _schedule_adapters(*selectors: Any) -> List[Dict[str, Any]]:
@@ -767,10 +767,10 @@ def _schedule_adapters(*selectors: Any) -> List[Dict[str, Any]]:
     Empty without mlx-gen, or when no schedule of the family loads an adapter."""
 
     try:
-        from .backends.mflux import resolve_mlx_gen_schedule_adapter
+        from .backends.mflux import mlx_gen_schedules, resolve_mlx_gen_schedule_adapter
 
         out: List[Dict[str, Any]] = []
-        for schedule in _family_schedules(*selectors):
+        for schedule in mlx_gen_schedules(*selectors):
             resolved = resolve_mlx_gen_schedule_adapter(schedule)
             out.append(
                 {
@@ -1363,16 +1363,12 @@ def _download_schedule(preset: Any, schedule: Optional[str]) -> Optional[str]:
         return None
     if str(preset.engine) != "mlx-gen":
         raise SystemExit(f"--base-model names an MLX-Gen schedule; {preset.repo_id} is a {preset.engine} artifact.")
-    from .backends.mflux import _infer_base_model
+    from .backends.mflux import mlx_gen_package_schedule
 
-    key = _infer_base_model(schedule)
-    choices = _family_schedules(preset.repo_id, preset.upstream_repo_id, preset.key)
-    if key not in choices:
-        raise SystemExit(
-            f"--base-model {schedule!r} is not a schedule of {preset.repo_id}."
-            + (f" Choose one of: {', '.join(choices)}." if choices else "")
-        )
-    return str(key)
+    try:
+        return mlx_gen_package_schedule(preset, schedule)
+    except ValueError as e:
+        raise SystemExit(f"--base-model {e}") from None
 
 
 def _download_schedule_adapter(schedule: str) -> Optional[Tuple[str, Optional[str]]]:
@@ -1506,7 +1502,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                     preset = None
             if preset is not None:
                 pass
-            elif bits is not None or schedule is not None or _catalog_names_model(name):
+            elif bits is not None or schedule is not None or catalog_names_model(name):
                 # A catalog model is never fetched as an unfiltered snapshot: the choice it
                 # needs (a width, a target, an exact package) is in the message.
                 raise SystemExit(str(e)) from e
@@ -1527,14 +1523,7 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
             if preset.upstream_repo_id and preset.source != "official":
                 print(f"#FALLBACK: upstream source is {preset.upstream_repo_id}; this is its {preset.source} artifact.")
             if preset.notes:
-                note = str(preset.notes)
-                if (
-                    preset.target == "diffusers"
-                    and preset.engine == "diffusers"
-                    and "full Diffusers snapshot (not 8-bit)" in note
-                ):
-                    note = "Official curated Diffusers snapshot (16-bit)."
-                print(note)
+                print(preset.notes)
 
         if bool(getattr(args, "dry_run", False)):
             results.append(

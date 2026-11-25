@@ -107,7 +107,10 @@ except for the changes listed below.
   and `memory_modes` columns. `show-model` adds, per download, its access, cache state with size on disk, the memory
   modes this host can run and, for MLX-Gen packages with published measurements, the peak memory of each mode and
   the smallest memory it was tested on (read from the installed mlx-gen), plus the schedules and the adapter each
-  loads. `models --json` and `show-model --json` print the same as JSON. The cache state is a local look, offline:
+  loads. `models --json` and `show-model --json` print the same as JSON. The peaks come from
+  `abstractvision.model_inventory.memory_peaks(repo_id, base_model=None)`, also the AbstractCore plugin's
+  `memory_peaks(model, base_model=None)`: one row per measured run of that package's stored width (and schedule),
+  with its `task` and `memory_mode`. The cache state is a local look, offline:
   `cached` is a snapshot with no gap it can see (no partial file, link without content or missing weight file an
   index names, every `model_index.json` component whose folder the package's patterns name present, at least one
   weight file), `incomplete` names the gap. Only `download` compares a snapshot with

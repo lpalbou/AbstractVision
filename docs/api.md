@@ -625,7 +625,7 @@ preset = find_model_preset("MiniMaxAI/MiniMax-H3", bits=4)  # AbstractFramework/
 print(preset.gated, preset.license_name, preset.recommended)  # from the catalog
 plan = plan_model_preset_download(preset)  # reads the Hub listing; downloads nothing
 print(plan.summary_lines(), plan.disk_space_error())  # access, size, files complete / to fetch, free disk space
-print(preset_status(preset))  # cache / cache_bytes / cache_gaps / snapshot_dir / memory_modes / memory_measurements
+print(preset_status(preset))  # cache / cache_bytes / cache_gaps / snapshot_dir / memory_modes / memory_peaks
 snapshot_dir = download_model_preset(preset, report=print)
 ```
 
@@ -659,9 +659,15 @@ snapshot_dir = download_model_preset(preset, report=print)
 - `preset_status(preset)`: `cache`, `cache_bytes`, `cache_gaps` and `snapshot_dir` (from
   `local_cache_state`), `memory_modes` (what the backend serving the preset honours on this host; `None`
   when that backend cannot run here) and, for MLX-Gen prepared packages whose capability rows publish
-  measured runs, `memory_measurements`: per mode the whole-process `peak_bytes` of the smallest measured
-  canvas, the run's `width`, `height`, `frames` and `steps`, and `smallest_tested_machine_gb` where
-  mlx-gen publishes it. The figures are read from the installed mlx-gen at run time.
+  measured runs, `memory_peaks` (below) and `smallest_tested_memory_gb` (per mode, the smallest unified
+  memory mlx-gen completed a run of that width on, where it publishes it). The figures are read from the
+  installed mlx-gen at run time.
+- `memory_peaks(repo_id, base_model=None)`: MLX-Gen's measured runs for one catalog package, as JSON rows
+  `{task, memory_mode, width, height, frames, steps, peak_bytes, machine_total_ram_bytes}` (`peak_bytes` is
+  the whole-process footprint, `machine_total_ram_bytes` the memory of the Mac it ran on), kept to the
+  package's stored width and, with `base_model`, to that schedule's rows (`ValueError` for a schedule the
+  package does not have). Empty for a repository that is not a prepared MLX-Gen package of the catalog, or
+  when mlx-gen is not installed or publishes nothing; no model is built.
 - `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`: the
   adapter an MLX-Gen schedule loads (the MiniMax-H3 Turbo LoRA) and its cached path, or `None` when the
   schedule loads none; `download=True` fetches it, as `abstractvision download --base-model` does.
