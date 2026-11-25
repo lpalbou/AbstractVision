@@ -169,11 +169,14 @@ cache-only unless you explicitly enable runtime downloads. `catalog` and
 its cache state as a local look sees it (with its size on disk) and the memory
 modes this machine can run; for MLX-Gen packages with published measurements,
 `show-model` adds the peak memory of each mode. `download` plans from the
-Hugging Face listing before it writes anything: how many files are already
-complete in the cache, how many are to fetch and their size, and whether they
-fit on the cache disk. It then fetches only the files to fetch; after an
-interruption the same command fetches the rest. `--dry-run` prints the plan
-without downloading. See [Downloads](docs/reference/configuration.md#downloads).
+Hugging Face listings before it writes anything, for every repository it
+fetches from (the package, a GGUF bundle's text encoder and VAE, the adapter of
+a `--base-model` schedule): how many files are already complete in the cache,
+how many are to fetch and their size, and whether they fit on the cache disk
+(a partial file's bytes count as already there). It then fetches only the files
+to fetch, from the commit the listing named; after an interruption the same
+command fetches the rest. `--dry-run` prints the plan without downloading. See
+[Downloads](docs/reference/configuration.md#downloads).
 
 ```bash
 pip install "abstractvision[models,mlx-gen]"
@@ -202,6 +205,7 @@ abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provi
 abstractvision download AbstractFramework/seedvr2-3b-8bit --provider mlx-gen
 # MiniMax-H3 (video with sound): gated, accept the licence on the package page first.
 # The model id fetches the recommended 8-bit package; --base-model also caches the Turbo adapter.
+# `--allow-non-8bit` fetches the MiniMaxAI/MiniMax-H3 source repository itself instead.
 abstractvision show-model MiniMaxAI/MiniMax-H3
 abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p --dry-run
 abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p

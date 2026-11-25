@@ -466,10 +466,15 @@ def _legacy_snapshot_name(repo_id: str, source_dir: Path) -> str:
     return digest
 
 
-def _write_ref(repo_dir: Path, ref_name: str, snapshot_name: str) -> None:
-    refs_dir = repo_dir / "refs"
-    refs_dir.mkdir(parents=True, exist_ok=True)
-    (refs_dir / ref_name).write_text(snapshot_name, encoding="utf-8")
+def write_hf_ref(repo_dir: Path, ref_name: str, snapshot_name: str) -> None:
+    """Record that the revision `ref_name` (a branch or tag) is the snapshot `snapshot_name`, as
+    huggingface_hub does: `refs/<ref_name>` holds it. An unchanged ref is not rewritten."""
+
+    ref = repo_dir / "refs" / ref_name
+    if ref.is_file() and ref.read_text(encoding="utf-8").strip() == snapshot_name:
+        return
+    ref.parent.mkdir(parents=True, exist_ok=True)
+    ref.write_text(snapshot_name, encoding="utf-8")
 
 
 def _best_effort_remove(path: Path) -> None:
@@ -503,7 +508,7 @@ def import_directory_to_hf_cache(
     snapshot_name = _legacy_snapshot_name(repo_id, source)
     snapshot_dir = snapshots_dir / snapshot_name
     if snapshot_dir.exists():
-        _write_ref(repo_dir, ref_name, snapshot_name)
+        write_hf_ref(repo_dir, ref_name, snapshot_name)
         if cleanup_source and source.resolve() != snapshot_dir.resolve():
             _best_effort_remove(source)
         return snapshot_dir
@@ -520,7 +525,7 @@ def import_directory_to_hf_cache(
         _best_effort_remove(snapshot_dir)
         raise
 
-    _write_ref(repo_dir, ref_name, snapshot_name)
+    write_hf_ref(repo_dir, ref_name, snapshot_name)
     return snapshot_dir
 
 

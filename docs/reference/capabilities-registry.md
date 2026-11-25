@@ -150,6 +150,10 @@ Some models include a `downloads` list to document what AbstractVision considers
   packages for one engine and no `--bits` is given
 - optional `gated: true`: the Hugging Face repository is gated; downloading it needs its licence
   accepted on the repository page (the model's optional `license_name` names it in messages)
+- optional `explicit_download: true`: MLX-Gen generation never downloads this repository, even with
+  `allow_download` (`ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`); it is fetched only by an explicit
+  `abstractvision download`, and the refusal names that command. Today the four MiniMax-H3 repositories
+  carry it. `gated` says only whether the Hub asks for the licence to be accepted.
 
 Download sizes are not stored: `download` and `download --dry-run` read them from the Hub listing.
 

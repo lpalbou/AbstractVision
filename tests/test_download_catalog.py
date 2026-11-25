@@ -59,6 +59,13 @@ H3_8BIT_FILES = {
     "vae/config.json": 900,
 }
 
+# The repository a Turbo schedule's adapter comes from: the schedule loads one file of it.
+TURBO_FILES = {
+    "README.md": 3000,
+    "turbo.safetensors": 1_288_490_188,
+    "turbo_other_canvas.safetensors": 1_300_000_000,
+}
+
 # AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit: the A14B models carry a second expert.
 WAN_A14B_FILES = {
     "model_index.json": 498,
@@ -93,14 +100,26 @@ class _FakeHub:
     `fetched` lists the files it fetched (a file whose snapshot link or blob exists is not fetched,
     as in huggingface_hub). `gated` refuses downloads (403); `listing_error` is raised by the
     listing; `interrupt_after` fetches that many files, leaves a partial blob and raises
-    KeyboardInterrupt; `drop` names files the download leaves out."""
+    KeyboardInterrupt; `drop` names files the download leaves out. `others` lists other repositories
+    (a bundle's companions, an adapter's repository) by id; every other id lists `files`.
+    `listed_revisions` and `fetched_revisions` record the revision each listing and fetch asked for."""
 
     SHA = "c0ffee"
 
     def __init__(
-        self, files, *, gated=False, hub_gated=False, listing_error=None, interrupt_after=None, drop=(), contents=None
+        self,
+        files,
+        *,
+        gated=False,
+        hub_gated=False,
+        listing_error=None,
+        interrupt_after=None,
+        drop=(),
+        contents=None,
+        others=None,
     ):
         self.files = dict(files)
+        self.others = {repo: dict(listing) for repo, listing in (others or {}).items()}
         self.gated = gated
         self.hub_gated = hub_gated
         self.listing_error = listing_error
@@ -110,6 +129,10 @@ class _FakeHub:
         self.downloads = []
         self.fetched = []
         self.listings = 0
+        self.listed_revisions = []
+
+    def files_of(self, repo_id):
+        return self.others.get(repo_id, self.files)
 
     def api(self, *args, **kwargs):
         hub = self
@@ -117,9 +140,10 @@ class _FakeHub:
         class _Api:
             def model_info(self, repo_id, revision=None, files_metadata=False, token=None):
                 hub.listings += 1
+                hub.listed_revisions.append(revision)
                 if hub.listing_error is not None:
                     raise hub.listing_error
-                return SimpleNamespace(siblings=_siblings(hub.files), sha=hub.SHA, gated=hub.hub_gated)
+                return SimpleNamespace(siblings=_siblings(hub.files_of(repo_id)), sha=hub.SHA, gated=hub.hub_gated)
 
             def list_repo_files(self, repo_id, token=None, **kwargs):
                 if hub.listing_error is not None:
@@ -140,26 +164,38 @@ class _FakeHub:
     def snapshot_download(self, *, repo_id, cache_dir, allow_patterns=None, ignore_patterns=None, **kwargs):
         from huggingface_hub.utils import filter_repo_objects
 
-        self.downloads.append({"repo_id": repo_id, "allow_patterns": allow_patterns, "token": kwargs.get("token")})
+        self.downloads.append(
+            {
+                "repo_id": repo_id,
+                "allow_patterns": allow_patterns,
+                "token": kwargs.get("token"),
+                "revision": kwargs.get("revision"),
+                "cache_dir": str(cache_dir),
+            }
+        )
         if self.gated:
             error = RuntimeError(f"403 Client Error. Cannot access gated repo for url https://huggingface.co/{repo_id}.")
             error.response = SimpleNamespace(status_code=403)
             raise error
         repo_dir = Path(cache_dir) / f"models--{repo_id.replace('/', '--')}"
-        names = filter_repo_objects(list(self.files), allow_patterns=allow_patterns, ignore_patterns=ignore_patterns)
+        names = filter_repo_objects(
+            list(self.files_of(repo_id)), allow_patterns=allow_patterns, ignore_patterns=ignore_patterns
+        )
         for name in names:
             if name not in self.drop:
-                self._store(Path(cache_dir), repo_id, name)
+                # Given a commit (as the plan's fetch does), huggingface_hub writes no `refs/main`.
+                self._store(Path(cache_dir), repo_id, name, ref=kwargs.get("revision") != self.SHA)
         return str(repo_dir / "snapshots" / self.SHA)
 
-    def _store(self, cache_dir, repo_id, name):
+    def _store(self, cache_dir, repo_id, name, ref=True):
         repo_dir = cache_dir / f"models--{repo_id.replace('/', '--')}"
-        (repo_dir / "refs").mkdir(parents=True, exist_ok=True)
-        (repo_dir / "refs" / "main").write_text(self.SHA)
+        if ref:
+            (repo_dir / "refs").mkdir(parents=True, exist_ok=True)
+            (repo_dir / "refs" / "main").write_text(self.SHA)
         pointer = repo_dir / "snapshots" / self.SHA / name
         if pointer.exists():
             return pointer
-        index = sorted(self.files).index(name)
+        index = sorted(self.files_of(repo_id)).index(name)
         blob = repo_dir / "blobs" / _etag(index, name)
         blob.parent.mkdir(parents=True, exist_ok=True)
         if not blob.exists():
@@ -200,6 +236,8 @@ class _Env(contextlib.ExitStack):
         super().__enter__()
         self.cache = Path(self.enter_context(tempfile.TemporaryDirectory()))
         self.enter_context(patch.dict("os.environ", {"HF_HUB_CACHE": str(self.cache)}, clear=True))
+        # huggingface_hub reads HF_HUB_CACHE once, at import.
+        self.enter_context(patch("huggingface_hub.constants.HF_HUB_CACHE", str(self.cache)))
         self.enter_context(patch.object(md, "local_model_profile", return_value="apple-silicon"))
         self.enter_context(patch("huggingface_hub.HfApi", side_effect=self.hub.api))
         self.enter_context(patch("huggingface_hub.snapshot_download", side_effect=self.hub.snapshot_download))
@@ -231,11 +269,17 @@ class _Env(contextlib.ExitStack):
     def written(self):
         return sorted(str(p.relative_to(self.cache)) for p in self.cache.rglob("*") if not p.is_dir())
 
+    ADAPTER_REPO = "lightx2v/Minimax-h3-Turbo"
+
     def _adapter(self, schedule, *, download=False):
         self.adapters.append((schedule, download))
         if schedule == "minimax-h3":
             return None
-        return ("hf:lightx2v/Minimax-h3-Turbo/turbo.safetensors", "/cache/turbo.safetensors" if download else None)
+        # Found as mlx-gen finds it in huggingface_hub's cache: the snapshot `refs/main` names.
+        repo_dir = self.repo_dir(self.ADAPTER_REPO)
+        ref = repo_dir / "refs" / "main"
+        path = repo_dir / "snapshots" / ref.read_text() / "turbo.safetensors" if ref.is_file() else None
+        return (f"hf:{self.ADAPTER_REPO}/turbo.safetensors", str(path) if path is not None and path.is_file() else None)
 
 
 def _run_cli(argv):
@@ -361,6 +405,91 @@ class TestPackageSelection(unittest.TestCase):
         preset = md.find_model_preset("black-forest-labs/FLUX.2-klein-4B", target="mlx", engine="mlx-gen", bits=4)
         self.assertEqual(preset.repo_id, "AbstractFramework/flux.2-klein-4b-4bit")
 
+    def test_a_model_with_a_single_package_selects_it_without_flags(self):
+        # Single-package names: no width or target to choose, so no flag is needed.
+        for profile in ("apple-silicon", "cuda", "cpu"):
+            with patch.object(md, "local_model_profile", return_value=profile):
+                for name, repo_id, target in (
+                    ("stabilityai/stable-diffusion-xl-base-1.0", "stabilityai/stable-diffusion-xl-base-1.0", "diffusers"),
+                    ("briaai/Fibo-Edit", "briaai/Fibo-Edit", "mlx"),
+                    ("AbstractFramework/wan2.2-t2v-a14b-diffusers-bf16", "AbstractFramework/wan2.2-t2v-a14b-diffusers-bf16", "mlx"),
+                ):
+                    preset = md.select_download_preset(name)
+                    self.assertEqual((preset.repo_id, preset.target), (repo_id, target), (profile, name))
+                    self.assertEqual(md.select_download_preset(name, allow_non_8bit=True), preset, (profile, name))
+        # Only the Diffusers pipeline is in this host's targets: the FP8 side artifact is not a package here.
+        self.assertEqual(md.select_download_preset("black-forest-labs/FLUX.1-dev").target, "diffusers")
+
+    def test_several_packages_and_none_recommended_are_listed_with_the_source_repository(self):
+        with self.assertRaises(ValueError) as ctx:
+            md.select_download_preset("ByteDance-Seed/SeedVR2-3B")
+        message = str(ctx.exception)
+        self.assertIn("AbstractFramework/seedvr2-3b-4bit, AbstractFramework/seedvr2-3b-8bit, or pass --bits", message)
+        self.assertIn("the source repository ByteDance-Seed/SeedVR2-3B: add --allow-non-8bit", message)
+        self.assertEqual(md.select_download_preset("ByteDance-Seed/SeedVR2-3B", allow_non_8bit=True).repo_id, "ByteDance-Seed/SeedVR2-3B")
+
+    def test_a_provider_that_serves_none_of_the_packages_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "with engine 'stable-diffusion.cpp'.*diffusers/diffusers:stabilityai/stable-diffusion-xl-base-1.0"):
+            md.select_download_preset("stabilityai/stable-diffusion-xl-base-1.0", engine="sdcpp")
+
+    def test_a_repository_outside_the_catalog_is_the_whole_repository(self):
+        preset = md.select_download_preset("some-org/some-model")
+        self.assertEqual((preset.repo_id, preset.in_catalog, preset.allow_patterns), ("some-org/some-model", False, ()))
+        with self.assertRaisesRegex(ValueError, "not in the AbstractVision catalog"):
+            md.select_download_preset("some-org/some-model", bits=8)
+
+
+class TestDownloadCommandOfARepository(unittest.TestCase):
+    """`download_command(repo_id)`: the `abstractvision download` command that selects exactly that repository."""
+
+    def test_the_source_repository_needs_allow_non_8bit_and_its_packages_need_nothing(self):
+        with patch.object(md, "local_model_profile", return_value="apple-silicon"):
+            self.assertEqual(
+                md.download_command("MiniMaxAI/MiniMax-H3", engine="mlx-gen"),
+                "abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit",
+            )
+            for package in ("AbstractFramework/minimax-h3-8bit", "AbstractFramework/minimax-h3-bf16"):
+                self.assertEqual(md.download_command(package), f"abstractvision download {package}")
+            # The model id alone selects the recommended package, not the source repository.
+            self.assertEqual(md.select_download_preset("MiniMaxAI/MiniMax-H3").repo_id, "AbstractFramework/minimax-h3-8bit")
+        with patch.object(md, "local_model_profile", return_value="cuda"):
+            # Another host's target order leaves MLX out: the command names the engine.
+            self.assertEqual(
+                md.download_command("MiniMaxAI/MiniMax-H3", engine="mlx-gen"),
+                "abstractvision download MiniMaxAI/MiniMax-H3 --provider mlx-gen --allow-non-8bit",
+            )
+
+    def test_every_command_selects_the_repository_it_names(self):
+        import shlex
+
+        from abstractvision.cli import build_parser
+
+        for profile, preset in [
+            (profile, preset)
+            for profile in ("apple-silicon", "cuda", "cpu")
+            for preset in md.model_presets(target="auto", include_non_8bit=True, include_all_targets=True)
+        ]:
+            with patch.object(md, "local_model_profile", return_value=profile):
+                with self.subTest(profile=profile, repo=preset.repo_id, engine=preset.engine):
+                    try:
+                        command = md.download_command(preset.repo_id, engine=preset.engine)
+                    except ValueError:
+                        continue  # stated, not guessed: no form of the command selects it on this host
+                    args = build_parser().parse_args(shlex.split(command)[1:])
+                    chosen = md.select_download_preset(
+                        args.names[0], target=args.target, engine=args.engine, bits=args.bits,
+                        allow_non_8bit=args.allow_non_8bit,
+                    )
+                    self.assertEqual((chosen.repo_id, chosen.engine), (preset.repo_id, preset.engine), command)
+
+    def test_a_schedule_is_appended_and_checked(self):
+        self.assertEqual(
+            md.download_command("MiniMaxAI/MiniMax-H3", engine="mlx-gen", base_model="minimax-h3-turbo-544p"),
+            "abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit --base-model minimax-h3-turbo-544p",
+        )
+        with self.assertRaisesRegex(ValueError, "not a schedule of AbstractFramework/minimax-h3-8bit"):
+            md.download_command("AbstractFramework/minimax-h3-8bit", base_model="flux2-klein-4b")
+
 
 class TestCatalogAccessFacts(unittest.TestCase):
     def test_minimax_h3_access_licence_and_recommendation(self):
@@ -482,15 +611,42 @@ class TestDownloadCommand(unittest.TestCase):
         self.assertIn("audio_vae/0.safetensors", str(ctx.exception))
         self.assertIn("Run the same command again to fetch them", str(ctx.exception))
 
-    def test_a_turbo_schedule_also_fetches_its_adapter(self):
-        hub = _FakeHub(H3_8BIT_FILES)
+    def test_a_turbo_schedule_plans_and_fetches_its_adapter_with_the_package(self):
+        hub = _FakeHub(H3_8BIT_FILES, others={_Env.ADAPTER_REPO: TURBO_FILES})
         with _Env(hub) as env:
             rc, out = _run_cli(["download", "MiniMaxAI/MiniMax-H3", "--base-model", "minimax-h3-turbo-544p"])
+            adapter = env.repo_dir(_Env.ADAPTER_REPO) / "snapshots" / _FakeHub.SHA / "turbo.safetensors"
+            self.assertTrue(adapter.is_file())
         self.assertEqual(rc, 0)
-        self.assertEqual(hub.downloads[0]["repo_id"], "AbstractFramework/minimax-h3-8bit")
-        self.assertIn(("minimax-h3-turbo-544p", True), env.adapters)
-        self.assertIn("adapter (minimax-h3-turbo-544p): /cache/turbo.safetensors", out)
+        self.assertEqual(
+            [(d["repo_id"], d["revision"]) for d in hub.downloads],
+            [("AbstractFramework/minimax-h3-8bit", _FakeHub.SHA), (_Env.ADAPTER_REPO, _FakeHub.SHA)],
+        )
+        self.assertEqual(hub.downloads[1]["allow_patterns"], ["turbo.safetensors"])  # one file of the repository
+        self.assertNotIn(True, [download for _schedule, download in env.adapters])  # mlx-gen fetches nothing itself
+        self.assertIn(
+            f"adapter (minimax-h3-turbo-544p): {_Env.ADAPTER_REPO}; access: open; 1.2 GiB in 1 file; "
+            "cache: 0 of 1 file complete (0 B); 1 file to fetch (1.2 GiB)",
+            out,
+        )
+        self.assertIn("total: 65.4 GiB in 19 files; 19 files to fetch (65.4 GiB)", out)
+        self.assertIn(f"adapter (minimax-h3-turbo-544p): {adapter}", out)
         self.assertIn("access: gated; accept the MiniMax H3 Community License", out)
+
+    def test_the_adapter_is_found_before_any_byte_of_the_package(self):
+        from abstractvision.errors import OptionalDependencyMissingError
+
+        hub = _FakeHub(H3_8BIT_FILES, others={_Env.ADAPTER_REPO: TURBO_FILES})
+        missing = OptionalDependencyMissingError("MLX-Gen backend requires the optional MLX-Gen runtime.")
+        with _Env(hub):
+            with self.assertRaisesRegex(SystemExit, "not a schedule of AbstractFramework/minimax-h3-8bit"):
+                _run_cli(["download", "MiniMaxAI/MiniMax-H3", "--base-model", "flux2-klein-4b"])
+            with patch("abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter", side_effect=missing):
+                code, _out, err = _run_cli_exit(["download", "MiniMaxAI/MiniMax-H3", "--base-model", "minimax-h3-turbo"])
+        self.assertEqual(code, 1)
+        self.assertIn("is named by mlx-gen, which could not be imported here", err)
+        self.assertIn("Nothing was downloaded.", err)
+        self.assertEqual(hub.downloads, [])
 
     def test_without_a_schedule_the_adapters_are_named_not_fetched(self):
         hub = _FakeHub(H3_8BIT_FILES)
@@ -509,7 +665,7 @@ class TestDownloadCommand(unittest.TestCase):
 
     def test_a_catalog_model_is_never_fetched_as_an_unfiltered_snapshot(self):
         hub = _FakeHub(H3_8BIT_FILES)
-        with _Env(hub), patch("abstractvision.cli.repository_preset", side_effect=AssertionError("snapshot")):
+        with _Env(hub), patch.object(md, "repository_preset", side_effect=AssertionError("snapshot")):
             with self.assertRaisesRegex(SystemExit, "No 2-bit package"):
                 _run_cli(["download", "MiniMaxAI/MiniMax-H3", "--bits", "2"])
             with self.assertRaisesRegex(SystemExit, "names several MLX-Gen packages"):
@@ -517,19 +673,34 @@ class TestDownloadCommand(unittest.TestCase):
         self.assertEqual(hub.downloads, [])
 
     def test_dry_run_reports_the_plan_and_downloads_nothing(self):
-        hub = _FakeHub(H3_8BIT_FILES)
+        hub = _FakeHub(H3_8BIT_FILES, others={_Env.ADAPTER_REPO: TURBO_FILES})
         with _Env(hub, free_bytes=20 * GIB) as env:
             rc, out = _run_cli(["download", "MiniMaxAI/MiniMax-H3", "--dry-run", "--base-model", "minimax-h3-turbo"])
             self.assertEqual(env.written(), [])
         self.assertEqual(rc, 0)
         self.assertEqual(hub.downloads, [])
         self.assertIn("selected: AbstractFramework/minimax-h3-8bit", out)
-        self.assertIn("Not enough free disk space", out)
-        self.assertIn("adapter (minimax-h3-turbo): hf:lightx2v/Minimax-h3-Turbo/turbo.safetensors (would be fetched)", out)
+        self.assertIn(
+            "Not enough free disk space to download AbstractFramework/minimax-h3-8bit with lightx2v/Minimax-h3-Turbo: "
+            "the 19 files to fetch take 65.4 GiB and 20.0 GiB is free",
+            out,
+        )
+        self.assertIn(f"adapter (minimax-h3-turbo): {_Env.ADAPTER_REPO}; access: open; 1.2 GiB in 1 file", out)
         self.assertEqual(
             out.rstrip().splitlines()[-1],
-            "dry run: nothing was downloaded; the download would not fit (64.2 GiB to fetch, 20.0 GiB free)",
+            "dry run: nothing was downloaded; the download would not fit (65.4 GiB needed, 20.0 GiB free)",
         )
+
+    def test_dry_run_of_a_cached_adapter_names_where_mlx_gen_finds_it(self):
+        hub = _FakeHub(H3_8BIT_FILES, others={_Env.ADAPTER_REPO: TURBO_FILES})
+        with _Env(hub) as env:
+            env.cached(_Env.ADAPTER_REPO, ["turbo.safetensors"])
+            listings = hub.listings
+            rc, out = _run_cli(["download", "MiniMaxAI/MiniMax-H3", "--dry-run", "--base-model", "minimax-h3-turbo"])
+            adapter = env.repo_dir(_Env.ADAPTER_REPO) / "snapshots" / _FakeHub.SHA / "turbo.safetensors"
+        self.assertEqual(rc, 0)
+        self.assertEqual(hub.listings - listings, 1)  # the package only
+        self.assertIn(f"adapter (minimax-h3-turbo): hf:{_Env.ADAPTER_REPO}/turbo.safetensors, cached at {adapter}", out)
 
     def test_a_listing_without_sizes_sizes_nothing_and_fetches_nothing(self):
         files = dict(H3_8BIT_FILES, **{"audio_vae/0.safetensors": None})  # the listing gives no size
@@ -554,7 +725,11 @@ class TestDownloadCommand(unittest.TestCase):
 
 @_needs_hub
 class TestDownloadPlanAgainstTheCache(unittest.TestCase):
-    """D1: a file is complete in the cache or fetched whole; nothing is promised about partial files."""
+    """A file is complete in the cache or to fetch; a partial `.incomplete` file's bytes are space the fetch
+    reuses, because huggingface_hub writes the file into that same blob (continuing it over plain HTTP,
+    rewriting it from the start over Xet), so the disk check needs only what the partial files lack."""
+
+    REPO = "AbstractFramework/minimax-h3-8bit"
 
     def _partial(self, env, repo_id, name, size):
         index = sorted(env.hub.files).index(name)
@@ -563,36 +738,49 @@ class TestDownloadPlanAgainstTheCache(unittest.TestCase):
         with open(blob, "wb") as fh:
             fh.truncate(size)
 
-    def test_a_partial_file_is_fetched_whole_whatever_the_transport_left(self):
-        # Both huggingface_hub transports keep an interrupted file as `blobs/<etag>.incomplete`: plain HTTP
-        # with the bytes it received (it may continue from them), Xet with whatever it last wrote (it starts
-        # the file over). The plan treats both alike: the file is to fetch, at its full size.
-        repo = "AbstractFramework/minimax-h3-8bit"
-        outputs = []
-        for partial_bytes in (GIB, 0):
-            hub = _FakeHub(H3_8BIT_FILES)
-            with _Env(hub) as env:
-                env.cached(repo, ["vae/0.safetensors"])
-                self._partial(env, repo, "transformer/0.safetensors", partial_bytes)
-                rc, out = _run_cli(["download", repo])
-            self.assertEqual(rc, 0)
-            self.assertIn("transformer/0.safetensors", hub.fetched)
-            self.assertNotIn("vae/0.safetensors", hub.fetched)
-            self.assertNotIn("resum", out)
-            outputs.append([line for line in out.splitlines() if line.startswith("cache:")])
-        self.assertEqual(outputs[0], outputs[1])
-        self.assertEqual(outputs[0], ["cache: 1 of 18 files complete (4.8 GiB); 17 files to fetch (59.4 GiB)"])
-
-    def test_the_disk_check_counts_the_files_to_fetch_at_their_full_size(self):
-        repo = "AbstractFramework/minimax-h3-8bit"
+    def test_a_partial_file_counts_at_the_bytes_it_still_lacks(self):
         hub = _FakeHub(H3_8BIT_FILES)
-        # 59.4 GiB to fetch; a 30 GiB partial transformer file is on disk but does not count as fetched.
+        # 59.4 GiB to fetch, 30 GiB of it in the partial transformer file: 29.4 GiB needed, 40 GiB free.
         with _Env(hub, free_bytes=40 * GIB) as env:
-            env.cached(repo, ["vae/0.safetensors"])
-            self._partial(env, repo, "transformer/0.safetensors", 30 * GIB)
-            with self.assertRaisesRegex(SystemExit, "the 17 files to fetch take 59.4 GiB and 40.0 GiB is free"):
-                _run_cli(["download", repo])
+            env.cached(self.REPO, ["vae/0.safetensors"])
+            self._partial(env, self.REPO, "transformer/0.safetensors", 30 * GIB)
+            rc, out = _run_cli(["download", self.REPO])
+        self.assertEqual(rc, 0)
+        self.assertIn("transformer/0.safetensors", hub.fetched)
+        self.assertNotIn("vae/0.safetensors", hub.fetched)
+        self.assertIn(
+            "cache: 1 of 18 files complete (4.8 GiB); 17 files to fetch (59.4 GiB, 30.0 GiB of it already in partial files)",
+            out,
+        )
+        self.assertIn(f"disk: needs 29.4 GiB ({md.DISK_RULE}); enough free space", out)
+
+    def test_the_disk_check_refuses_what_the_partial_files_do_not_cover(self):
+        hub = _FakeHub(H3_8BIT_FILES)
+        with _Env(hub, free_bytes=20 * GIB) as env:
+            env.cached(self.REPO, ["vae/0.safetensors"])
+            self._partial(env, self.REPO, "transformer/0.safetensors", 30 * GIB)
+            with self.assertRaisesRegex(
+                SystemExit,
+                r"the 17 files to fetch take 29.4 GiB \(59.4 GiB less the 30.0 GiB their partial files already hold\) "
+                "and 20.0 GiB is free",
+            ):
+                _run_cli(["download", self.REPO])
         self.assertEqual(hub.downloads, [])
+
+    def test_the_rule_is_stated_without_partial_files_too(self):
+        with _Env(_FakeHub(H3_8BIT_FILES)):
+            _rc, out = _run_cli(["download", self.REPO, "--dry-run"])
+        self.assertIn(f"disk: needs 64.2 GiB ({md.DISK_RULE}); enough free space", out)
+
+    def test_the_fetch_takes_the_commit_the_listing_named_and_records_it(self):
+        hub = _FakeHub(SD_TURBO_GGUF_FILES)
+        with _Env(hub) as env, patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="sd-cli"):
+            rc, _out = _run_cli(["download", "Green-Sky/SD-Turbo-GGUF"])
+            ref = (env.repo_dir("Green-Sky/SD-Turbo-GGUF") / "refs" / "main").read_text()
+        self.assertEqual(rc, 0)
+        self.assertEqual(hub.listed_revisions, [None])
+        self.assertEqual([d["revision"] for d in hub.downloads], [_FakeHub.SHA])
+        self.assertEqual(ref, _FakeHub.SHA)  # what generation resolves the repository through
 
     def test_an_interrupted_download_exits_130_and_says_what_stays(self):
         hub = _FakeHub(SD_TURBO_GGUF_FILES, interrupt_after=1)
@@ -605,14 +793,87 @@ class TestDownloadPlanAgainstTheCache(unittest.TestCase):
             self.assertIn("The files that completed stay in the Hugging Face cache", err)
             self.assertIn("the same command continues with the rest", err)
             self.assertNotIn("resum", err)
-            # The next run: one file complete, the interrupted one to fetch whole.
+            # The next run: one file complete, the interrupted one to fetch, its partial bytes counted.
             _rc, out = _run_cli(["download", "Green-Sky/SD-Turbo-GGUF", "--dry-run"])
-        self.assertIn("cache: 1 of 2 files complete (619 B); 1 file to fetch (1.9 GiB)", out)
+        self.assertIn("cache: 1 of 2 files complete (619 B); 1 file to fetch (1.9 GiB, 7 B of it already in partial files)", out)
+
+
+KLEIN_GGUF = "leejet/FLUX.2-klein-4B-GGUF"
+KLEIN_GGUF_FILES = {
+    "README.md": 600,
+    "flux-2-klein-4b-Q4_K_M.gguf": 2_600_000_000,
+    "flux-2-klein-4b-Q8_0.gguf": 4_294_967_296,
+}
+# What stable-diffusion.cpp loads with that model: a VAE and a text encoder from two other repositories.
+KLEIN_COMPANIONS = {
+    "black-forest-labs/FLUX.2-klein-4B": {
+        "model_index.json": 500,
+        "transformer/diffusion_pytorch_model.safetensors": 7_750_000_000,
+        "vae/diffusion_pytorch_model.safetensors": 167_772_160,
+    },
+    "unsloth/Qwen3-4B-GGUF": {
+        "Qwen3-4B-Q4_K_M.gguf": 2_684_354_560,
+        "Qwen3-4B-Q8_0.gguf": 4_280_000_000,
+    },
+}
+
+
+@_needs_hub
+class TestBundleCompanionsArePlanned(unittest.TestCase):
+    """A stable-diffusion.cpp bundle's companion repositories are part of the plan: sized, shown by `--dry-run`,
+    in the one total and the one disk check, and fetched with the package."""
+
+    def _hub(self):
+        return _FakeHub(KLEIN_GGUF_FILES, others=KLEIN_COMPANIONS)
+
+    def test_dry_run_shows_every_repository_and_one_total(self):
+        hub = self._hub()
+        with _Env(hub) as env:
+            rc, out = _run_cli(["download", KLEIN_GGUF, "--dry-run"])
+            self.assertEqual(env.written(), [])
+        self.assertEqual(rc, 0)
+        self.assertIn("download size: 4.0 GiB in 2 files", out)
+        self.assertIn("vae: black-forest-labs/FLUX.2-klein-4B; access: open; 160.0 MiB in 1 file;", out)
+        self.assertIn("llm: unsloth/Qwen3-4B-GGUF; access: open; 2.5 GiB in 1 file;", out)
+        self.assertIn("total: 6.7 GiB in 4 files; 4 files to fetch (6.7 GiB)", out)
+        self.assertIn(f"disk: needs 6.7 GiB ({md.DISK_RULE}); enough free space", out)
+        self.assertEqual(hub.downloads, [])
+
+    def test_the_disk_check_covers_the_companions(self):
+        hub = self._hub()
+        with _Env(hub, free_bytes=5 * GIB):  # room for the package alone, not for what it loads
+            code, out, err = _run_cli_exit(["download", KLEIN_GGUF, "--dry-run"])
+            self.assertEqual(code, 0)
+            self.assertIn("the download would not fit (6.7 GiB needed, 5.0 GiB free)", out)
+            with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="sd-cli"):
+                code, out, err = _run_cli_exit(["download", KLEIN_GGUF])
+        self.assertEqual(code, 1)
+        self.assertIn(
+            f"Not enough free disk space to download {KLEIN_GGUF} with black-forest-labs/FLUX.2-klein-4B, "
+            "unsloth/Qwen3-4B-GGUF: the 4 files to fetch take 6.7 GiB",
+            err,
+        )
+        self.assertEqual(hub.downloads, [])
+
+    def test_the_download_fetches_exactly_the_planned_files_of_every_repository(self):
+        hub = self._hub()
+        with _Env(hub) as env, patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="sd-cli"):
+            rc, out = _run_cli(["download", KLEIN_GGUF])
+            vae = env.repo_dir("black-forest-labs/FLUX.2-klein-4B") / "snapshots" / _FakeHub.SHA
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            [d["repo_id"] for d in hub.downloads], [KLEIN_GGUF, "black-forest-labs/FLUX.2-klein-4B", "unsloth/Qwen3-4B-GGUF"]
+        )
+        self.assertEqual(
+            sorted(hub.fetched),
+            sorted(["README.md", "flux-2-klein-4b-Q8_0.gguf", "vae/diffusion_pytorch_model.safetensors", "Qwen3-4B-Q4_K_M.gguf"]),
+        )
+        self.assertIn(f"resolved_vae: {vae / 'vae' / 'diffusion_pytorch_model.safetensors'}", out)
 
 
 @_needs_hub
 class TestDownloadDecidesFromThePlan(unittest.TestCase):
-    """D2 and D3: `download` always plans from the Hub listing and fetches exactly what is missing."""
+    """`download` always plans from the Hub listing and fetches exactly what is missing."""
 
     def test_a_second_download_says_everything_is_present_and_fetches_nothing(self):
         hub = _FakeHub(SD_TURBO_GGUF_FILES)
@@ -682,9 +943,38 @@ class TestDownloadDecidesFromThePlan(unittest.TestCase):
 
 
 @_needs_hub
+class TestHubUnreachableByType(unittest.TestCase):
+    """"The Hub could not be reached" follows huggingface_hub's own error types and the standard library's,
+    never the transport library's module name."""
+
+    def _reason(self, exc):
+        return md._hub_unavailable_reason(exc, "some-org/some-model", gated=False, license_name="")
+
+    def test_the_transport_base_huggingface_hub_derives_its_http_error_from(self):
+        import huggingface_hub.utils as hub_utils
+
+        # A huggingface_hub whose transport is another library (a hypothetical `httpx2`): its HTTP error
+        # derives from that library's base error, and a connection failure is an error of that base.
+        transport_base = type("HTTPError", (Exception,), {"__module__": "httpx2"})
+        connect_error = type("ConnectError", (transport_base,), {"__module__": "httpx2"})
+        hub_error = type("HfHubHTTPError", (transport_base, OSError), {})
+        with patch.object(hub_utils, "HfHubHTTPError", hub_error):
+            reason = self._reason(connect_error("[Errno 8] nodename nor servname provided"))
+        self.assertIn("the Hugging Face Hub could not be reached at", reason)
+        self.assertIn("(ConnectError: [Errno 8] nodename nor servname provided)", reason)
+
+    def test_standard_library_errors_and_the_installed_transport(self):
+        import httpx
+
+        for exc in (ConnectionResetError("reset"), TimeoutError("timed out"), httpx.ConnectTimeout("slow")):
+            self.assertIn("could not be reached", self._reason(exc), type(exc).__name__)
+        self.assertNotIn("could not be reached", self._reason(ValueError("not a network error")))
+
+
+@_needs_hub
 class TestLegacyModelDir(unittest.TestCase):
-    """`--model-dir` / `model_dir` (0.3.36): a legacy `<model_dir>/<local_dir_name>` tree is moved into the cache
-    as 0.3.36 did; that snapshot is reported as not compared with the Hub, and nothing is fetched on top."""
+    """`--model-dir` / `model_dir`: a legacy `<model_dir>/<local_dir_name>` tree is moved into the cache; that
+    snapshot is reported as not compared with the Hub, and nothing is fetched on top."""
 
     REPO = "AbstractFramework/minimax-h3-8bit"
 
@@ -708,7 +998,7 @@ class TestLegacyModelDir(unittest.TestCase):
             snapshot = Path(out.split("snapshot_dir: ", 1)[1].splitlines()[0])
             moved = snapshot / "transformer" / "0.safetensors"
             self.assertFalse(tree.exists())
-            self.assertEqual(moved.stat().st_ino, inode)  # moved, as 0.3.36 did: no second copy of the bytes
+            self.assertEqual(moved.stat().st_ino, inode)  # moved: no second copy of the bytes
             self.assertEqual([p for p in env.written() if "blobs" in p], [])
         self.assertIn(f"the legacy directory {tree} (2 files, 66 B) would be imported", dry)
         self.assertEqual(rc, 0)
@@ -740,7 +1030,7 @@ class TestLegacyModelDir(unittest.TestCase):
 @_needs_hub
 class TestGenerationWithAllowDownloadOffline(unittest.TestCase):
     """MLX-Gen generation with `allow_download=True` reaches `download_hf_repo_snapshot` only for a package the
-    cache does not hold: offline, a cached package runs as in 0.3.36 (no Hub request), and a missing one fails
+    cache does not hold: offline, a cached package runs with no Hub request, and a missing one fails
     saying why nothing was downloaded."""
 
     REPO = "AbstractFramework/flux.2-klein-4b-4bit"
@@ -801,7 +1091,7 @@ class TestDownloadReportsThePresetItRuns(unittest.TestCase):
 
 @_needs_hub
 class TestDiffusersPlanWritesNothing(unittest.TestCase):
-    """D5: the Diffusers selection reads model_index.json into memory; a refusal leaves no file."""
+    """The Diffusers selection reads model_index.json into memory; a refusal leaves no file."""
 
     def test_a_refused_diffusers_download_leaves_the_cache_empty(self):
         hub = _FakeHub(SD_TURBO_DIFFUSERS_FILES, contents={"model_index.json": SD_TURBO_INDEX})
@@ -827,7 +1117,7 @@ class TestDiffusersPlanWritesNothing(unittest.TestCase):
 
 @_needs_hub
 class TestRepositoriesOutsideTheCatalog(unittest.TestCase):
-    """D6: an `owner/name` the catalog does not list goes through the same plan; a 401 says what it can mean."""
+    """An `owner/name` the catalog does not list goes through the same plan; a 401 says what it can mean."""
 
     def test_an_unknown_repository_401_is_not_called_gated(self):
         hub = _FakeHub({}, listing_error=_repo_not_found(401))
@@ -946,8 +1236,8 @@ class TestListings(unittest.TestCase):
         )
         self.backend_configs = []
 
-        def build(repo_id, base_model=None):
-            self.backend_configs.append((repo_id, base_model))
+        def build(repo_id):
+            self.backend_configs.append(repo_id)
             return backend if available else None
 
         self.stack.enter_context(patch.object(self.inv, "_mlx_gen_backend", side_effect=build))
@@ -1012,10 +1302,14 @@ class TestListings(unittest.TestCase):
         self.assertIn("memory (low, measured by mlx-gen): peak 26.0 GiB at 960x544, 124 frames, 8 steps (text_to_video)", out)
         self.assertIn("smallest memory mlx-gen tested: default 48 GB, low 36 GB, lowest 24 GB", out)
 
-    def test_memory_peaks_are_one_package_width_and_schedule(self):
+    def test_memory_peaks_are_the_package_width_runs(self):
+        import inspect
+
         self._mlx_gen()
-        peaks = self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit", base_model="h3-turbo")
-        self.assertEqual(self.backend_configs, [("AbstractFramework/minimax-h3-8bit", "minimax-h3-turbo")])
+        # A measured run names no schedule and mlx-gen publishes the same runs on every schedule: one set per package.
+        self.assertEqual(list(inspect.signature(self.inv.memory_peaks).parameters), ["repo_id"])
+        peaks = self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit")
+        self.assertEqual(self.backend_configs, ["AbstractFramework/minimax-h3-8bit"])
         self.assertEqual(
             peaks[2],
             {
@@ -1033,8 +1327,6 @@ class TestListings(unittest.TestCase):
         self.assertEqual(self.inv.memory_peaks("AbstractFramework/minimax-h3-4bit"), [])  # its only run was killed
         self.assertEqual(self.inv.memory_peaks("MiniMaxAI/MiniMax-H3"), [])  # a source snapshot, not a package
         self.assertEqual(self.inv.memory_peaks("someone/not-in-the-catalog"), [])
-        with self.assertRaisesRegex(ValueError, "not a schedule of AbstractFramework/minimax-h3-8bit"):
-            self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit", base_model="flux2-klein-4b")
 
     def test_memory_peaks_are_empty_without_the_engine(self):
         self._mlx_gen(available=False)
@@ -1053,8 +1345,8 @@ class TestListings(unittest.TestCase):
         self._mlx_gen()
         cap = _AbstractVisionCapability(SimpleNamespace(config={}))
         self.assertEqual(
-            cap.memory_peaks("AbstractFramework/minimax-h3-8bit", base_model="minimax-h3-turbo"),
-            self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit", base_model="minimax-h3-turbo"),
+            cap.memory_peaks("AbstractFramework/minimax-h3-8bit"),
+            self.inv.memory_peaks("AbstractFramework/minimax-h3-8bit"),
         )
         self.assertEqual(len(cap.memory_peaks("AbstractFramework/minimax-h3-8bit")), 4)
 
@@ -1079,7 +1371,7 @@ class TestListings(unittest.TestCase):
         sd_turbo = md.find_model_preset("stabilityai/sd-turbo", target="diffusers", engine="diffusers", require_8bit=False)
         gguf = md.find_model_preset("Green-Sky/SD-Turbo-GGUF", target="gguf", engine="stable-diffusion.cpp")
         with _Env(hub) as env:
-            # What the 0.3.37 release candidate left after a refused Diffusers download: model_index.json only.
+            # A snapshot holding model_index.json only, as a download that wrote nothing else leaves it.
             env.cached("stabilityai/sd-turbo", ["model_index.json"])
             stray = local_cache_state(sd_turbo, extra_roots=())
             # An interrupted GGUF download: the README complete, the model a partial blob.
@@ -1122,8 +1414,25 @@ class TestListings(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("cache: cached (3.0 GiB)", out)
         self.assertIn("cache: incomplete (files of an unfinished download but no snapshot", out)
-        self.assertIn("cache: not cached", out)
+        self.assertIn("cache: absent", out)
+        self.assertNotIn("not cached", out)
         self.assertNotIn("installed", out)
+
+    def test_one_cache_vocabulary_in_the_table_the_text_and_the_json(self):
+        self._mlx_gen(available=False)
+        self._install("AbstractFramework/minimax-h3-4bit", 2 * GIB)
+        with patch("abstractvision.model_downloads.local_model_profile", return_value="apple-silicon"):
+            _rc, table = _run_cli(["catalog", "--provider", "mlx-gen", "--task", "text_to_video"])
+            _rc, listing = _run_cli(["catalog", "--provider", "mlx-gen", "--task", "text_to_video", "--json"])
+        _rc, shown = _run_cli(["show-model", "MiniMaxAI/MiniMax-H3", "--json"])
+        rows = {line.split()[-3]: line.split() for line in table.splitlines() if line.startswith("AbstractFramework/minimax-h3")}
+        self.assertEqual(rows["AbstractFramework/minimax-h3-8bit"][5], "absent")
+        self.assertEqual(rows["AbstractFramework/minimax-h3-4bit"][5:7], ["cached", "(2.0"])
+        self.assertIn("`incomplete` one with such a gap, `absent` nothing in the cache", table)
+        states = {d["cache"] for m in json.loads(listing) for d in m["downloads"]} | {
+            d["cache"] for d in json.loads(shown)["downloads"]
+        }
+        self.assertLessEqual(states, {"cached", "incomplete", "absent"})
 
     def test_models_json_lists_each_model_with_its_downloads(self):
         self._mlx_gen(available=False)
@@ -1136,6 +1445,111 @@ class TestListings(unittest.TestCase):
         self.assertIsNone(h3["downloads"][0]["memory_modes"])
         rc, plain = _run_cli(["models"])
         self.assertIn("MiniMaxAI/MiniMax-H3\n", plain)
+
+
+class TestMlxGenFindsTheAdapterTheDownloadFetches(unittest.TestCase):
+    """`download --base-model` fetches a schedule's adapter into huggingface_hub's cache through its plan; the
+    installed mlx-gen must resolve it from there (offline, with its own LoRA cache empty)."""
+
+    def test_an_adapter_in_the_hub_cache_is_resolved_by_mlx_gen(self):
+        try:
+            from mflux.models.common.resolution import lora_resolution
+        except Exception:
+            self.skipTest("mlx-gen is not installed")
+        from abstractvision.backends.mflux import (
+            _mlx_gen_schedule_adapter,
+            resolve_mlx_gen_schedule_adapter,
+        )
+
+        adapter = _mlx_gen_schedule_adapter("minimax-h3-turbo-544p")
+        repo_id, filename = md._adapter_hub_file(adapter)
+        with tempfile.TemporaryDirectory() as hub, tempfile.TemporaryDirectory() as loras:
+            repo_dir = Path(hub) / f"models--{repo_id.replace('/', '--')}"
+            snapshot = repo_dir / "snapshots" / "c0ffee"
+            snapshot.mkdir(parents=True)
+            (snapshot / filename).write_bytes(b"adapter")
+            (repo_dir / "refs").mkdir()
+            (repo_dir / "refs" / "main").write_text("c0ffee")  # what the plan's fetch records
+            with patch("huggingface_hub.constants.HF_HUB_CACHE", hub), patch.object(
+                lora_resolution, "MFLUX_LORA_CACHE_DIR", Path(loras)
+            ):
+                self.assertEqual(md._hub_library_cache(), Path(hub))
+                resolved = resolve_mlx_gen_schedule_adapter("minimax-h3-turbo-544p")
+                self.assertEqual(resolved[0], adapter)
+                self.assertEqual(Path(resolved[1]).resolve(), (snapshot / filename).resolve())
+
+
+class TestWithoutOptionalDependencies(unittest.TestCase):
+    """`download`, `show-model`, `catalog` and `models` with mlx-gen, huggingface_hub, torch or PyYAML not
+    installed: a message naming what is missing, never a traceback. Each command runs in its own process
+    whose import system finds no such package, as on a host where it is not installed; nothing reaches the
+    network (offline mode, an empty cache)."""
+
+    RUNNER = (
+        "import importlib.machinery, sys\n"
+        "BLOCKED = set(sys.argv[1].split(','))\n"
+        "class NotInstalled(importlib.machinery.PathFinder):\n"
+        "    @classmethod\n"
+        "    def find_spec(cls, name, path=None, target=None):\n"
+        "        return None if name.split('.')[0] in BLOCKED else super().find_spec(name, path, target)\n"
+        "sys.meta_path = [NotInstalled if f is importlib.machinery.PathFinder else f for f in sys.meta_path]\n"
+        "sys.path.insert(0, sys.argv[2])\n"
+        "from abstractvision.cli import main\n"
+        "raise SystemExit(main(sys.argv[3:]))\n"
+    )
+    COMMANDS = (
+        ["download", "MiniMaxAI/MiniMax-H3", "--dry-run", "--base-model", "minimax-h3-turbo-544p"],
+        ["download", "AbstractFramework/minimax-h3-8bit", "--base-model", "minimax-h3-turbo"],
+        ["download", "Green-Sky/SD-Turbo-GGUF", "--dry-run"],
+        ["show-model", "MiniMaxAI/MiniMax-H3"],
+        ["catalog", "--json"],
+        ["models", "--json"],
+    )
+
+    def _run(self, blocked, argv):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as home:
+            env = {
+                "PATH": os.environ.get("PATH", ""),
+                "HOME": home,
+                "HF_HOME": home,
+                "HF_HUB_OFFLINE": "1",
+                "ABSTRACTVISION_SDCPP_AUTO_INSTALL": "0",
+            }
+            return subprocess.run(
+                [sys.executable, "-c", self.RUNNER, ",".join(blocked), str(REPO_ROOT / "src"), *argv],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=120,
+            )
+
+    def test_no_command_ends_in_a_traceback(self):
+        for blocked in (("mflux", "mlxgen"), ("huggingface_hub",), ("torch",), ("yaml",)):
+            for argv in self.COMMANDS:
+                with self.subTest(blocked=blocked, argv=argv):
+                    done = self._run(blocked, argv)
+                    self.assertNotIn("Traceback", done.stderr)
+                    self.assertIn(done.returncode, (0, 1), done.stderr[-500:])
+
+    def test_a_schedule_without_mlx_gen_names_what_is_missing_and_fetches_nothing(self):
+        for argv in self.COMMANDS[:2]:
+            done = self._run(("mflux", "mlxgen"), argv)
+            self.assertEqual(done.returncode, 1, done.stderr[-500:])
+            self.assertIn("is named by mlx-gen, which could not be imported here", done.stderr)
+            self.assertIn('pip install "abstractvision[mlx-gen]"', done.stderr)
+            self.assertIn("Nothing was downloaded.", done.stderr)
+
+    def test_what_is_missing_is_named_from_the_import_error(self):
+        # PyYAML is a dependency of huggingface_hub: without it, huggingface_hub is installed but cannot be imported.
+        for blocked, expected in (
+            (("huggingface_hub",), "huggingface_hub is not installed; install it with"),
+            (("yaml",), "huggingface_hub cannot be imported, because the module 'yaml' it imports is not installed"),
+        ):
+            done = self._run(blocked, ["download", "Green-Sky/SD-Turbo-GGUF", "--dry-run"])
+            self.assertEqual(done.returncode, 0, done.stderr[-500:])
+            self.assertIn(expected, done.stdout)
 
 
 class TestAccessError(unittest.TestCase):
