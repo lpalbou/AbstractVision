@@ -277,9 +277,9 @@ Discovery, and where each part is visible:
   lists what the backend a request for that provider runs on reports with its
   configured model and device (`supported_memory_modes()`; for an
   OpenAI-compatible remote, the modes of its last discovery answer, else
-  `default`), without loading a model, importing torch or sending a request.
-  Diffusers with `device="auto"` lists `low` and `lowest` once torch is imported
-  (a request imports it), `default` until then. AbstractCore's HTTP server
+  `default`), without loading a model or sending a request. Diffusers with
+  `device="auto"` lists `default` on macOS (no CUDA) without importing torch,
+  and elsewhere asks torch, importing it once. AbstractCore's HTTP server
   reads it for `GET /v1/vision/providers/` and for the `memory_modes` of the
   entries of `GET /v1/vision/models`.
 - `llm.vision.memory_peaks(model)` returns MLX-Gen's measured memory peaks for

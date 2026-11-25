@@ -82,6 +82,12 @@ def merge_request_option(name: str, value: Any, extra: Mapping[str, Any]) -> Any
     return value
 
 
+def check_quantize(value: Any) -> None:
+    """A load-time `quantize` is a whole bit width: a boolean or a fractional number raises ValueError."""
+    if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
+        raise ValueError(f"quantize must be an integer bit width (got {value!r}).")
+
+
 def raise_if_cancelled(cancel_event: Any) -> None:
     """Raise GenerationCancelledError when `cancel_event` (anything with is_set()) is set."""
     if cancel_event is None:
@@ -172,6 +178,8 @@ class VisionBackend(ABC):
                 extra.pop(name, None)
             else:
                 options[name] = typed
+        if "quantize" in listed and option_is_set(options["quantize"]):
+            check_quantize(options["quantize"])
         mode, from_env = resolve_memory_mode_with_source(options.pop("memory_mode"))
         if from_env and mode not in supported:
             mode = self._degrade_process_memory_mode(mode, supported)

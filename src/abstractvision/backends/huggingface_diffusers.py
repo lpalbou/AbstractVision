@@ -1273,6 +1273,24 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         repo = str(repo_id if repo_id is not None else self._cfg.model_id or "")
         return reg is None or reg.explicit_download_model(repo) is None
 
+    def _not_cached_error(self, model_id: str) -> ValueError:
+        """The refusal of a model that is not in the cache and that this load may not download."""
+        if self._cfg.allow_download:
+            try:
+                how = f"download it with `{download_command(model_id, engine='diffusers')}`"
+            except ValueError:
+                how = f"fetch it from https://huggingface.co/{model_id}"
+            return ValueError(
+                f"Model {model_id!r} is not available locally, and generation never downloads it: the "
+                f"catalog marks it for explicit download only; {how}."
+            )
+        return ValueError(
+            f"Model {model_id!r} is not available locally and downloads are disabled. "
+            "Pre-download it outside the REPL (for example with `huggingface-cli download ...`) or explicitly "
+            "enable runtime downloads (set allow_download=True in Python or ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1). "
+            "If the model is gated, accept its terms on Hugging Face and set `HF_TOKEN` before downloading."
+        )
+
     def _registry(self) -> Optional[VisionModelCapabilitiesRegistry]:
         if self._capability_registry is not None:
             return self._capability_registry
@@ -2077,24 +2095,20 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     def supported_memory_modes(self, task: Optional[str] = None) -> Tuple[str, ...]:
         """"low"/"lowest" are model/sequential CPU offload, which this backend runs on CUDA only.
 
-        Answered without importing torch: the device is the configured one, or with "auto" the one
-        torch picks once torch is imported (a request imports it); until then only "default" is
-        listed.
+        An explicit device decides. With "auto", macOS has no CUDA (no torch needed); elsewhere
+        torch answers, imported here once (the host where it matters, which runs on torch).
         """
         _ = task
-        torch = sys.modules.get("torch")
-        if self._resolved_device is None and self._device_is_auto() and torch is None:
-            return (MEMORY_MODE_DEFAULT,)
-        if str(self._effective_device(torch)).strip().lower().startswith("cuda"):
+        if self._device_is_auto() and self._resolved_device is None:
+            if sys.platform == "darwin":
+                return (MEMORY_MODE_DEFAULT,)
+            try:
+                self._effective_device(_lazy_import_torch())
+            except OptionalDependencyMissingError:
+                return (MEMORY_MODE_DEFAULT,)  # without torch this backend runs nothing
+        if str(self._effective_device(None)).strip().lower().startswith("cuda"):
             return MEMORY_MODES
         return (MEMORY_MODE_DEFAULT,)
-
-    def resolve_memory_request(self, request: Any, *, task: Optional[str] = None) -> Tuple[Any, str]:
-        # A request runs on torch: with "auto", resolving the device first is what lets
-        # `supported_memory_modes` answer for it.
-        if self._device_is_auto():
-            self._effective_device(_lazy_import_torch())
-        return super().resolve_memory_request(request, task=task)
 
     def _drop_pipeline_locked(self, kind: str) -> None:
         # Offload is fixed when a pipeline loads; a request that needs more offload than the
@@ -2648,6 +2662,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             snap = self._resolve_snapshot_dir(model_id=load_model_id)
             if snap is not None:
                 load_model_id = str(snap)
+            elif "/" in load_model_id and self._resolve_any_snapshot_dir(model_id=load_model_id) is None:
+                raise self._not_cached_error(load_model_id)
 
         def _from_pretrained(cls: Any) -> Any:
             load_common = dict(common)
@@ -2664,35 +2680,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                         load_model_id, torch_dtype=torch_dtype, **load_common
                     )
             return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **load_common)
-
-        def _maybe_raise_offline_missing_model(e: Exception) -> None:
-            model_id = str(
-                gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id or ""
-            ).strip()
-            if not model_id or "/" not in model_id:
-                return
-            # If it's not in cache, provide a clearer message than the upstream
-            # "does not appear to have a file named model_index.json" wording.
-            if self._resolve_snapshot_dir(model_id=model_id) is not None:
-                return
-            msg = str(e)
-            if may_download or "model_index.json" not in msg:
-                return
-            if self._cfg.allow_download:
-                try:
-                    how = f"download it with `{download_command(model_id, engine='diffusers')}`"
-                except ValueError:
-                    how = f"fetch it from https://huggingface.co/{model_id}"
-                raise ValueError(
-                    f"Model {model_id!r} is not available locally, and generation never downloads it: the "
-                    f"catalog marks it for explicit download only; {how}."
-                ) from e
-            raise ValueError(
-                f"Model {model_id!r} is not available locally and downloads are disabled. "
-                "Pre-download it outside the REPL (for example with `huggingface-cli download ...`) or explicitly "
-                "enable runtime downloads (set allow_download=True in Python or ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1). "
-                "If the model is gated, accept its terms on Hugging Face and set `HF_TOKEN` before downloading."
-            ) from e
 
         def _maybe_raise_incomplete_snapshot_error(e: Exception) -> None:
             model_id = str(
@@ -2751,7 +2738,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     try:
                         pipe = _from_pretrained(AutoPipelineForText2Image)
                     except Exception as e:
-                        _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
                         _maybe_raise_missing_torchvision(e)
                         pipe = None
@@ -2759,7 +2745,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     try:
                         pipe = _from_pretrained(DiffusionPipeline)
                     except Exception as e:
-                        _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
                         _maybe_raise_missing_torchvision(e)
                         raise
@@ -2768,7 +2753,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     try:
                         pipe = _from_pretrained(AutoPipelineForImage2Image)
                     except Exception as e:
-                        _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
                         _maybe_raise_missing_torchvision(e)
                         pipe = None
@@ -2776,7 +2760,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     try:
                         pipe = _from_pretrained(DiffusionPipeline)
                     except Exception as e:
-                        _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
                         _maybe_raise_missing_torchvision(e)
                         raise ValueError(
@@ -2795,7 +2778,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 try:
                     pipe = _from_pretrained(AutoPipelineForInpainting)
                 except Exception as e:
-                    _maybe_raise_offline_missing_model(e)
                     _maybe_raise_incomplete_snapshot_error(e)
                     _maybe_raise_missing_torchvision(e)
                     raise
@@ -2803,7 +2785,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 try:
                     pipe = _from_pretrained(DiffusionPipeline)
                 except Exception as e:
-                    _maybe_raise_offline_missing_model(e)
                     _maybe_raise_incomplete_snapshot_error(e)
                     _maybe_raise_missing_torchvision(e)
                     raise ValueError(

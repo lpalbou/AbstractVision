@@ -87,9 +87,9 @@ except for the changes listed below.
     one ends. `default` runs set no limit: MLX-Gen applies its own (RAM/8, 1 to 8 GiB) and keeps one the host set.
   - Discovery: `get_capabilities().memory_modes`, `parameter_constraints["memory_mode"]`
     on each MLX-Gen catalog entry, and `memory_modes` per provider in the plugin's `available_providers()` (what
-    that provider's backend lists for its configured model and device, without loading a model, importing torch or
-    sending a request). Diffusers with `device="auto"` lists `low` and `lowest` once torch is imported (a request
-    imports it) and `default` until then.
+    that provider's backend lists for its configured model and device, without loading a model or sending a
+    request). Diffusers with `device="auto"` lists `default` on macOS (no CUDA) without importing torch; elsewhere
+    it asks torch, importing it once.
 - **Downloads.**
   - `abstractvision download <model id>` selects one package: a model with a single package selects it; with
     several packages of one engine, the one the catalog marks as recommended (for MiniMax-H3, the 8-bit one), or the
@@ -252,8 +252,9 @@ except for the changes listed below.
   or a `cancel_event` (or runs under `ABSTRACTVISION_MEMORY_MODE`) also query `GET {base_url}/vision/models` (10 s
   timeout, answer reused for 30 s; never for the OpenAI API); `get_capabilities()` reads
   the last answer without a request, and a request that sets none of them and carries no `extra` makes the same
-  HTTP calls as before. A discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: a request
-  that needed it is refused with the reason. A remote HTTP 422 with the error code `capability_not_supported`, and
+  HTTP calls as before. A discovery request that fails (timeout, connection error, HTTP 5xx) is not kept: the
+  previous answer stays in use, and without one a request that names a memory mode other than `default`,
+  `quantize`, a soundtrack field or a `cancel_event` is refused with the reason. A remote HTTP 422 with the error code `capability_not_supported`, and
   a remote job that fails with that `error_code`, raise `CapabilityNotSupportedError` with the remote's message,
   `field` and `supported` instead of `RuntimeError`.
 - OpenAI-compatible backend: `list_provider_models()` on a remote that serves the vision routes (AbstractCore's
@@ -265,19 +266,27 @@ except for the changes listed below.
   AbstractCore plugin's `list_provider_models()` raises it as it is when no backend has a catalog, as it does when
   the selected backend cannot list models, instead of `AbstractVisionError`; a backend without one is skipped when
   another answers.
-- OpenAI-compatible backend: the first request that carries `extra` (keys other than `model`) asks the remote once
-  per backend, with `GET {base_url}/vision/models`, whether it serves the vision routes; a server that does
-  receives `extra` nested (an `extra` object in JSON, an `extra_json` form field), and any other remote, or one whose
-  answer failed, receives it unchanged.
+- OpenAI-compatible backend: a request that carries `extra` (keys other than `model`), or names its model with an
+  `openai/` or `openai-compatible/` prefix, asks the remote with `GET {base_url}/vision/models` whether it serves
+  the vision routes, until it answers: the answer is kept for the backend's life, and a failed question is asked
+  again after 30 s. A server that does receives `extra` nested (an `extra` object in JSON, an `extra_json` form
+  field) and the model as named; any other remote, or one whose answer is still unknown, receives `extra` unchanged
+  and the model without the prefix. A model named without such a prefix is sent as given and asks nothing.
 - OpenAI-compatible backend and AbstractCore plugin: a base URL is the OpenAI API when its host is `api.openai.com`
   or one of its subdomains (such as `eu.api.openai.com`); a URL that has `api.openai.com` only in its path or
   query, or a look-alike host, is an OpenAI-compatible remote.
 - `VisionBackend.has_loaded_model()` is part of the backend contract: the AbstractCore plugin lists, pins and
   unloads by it, and a load whose backend answers `False` returns `state: "not_loaded"` with a `reason`.
-- AbstractCore plugin: a backend given through `vision_backend_instance` or `vision_backend_factory` that lacks
-  `has_loaded_model`, `preload`, `unload` or `supported_memory_modes` is refused when it is injected, with a
-  `TypeError` that names the missing methods and says to inherit
-  `abstractvision.backends.base_backend.VisionBackend`, which provides them.
+- AbstractCore plugin: a backend given through `vision_backend_instance` or `vision_backend_factory` (called once,
+  when the capability is built) that lacks `has_loaded_model`, `preload`, `unload`, `supported_memory_modes`,
+  `list_provider_models` or `list_provider_adapters` is refused when the capability is built, with a `TypeError`
+  that names the missing methods and says to inherit `abstractvision.backends.base_backend.VisionBackend`, which
+  provides them. Unloading the configured backend by provider or `load_id` calls its `unload()` whether or not it
+  is listed.
+- A boolean or fractional `quantize` raises `ValueError` on every backend that takes `quantize`, a remote that
+  advertises it included.
+- Diffusers refuses a model that is not in the cache and that generation may not download (downloads off, or a
+  repository marked `explicit_download`) before loading anything; a cached model's own load error is raised as it is.
 - The `catalog` table has three more columns (`access`, `cache`, `memory_modes`).
 - `HuggingFaceAccessError` says that the repository is gated and names the licence when the catalog marks it gated,
   otherwise what the HTTP status tells (401, 403, 404), and keeps the first line of the upstream error.
