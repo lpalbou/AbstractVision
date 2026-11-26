@@ -130,6 +130,9 @@ CALLS = (
     ("upscale_image", {"negative_prompt": "blur"}, "'blur'", None),
     ("upscale_image", {"guidance_2": 3.0}, "3.0", None),
     ("upscale_image", {"fps": 8}, "8", None),
+    # The video restoration's options (0.3.38's upscale_video) stay extra keys on the image upscale.
+    ("upscale_image", {"start_seconds": 1.0}, "1.0", None),
+    ("upscale_image", {"max_frames": 9}, "9", None),
     ("t2v", {"soundscape": "rain"}, "'rain'", None),
     ("t2i", {"guidance_2": 3.0}, "TypeError", "0.3.36 raised TypeError"),
     ("i2i", {"guidance_2": 3.0}, "TypeError", "0.3.36 raised TypeError"),
@@ -137,6 +140,14 @@ CALLS = (
     ("t2i", {"generate_audio": False}, "False", "soundtrack option on an image call"),
     ("i2i", {"audio_shift": 3.0}, "3.0", "soundtrack option on an image call"),
     ("upscale_image", {"music": "piano"}, "'piano'", "soundtrack option on an image call"),
+    ("i2i", {"image_strength": 0.5}, "0.5", None),
+    ("t2i", {"image_strength": 0.5}, "0.5", "edit option on another call (0.3.38)"),
+    ("t2i", {"reference_images": ["ref.png"]}, "['ref.png']", "edit option on another call (0.3.38)"),
+    ("i2i", {"outpaint_padding": "10%"}, "'10%'", None),
+    ("i2i", {"reframe_padding": "10%"}, "'10%'", None),
+    ("t2i", {"outpaint_padding": "10%"}, "'10%'", "edit option on another call (0.3.38)"),
+    ("i2i", {"control_image": "control.png"}, "'control.png'", "control keyword on i2i (0.3.38)"),
+    ("i2i", {"control_strength": 0.5}, "0.5", "control keyword on i2i (0.3.38)"),
 )
 
 

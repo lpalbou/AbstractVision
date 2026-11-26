@@ -292,8 +292,9 @@ class TestCliSmoke(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("black-forest-labs/FLUX.2-klein-4B", out)
         self.assertIn("stable-diffusion-v1-5/stable-diffusion-v1-5", out)
-        self.assertNotIn("Tongyi-MAI/Z-Image-Turbo", out)
-        self.assertNotIn("Qwen/Qwen-Image-2512", out)
+        # Base Qwen-Image and Z-Image run image_to_image on MLX-Gen since 0.3.38.
+        self.assertIn("Tongyi-MAI/Z-Image-Turbo", out)
+        self.assertIn("Qwen/Qwen-Image-2512", out)
         self.assertNotIn("zai-org/GLM-Image", out)
 
     def test_model_catalog_task_filter_lists_sdcpp_gguf_qwen_edit(self):

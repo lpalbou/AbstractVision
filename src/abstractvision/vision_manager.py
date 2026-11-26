@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from .artifacts import MediaStore
@@ -19,6 +20,8 @@ from .types import (
     ProviderAdapterInfo,
     ProviderModelInfo,
     VideoGenerationRequest,
+    VideoToVideoRequest,
+    VideoUpscaleRequest,
     VisionBackendCapabilities,
 )
 
@@ -311,6 +314,38 @@ class VisionManager:
         asset = backend.image_to_video(request)
         return self._maybe_store(
             asset, tags={"kind": "generated_media", "modality": "video", "task": "image_to_video"}
+        )
+
+    def video_to_video(
+        self, prompt: str, video: Union[bytes, Path], **kwargs
+    ) -> Union[GeneratedAsset, Dict[str, Any]]:
+        """A video edited from a source clip: its bytes, or a local file the backend reads in place."""
+        backend = self._require_backend()
+        self._require_model_support("video_to_video")
+        self._require_backend_support(backend, "video_to_video")
+        self._move_progress_callbacks_to_extra(kwargs)
+        request = VideoToVideoRequest(prompt=prompt, video=video, **kwargs)
+        normalize = getattr(backend, "normalize_video_to_video_request", None)
+        if callable(normalize):
+            request = normalize(request)
+        asset = backend.video_to_video(request)
+        return self._maybe_store(
+            asset, tags={"kind": "generated_media", "modality": "video", "task": "video_to_video"}
+        )
+
+    def upscale_video(self, video: Union[bytes, Path], **kwargs) -> Union[GeneratedAsset, Dict[str, Any]]:
+        """A source clip restored: its bytes, or a local file the backend reads in place."""
+        backend = self._require_backend()
+        self._require_model_support("video_upscale")
+        self._require_backend_support(backend, "video_upscale")
+        self._move_progress_callbacks_to_extra(kwargs)
+        request = VideoUpscaleRequest(video=video, **kwargs)
+        normalize = getattr(backend, "normalize_video_upscale_request", None)
+        if callable(normalize):
+            request = normalize(request)
+        asset = backend.upscale_video(request)
+        return self._maybe_store(
+            asset, tags={"kind": "generated_media", "modality": "video", "task": "video_upscale"}
         )
 
     def image_to_video_batch(

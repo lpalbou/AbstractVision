@@ -137,6 +137,26 @@ mp4_bytes = llm.vision.t2v(
     on_progress=on_video_progress,
 )
 
+edited_mp4 = llm.vision.v2v(
+    "the same street at night",
+    "./source-clip.mp4",
+    provider="mlx-gen",
+    model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+    video_strength=0.6,
+    width=480,
+    height=240,
+    num_frames=17,
+)
+
+restored_mp4 = llm.vision.upscale_video(
+    "./source-clip.mp4",
+    provider="mlx-gen",
+    model="AbstractFramework/seedvr2-3b-8bit",
+    start_seconds=1.0,
+    max_frames=17,
+    seed=42,
+)
+
 first_frame_mp4 = llm.vision.i2v(
     "./first-frame.png",
     prompt="slow camera push-in",
@@ -159,10 +179,10 @@ artifact ref dict when an `artifact_store` is supplied. Without an artifact
 store the plugin returns bytes; with `artifact_store=...` it returns the stored
 artifact ref, matching the runtime/gateway artifact path.
 Typed per-call keyword arguments such as `control_image`, `control_strength`,
-`lora_adapters`, `guidance_2`, and `on_progress` survive the plugin boundary.
-Unknown per-call keyword arguments
-such as `reference_images` and `max_sequence_length` are preserved in the
-AbstractVision request `extra` dict for local backends.
+`lora_adapters`, `guidance_2`, `reference_images` (each item bytes, a file path
+or an artifact ref, resolved to bytes) and `on_progress` survive the plugin
+boundary. Unknown per-call keyword arguments such as `max_sequence_length` are
+preserved in the AbstractVision request `extra` dict for local backends.
 `llm.vision.t2i(...)`, `llm.vision.i2i(...)`, `llm.vision.t2v(...)`, and
 `llm.vision.i2v(...)` forward `on_progress` to MLX-Gen. Image/edit events
 include diffusion-step progress; Wan video events use diffusion-step
@@ -173,10 +193,10 @@ parameter for the second-stage/low-noise guidance path. Pass it directly to
 `t2v(...)` / `i2v(...)`; do not wrap it in `extra`.
 
 `control_image=<bytes>` and `control_strength=<float>` reach the request as
-typed fields, but in this release every built-in backend, MLX-Gen included,
-refuses a `control_image` with `CapabilityNotSupportedError`
-(`field="control_image"`) instead of ignoring it; MLX-Gen also refuses a
-`control_strength` given alone, which the other built-in backends do not use.
+typed fields: MLX-Gen applies them on `AbstractFramework/qwen-image-8bit`
+(its Qwen ControlNet route) and refuses a `control_image` on any other model
+(`field="control_image"`) and a `control_strength` given alone; the other
+built-in backends refuse a `control_image`. `i2i` refuses both keywords.
 
 The same applies to LoRA adapters. Prefer the shared typed contract:
 
@@ -242,13 +262,22 @@ The current AbstractCore server's residency records are its own and independent
 of what this plugin lists as loaded.
 
 The facade forwards every typed field of the request a method builds, under the
-same name: `control_image` / `control_strength` on `t2i` (which every built-in
-backend refuses in this release), `soundscape`, `music`,
+same name: `control_image` / `control_strength` on `t2i` (applied by MLX-Gen on
+`AbstractFramework/qwen-image-8bit`), `image_strength`, `reference_images`,
+`outpaint_padding`, `outpaint_fill`, `outpaint_fill_color` and `reframe_padding`
+on `i2i` (MLX-Gen's latent, multi-reference, outpaint and reframe edits; the
+other backends refuse them by name), `soundscape`, `music`,
 `generate_audio`, `audio_shift` on `t2v` / `i2v`, and `quantize`, `memory_mode`
 and `cancel_event` on all of them. Two kinds of keyword are refused with
-`CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i`, and the soundtrack
-options (`soundscape`, `music`, `generate_audio`, `audio_shift`) on a call whose
-request has none. Every other unknown keyword remains a backend-specific `extra`
+`CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i`, `control_image` and
+`control_strength` on `i2i`, and the soundtrack
+and edit options (`soundscape`, `music`, `generate_audio`, `audio_shift`;
+`image_strength`, `reference_images`, the outpaint and reframe fields) on a call
+whose request has none, unless the value is unset (None, an empty list, a blank
+string). Image inputs (`image`, `mask`, `control_image`, `reference_images`
+items) take bytes-like values, file paths (any path-like) and artifact refs;
+`v2v`'s and `upscale_video`'s `video` keeps a file path as a path. `strength=` is not the typed
+field: it stays `extra["strength"]`, as in 0.3.37. Every other unknown keyword remains a backend-specific `extra`
 parameter:
 `t2v(..., vae_tiling=False)` reaches Wan as `extra["vae_tiling"]`, and
 `t2i(..., fps=24)` lands in `extra` too.
@@ -265,7 +294,15 @@ and logs a warning when the soundtrack is not in them.
 request's `memory_mode` and `quantize` when it carries them (checked as a
 generation request's are, before anything loads), so that requests with those
 values reuse the model; on MLX-Gen a video model (Wan, MiniMax-H3) is loaded
-without a warm-up run. When the preload
+without a warm-up run. The payload's `task` also goes to a backend whose `preload`
+takes a `task` (MLX-Gen) as the task the host is about to run: on a model that has
+it, MLX-Gen loads the class a request of that task uses (`image_to_image` on
+FLUX.2 klein warms `Flux2KleinEdit` instead of `Flux2Klein`); other backends, and
+a payload without `task`, load as before. `task` takes `"video_upscale"` (also
+`"video-upscale"`, `"upscale_video"`) for a SeedVR2 video restoration. The
+payload's `warm_up` (default true) goes the same way to a `preload` that takes it:
+`false` builds the model without its warm-up; the record's `warmed` says whether
+the preload warmed it (`null` from a backend that does not say). When the preload
 fails, the backend drops what it loaded and the plugin does not list it; a
 preload refused for its values, or one that fails after reusing the model
 already held, leaves that model held (and listed).
@@ -379,7 +416,7 @@ videos = llm.vision.t2v_batch(
     flow_shift=3.0,
     lora_adapters=[
         LoRAAdapterSpec(
-            source="owner/wan-style:video.safetensors",
+            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
             scale=0.9,
             target_role="transformer",
         )

@@ -2178,7 +2178,7 @@ def _repl_help() -> str:
         "\n"
         "Generation:\n"
         "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ... --control-image path --control-strength F] [--open]\n"
-        "      (--control-image is accepted and refused by every built-in backend in this release)\n"
+        "      (--control-image runs on MLX-Gen's AbstractFramework/qwen-image-8bit only; other models refuse it)\n"
         "  /i2i --image path <prompt...> [--reference-image path ... --mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
         "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
         "  /i2v --image path [prompt...] [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
@@ -3824,15 +3824,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--control-image",
         default=None,
         help=(
-            "Structured control image path (edges, sketch, pose). Accepted by the request; every built-in "
-            "backend refuses it in this release (CapabilityNotSupportedError, field control_image)."
+            "Structured control image path (edges, sketch, pose). MLX-Gen applies it on "
+            "AbstractFramework/qwen-image-8bit; other models and backends refuse it (field control_image)."
         ),
     )
     t2i.add_argument(
         "--control-strength",
         type=float,
         default=None,
-        help="Structured control strength for `--control-image` (refused with it by every built-in backend in this release).",
+        help="Structured control strength for `--control-image` (MLX-Gen default 0.4; refused without it).",
     )
     t2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     t2i.add_argument(

@@ -308,6 +308,37 @@
       ],
       "recommended_local_quantization_bits": [8],
       "notes": "Repo contains multiple Wan Lightning adapters. Select one explicit handle for exact model matching."
+    },
+    {
+      "id": "dx8152-flux2-klein-9b-consistency-v2",
+      "repo_id": "dx8152/Flux2-Klein-9B-Consistency",
+      "kind": "consistency",
+      "family": "dx8152-flux2-klein-consistency",
+      "artifact_role": "adapter",
+      "relative_path_match": {
+        "equals": "Flux2-Klein-9B-consistency-V2.safetensors"
+      },
+      "compatible_base_model": "flux2-klein-9b",
+      "base_models": [
+        "black-forest-labs/FLUX.2-klein-9B"
+      ],
+      "compatible_tasks": [
+        "image_to_image"
+      ],
+      "model_aliases": [
+        "flux2-klein-9b",
+        "black-forest-labs/flux.2-klein-9b",
+        "abstractframework/flux.2-klein-9b-8bit"
+      ],
+      "compatibility_notes": [
+        "An image-to-image LoRA that improves the consistency of FLUX.2 klein 9B edits; no trigger word; license apache-2.0 (model card).",
+        "V2 is the file the author recommends: per the model card's 2026-04-17 update it resolves V1's colour cast and excess detail and reduces oversaturation.",
+        "MLX-Gen validated it on AbstractFramework/flux.2-klein-9b-8bit's edit route (flux2.edit, validation profile lora_flux2_klein9b_q8_consistency_edit_2026_06_11).",
+        "The image-to-image routes whose MLX-Gen rows take a LoRA are flux2.edit, flux2.multi-reference, flux2.inpaint and flux2.outpaint (the last two mapped-unvalidated); flux2.latent and flux2.reframe take none."
+      ],
+      "documentation_urls": [
+        "https://huggingface.co/dx8152/Flux2-Klein-9B-Consistency"
+      ]
     }
   ]
 }
