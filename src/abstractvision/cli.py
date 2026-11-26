@@ -22,27 +22,34 @@ from .backends import (
     StableDiffusionCppBackendConfig,
     StableDiffusionCppVisionBackend,
 )
+from .errors import OptionalDependencyMissingError
 from .lora_adapters import resolve_request_lora_adapters
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_downloads import (
+    ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
+    catalog_download_preset,
     catalog_target_scope,
     default_model_target,
-    download_hf_repo_snapshot,
+    download_command,
     download_model_preset,
     find_model_preset,
+    format_bytes,
     format_model_preset_rows,
     HuggingFaceAccessError,
     local_model_profile,
-    looks_like_hf_repo_id,
     MacOSGGUFUnsupportedError,
     model_presets,
     normalize_model_engine,
+    plan_model_preset_download,
     resolve_hf_token,
     resolve_model_target_and_engine,
     resolve_sdcpp_model_selection,
+    select_download_preset,
 )
 from .model_cache import default_hf_cache_root, default_legacy_model_root, ensure_hf_repo_snapshot
+from .model_inventory import directory_files_and_bytes, preset_status
 from .types import (
+    MEMORY_MODES,
     ImageEditRequest,
     ImageGenerationRequest,
     ImageUpscaleRequest,
@@ -368,6 +375,19 @@ def default_local_model_id(provider_kind: str) -> str:
     return LOCAL_DEFAULT_MLX_GEN_MODEL_ID if provider_kind == "mlx-gen" else LOCAL_DEFAULT_MODEL_ID
 
 
+def _local_default_download_command(provider_kind: str) -> str:
+    """The `download` command that fetches the package `provider_kind` loads for this machine's local
+    default (`download_command` of the package that engine selects; the model id alone selects by the
+    host's target order, which on a processor-only host is the GGUF package, not the Diffusers pipeline)."""
+
+    model = default_local_model_id(provider_kind)
+    try:
+        preset = select_download_preset(model, engine=provider_kind)
+        return download_command(preset.repo_id, engine=preset.engine)
+    except ValueError:
+        return f"no `abstractvision download` command selects it on this host; see `abstractvision show-model {model}`"
+
+
 def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
     store = LocalAssetStore(args.store_dir) if args.store_dir else LocalAssetStore()
     explicit_provider = (
@@ -405,8 +425,7 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
         model_value = default_local_model_id(provider_kind)
         print(
             f"No --provider or --model: using {provider_kind} with {model_value}, this machine's local default "
-            f"(8-bit FLUX.2 [klein] 4B). Download it once with: abstractvision download {model_value}"
-            + (" --provider mlx-gen" if provider_kind == "mlx-gen" else ""),
+            f"(FLUX.2 [klein] 4B). Download it once with: {_local_default_download_command(provider_kind)}",
             file=sys.stderr,
         )
 
@@ -522,8 +541,44 @@ def _build_manager_from_args(args: argparse.Namespace) -> VisionManager:
     )
 
 
-def _cmd_models(_: argparse.Namespace) -> int:
+def _download_entry(dl: Any, spec: Any) -> Dict[str, Any]:
+    """One catalog download of `spec` with its state on this host."""
+
+    entry: Dict[str, Any] = {
+        "key": dl.key,
+        "repo_id": dl.repo_id,
+        "engine": dl.engine,
+        "target": dl.target,
+        "bits": dl.bits,
+        "source": dl.source,
+        "recommended": bool(dl.recommended),
+        "gated": bool(dl.gated),
+        "license_name": spec.license_name or None,
+        "notes": dl.notes,
+    }
+    preset = catalog_download_preset(dl.repo_id, target=dl.target, engine=dl.engine)
+    if preset is not None:
+        entry.update(preset_status(preset))
+    return entry
+
+
+def _model_entry(spec: Any) -> Dict[str, Any]:
+    return {
+        "model_id": spec.model_id,
+        "provider": spec.provider,
+        "license": spec.license,
+        "license_name": spec.license_name or None,
+        "tasks": sorted(spec.tasks.keys()),
+        "notes": spec.notes,
+        "downloads": [_download_entry(dl, spec) for dl in spec.downloads],
+    }
+
+
+def _cmd_models(args: argparse.Namespace) -> int:
     reg = VisionModelCapabilitiesRegistry()
+    if bool(getattr(args, "json", False)):
+        _print_json([_model_entry(reg.get(mid)) for mid in reg.list_models()])
+        return 0
     for mid in reg.list_models():
         print(mid)
     return 0
@@ -546,6 +601,24 @@ def _cmd_tasks(_: argparse.Namespace) -> int:
 def _cmd_show_model(args: argparse.Namespace) -> int:
     reg = VisionModelCapabilitiesRegistry()
     spec = reg.get(str(args.model_id))
+    entry = _model_entry(spec)
+    downloads = entry["downloads"]
+    mlx_gen_repos = [dl.repo_id for dl in spec.downloads if str(dl.engine) == "mlx-gen"]
+    schedules = _schedule_adapters(spec.model_id, *mlx_gen_repos) if mlx_gen_repos else []
+    if bool(getattr(args, "json", False)):
+        if schedules:
+            entry["schedules"] = schedules
+        entry["task_specs"] = {
+            task_name: {
+                "inputs": list(ts.inputs),
+                "outputs": list(ts.outputs),
+                "params": dict(ts.params),
+                "requires": dict(ts.requires) if isinstance(ts.requires, dict) else None,
+            }
+            for task_name, ts in sorted(spec.tasks.items())
+        }
+        _print_json(entry)
+        return 0
     runtime_route_specs = _mlx_gen_runtime_task_specs(
         [
             str(args.model_id),
@@ -564,14 +637,32 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
         print(f"notes: {spec.notes}")
     if spec.downloads:
         print("downloads:")
-        for dl in spec.downloads:
-            bits = str(dl.bits) if dl.bits is not None else "n/a"
-            line = f"  - {dl.key}  engine={dl.engine}  target={dl.target}  bits={bits}  repo={dl.repo_id}"
-            if dl.source:
-                line += f"  source={dl.source}"
+        for entry in downloads:
+            bits = str(entry["bits"]) if entry["bits"] is not None else "n/a"
+            line = (
+                f"  - {entry['key']}  engine={entry['engine']}  target={entry['target']}  bits={bits}  "
+                f"repo={entry['repo_id']}"
+            )
+            if entry["source"]:
+                line += f"  source={entry['source']}"
+            if entry["recommended"]:
+                line += "  (recommended)"
             print(line)
-            if dl.notes:
-                print(f"      notes: {dl.notes}")
+            for detail in _download_detail_lines(entry):
+                print(f"      {detail}")
+            if entry["notes"]:
+                print(f"      notes: {entry['notes']}")
+    if schedules:
+        print("schedules (base_model):")
+        for item in schedules:
+            if item["adapter"] is None:
+                print(f"  - {item['base_model']}: loads no adapter")
+                continue
+            state = f"cached at {item['adapter_path']}" if item["adapter_path"] else "absent"
+            print(
+                f"  - {item['base_model']}: loads {item['adapter']} ({state}); "
+                f"`abstractvision download <package> --base-model {item['base_model']}` fetches it"
+            )
     print("tasks:")
     for task_name, ts in sorted(spec.tasks.items()):
         print(f"  - {task_name}")
@@ -624,6 +715,85 @@ def _cmd_show_model(args: argparse.Namespace) -> int:
                         f"        lora_validation_profile: {task_spec.get('lora_validation_profile')}"
                     )
     return 0
+
+
+def _download_detail_lines(entry: Dict[str, Any]) -> List[str]:
+    lines: List[str] = []
+    if entry["gated"]:
+        terms = f"the {entry['license_name']}" if entry.get("license_name") else "its terms"
+        facts = [f"access: gated (accept {terms} at https://huggingface.co/{entry['repo_id']} while logged in)"]
+    else:
+        facts = ["access: open"]
+    if "cache" in entry:
+        facts.append(f"cache: {_cache_label(entry)}")
+    lines.append("  ".join(facts))
+    if "memory_modes" in entry:
+        lines.append(f"memory modes on this host: {_memory_modes_label(entry)}")
+    lines.extend(_memory_peak_lines(entry))
+    return lines
+
+
+def _cache_label(status: Dict[str, Any], *, short: bool = False) -> str:
+    """What a local look at the cache found (`preset_status`); only `download` compares it with the Hub."""
+
+    state = status.get("cache")
+    if state == "cached":
+        return f"cached ({format_bytes(status.get('cache_bytes'))})"
+    if state == "incomplete":
+        if short:
+            return "incomplete"
+        held = f"{format_bytes(status['cache_bytes'])} in cache: " if status.get("cache_bytes") is not None else ""
+        return f"incomplete ({held}{'; '.join(status.get('cache_gaps') or [])})"
+    return "absent"
+
+
+def _memory_modes_label(status: Dict[str, Any]) -> str:
+    modes = status.get("memory_modes")
+    return ",".join(modes) if modes else "not available on this host"
+
+
+def _memory_peak_lines(status: Dict[str, Any]) -> List[str]:
+    """`memory_peaks` (and the smallest memory tested) as listing lines; a run mlx-gen publishes on
+    several tasks' rows is one line naming them."""
+
+    tasks_of: Dict[Tuple[Any, ...], List[str]] = {}
+    for peak in status.get("memory_peaks") or []:
+        run = tuple(peak.get(key) for key in ("memory_mode", "width", "height", "frames", "steps", "peak_bytes"))
+        tasks_of.setdefault(run, []).append(str(peak.get("task")))
+    lines = [
+        f"memory ({mode}, measured by mlx-gen): peak {format_bytes(peak_bytes)} at {width}x{height}, "
+        f"{frames} frames, {steps} steps ({', '.join(tasks)})"
+        for (mode, width, height, frames, steps, peak_bytes), tasks in tasks_of.items()
+    ]
+    smallest = status.get("smallest_tested_memory_gb") or {}
+    if smallest:
+        lines.append(
+            "smallest memory mlx-gen tested: " + ", ".join(f"{mode} {gb} GB" for mode, gb in smallest.items())
+        )
+    return lines
+
+
+def _schedule_adapters(*selectors: Any) -> List[Dict[str, Any]]:
+    """Each schedule of the family `selectors` name, with the adapter it loads and its cached path.
+
+    Empty without mlx-gen, or when no schedule of the family loads an adapter."""
+
+    try:
+        from .backends.mflux import mlx_gen_schedules, resolve_mlx_gen_schedule_adapter
+
+        out: List[Dict[str, Any]] = []
+        for schedule in mlx_gen_schedules(*selectors):
+            resolved = resolve_mlx_gen_schedule_adapter(schedule)
+            out.append(
+                {
+                    "base_model": schedule,
+                    "adapter": resolved[0] if resolved else None,
+                    "adapter_path": resolved[1] if resolved else None,
+                }
+            )
+    except Exception:
+        return []
+    return out if any(item["adapter"] for item in out) else []
 
 
 def _cmd_provider_models(args: argparse.Namespace) -> int:
@@ -911,13 +1081,21 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         presets = sorted(filtered, key=lambda p: (p.key, p.source_priority, p.repo_id))
 
     rows: List[Sequence[Any]] = []
+    statuses: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def _cached_status(preset: Any) -> Dict[str, Any]:
+        key = (preset.repo_id, preset.target)
+        if key not in statuses:
+            statuses[key] = preset_status(preset)
+        return statuses[key]
+
     runtime_route_specs = _mlx_gen_runtime_task_specs(
         [
             (
                 str(p.repo_id)
                 if p.target == "mlx"
                 and p.engine == "mlx-gen"
-                and p.source == "abstractframework-mlx-gen"
+                and p.source == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
                 else str(p.upstream_repo_id or p.repo_id)
             )
             for p in presets
@@ -930,7 +1108,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
             str(preset.repo_id)
             if preset.target == "mlx"
             and preset.engine == "mlx-gen"
-            and preset.source == "abstractframework-mlx-gen"
+            and preset.source == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
             else registry_model_id
         )
         try:
@@ -969,12 +1147,17 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
             )
         else:
             lora_display = ""
+        status = _cached_status(preset)
         rows.append(
             (
                 model_id,
                 preset.target,
                 preset.engine,
-                str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a",
+                (str(preset.quantization_bits) if preset.quantization_bits is not None else "n/a")
+                + ("*" if preset.recommended else ""),
+                "gated" if preset.gated else "open",
+                _cache_label(status, short=True),
+                _memory_modes_label(status),
                 lora_display,
                 ",".join(lora_roles),
                 preset.repo_id,
@@ -990,7 +1173,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                 str(p.repo_id)
                 if p.target == "mlx"
                 and p.engine == "mlx-gen"
-                and p.source == "abstractframework-mlx-gen"
+                and p.source == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
                 else str(p.upstream_repo_id or p.repo_id)
             )
             for p in presets
@@ -1003,7 +1186,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                     str(p.repo_id)
                     if p.target == "mlx"
                     and p.engine == "mlx-gen"
-                    and p.source == "abstractframework-mlx-gen"
+                    and p.source == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
                     else str(p.upstream_repo_id or p.repo_id)
                 )
                 == model_id
@@ -1022,6 +1205,7 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
                         model_id=model_id,
                         registry_tasks=sorted(spec.tasks.keys()) if spec else [],
                     ),
+                    **_cached_status(p),
                 }
                 for p in matching_presets
             ]
@@ -1090,20 +1274,145 @@ def _cmd_model_catalog(args: argparse.Namespace) -> int:
         "tip: MLX-Gen rows include route-level LoRA status and target roles when the local runtime exposes them"
     )
     print("tip: `abstractvision model-presets --all-targets --all` shows the raw preset table")
+    print(
+        "tip: bits* is the recommended package; gated repos need their licence accepted on the Hugging Face "
+        "page; memory modes are those this host can run (`show-model` adds MLX-Gen's measured peaks); "
+        "`download <model> --dry-run` gives the download size"
+    )
+    print(
+        "tip: cache is a local look: `cached` is a snapshot with no gap visible offline (partial file, "
+        "missing link or indexed shard, model_index.json component the package's patterns name, no "
+        "weight file), `incomplete` one with such a gap, `absent` nothing in the cache; only `download` "
+        "(or `--dry-run`) compares it with the Hub listing"
+    )
     print()
     for line in _format_table(
-        ("model_id", "target", "engine", "bits", "lora", "roles", "repo", "source", "tasks"),
+        (
+            "model_id",
+            "target",
+            "engine",
+            "bits",
+            "access",
+            "cache",
+            "memory_modes",
+            "lora",
+            "roles",
+            "repo",
+            "source",
+            "tasks",
+        ),
         rows,
     ):
         print(line)
     return 0
 
 
+def _download_dry_run(
+    preset: Any,
+    args: argparse.Namespace,
+    *,
+    token: Optional[str],
+    schedule: Optional[str],
+    json_mode: bool,
+    model_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """`download --dry-run`: the plan the download would follow, and whether it fits; nothing is written."""
+
+    plan = _download_plan(preset, args, token=token, schedule=schedule, model_dir=model_dir)
+    fits = plan.disk_space_error()
+    item = preset.to_dict()
+    item.update(dry_run=True, plan=plan.to_dict())
+    if plan.base_model is not None:
+        item.update(base_model=plan.base_model, adapter=plan.adapter, adapter_path=plan.adapter_path)
+    if not json_mode:
+        if plan.legacy_import is not None:
+            files, size = directory_files_and_bytes(plan.legacy_import)
+            print(
+                f"cache: the legacy directory {plan.legacy_import} ({files} files, {format_bytes(size)}) would be "
+                "imported into the Hugging Face cache; it would not be compared with the Hub, and nothing would be "
+                "fetched for the package"
+            )
+        if plan.legacy_remove is not None:
+            print(f"legacy: {plan.legacy_remove} would be removed; the cache already holds a snapshot of {preset.repo_id}")
+        for line in plan.summary_lines():
+            print(line)
+        if fits:
+            print(fits)
+        if schedule is None:
+            for hint in _schedule_adapter_hints(preset):
+                print(hint)
+        imported = " or imported" if plan.legacy_import is not None else ""
+        if not plan.listed:
+            print(f"dry run: nothing was downloaded{imported}; without the Hub listing nothing was sized")
+        elif fits:
+            print(
+                f"dry run: nothing was downloaded{imported}; the download would not fit "
+                f"({format_bytes(plan.required_bytes)} needed, {format_bytes(plan.free_bytes)} free)"
+            )
+        else:
+            print(f"dry run: nothing was downloaded{imported}")
+    return item
+
+
+def _download_plan(
+    preset: Any, args: argparse.Namespace, *, token: Optional[str], schedule: Optional[str], model_dir: Optional[Path]
+) -> Any:
+    """The download's whole plan, or SystemExit saying why none can be made (nothing is fetched then)."""
+
+    try:
+        return plan_model_preset_download(
+            preset, base_model=schedule, model_dir=model_dir, token=token, **_all_files_kwargs(args)
+        )
+    except (HuggingFaceAccessError, ValueError, OptionalDependencyMissingError) as e:
+        raise SystemExit(f"{e}\nNothing was downloaded.") from None
+
+
+def _download_preset(
+    preset: Any,
+    args: argparse.Namespace,
+    *,
+    token: Optional[str],
+    schedule: Optional[str],
+    model_dir: Optional[Path],
+    report: Any,
+) -> Path:
+    """`download`: the whole plan (package, companions, adapter) first, then the fetch; a wrong
+    --base-model or an adapter that cannot be named stops the command before anything is written."""
+
+    try:
+        return download_model_preset(
+            preset,
+            base_model=schedule,
+            model_dir=model_dir,
+            token=token,
+            max_workers=int(getattr(args, "max_workers", 4) or 4),
+            report=report,
+            **_all_files_kwargs(args),
+        )
+    except (ValueError, OptionalDependencyMissingError) as e:
+        raise SystemExit(f"{e}\nNothing was downloaded.") from None
+
+
+def _schedule_adapter_hints(preset: Any) -> List[str]:
+    """For a model with schedules that load an adapter, how to fetch it (and whether it is cached)."""
+
+    if str(preset.engine) != "mlx-gen":
+        return []
+    lines = []
+    for item in _schedule_adapters(preset.repo_id, preset.upstream_repo_id, preset.key):
+        if item["adapter"] is None:
+            continue
+        if item["adapter_path"]:
+            lines.append(f"adapter ({item['base_model']}): cached at {item['adapter_path']}")
+        else:
+            command = download_command(preset.repo_id, engine=preset.engine, base_model=item["base_model"])
+            lines.append(f"adapter ({item['base_model']}): absent; fetch it with `{command}`")
+    return lines
+
+
 def _cmd_download_model(args: argparse.Namespace) -> int:
     target = str(getattr(args, "target", "auto") or "auto")
     engine = str(getattr(args, "engine", "auto") or "auto")
-    raw_target = str(target or "auto").strip().lower()
-    raw_engine = str(engine or "auto").strip().lower().replace("_", "-")
     raw_names = getattr(args, "names", None)
     if raw_names is None:
         raw_names = [getattr(args, "name", "")]
@@ -1142,9 +1451,8 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
         )
 
     try:
-        selected_target, _selected_engine = resolve_model_target_and_engine(
-            target=target, engine=engine
-        )
+        # Validates --target/--provider; the download then reports the selected preset's own ones.
+        resolve_model_target_and_engine(target=target, engine=engine)
     except ValueError as e:
         raise SystemExit(str(e)) from e
     model_dir = Path(str(args.model_dir)).expanduser() if getattr(args, "model_dir", None) else None
@@ -1152,10 +1460,12 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
     json_mode = bool(getattr(args, "json", False))
     cli_token = resolve_hf_token(str(getattr(args, "token", None) or "") or None)
     allow_non_8bit = bool(getattr(args, "allow_non_8bit", False))
-    require_8bit = not allow_non_8bit
-    if raw_target in {"diffusers", "hf-snapshot"} or raw_engine in {"diffusers", "transformers"}:
-        # Diffusers targets are full pipeline snapshots; do not force an 8-bit-only policy.
-        require_8bit = False
+    bits = getattr(args, "bits", None)
+    schedule = str(getattr(args, "base_model", None) or "").strip() or None
+
+    def _report(line: str) -> None:
+        if not json_mode:
+            print(line)
 
     for idx, name in enumerate(names):
         if not json_mode and len(names) > 1:
@@ -1163,152 +1473,81 @@ def _cmd_download_model(args: argparse.Namespace) -> int:
                 print()
             print(f"name: {name}")
         try:
-            preset = find_model_preset(
-                name,
-                target=target,
-                engine=engine,
-                require_8bit=require_8bit,
+            preset = select_download_preset(
+                name, target=target, engine=engine, bits=bits, allow_non_8bit=allow_non_8bit
             )
         except ValueError as e:
-            mlx_gen_non_quantized_ok = raw_engine in {
-                "mflux",
-                "m-flux",
-                "mlx-gen",
-                "mlxgen",
-                "mlx_gen",
-            } or raw_target in {"mlx", "apple", "mac", "macos", "osx", "metal"}
-            if require_8bit and mlx_gen_non_quantized_ok:
-                try:
-                    preset = find_model_preset(
-                        name,
-                        target=target,
-                        engine=engine,
-                        require_8bit=False,
-                    )
-                except ValueError:
-                    preset = None
-                if preset is not None:
-                    # Exact non-quantized MLX-Gen/runtime snapshots such as Wan
-                    # and FIBO are valid curated models even though no q4/q8
-                    # artifact exists for them.
-                    pass
-                else:
-                    preset = None
-            else:
-                preset = None
-            if preset is not None:
-                pass
-            elif looks_like_hf_repo_id(name):
-                if not json_mode:
-                    print(f"selected_repo_id: {name}")
-                    print("download: huggingface_hub snapshot (HF cache)")
-                    print(
-                        "#FALLBACK: repo id is not a curated preset; downloading full snapshot to the HF cache."
-                    )
-                try:
-                    path = download_hf_repo_snapshot(
-                        name,
-                        token=cli_token,
-                        cache_dir=str(default_hf_cache_root()),
-                        max_workers=int(getattr(args, "max_workers", 4) or 4),
-                    )
-                except HuggingFaceAccessError as e2:
-                    retry_token = _interactive_hf_token_retry(
-                        e2, current_token=cli_token, json_mode=json_mode
-                    )
-                    if retry_token is None:
-                        raise SystemExit(str(e2)) from e2
-                    try:
-                        path = download_hf_repo_snapshot(
-                            name,
-                            token=retry_token,
-                            cache_dir=str(default_hf_cache_root()),
-                            max_workers=int(getattr(args, "max_workers", 4) or 4),
-                        )
-                        cli_token = retry_token
-                    except (HuggingFaceAccessError, RuntimeError) as e3:
-                        raise SystemExit(str(e3)) from e3
-                except RuntimeError as e2:
-                    raise SystemExit(str(e2)) from e2
-
-                item = {
-                    "repo_id": name,
-                    "snapshot_dir": str(path),
-                    "source": "huggingface_hub_cache",
-                }
-                results.append(item)
-                if not json_mode:
-                    print(f"snapshot_dir: {path}")
-                continue
-            else:
-                raise SystemExit(str(e)) from e
+            raise SystemExit(str(e)) from e
 
         if not json_mode:
             print(f"selected: {preset.repo_id}")
-            print(f"target: {selected_target}")
-            print(
-                f"artifact: {preset.target}; bits: {preset.quantization_bits or 'n/a'}; provider/engine: {preset.engine}"
-            )
-            if preset.upstream_repo_id and preset.source != "official":
+            if not preset.in_catalog:
+                print("catalog: not in the AbstractVision catalog; every file of the repository is downloaded")
+            else:
                 print(
-                    f"#FALLBACK: upstream source is {preset.upstream_repo_id}; using {preset.source} artifact for {selected_target}."
+                    f"target: {preset.target}; engine: {preset.engine}; bits: {preset.quantization_bits or 'n/a'}"
                 )
+            if preset.upstream_repo_id and preset.source != "official":
+                print(f"#FALLBACK: upstream source is {preset.upstream_repo_id}; this is its {preset.source} artifact.")
             if preset.notes:
-                note = str(preset.notes)
-                if (
-                    preset.target == "diffusers"
-                    and preset.engine == "diffusers"
-                    and "full Diffusers snapshot (not 8-bit)" in note
-                ):
-                    note = "Official curated Diffusers snapshot (16-bit)."
-                print(note)
+                print(preset.notes)
+
+        if bool(getattr(args, "dry_run", False)):
+            results.append(
+                _download_dry_run(preset, args, token=cli_token, schedule=schedule, json_mode=json_mode, model_dir=model_dir)
+            )
+            continue
 
         if preset.engine == "stable-diffusion.cpp":
             # Ensure the runtime exists (auto-installs `sd-cli` on Apple Silicon by default).
             try:
-                from abstractvision.backends.stable_diffusion_cpp import _require_sd_cli  # type: ignore
+                from abstractvision.backends.stable_diffusion_cpp import require_sd_cli  # type: ignore
 
-                _require_sd_cli(os.environ.get("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli")
+                require_sd_cli(os.environ.get("ABSTRACTVISION_SDCPP_BIN", "sd-cli") or "sd-cli")
             except Exception as e:
                 raise SystemExit(str(e)) from e
 
+        fetch = {"schedule": schedule, "model_dir": model_dir, "report": _report}
         try:
-            path = download_model_preset(
-                preset,
-                model_dir=model_dir,
-                token=cli_token,
-                max_workers=int(getattr(args, "max_workers", 4) or 4),
-                **_all_files_kwargs(args),
-            )
-        except HuggingFaceAccessError as e:
-            retry_token = _interactive_hf_token_retry(
-                e, current_token=cli_token, json_mode=json_mode
-            )
-            if retry_token is None:
-                raise SystemExit(str(e)) from e
             try:
-                path = download_model_preset(
-                    preset,
-                    model_dir=model_dir,
-                    token=retry_token,
-                    max_workers=int(getattr(args, "max_workers", 4) or 4),
-                    **_all_files_kwargs(args),
+                path = _download_preset(preset, args, token=cli_token, **fetch)
+            except HuggingFaceAccessError as e:
+                retry_token = _interactive_hf_token_retry(
+                    e, current_token=cli_token, json_mode=json_mode
                 )
-                cli_token = retry_token
-            except (HuggingFaceAccessError, RuntimeError) as e2:
-                raise SystemExit(str(e2)) from e2
-        except RuntimeError as e:
-            raise SystemExit(str(e)) from e
+                if retry_token is None:
+                    raise SystemExit(str(e)) from e
+                try:
+                    path = _download_preset(preset, args, token=retry_token, **fetch)
+                    cli_token = retry_token
+                except (HuggingFaceAccessError, RuntimeError) as e2:
+                    raise SystemExit(str(e2)) from e2
+            except RuntimeError as e:
+                raise SystemExit(str(e)) from e
+        except KeyboardInterrupt:
+            print(
+                f"Download of {preset.repo_id} interrupted. The files that completed stay in the Hugging Face "
+                f"cache ({default_hf_cache_root()}); the same command continues with the rest.",
+                file=sys.stderr,
+            )
+            raise SystemExit(130) from None
 
         item = preset.to_dict()
         item["snapshot_dir"] = str(path)
+        if schedule is not None:
+            from .backends.mflux import mlx_gen_package_schedule, resolve_mlx_gen_schedule_adapter
+
+            item["base_model"] = mlx_gen_package_schedule(preset, schedule)
+            resolved_adapter = resolve_mlx_gen_schedule_adapter(item["base_model"])
+            item["adapter"], item["adapter_path"] = resolved_adapter or (None, None)
+        elif not json_mode:
+            for hint in _schedule_adapter_hints(preset):
+                print(hint)
         if preset.engine == "stable-diffusion.cpp":
-            resolved = resolve_sdcpp_model_selection(
-                preset.key,
-                allow_download=True,
-                token=cli_token,
-                max_workers=int(getattr(args, "max_workers", 4) or 4),
-            )
+            try:
+                resolved = resolve_sdcpp_model_selection(preset.repo_id, allow_download=False)
+            except (RuntimeError, ValueError) as e:
+                raise SystemExit(str(e)) from e
             item.update(
                 {
                     "resolved_model": resolved.model,
@@ -1378,6 +1617,8 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
                 control_image=request.control_image,
                 control_strength=request.control_strength,
                 lora_adapters=request.lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
                 extra=dict(request.extra or {}),
             )
         else:
@@ -1394,6 +1635,8 @@ def _cmd_t2i(args: argparse.Namespace) -> int:
                 control_image=request.control_image,
                 control_strength=request.control_strength,
                 lora_adapters=request.lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
                 extra=dict(request.extra or {}),
             )
     finally:
@@ -1525,6 +1768,8 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
                 guidance_scale=args.guidance_scale,
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
                 extra=extra,
             )
         else:
@@ -1539,6 +1784,8 @@ def _cmd_i2i(args: argparse.Namespace) -> int:
                 guidance_scale=args.guidance_scale,
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
                 extra=extra,
             )
     finally:
@@ -1607,6 +1854,7 @@ def _cmd_upscale(args: argparse.Namespace) -> int:
             softness=request.softness,
             quantize=request.quantize,
             vae_tiling=request.vae_tiling,
+            memory_mode=getattr(args, "memory_mode", None),
             extra=dict(request.extra or {}),
         )
     finally:
@@ -1648,6 +1896,12 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
                 flow_shift=getattr(args, "flow_shift", None),
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
+                soundscape=getattr(args, "soundscape", None),
+                music=getattr(args, "music", None),
+                generate_audio=getattr(args, "generate_audio", None),
+                audio_shift=getattr(args, "audio_shift", None),
                 extra=extra or None,
             )
         else:
@@ -1666,6 +1920,12 @@ def _cmd_t2v(args: argparse.Namespace) -> int:
                 flow_shift=getattr(args, "flow_shift", None),
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
+                soundscape=getattr(args, "soundscape", None),
+                music=getattr(args, "music", None),
+                generate_audio=getattr(args, "generate_audio", None),
+                audio_shift=getattr(args, "audio_shift", None),
                 extra=extra or None,
             )
     finally:
@@ -1707,6 +1967,12 @@ def _cmd_i2v(args: argparse.Namespace) -> int:
                 flow_shift=getattr(args, "flow_shift", None),
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
+                soundscape=getattr(args, "soundscape", None),
+                music=getattr(args, "music", None),
+                generate_audio=getattr(args, "generate_audio", None),
+                audio_shift=getattr(args, "audio_shift", None),
                 extra=extra or None,
             )
         else:
@@ -1726,6 +1992,12 @@ def _cmd_i2v(args: argparse.Namespace) -> int:
                 flow_shift=getattr(args, "flow_shift", None),
                 seed=args.seed,
                 lora_adapters=lora_adapters,
+                memory_mode=getattr(args, "memory_mode", None),
+                quantize=getattr(args, "load_quantize", None),
+                soundscape=getattr(args, "soundscape", None),
+                music=getattr(args, "music", None),
+                generate_audio=getattr(args, "generate_audio", None),
+                audio_shift=getattr(args, "audio_shift", None),
                 extra=extra or None,
             )
     finally:
@@ -1906,6 +2178,7 @@ def _repl_help() -> str:
         "\n"
         "Generation:\n"
         "  /t2i <prompt...> [--width N --height N --steps N --seed N --guidance-scale F --negative-prompt ... --control-image path --control-strength F] [--open]\n"
+        "      (--control-image is accepted and refused by every built-in backend in this release)\n"
         "  /i2i --image path <prompt...> [--reference-image path ... --mask path --steps N --seed N --guidance-scale F --negative-prompt ...] [--open]\n"
         "  /t2v <prompt...> [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
         "  /i2v --image path [prompt...] [--width N --height N --fps N --num-frames N --max-sequence-length N --steps N --seed N --guidance-scale F --guidance-2 F --negative-prompt ...] [--open] [--no-progress]\n"
@@ -2195,6 +2468,50 @@ def _add_lora_cli_flags(parser: argparse.ArgumentParser) -> None:
             "expects explicit high/low-noise transformer assignment."
         ),
     )
+
+
+def _add_memory_mode_cli_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--memory-mode",
+        dest="memory_mode",
+        choices=list(MEMORY_MODES),
+        default=None,
+        help=(
+            "Lower the run's memory peak at some cost in speed. MLX-Gen: low = its low-RAM mode, "
+            "lowest = also streams transformer blocks (routes that support it). Diffusers on CUDA: "
+            "low/lowest = model/sequential CPU offload. stable-diffusion.cpp: low = CPU offload of "
+            "parameters. A mode the provider cannot honour is refused. Default: "
+            "$ABSTRACTVISION_MEMORY_MODE, else default."
+        ),
+    )
+
+
+def _add_quantize_cli_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--quantize",
+        dest="load_quantize",
+        metavar="BITS",
+        type=int,
+        default=None,
+        help=(
+            "Load-time quantization in bits (MLX-Gen, on source snapshots; prepared packages are "
+            "already quantized). Values a model does not accept are refused."
+        ),
+    )
+
+
+def _add_soundtrack_cli_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--soundscape", default=None, help="Soundtrack routes (MiniMax-H3): diegetic sound design.")
+    parser.add_argument("--music", default=None, help="Soundtrack routes (MiniMax-H3): the score, or 'no music'.")
+    parser.add_argument(
+        "--no-audio",
+        dest="generate_audio",
+        action="store_const",
+        const=False,
+        default=None,
+        help="Soundtrack routes (MiniMax-H3): write a silent clip.",
+    )
+    parser.add_argument("--audio-shift", type=float, default=None, help="Soundtrack routes: audio flow shift.")
 
 
 def _add_batch_cli_flags(parser: argparse.ArgumentParser) -> None:
@@ -3014,11 +3331,18 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="abstractvision", description="AbstractVision CLI (capabilities + generation)."
     )
+    import abstractvision
+
+    p.add_argument("--version", action="version", version=f"abstractvision {abstractvision.__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("models", help="List known model ids (from capability registry).").set_defaults(
-        _fn=_cmd_models
+    models_parser = sub.add_parser("models", help="List known model ids (from capability registry).")
+    models_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print each model with its downloads: size, access, cache state, memory modes on this host.",
     )
+    models_parser.set_defaults(_fn=_cmd_models)
     pm = sub.add_parser(
         "provider-models",
         aliases=["openai-models", "remote-models"],
@@ -3248,7 +3572,30 @@ def build_parser() -> argparse.ArgumentParser:
     dl.add_argument(
         "--allow-non-8bit",
         action="store_true",
-        help="Permit explicit fallback presets when no quantized artifact is curated.",
+        help=(
+            "Do not prefer an 8-bit package: a repository named exactly (e.g. the MiniMaxAI/MiniMax-H3 source "
+            "repository) selects that repository instead of a package made from it, and the host's target order "
+            "decides even where a later target has an 8-bit package. A model with a single package selects it "
+            "without this flag."
+        ),
+    )
+    dl.add_argument(
+        "--bits",
+        type=int,
+        choices=[2, 4, 8, 16],
+        default=None,
+        help=(
+            "Select a package of this width, in any target of this host (e.g. `download MiniMaxAI/MiniMax-H3 "
+            "--bits 4`), or stop and list the widths there are. Without it, the recommended package is chosen."
+        ),
+    )
+    dl.add_argument(
+        "--base-model",
+        default=None,
+        help=(
+            "MLX-Gen schedule to prepare: also fetches the adapter it loads, e.g. the MiniMax-H3 Turbo "
+            "schedules minimax-h3-turbo-544p and minimax-h3-turbo (minimax-h3 loads none)."
+        ),
     )
     dl.add_argument(
         "--all-files",
@@ -3259,12 +3606,25 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     dl.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Resolve the selection and print the plan the download would follow (access, size, files already "
+            "complete in the cache, files to fetch, free disk space) without downloading. Reads the Hugging "
+            "Face listing only."
+        ),
+    )
+    dl.add_argument(
         "--json", action="store_true", help="Print selected preset + snapshot path as JSON."
     )
     dl.set_defaults(_fn=_cmd_download_model)
 
-    sm = sub.add_parser("show-model", help="Show a model's supported tasks and params.")
+    sm = sub.add_parser(
+        "show-model",
+        help="Show a model's tasks, params and downloads (size, access, cache state, memory modes on this host).",
+    )
     sm.add_argument("model_id")
+    sm.add_argument("--json", action="store_true", help="Print the model as JSON.")
     sm.set_defaults(_fn=_cmd_show_model)
 
     repl = sub.add_parser(
@@ -3391,7 +3751,7 @@ def build_parser() -> argparse.ArgumentParser:
         ap.add_argument(
             "--mflux-base-model",
             default=_env("ABSTRACTVISION_MFLUX_BASE_MODEL"),
-            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, bonsai-image-ternary, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, seedvr2-3b/seedvr2-7b, or wan2.2-ti2v-5b.",
+            help="Optional MLX-Gen base family for local paths or custom repos: flux2-klein-4b, flux2-klein-9b, flux2-klein-base-4b, flux2-klein-base-9b, bonsai-image-ternary, z-image, z-image-turbo, qwen-image/qwen-image-2512, qwen-image-edit-2511, ernie-image-turbo, fibo, fibo-lite, fibo-edit, fibo-edit-rmbg, seedvr2-3b/seedvr2-7b, wan2.2-ti2v-5b, or the MiniMax-H3 schedule (minimax-h3-turbo-544p, minimax-h3-turbo, minimax-h3).",
         )
         ap.add_argument(
             "--mflux-model-dir",
@@ -3463,13 +3823,16 @@ def build_parser() -> argparse.ArgumentParser:
     t2i.add_argument(
         "--control-image",
         default=None,
-        help="Optional structured control image path for MLX-Gen base-Qwen route `AbstractFramework/qwen-image-8bit`.",
+        help=(
+            "Structured control image path (edges, sketch, pose). Accepted by the request; every built-in "
+            "backend refuses it in this release (CapabilityNotSupportedError, field control_image)."
+        ),
     )
     t2i.add_argument(
         "--control-strength",
         type=float,
         default=None,
-        help="Optional structured control strength for `--control-image`. Default is 0.85 when omitted.",
+        help="Structured control strength for `--control-image` (refused with it by every built-in backend in this release).",
     )
     t2i.add_argument("--open", action="store_true", help="Open the output file (best-effort).")
     t2i.add_argument(
@@ -3487,6 +3850,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_batch_cli_flags(t2i)
     _add_lora_cli_flags(t2i)
+    _add_memory_mode_cli_flag(t2i)
+    _add_quantize_cli_flag(t2i)
     t2i.set_defaults(_fn=_cmd_t2i)
 
     i2i = sub.add_parser(
@@ -3529,6 +3894,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_batch_cli_flags(i2i)
     _add_lora_cli_flags(i2i)
+    _add_memory_mode_cli_flag(i2i)
+    _add_quantize_cli_flag(i2i)
     i2i.set_defaults(_fn=_cmd_i2i)
 
     upscale = sub.add_parser(
@@ -3582,6 +3949,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable image upscaling progress output.",
     )
+    _add_memory_mode_cli_flag(upscale)
     upscale.set_defaults(_fn=_cmd_upscale)
 
     t2v = sub.add_parser(
@@ -3635,6 +4003,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_batch_cli_flags(t2v)
     _add_lora_cli_flags(t2v)
+    _add_memory_mode_cli_flag(t2v)
+    _add_quantize_cli_flag(t2v)
+    _add_soundtrack_cli_flags(t2v)
     t2v.set_defaults(_fn=_cmd_t2v)
 
     i2v = sub.add_parser(
@@ -3690,6 +4061,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_batch_cli_flags(i2v)
     _add_lora_cli_flags(i2v)
+    _add_memory_mode_cli_flag(i2v)
+    _add_quantize_cli_flag(i2v)
+    _add_soundtrack_cli_flags(i2v)
     i2v.set_defaults(_fn=_cmd_i2v)
 
     return p

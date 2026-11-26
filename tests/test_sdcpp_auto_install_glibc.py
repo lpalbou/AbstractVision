@@ -124,7 +124,7 @@ class SdCliAutoInstallGlibcTests(unittest.TestCase):
              patch.object(sd.shutil, "which", return_value=None), \
              patch.object(sd.Path, "home", return_value=Path(td)):
             with self.assertRaises(sd.OptionalDependencyMissingError) as ctx:
-                sd._require_sd_cli("sd-cli")
+                sd.require_sd_cli("sd-cli")
         self.assertIn("ships a linux arm64 build this host can run (glibc 2.39)", str(ctx.exception))
 
 if __name__ == "__main__":

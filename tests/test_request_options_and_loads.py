@@ -1,0 +1,1099 @@
+"""Typed request options (one definition, one merge with `extra`), loaded-model listings derived
+from the backends, the Diffusers offload floor passed per request, refusals that name their
+field, and the OpenAI-compatible request bodies."""
+
+import dataclasses
+import io
+import json
+import shutil
+import sys
+import tempfile
+import threading
+import types
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError, URLError
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+NO_ENV = {"ABSTRACTVISION_MEMORY_MODE": ""}
+# `extra` keys named like options, for backends that do not list those options.
+OPAQUE_EXTRA = {"quantize": "q4_k", "soundscape": "wind", "music": "piano", "generate_audio": "no", "audio_shift": "1.5"}
+
+# Two distinct values per typed option, in the type a request carries.
+OPTION_VALUES = {
+    "memory_mode": ("low", "lowest"),
+    "quantize": (8, 4),
+    "soundscape": ("wind over snow", "rain on a roof"),
+    "music": ("sparse piano", "slow drums"),
+    "generate_audio": (False, True),
+    "audio_shift": (1.5, 2.0),
+}
+
+
+def _backend(options=None, modes=("default", "low", "lowest")):
+    from abstractvision.backends.base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend
+
+    class _Backend(VisionBackend):
+        def supported_memory_modes(self, task=None):
+            return tuple(modes)
+
+        def supported_request_options(self, task=None):
+            return frozenset(OPTIONAL_REQUEST_FIELDS if options is None else options)
+
+        def generate_image(self, request):  # pragma: no cover - not called
+            raise NotImplementedError
+
+        edit_image = generate_angles = generate_video = image_to_video = generate_image
+
+    return _Backend()
+
+
+class TestOneDefinitionOfTheOptions(unittest.TestCase):
+    def test_capabilities_carry_no_engine_streaming_term(self):
+        from abstractvision.types import VisionBackendCapabilities
+
+        names = {f.name for f in dataclasses.fields(VisionBackendCapabilities)}
+        self.assertIn("memory_modes", names)
+        self.assertNotIn("supports_block_streaming", names)
+
+    def test_the_option_fields_are_fields_of_the_requests_that_carry_them(self):
+        from abstractvision import types as av_types
+        from abstractvision.backends.base_backend import (
+            OPTIONAL_REQUEST_FIELDS,
+            REQUEST_OPTION_FIELDS,
+            SOUNDTRACK_REQUEST_FIELDS,
+        )
+
+        self.assertEqual(REQUEST_OPTION_FIELDS, ("memory_mode", "quantize", *SOUNDTRACK_REQUEST_FIELDS))
+        self.assertEqual(OPTIONAL_REQUEST_FIELDS, REQUEST_OPTION_FIELDS[1:])
+        self.assertEqual(set(OPTION_VALUES), set(REQUEST_OPTION_FIELDS))
+        for cls in (av_types.VideoGenerationRequest, av_types.ImageToVideoRequest):
+            self.assertLessEqual(set(REQUEST_OPTION_FIELDS), {f.name for f in dataclasses.fields(cls)}, cls)
+        for cls in (av_types.ImageGenerationRequest, av_types.ImageEditRequest, av_types.ImageUpscaleRequest):
+            carried = {f.name for f in dataclasses.fields(cls)} & set(REQUEST_OPTION_FIELDS)
+            self.assertEqual(carried, {"memory_mode", "quantize"}, cls)
+
+
+class TestOptionMergedWithExtra(unittest.TestCase):
+    def test_every_option_from_its_field_from_extra_both_equal_or_both_different(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import VideoGenerationRequest
+
+        def resolve(backend, typed, extra):
+            request = VideoGenerationRequest(prompt="fox", extra={**extra, "k": 1}, **typed)
+            return backend.resolve_memory_request(request, task="text_to_video")
+
+        for name, (value, other) in OPTION_VALUES.items():
+            # memory_mode is an option of every backend; the others only where the backend lists them.
+            for lists in (True, False):
+                backend = _backend(options=None if lists else ())
+                is_option = lists or name == "memory_mode"
+                cases = {
+                    "typed only": ({name: value}, {}),
+                    "extra only": ({}, {name: value}),
+                    "both equal": ({name: value}, {name: value}),
+                    "both different": ({name: value}, {name: other}),
+                }
+                for case, (typed, extra) in cases.items():
+                    with self.subTest(option=name, lists=lists, case=case), patch.dict("os.environ", NO_ENV):
+                        if is_option and case == "both different":
+                            with self.assertRaisesRegex(
+                                ValueError, rf"^{name}={value!r} and extra\['{name}'\]={other!r} disagree; pass one\.$"
+                            ):
+                                resolve(backend, typed, extra)
+                        elif is_option:
+                            resolved, mode = resolve(backend, typed, extra)
+                            self.assertEqual(getattr(resolved, name), value)
+                            self.assertEqual(resolved.extra, {"k": 1})
+                            self.assertEqual(mode, value if name == "memory_mode" else "default")
+                        elif typed:
+                            # The typed field is refused where the backend does not list it.
+                            with self.assertRaises(CapabilityNotSupportedError) as ctx:
+                                resolve(backend, typed, extra)
+                            self.assertEqual(ctx.exception.field, name)
+                        else:
+                            # An `extra` key that is not this backend's option is not interpreted.
+                            resolved, _mode = resolve(backend, typed, extra)
+                            self.assertIsNone(getattr(resolved, name))
+                            self.assertEqual(resolved.extra, {name: value, "k": 1})
+
+    def test_memory_modes_compare_by_their_canonical_name(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        with patch.dict("os.environ", NO_ENV):
+            request = ImageGenerationRequest(prompt="fox", memory_mode="LOW", extra={"memory_mode": "low"})
+            self.assertEqual(_backend().resolve_memory_request(request)[1], "low")
+
+    def test_a_listed_option_the_request_type_does_not_carry_is_refused_from_extra(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageGenerationRequest
+
+        with patch.dict("os.environ", NO_ENV), self.assertRaisesRegex(
+            CapabilityNotSupportedError, "does not support soundscape"
+        ):
+            _backend().resolve_memory_request(
+                ImageGenerationRequest(prompt="fox", extra={"soundscape": "wind"}), task="text_to_image"
+            )
+
+    def test_extra_may_be_any_mapping(self):
+        from types import MappingProxyType
+
+        from abstractvision.types import ImageEditRequest
+
+        request = ImageEditRequest(
+            prompt="fox", image=b"img", extra=MappingProxyType({"width": 256, "quantize": 8, "vae_tiling": False})
+        )
+        with patch.dict("os.environ", NO_ENV):
+            resolved, mode = _backend(options={"quantize"}).resolve_memory_request(request)
+        self.assertEqual((mode, resolved.quantize, resolved.extra), ("default", 8, {"width": 256, "vae_tiling": False}))
+
+    def test_backends_that_do_not_list_the_options_get_extra_as_0_3_36_sent_it(self):
+        # Captured from AbstractVision 0.3.36 (eea267d) for the same requests: the keys are opaque.
+        import base64
+
+        from abstractvision.backends import huggingface_diffusers as hd
+        from abstractvision.backends.stable_diffusion_cpp import (
+            StableDiffusionCppBackendConfig,
+            StableDiffusionCppVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest
+        from PIL import Image
+
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X9+QAAAABJRU5ErkJggg=="
+        )
+        calls, commands = [], []
+
+        class _Pipe:
+            def to(self, *args, **kwargs):
+                return self
+
+            def __call__(self, **kwargs):
+                calls.append(sorted(kwargs))
+                return types.SimpleNamespace(images=[Image.new("RGB", (4, 4), color=(255, 0, 0))])
+
+        def run(cmd, check, stdout, stderr, cwd, timeout=None):
+            out = cmd.index("--output") + 1
+            commands.append([*cmd[:out], "<out>", *cmd[out + 1 :]])
+            Path(cmd[out]).write_bytes(png)
+
+        t2i = MagicMock()
+        t2i.from_pretrained.return_value = _Pipe()
+        # Neither Diffusers nor torch runs here: the base CI job has neither.
+        with patch.dict("os.environ", NO_ENV), patch.object(
+            hd, "_lazy_import_diffusers", return_value=(MagicMock(), t2i, MagicMock(), MagicMock(), "0.0.0")
+        ), patch.object(hd, "_lazy_import_torch", return_value=types.SimpleNamespace()), patch.object(
+            hd.HuggingFaceDiffusersVisionBackend, "_resolve_any_snapshot_dir", return_value=Path("/hf-cache/snapshot")
+        ):
+            hd.HuggingFaceDiffusersVisionBackend(
+                config=hd.HuggingFaceDiffusersBackendConfig(model_id="some/model", device="cpu")
+            ).generate_image(ImageGenerationRequest(prompt="fox", extra=dict(OPAQUE_EXTRA)))
+        with patch.dict("os.environ", NO_ENV), patch(
+            "abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="/usr/bin/sd-cli"
+        ), patch("abstractvision.backends.stable_diffusion_cpp.subprocess.run", side_effect=run):
+            StableDiffusionCppVisionBackend(
+                config=StableDiffusionCppBackendConfig(sd_cli_path="sd-cli", diffusion_model="model.gguf")
+            ).generate_image(ImageGenerationRequest(prompt="fox", extra=dict(OPAQUE_EXTRA)))
+
+        self.assertEqual(calls, [["audio_shift", "generate_audio", "music", "prompt", "quantize", "soundscape"]])
+        self.assertEqual(
+            commands,
+            [
+                [
+                    "/usr/bin/sd-cli", "--diffusion-model", "model.gguf", "--output", "<out>", "--prompt", "fox",
+                    "--quantize", "q4_k", "--soundscape", "wind", "--music", "piano", "--generate-audio", "no",
+                    "--audio-shift", "1.5",
+                ]
+            ],
+        )
+
+
+class _Backend:
+    """A local backend stand-in that says whether it holds its model, as VisionBackend does."""
+
+    def __init__(self):
+        self.loaded = False
+        self.unloaded = 0
+        self.fail = None
+        self.release_after_run = False
+
+    def has_loaded_model(self):
+        return self.loaded
+
+    def preload(self):
+        self.loaded = True
+        if self.fail is not None:
+            self.loaded = False  # a failed preload drops what it loaded
+            raise self.fail
+
+    def unload(self):
+        self.unloaded += 1
+        self.loaded = False
+
+    def generate_image(self, request):
+        from abstractvision.types import GeneratedAsset
+
+        self.loaded = True
+        try:
+            if self.fail is not None:
+                raise self.fail
+        finally:
+            if self.release_after_run:
+                self.loaded = False
+        return GeneratedAsset(media_type="image", data=b"png", mime_type="image/png", metadata={})
+
+
+class TestLoadedModelsAreDerivedFromTheBackends(unittest.TestCase):
+    MODEL = "AbstractFramework/flux.2-klein-4b-8bit"
+
+    def setUp(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        self.backend = _Backend()
+        self.cap = _AbstractVisionCapability(types.SimpleNamespace(config={}))
+        patcher = patch.object(self.cap, "_make_mflux_backend", return_value=self.backend)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _load(self):
+        return self.cap.load_resident_model({"provider": "mlx-gen", "model": self.MODEL, "task": "t2i"})
+
+    def _t2i(self):
+        return self.cap.t2i("fox", provider="mlx-gen", model=self.MODEL)
+
+    def test_a_model_released_outside_a_plugin_call_is_not_listed(self):
+        self._load()
+        self.assertEqual(len(self.cap.list_resident_models()), 1)
+        self.backend.unload()  # e.g. a caller holding the backend
+        self.assertEqual(self.cap.list_loaded_models(), [])
+        # The next load starts afresh: a new load, unpinned until pinned again.
+        self.assertIs(self._load()["loaded_new"], True)
+        self.backend.unload()
+        self._t2i()
+        (record,) = self.cap.list_loaded_models()
+        self.assertEqual((record["resident"], record["source"], record["tasks"]), (False, "request", ["text_to_image"]))
+
+    def test_a_failed_preload_leaves_no_record_and_keeps_a_load_it_did_not_drop(self):
+        from abstractvision.errors import GenerationCancelledError
+
+        self.backend.fail = RuntimeError("boom")
+        with self.assertRaisesRegex(RuntimeError, "boom"):
+            self._load()
+        self.assertEqual(self.cap.list_loaded_models(), [])
+        self.backend.fail = None
+        self._t2i()
+        self.backend.preload = lambda: (_ for _ in ()).throw(GenerationCancelledError("stop"))
+        with self.assertRaises(GenerationCancelledError):
+            self._load()
+        (record,) = self.cap.list_loaded_models()  # still held: still listed, still unpinned, loaded by the request
+        self.assertEqual((record["resident"], record["tasks"], record["source"]), (False, ["text_to_image"], "request"))
+
+    def test_a_cancelled_run_is_listed_as_the_backend_left_it(self):
+        from abstractvision.errors import GenerationCancelledError
+
+        self._load()
+        self.backend.fail = GenerationCancelledError("cancelled")
+        with self.assertRaises(GenerationCancelledError):
+            self._t2i()
+        (record,) = self.cap.list_resident_models()  # the run kept the model: still pinned
+        self.assertEqual(record["tasks"], ["text_to_image"])
+        self.backend.release_after_run = True  # a cancelled low run drops its model
+        with self.assertRaises(GenerationCancelledError):
+            self._t2i()
+        self.assertEqual(self.cap.list_loaded_models(), [])
+
+    def test_a_run_that_releases_its_model_ends_the_load_and_its_pin(self):
+        self._load()
+        self.backend.release_after_run = True
+        self._t2i()
+        self.assertEqual(self.cap.list_loaded_models(), [])
+        self.backend.release_after_run = False
+        self._t2i()  # no listing in between: the load that ended still does not carry over
+        (record,) = self.cap.list_loaded_models()
+        self.assertEqual((record["resident"], record["state"], record["source"]), (False, "active", "request"))
+
+    def test_unload_releases_the_backend_and_the_listing(self):
+        self._load()
+        out = self.cap.unload_resident_model({"load_id": f"mlx-gen/{self.MODEL}"})
+        self.assertEqual((out["state"], out["loaded"], self.backend.unloaded), ("unloaded", False, 1))
+        self.assertEqual(self.cap.list_loaded_models(), [])
+
+    def test_a_first_request_that_fails_or_is_cancelled_lists_what_it_left_loaded(self):
+        from abstractvision.errors import GenerationCancelledError
+
+        for failure in (RuntimeError("engine failed mid-run"), GenerationCancelledError("cancelled")):
+            with self.subTest(failure=type(failure).__name__):
+                self.backend.unload()
+                self.backend.unloaded = 0
+                self.backend.fail = failure
+                with self.assertRaises(type(failure)):
+                    self._t2i()
+                (record,) = self.cap.list_loaded_models()
+                self.assertEqual((record["state"], record["tasks"]), ("active", ["text_to_image"]))
+                out = self.cap.unload_resident_model({"provider": "mlx-gen", "model": self.MODEL})
+                self.assertEqual((out["state"], self.backend.unloaded, self.backend.loaded), ("unloaded", 1, False))
+                self.assertEqual(self.cap.list_loaded_models(), [])
+
+    def test_a_preload_that_fails_but_keeps_a_model_lists_it_unpinned(self):
+        def preload():
+            self.backend.loaded = True
+            raise RuntimeError("warm-up failed after the load")
+
+        self.backend.preload = preload
+        with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
+            self._load()
+        (record,) = self.cap.list_loaded_models()
+        # The preload loaded it: that is its source, though it is not pinned.
+        self.assertEqual((record["state"], record["resident"], record["source"]), ("active", False, "explicit_preload"))
+
+    def test_an_unload_during_a_first_request_reports_what_is_held_when_it_returns(self):
+        started, finish = threading.Event(), threading.Event()
+
+        def generate_image(request):
+            from abstractvision.types import GeneratedAsset
+
+            self.backend.loaded = True
+            started.set()
+            finish.wait(5)
+            return GeneratedAsset(media_type="image", data=b"png", mime_type="image/png", metadata={})
+
+        self.backend.generate_image = generate_image
+        run = threading.Thread(target=self._t2i)
+        run.start()
+        try:
+            self.assertTrue(started.wait(5))
+            out = self.cap.unload_resident_model({"provider": "mlx-gen", "model": self.MODEL})
+            # The running request holds the model: it is listed, and unloaded when the request ends.
+            self.assertEqual((out["state"], out["loaded"], self.backend.unloaded), ("active", True, 0))
+            self.assertEqual([record["state"] for record in self.cap.list_loaded_models()], ["active"])
+        finally:
+            finish.set()
+            run.join(5)
+        self.assertEqual((self.backend.unloaded, self.backend.loaded), (1, False))
+        self.assertEqual(self.cap.list_loaded_models(), [])
+
+    def test_a_backend_that_holds_nothing_is_never_called_resident(self):
+        # The base answer of `has_loaded_model`: a 0.3.36-era subclass, or sd-cli, holds nothing here.
+        self.backend.has_loaded_model = lambda: False
+        record = self._load()
+        self.assertEqual(
+            (record["state"], record["resident"], record["loaded"], record["loaded_new"], record["reason"]),
+            ("not_loaded", False, False, False, "this backend holds no model in this process"),
+        )
+        self.assertEqual(self.cap.list_loaded_models(), [])
+        # Unload still reaches the backend, and reports from the listing.
+        out = self.cap.unload_resident_model({"provider": "mlx-gen", "model": self.MODEL})
+        self.assertEqual((out["state"], self.backend.unloaded), ("unloaded", 1))
+
+
+class TestBackendsSayWhetherTheyHoldAModel(unittest.TestCase):
+    def test_base_default_and_diffusers_answer(self):
+        from abstractvision.backends import huggingface_diffusers as hd
+
+        from abstractvision.backends.openai_compatible import (
+            OpenAICompatibleBackendConfig,
+            OpenAICompatibleVisionBackend,
+        )
+
+        # A backend that loads nothing in this process (a remote one) holds no model here.
+        self.assertIs(_backend().has_loaded_model(), False)
+        remote = OpenAICompatibleVisionBackend(config=OpenAICompatibleBackendConfig(base_url="http://127.0.0.1:9/v1"))
+        self.assertIs(remote.has_loaded_model(), False)
+        backend = hd.HuggingFaceDiffusersVisionBackend(config=hd.HuggingFaceDiffusersBackendConfig(model_id="x"))
+        self.assertIs(backend.has_loaded_model(), False)
+        backend._pipelines["t2i"] = object()
+        self.assertIs(backend.has_loaded_model(), True)
+        with patch.object(hd, "_release_pipeline_adapters"), patch.object(hd, "_return_freed_host_memory"), patch.object(
+            hd, "_lazy_import_torch", side_effect=ImportError("no torch")
+        ):
+            backend.unload()
+        self.assertIs(backend.has_loaded_model(), False)
+
+
+class TestStableDiffusionCppSaysWhatItHolds(unittest.TestCase):
+    def _cap(self, backend):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        cap = _AbstractVisionCapability(types.SimpleNamespace(config={}))
+        patcher = patch.object(cap, "_make_sdcpp_backend", return_value=backend)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return cap
+
+    def _backend(self):
+        from abstractvision.backends.stable_diffusion_cpp import (
+            StableDiffusionCppBackendConfig,
+            StableDiffusionCppVisionBackend,
+        )
+
+        return StableDiffusionCppVisionBackend(
+            config=StableDiffusionCppBackendConfig(sd_cli_path="sd-cli", diffusion_model="model.gguf")
+        )
+
+    def test_sd_cli_holds_nothing_and_a_failed_first_request_is_not_listed(self):
+        backend = self._backend()
+        cap = self._cap(backend)
+        with patch.dict("os.environ", NO_ENV), patch(
+            "abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="/usr/bin/sd-cli"
+        ), patch("abstractvision.backends.stable_diffusion_cpp.subprocess.run", side_effect=RuntimeError("sd-cli failed")):
+            with self.assertRaisesRegex(RuntimeError, "sd-cli failed"):
+                cap.t2i("fox", provider="sdcpp", model="model.gguf")
+            self.assertEqual(cap.list_loaded_models(), [])
+            cap.load_resident_model({"provider": "sdcpp", "model": "model.gguf"})
+            self.assertIs(backend.has_loaded_model(), False)  # sd-cli loads per run
+            self.assertEqual(cap.list_loaded_models(), [])
+
+    def test_the_python_binding_holds_its_model_until_unload(self):
+        backend = self._backend()
+        self.assertIs(backend.has_loaded_model(), False)
+        backend._py_model = object()
+        self.assertIs(backend.has_loaded_model(), True)
+        backend.unload()
+        self.assertIs(backend.has_loaded_model(), False)
+
+
+class _Stop(Exception):
+    pass
+
+
+class TestExplicitDownloadRepositoriesAreNeverFetchedByGeneration(unittest.TestCase):
+    def test_the_catalog_names_them(self):
+        from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry
+
+        registry = VisionModelCapabilitiesRegistry()
+        for repo in ("MiniMaxAI/MiniMax-H3", "AbstractFramework/minimax-h3-8bit", "abstractframework/MINIMAX-H3-4BIT"):
+            self.assertEqual(registry.explicit_download_model(repo).model_id, "MiniMaxAI/MiniMax-H3", repo)
+        for repo in ("black-forest-labs/FLUX.2-klein-4B", "", "MiniMaxAI"):
+            self.assertIsNone(registry.explicit_download_model(repo), repo)
+
+    def test_diffusers_decides_before_loading_from_the_cache_and_the_download_rule(self):
+        import os
+
+        from abstractvision.backends import huggingface_diffusers as hd
+        from abstractvision.types import ImageGenerationRequest
+
+        loads = []
+        load_error = {"error": _Stop()}
+
+        def from_pretrained(model_id, **kwargs):
+            loads.append((model_id, kwargs["local_files_only"], os.environ.get("HF_HUB_OFFLINE")))
+            raise load_error["error"]
+
+        pipeline_cls = MagicMock()
+        pipeline_cls.from_pretrained.side_effect = from_pretrained
+        fake_torch = types.SimpleNamespace(float32="float32", float16="float16", bfloat16="bfloat16")
+        empty_cache = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, empty_cache, True)
+
+        def generate(model_id, *, allow_download, cached=False):
+            backend = hd.HuggingFaceDiffusersVisionBackend(
+                config=hd.HuggingFaceDiffusersBackendConfig(
+                    model_id=model_id, device="cpu", allow_download=allow_download, cache_dir=empty_cache
+                )
+            )
+            loads.clear()
+            with patch.dict("os.environ", {**NO_ENV, "HF_HOME": empty_cache, "HF_HUB_CACHE": empty_cache}), patch.object(
+                hd, "_lazy_import_diffusers", return_value=(pipeline_cls, pipeline_cls, MagicMock(), MagicMock(), "0.0.0")
+            ), patch.object(hd, "_lazy_import_torch", return_value=fake_torch), patch.object(
+                backend, "_hf_cache_roots", return_value=[Path(empty_cache)]
+            ), patch.object(
+                backend, "_resolve_snapshot_dir", return_value=Path(empty_cache) if cached else None
+            ), patch.object(backend, "_resolve_any_snapshot_dir", return_value=None):
+                backend.generate_image(ImageGenerationRequest(prompt="fox"))
+
+        # Not cached, and generation may not fetch it: refused before anything loads.
+        with self.assertRaisesRegex(ValueError, "generation never downloads it: the catalog marks it for explicit"):
+            generate("MiniMaxAI/MiniMax-H3", allow_download=True)
+        with self.assertRaisesRegex(ValueError, "is not available locally and downloads are disabled"):
+            generate("some/model", allow_download=False)
+        self.assertEqual(loads, [])
+        # A model generation may fetch loads online.
+        with self.assertRaises(_Stop):
+            generate("some/model", allow_download=True)
+        self.assertEqual(loads[0], ("some/model", False, "0"))
+        # A cached model's own load error reaches the caller as it is, whatever it says.
+        load_error["error"] = OSError("some/model does not appear to have a file named model_index.json")
+        with self.assertRaises(OSError) as ctx:
+            generate("some/model", allow_download=False, cached=True)
+        self.assertIs(ctx.exception, load_error["error"])
+        self.assertTrue(loads)
+        self.assertTrue(all(load == (empty_cache, True, "1") for load in loads), loads)
+
+
+class _Pipe:
+    """Ends a request at its first use of the pipeline after the load."""
+
+    @property
+    def dtype(self):
+        raise _Stop()
+
+
+class TestDiffusersOffloadFloorIsPerRequest(unittest.TestCase):
+    def setUp(self):
+        from abstractvision.backends import huggingface_diffusers as hd
+
+        self.hd = hd
+        self.backend = hd.HuggingFaceDiffusersVisionBackend(
+            config=hd.HuggingFaceDiffusersBackendConfig(model_id="x", device="cuda")
+        )
+        self.loads = []
+        self.gate = None
+
+        def load(kind, *, memory_mode):
+            self.loads.append((kind, memory_mode))
+            if self.gate is not None and memory_mode == "lowest":
+                self.gate.wait(5)
+            return _Pipe()
+
+        for target, kwargs in (
+            (hd, {"attribute": "_lazy_import_torch", "return_value": types.SimpleNamespace()}),
+            (self.backend, {"attribute": "_get_or_load_pipeline", "side_effect": load}),
+            (self.backend, {"attribute": "_preload_pipeline_kind", "return_value": "t2i"}),
+            (self.backend, {"attribute": "_is_pipeline_warm", "return_value": True}),
+            (self.backend, {"attribute": "_supports_backend_task", "return_value": True}),
+            (self.backend, {"attribute": "normalize_image_generation_request", "side_effect": lambda r: r}),
+        ):
+            patcher = patch.object(target, kwargs.pop("attribute"), **kwargs)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        env = patch.dict("os.environ", NO_ENV)
+        env.start()
+        self.addCleanup(env.stop)
+
+    def _generate(self, mode):
+        from abstractvision.types import ImageGenerationRequest
+
+        with self.assertRaises(_Stop):
+            self.backend.generate_image(ImageGenerationRequest(prompt="fox", memory_mode=mode))
+
+    def test_each_load_gets_the_mode_of_the_request_it_serves_with_a_preload_between(self):
+        self._generate("low")
+        self.backend.preload()
+        self._generate("lowest")
+        self._generate("default")
+        self.assertEqual(
+            self.loads, [("t2i", "low"), ("t2i", "default"), ("t2i", "lowest"), ("t2i", "default")]
+        )
+        self.assertFalse(hasattr(self.backend, "_offload_floor"))
+
+    def test_concurrent_requests_load_in_lock_order_each_with_its_own_mode(self):
+        self.gate = threading.Event()
+        first = threading.Thread(target=self._generate, args=("lowest",))
+        first.start()
+        for _ in range(500):
+            if self.loads:
+                break
+            threading.Event().wait(0.01)
+        self.assertEqual(self.loads, [("t2i", "lowest")])
+        second = threading.Thread(target=self._generate, args=("default",))
+        preload = threading.Thread(target=self.backend.preload)
+        second.start()
+        preload.start()
+        threading.Event().wait(0.1)
+        self.assertEqual(self.loads, [("t2i", "lowest")])  # the others wait for the backend lock
+        self.gate.set()
+        for thread in (first, second, preload):
+            thread.join(5)
+        self.assertEqual(self.loads[0], ("t2i", "lowest"))
+        self.assertEqual(sorted(self.loads[1:]), [("t2i", "default"), ("t2i", "default")])
+
+    def test_the_real_loader_reuses_or_reloads_from_the_mode_it_is_given(self):
+        hd = self.hd
+        backend = hd.HuggingFaceDiffusersVisionBackend(config=hd.HuggingFaceDiffusersBackendConfig(model_id="x", device="cuda"))
+        offloaded = types.SimpleNamespace(_abstractvision_cpu_offload=True, _abstractvision_cpu_offload_mode="model")
+        backend._pipelines["t2i"] = offloaded
+        for mode in ("default", "low", "default"):
+            self.assertIs(backend._get_or_load_pipeline("t2i", memory_mode=mode), offloaded)
+        with patch.object(hd, "_lazy_import_diffusers", side_effect=_Stop()), patch.object(hd, "_release_pipeline_adapters"):
+            with self.assertRaises(_Stop):
+                backend._get_or_load_pipeline("t2i", memory_mode="lowest")
+        self.assertNotIn("t2i", backend._pipelines)
+
+
+class TestRefusalsNameTheirField(unittest.TestCase):
+    def test_the_error_carries_field_and_supported_and_keeps_its_message(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+
+        plain = CapabilityNotSupportedError("no")
+        self.assertEqual((str(plain), plain.field, plain.supported), ("no", None, None))
+        named = CapabilityNotSupportedError("no", field="quantize", supported=[8])
+        self.assertEqual((str(named), named.field, named.supported), ("no", "quantize", (8,)))
+
+    def test_backend_refusals_name_the_field_and_what_it_accepts(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageGenerationRequest, VideoGenerationRequest
+
+        with patch.dict("os.environ", NO_ENV):
+            for request, field, supported in (
+                (ImageGenerationRequest(prompt="fox", memory_mode="lowest"), "memory_mode", ("default", "low")),
+                (ImageGenerationRequest(prompt="fox", quantize=8), "quantize", ()),
+            ):
+                with self.subTest(field=field), self.assertRaises(CapabilityNotSupportedError) as ctx:
+                    _backend(options=(), modes=("default", "low")).resolve_memory_request(request)
+                self.assertEqual((ctx.exception.field, ctx.exception.supported), (field, supported))
+            # A listed option the request type does not carry.
+            with self.assertRaises(CapabilityNotSupportedError) as ctx:
+                _backend().resolve_memory_request(ImageGenerationRequest(prompt="fox", extra={"soundscape": "w"}))
+            self.assertEqual((ctx.exception.field, ctx.exception.supported), ("soundscape", ()))
+            with self.assertRaises(CapabilityNotSupportedError) as ctx:
+                _backend(options=()).resolve_memory_request(VideoGenerationRequest(prompt="fox", quantize=8, music="piano"))
+            self.assertEqual((ctx.exception.field, ctx.exception.supported), (None, None))  # two fields
+
+    def test_a_remote_refusal_keeps_its_field_and_values(self):
+        from abstractvision.backends.openai_compatible import _http_error
+
+        body = b'{"error": {"code": "capability_not_supported", "message": "no", "field": "memory_mode", "supported": ["default", "low"]}}'
+        error = _http_error(HTTPError("http://x", 422, "Unprocessable", {}, io.BytesIO(body)))
+        self.assertEqual((str(error), error.field, error.supported), ("no", "memory_mode", ("default", "low")))
+
+    def test_the_plugin_names_a_misplaced_option(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.integrations.abstractcore_plugin import _refuse_misplaced_typed_options
+        from abstractvision.types import ImageGenerationRequest
+
+        with self.assertRaises(CapabilityNotSupportedError) as ctx:
+            _refuse_misplaced_typed_options(ImageGenerationRequest, {"music": "piano"}, method="t2i")
+        self.assertEqual((ctx.exception.field, ctx.exception.supported), ("music", ()))
+
+
+class _Response(io.BytesIO):
+    headers: dict = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+BOUNDARY = "----abstractvision-" + "0" * 32
+EXTRA = {"vae_tiling": False, "quality": "low", "nothing": None, "model": "openai/other-model"}
+
+
+def _form(*parts):
+    out = b""
+    for name, value in parts:
+        out += f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
+    for name, content in (("image", "img"), ("mask", "m")):
+        out += (
+            f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="{name}"; filename="{name}.png"\r\n'
+            f"Content-Type: image/png\r\n\r\n{content}\r\n"
+        ).encode()
+    return out + f"--{BOUNDARY}--\r\n".encode()
+
+
+class TestOpenAICompatibleBodies(unittest.TestCase):
+    """`extra` reaches a plain remote as 0.3.36 sent it, and AbstractCore's server nested."""
+
+    NESTED = {"vae_tiling": False, "quality": "low", "nothing": None}
+
+    def setUp(self):
+        from abstractvision.backends import openai_compatible as oc
+
+        self.oc = oc
+        self.discovery = None  # None: HTTP 404 (a plain remote); an int: that status; a dict: the answer
+        self.posts, self.gets = [], []
+        self.backend = oc.OpenAICompatibleVisionBackend(
+            config=oc.OpenAICompatibleBackendConfig(
+                base_url="http://127.0.0.1:9/v1", model_id="image-model", text_to_video_path="/videos/generations"
+            )
+        )
+
+        def urlopen(req, timeout=None):
+            if req.get_method() == "GET":
+                self.gets.append(req.full_url)
+                if not isinstance(self.discovery, dict):
+                    raise HTTPError(req.full_url, self.discovery or 404, "status", {}, io.BytesIO(b"{}"))
+                return _Response(json.dumps(self.discovery).encode())
+            self.posts.append((req.full_url.rsplit("/v1", 1)[1], req.data))
+            return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
+
+        for patcher in (
+            patch.object(oc, "urlopen", urlopen),
+            patch.object(oc.uuid, "uuid4", return_value=types.SimpleNamespace(hex="0" * 32)),
+            patch.dict("os.environ", NO_ENV),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _bodies(self):
+        from abstractvision.types import ImageEditRequest, ImageGenerationRequest, VideoGenerationRequest
+
+        self.posts.clear()
+        self.backend.generate_image(
+            ImageGenerationRequest(
+                prompt="fox", negative_prompt="blur", width=64, height=48, seed=3, steps=4,
+                guidance_scale=2.5, extra=dict(EXTRA),
+            )
+        )
+        self.backend.edit_image(ImageEditRequest(prompt="fox", image=b"img", mask=b"m", seed=3, steps=4, extra=dict(EXTRA)))
+        self.backend.generate_video(
+            VideoGenerationRequest(prompt="fox", width=64, height=48, fps=8, num_frames=9, seed=3, extra=dict(EXTRA))
+        )
+        return dict(self.posts)
+
+    def _typed_request(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        self.backend.generate_image(ImageGenerationRequest(prompt="fox", memory_mode="default"))
+
+    def _assert_0_3_36_bodies(self, bodies):
+        # Captured from AbstractVision 0.3.36 (eea267d) for the same three requests.
+        self.assertEqual(
+            bodies,
+            {
+                "/images/generations": b'{"prompt": "fox", "n": 1, "model": "other-model", "response_format": "b64_json", '
+                b'"negative_prompt": "blur", "size": "64x48", "width": 64, "height": 48, "seed": 3, "steps": 4, '
+                b'"guidance_scale": 2.5, "vae_tiling": false, "quality": "low", "nothing": null}',
+                "/images/edits": _form(
+                    ("prompt", "fox"), ("model", "other-model"), ("seed", "3"), ("steps", "4"),
+                    ("vae_tiling", "False"), ("quality", "low"),
+                ),
+                "/videos/generations": b'{"prompt": "fox", "response_format": "b64_json", "n": 1, "model": "other-model", '
+                b'"width": 64, "height": 48, "fps": 8, "num_frames": 9, "seed": 3, "vae_tiling": false, "quality": "low", '
+                b'"nothing": null}',
+            },
+        )
+
+    def _assert_nested(self, bodies):
+        # A remote that serves the vision routes gets `extra["model"]` as given: its `routed_model`
+        # values are the names it routes, prefixes included.
+        image = json.loads(bodies["/images/generations"])
+        self.assertEqual((image["model"], image["extra"]), ("openai/other-model", self.NESTED))
+        self.assertFalse(set(self.NESTED) & set(image))
+        video = json.loads(bodies["/videos/generations"])
+        self.assertEqual((video["model"], video["extra"]), ("openai/other-model", self.NESTED))
+        self.assertEqual(
+            bodies["/images/edits"],
+            _form(
+                ("prompt", "fox"), ("model", "openai/other-model"), ("seed", "3"), ("steps", "4"),
+                ("extra_json", json.dumps(self.NESTED)),
+            ),
+        )
+
+    def test_a_plain_remote_is_asked_once_and_gets_the_0_3_36_body_byte_for_byte(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        for _ in range(3):
+            self._assert_0_3_36_bodies(self._bodies())
+        # Keys named like options are opaque here (0.3.36 body, captured from eea267d).
+        self.posts.clear()
+        self.backend.generate_image(ImageGenerationRequest(prompt="fox", extra=dict(OPAQUE_EXTRA)))
+        self.assertEqual(
+            self.posts[0][1],
+            b'{"prompt": "fox", "n": 1, "model": "image-model", "response_format": "b64_json", "quantize": "q4_k", '
+            b'"soundscape": "wind", "music": "piano", "generate_audio": "no", "audio_shift": "1.5"}',
+        )
+        self.assertEqual(len(self.gets), 1)
+
+    def test_a_failed_discovery_is_attempted_once_for_extra_and_again_for_a_typed_option(self):
+        self.discovery = 503
+        for _ in range(3):
+            self._assert_0_3_36_bodies(self._bodies())
+        self.assertEqual(len(self.gets), 1)
+        self.assertIsNone(self.backend._serves_vision_routes)
+        self.discovery = {"models": [{"id": "image-model", "memory_modes": ["default"]}]}
+        self._typed_request()  # a typed option cannot proceed without knowing: it asks again
+        self.assertEqual(len(self.gets), 2)
+        self._assert_nested(self._bodies())
+
+    def test_the_first_request_with_extra_to_abstractcore_s_server_is_nested_and_stays_so(self):
+        self.discovery = {"models": [{"id": "image-model", "memory_modes": ["default"]}]}
+        self._assert_nested(self._bodies())
+        self.assertEqual(len(self.gets), 1)
+        self.backend._catalog_at -= 3600  # the contents expire; the remote's kind does not
+        self.discovery = 503
+        self._assert_nested(self._bodies())
+        self.assertEqual(len(self.gets), 1)
+
+    def test_a_request_with_neither_extra_nor_an_option_never_asks(self):
+        from abstractvision.types import ImageEditRequest, ImageGenerationRequest, VideoGenerationRequest
+
+        self.discovery = {"models": [{"id": "image-model", "memory_modes": ["default"]}]}
+        for _ in range(3):
+            self.backend.generate_image(ImageGenerationRequest(prompt="fox", width=64, height=48))
+            self.backend.edit_image(ImageEditRequest(prompt="fox", image=b"img"))
+            self.backend.generate_video(VideoGenerationRequest(prompt="fox", extra={"model": "image-model"}))
+        self.assertEqual((len(self.posts), self.gets), (9, []))
+
+    def test_plugin_requests_with_backend_parameters_reach_abstractcore_s_server_nested(self):
+        from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
+
+        self.discovery = {"models": [{"id": "image-model", "memory_modes": ["default"]}]}
+        cap = _AbstractVisionCapability(types.SimpleNamespace(config={}))
+        with patch.object(cap, "_make_openai_backend", return_value=self.backend):
+            cap.t2i("fox", provider="openai-compatible", model="image-model", vae_tiling=True)
+            cap.i2i("edit", b"img", provider="openai-compatible", model="image-model", strength=0.75)
+        (_, image), (_, edit) = self.posts
+        self.assertEqual(json.loads(image)["extra"], {"vae_tiling": True})
+        self.assertNotIn(b'name="strength"', edit)
+        self.assertIn(b'name="extra_json"\r\n\r\n{"strength": 0.75}\r\n', edit)
+        self.assertEqual(len(self.gets), 1)
+
+
+class TestOpenAIHostIsParsed(unittest.TestCase):
+    URLS = (
+        ("https://api.openai.com/v1", True),
+        ("https://API.OpenAI.com:443/v1", True),
+        ("https://eu.api.openai.com/v1", True),
+        ("https://us.api.openai.com/v1", True),
+        ("https://api.openai.com.evil.example/v1", False),
+        ("https://evilapi.openai.com/v1", False),
+        ("https://openai.com/v1", False),
+        ("http://127.0.0.1:9/api.openai.com/v1", False),
+        ("http://proxy.example/v1?upstream=https://api.openai.com", False),
+        ("http://localhost:8000/v1", False),
+        ("", False),
+    )
+
+    def test_the_openai_host_and_its_subdomains_are_openai(self):
+        from abstractvision.backends.openai_compatible import looks_like_openai_api
+
+        for url, expected in self.URLS:
+            with self.subTest(url=url):
+                self.assertIs(looks_like_openai_api(url), expected)
+
+    def test_the_backend_and_the_plugin_read_the_host_the_same_way(self):
+        from abstractvision.backends import openai_compatible as oc
+        from abstractvision.integrations.abstractcore_plugin import _provider_id_for_backend
+        from abstractvision.types import ImageGenerationRequest
+
+        sent = []
+
+        def urlopen(req, timeout=None):
+            sent.append((req.get_method(), req.full_url, req.data))
+            return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
+
+        for url, expected in self.URLS[:-1]:
+            with self.subTest(url=url):
+                sent.clear()
+                backend = oc.OpenAICompatibleVisionBackend(
+                    config=oc.OpenAICompatibleBackendConfig(base_url=url, api_key="k", model_id="image-model")
+                )
+                self.assertEqual(_provider_id_for_backend(backend), "openai" if expected else "openai-compatible")
+                with patch.object(oc, "urlopen", urlopen), patch.dict("os.environ", NO_ENV):
+                    backend.generate_image(ImageGenerationRequest(prompt="fox", seed=3, extra={"quality": "low"}))
+                # The OpenAI API is never asked for the vision routes and gets its narrower body.
+                methods = [method for method, _url, _data in sent]
+                self.assertEqual(methods, ["POST"] if expected else ["GET", "POST"])
+                self.assertEqual("seed" in json.loads(sent[-1][2]), not expected)
+
+
+_CATALOG = {
+    "models": [
+        {"routed_model": "mlx-gen/AbstractFramework/flux.2-klein-4b-8bit", "memory_modes": ["default", "low"]},
+        {"routed_model": "openai/gpt-image-1", "memory_modes": ["default"]},
+        {"routed_model": "openai-compatible/remote-sd", "memory_modes": ["default", "low"]},
+    ],
+    "defaults": {"text_to_image": {"routed_model": "diffusers/default", "memory_modes": ["default"]}},
+}
+
+
+class TestTheEntryIsTheModelSent(unittest.TestCase):
+    """One string is the model a request sends and the discovery entry it reads."""
+
+    def setUp(self):
+        from abstractvision.backends import openai_compatible as oc
+
+        self.oc = oc
+        self.discovery = _CATALOG
+        self.gets, self.posts = [], []
+
+        def urlopen(req, timeout=None):
+            if req.get_method() == "GET":
+                self.gets.append(req.full_url)
+                if self.discovery is None:
+                    raise HTTPError(req.full_url, 404, "status", {}, io.BytesIO(b"{}"))
+                if self.discovery == "down":
+                    raise URLError("connection refused")
+                if isinstance(self.discovery, int):
+                    raise HTTPError(req.full_url, self.discovery, "status", {}, io.BytesIO(b"{}"))
+                return _Response(json.dumps(self.discovery).encode())
+            self.posts.append(json.loads(req.data))
+            return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
+
+        for patcher in (patch.object(oc, "urlopen", urlopen), patch.dict("os.environ", NO_ENV)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _backend(self, model_id=None):
+        return self.oc.OpenAICompatibleVisionBackend(
+            config=self.oc.OpenAICompatibleBackendConfig(base_url="http://core.test/v1", model_id=model_id)
+        )
+
+    def test_a_model_named_only_in_extra_selects_its_entry(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        model = "mlx-gen/AbstractFramework/flux.2-klein-4b-8bit"
+        self._backend().generate_image(ImageGenerationRequest(prompt="fox", memory_mode="low", extra={"model": model}))
+        self.assertEqual((self.posts[-1]["model"], self.posts[-1]["memory_mode"]), (model, "low"))
+
+    def test_every_listed_id_is_sent_as_listed_and_reads_its_own_entry(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        ids = [info.id for info in self._backend().list_provider_models()]
+        self.assertEqual(ids, [entry["routed_model"] for entry in _CATALOG["models"]])
+        for model, modes in zip(ids, ([*entry["memory_modes"]] for entry in _CATALOG["models"])):
+            with self.subTest(model=model):
+                backend = self._backend(model)
+                backend.generate_image(ImageGenerationRequest(prompt="fox", memory_mode=modes[-1]))
+                self.assertEqual((self.posts[-1]["model"], self.posts[-1]["memory_mode"]), (model, modes[-1]))
+                self.assertEqual(backend.supported_memory_modes("text_to_image"), tuple(modes))
+
+    def test_a_plain_remote_gets_the_model_without_openai_prefixes_as_0_3_36_sent_it(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        self.discovery = None
+        backend = self._backend("openai-compatible/openai/remote-sd")
+        backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"quality": "low"}))
+        backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"model": "openai/other", "quality": "low"}))
+        self.assertEqual([body["model"] for body in self.posts], ["remote-sd", "other"])
+
+
+    def test_the_model_sent_does_not_depend_on_what_was_asked_before(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        for discovery, sent in ((_CATALOG, "openai/gpt-image-1"), (None, "gpt-image-1")):
+            with self.subTest(remote="vision routes" if discovery else "plain"):
+                self.discovery, self.gets[:] = discovery, []
+                backend = self._backend("openai/gpt-image-1")
+                backend.generate_image(ImageGenerationRequest(prompt="fox"))  # the first, plain request
+                backend.generate_image(ImageGenerationRequest(prompt="fox", memory_mode="default"))
+                backend.generate_image(ImageGenerationRequest(prompt="fox"))
+                self.assertEqual([body["model"] for body in self.posts[-3:]], [sent] * 3)
+        # A model named without such a prefix is sent as given, and nothing is asked for it.
+        self.gets[:] = []
+        self._backend("remote-sd").generate_image(ImageGenerationRequest(prompt="fox"))
+        self.assertEqual((self.posts[-1]["model"], self.gets), ("remote-sd", []))
+
+    def test_a_failed_question_about_the_remote_s_kind_is_asked_again_after_the_cache_period(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        self.discovery = "down"
+        backend = self._backend("p/m")
+        for _ in range(2):
+            backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"sampler": "a"}))
+        self.assertEqual((len(self.gets), self.posts[-1]["sampler"]), (1, "a"))  # asked once in the period
+        self.discovery = _CATALOG
+        backend._discovery_failed_at -= 3600  # the period ends
+        backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"sampler": "a"}))
+        self.assertEqual((len(self.gets), self.posts[-1]["extra"]), (2, {"sampler": "a"}))
+        self.discovery = "down"  # a definite answer is kept for the backend's life
+        backend._catalog_at -= 3600
+        backend.generate_image(ImageGenerationRequest(prompt="fox", extra={"sampler": "a"}))
+        self.assertEqual((len(self.gets), self.posts[-1]["extra"]), (2, {"sampler": "a"}))
+
+    def test_cancel_event_fails_as_a_failed_request_while_the_remote_s_kind_is_unknown(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageGenerationRequest
+
+        for failure in ("down", 503):
+            with self.subTest(failure=failure):
+                self.discovery = failure
+                backend = self._backend("p/m")
+                with self.assertRaisesRegex(RuntimeError, "OpenAI-compatible provider request failed") as ctx:
+                    backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+                self.assertNotIsInstance(ctx.exception, CapabilityNotSupportedError)
+                self.assertIn("GET /vision/models failed", str(ctx.exception))
+                self.assertEqual(self.posts, [])
+
+    def test_a_remote_that_answers_it_has_no_vision_routes_runs_cancel_event_as_a_plain_request(self):
+        from abstractvision.errors import GenerationCancelledError
+        from abstractvision.types import ImageGenerationRequest
+
+        # 404, 405 and 501 from the discovery route are answers, kept: the OpenAI API, a plain remote and a
+        # vision-route remote that does not list the model run the request plainly, the event checked before
+        # sending.
+        for answer in (None, 405, 501, {"models": [{"routed_model": "other/model", "memory_modes": ["default"]}]}):
+            with self.subTest(answer=answer):
+                self.discovery, self.gets[:], self.posts[:] = answer, [], []
+                backend = self._backend("p/m")
+                backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+                backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+                self.assertEqual(len(self.posts), 2)
+                if not isinstance(answer, dict):
+                    self.assertEqual(len(self.gets), 1)  # kept: not asked again
+                    self.assertFalse(backend._serves_vision_routes)
+                stopped = threading.Event()
+                stopped.set()
+                with self.assertRaises(GenerationCancelledError):
+                    backend.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=stopped))
+                self.assertEqual(len(self.posts), 2)
+        openai = self.oc.OpenAICompatibleVisionBackend(
+            config=self.oc.OpenAICompatibleBackendConfig(base_url="https://api.openai.com/v1", model_id="gpt-image-1")
+        )
+        self.gets[:], self.posts[:] = [], []
+        openai.generate_image(ImageGenerationRequest(prompt="fox", cancel_event=threading.Event()))
+        self.assertEqual((len(self.posts), self.gets), (1, []))
+
+    def test_quantize_is_read_by_the_integer_rule_mlx_gen_uses(self):
+        from abstractvision.backends.base_backend import request_int
+        from abstractvision.types import ImageGenerationRequest
+
+        self.discovery = {"models": [{"routed_model": "p/m", "memory_modes": ["default"]}]}
+        backend = self._backend("p/m")
+        for request in (
+            ImageGenerationRequest(prompt="fox", quantize=True),
+            ImageGenerationRequest(prompt="fox", quantize=8.5),
+            ImageGenerationRequest(prompt="fox", quantize="x"),
+            ImageGenerationRequest(prompt="fox", quantize="none"),
+            ImageGenerationRequest(prompt="fox", memory_mode="default", extra={"quantize": False}),
+        ):
+            with self.subTest(request=request.quantize or request.extra), self.assertRaisesRegex(
+                ValueError, "quantize must be an integer"
+            ):
+                backend.generate_image(request)
+        self.assertEqual(self.posts, [])
+        for value in (8, 8.0, "8", " 8 "):
+            with self.subTest(quantize=value):
+                backend.generate_image(ImageGenerationRequest(prompt="fox", quantize=value))
+                self.assertEqual(self.posts[-1]["quantize"], request_int("quantize", value, label="MLX-Gen"))
+                self.assertEqual(self.posts[-1]["quantize"], 8)
+
+
+class TestTheRemoteKindIsAskedOnce(unittest.TestCase):
+    def test_a_concurrent_first_request_waits_for_the_answer(self):
+        from abstractvision.backends import openai_compatible as oc
+        from abstractvision.types import ImageGenerationRequest
+
+        asked, answer, bodies = threading.Event(), threading.Event(), []
+
+        def urlopen(req, timeout=None):
+            if req.get_method() == "GET":
+                asked.set()
+                answer.wait(5)  # the answer is slow: the second request arrives meanwhile
+                return _Response(json.dumps({"models": [{"routed_model": "p/m", "memory_modes": ["default"]}]}).encode())
+            bodies.append(json.loads(req.data))
+            return _Response(b'{"data": [{"b64_json": "iVBORw0KGgo="}]}')
+
+        backend = oc.OpenAICompatibleVisionBackend(
+            config=oc.OpenAICompatibleBackendConfig(base_url="http://core.test/v1", model_id="p/m")
+        )
+        with patch.object(oc, "urlopen", urlopen), patch.dict("os.environ", NO_ENV):
+            first = threading.Thread(
+                target=backend.generate_image, args=(ImageGenerationRequest(prompt="one", extra={"sampler": "a"}),)
+            )
+            second = threading.Thread(
+                target=backend.generate_image, args=(ImageGenerationRequest(prompt="two", extra={"sampler": "b"}),)
+            )
+            first.start()
+            try:
+                self.assertTrue(asked.wait(5))
+                second.start()
+                second.join(0.2)
+                self.assertTrue(second.is_alive())  # waiting for the first answer, not sending
+                self.assertEqual(bodies, [])
+            finally:
+                answer.set()
+                first.join(5)
+                if second.ident is not None:  # started
+                    second.join(5)
+        self.assertEqual(sorted(body["extra"]["sampler"] for body in bodies), ["a", "b"])
+        self.assertFalse(any("sampler" in body for body in bodies))
+
+
+if __name__ == "__main__":
+    unittest.main()

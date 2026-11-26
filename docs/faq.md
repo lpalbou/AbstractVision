@@ -31,7 +31,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MLX-Gen supports curated q4/q8 image presets, validated Qwen structured control and Qwen/FIBO masked edits, official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. MLX-Gen is validated on Apple Silicon. The explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the NVIDIA/Linux `gpu` and `all-gpu` profiles do not include it.
+- Local MLX-Gen supports curated q4/q8 image presets, Qwen/FIBO masked edits (structured control images are refused), official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. MLX-Gen is validated on Apple Silicon. The explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the NVIDIA/Linux `gpu` and `all-gpu` profiles do not include it.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - OpenAI-compatible HTTP can also provide `text_to_video` / `image_to_video` **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
@@ -68,7 +68,7 @@ After that works, `black-forest-labs/FLUX.2-klein-4B` is the recommended next lo
 
 ## Do the one-shot CLI commands run locally?
 
-Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` run on this machine's local engine by default (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor-only host) with FLUX.2 [klein] 4B in 8 bits as the default model; give `--base-url` for the OpenAI-compatible HTTP backend or `--provider` for another local engine.
+Yes. `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` run on this machine's local engine by default (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor-only host) with FLUX.2 [klein] 4B as the default model (the 8-bit MLX-Gen package, the Q8_0 GGUF on stable-diffusion.cpp, the 16-bit Diffusers pipeline run in float32 on a processor); give `--base-url` for the OpenAI-compatible HTTP backend or `--provider` for another local engine.
 
 For interactive local generation, use `abstractvision cli` (legacy alias: `abstractvision repl`) with `/backend diffusers ...`, `/backend mlx-gen ...`, or `/backend sdcpp ...`.
 
@@ -184,6 +184,12 @@ default), so the peak is set by denoising rather than by the VAE decode. Pass
 `extra={"vae_tiling": False}` (CLI `--no-vae-tiling`) to decode whole frames at
 once; at small sizes that decodes somewhat faster, and it raises the peak to the
 "untiled" figures.
+
+To lower the peak further, pass `memory_mode="low"` (CLI `--memory-mode low`):
+MLX-Gen low-RAM mode clears the MLX cache after every step and transformer block
+and holds it at 1 GB, and releases the denoisers (and on A14B the inactive
+expert) before the decode, at some cost in speed; the model is loaded again on
+the next request. The figures above were measured without it. See [Memory modes](api.md#memory-modes-memory_mode).
 
 Time grows with the canvas and the step count: on the same Mac a default
 TI2V-5B clip (832x480, 121 frames, 50 steps) took about 25 minutes end to end.

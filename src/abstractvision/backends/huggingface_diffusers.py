@@ -23,6 +23,7 @@ from ..lora_adapters import (
     serialize_lora_adapters,
 )
 from ..model_capabilities import VisionModelCapabilitiesRegistry, VisionTaskSpec
+from ..model_downloads import download_command
 from ..model_cache import (
     cached_hf_model_sources,
     hf_snapshot_has_incomplete_downloads,
@@ -32,6 +33,10 @@ from ..model_cache import (
     resolve_hf_repo_snapshot,
 )
 from ..types import (
+    MEMORY_MODE_DEFAULT,
+    MEMORY_MODE_LOW,
+    MEMORY_MODE_LOWEST,
+    MEMORY_MODES,
     GeneratedAsset,
     ImageEditRequest,
     ImageGenerationRequest,
@@ -818,11 +823,14 @@ def _cuda_offload_decision(torch: Any, pipe: Any, device: str, dtype: Any, mode:
     )
 
 
-def _is_gpu_out_of_memory(error: BaseException) -> bool:
-    """torch.OutOfMemoryError (torch.cuda.OutOfMemoryError), or a CUDA allocator message."""
-    if type(error).__name__ == "OutOfMemoryError":
-        return True
-    return "CUDA out of memory" in str(error)
+# memory_mode -> the least CPU offload a CUDA pipeline must run with. The request only raises the
+# placement: the configured `cpu_offload` (or what "auto" picks) wins when it is already higher.
+_OFFLOAD_RANK: Dict[str, int] = {"": 0, "model": 1, "sequential": 2}
+_MEMORY_MODE_OFFLOAD_FLOOR: Dict[str, str] = {
+    MEMORY_MODE_DEFAULT: "",
+    MEMORY_MODE_LOW: "model",
+    MEMORY_MODE_LOWEST: "sequential",
+}
 
 
 def _pipe_cpu_offload_mode(pipe: Any) -> str:
@@ -1137,13 +1145,16 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         self._capability_registry: Optional[VisionModelCapabilitiesRegistry] = None
         self._capability_registry_failed = False
 
+    def _device_is_auto(self) -> bool:
+        return str(getattr(self._cfg, "device", "") or "").strip().lower() in {"", "auto", "default"}
+
     def _effective_device(self, torch: Any) -> str:
         if self._resolved_device is not None:
             return self._resolved_device
 
         raw = str(getattr(self._cfg, "device", "") or "").strip()
         d = raw.lower()
-        if not d or d in {"auto", "default"}:
+        if self._device_is_auto():
             cuda = getattr(torch, "cuda", None)
             if (
                 cuda is not None
@@ -1173,26 +1184,33 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             self._resolved_device = raw
         return self._resolved_device
 
-    def preload(self) -> None:
+    def preload(self, memory_mode: Optional[str] = None, quantize: Optional[int] = None) -> None:
         with self._backend_lock:
             kind = self._preload_pipeline_kind()
-            pipe = self._get_or_load_pipeline(kind)
+            task = {"t2v": "text_to_video", "i2i": "image_to_image"}.get(kind, "text_to_image")
+            # Checked as a request of that task carrying them is (this backend takes no quantize);
+            # the pipeline loads with the placement that mode asks for, and so does the warmup.
+            mode, _quantize = self._resolve_preload_options(memory_mode, quantize, task=task)
+            pipe = self._get_or_load_pipeline(kind, memory_mode=mode)
             if self._is_pipeline_warm(kind, pipe):
                 return
             if kind == "t2v":
                 self.generate_video(
-                    self.normalize_video_generation_request(self._warmup_video_generation_request())
+                    self.normalize_video_generation_request(self._warmup_video_generation_request(mode))
                 )
             elif kind == "t2i":
-                self.generate_image(self._warmup_generation_request())
+                self.generate_image(self._warmup_generation_request(mode))
             elif kind == "i2i":
-                self.edit_image(self.normalize_image_edit_request(self._warmup_edit_request()))
+                self.edit_image(self.normalize_image_edit_request(self._warmup_edit_request(mode)))
             else:
                 self._mark_pipeline_warm(kind, pipe)
 
     def unload(self) -> None:
         with self._backend_lock:
             self._unload_locked()
+
+    def has_loaded_model(self) -> bool:
+        return bool(self._pipelines) or self._rapid_transformer is not None
 
     def _unload_locked(self) -> None:
         # Best-effort: release pipelines and GPU cache.
@@ -1245,6 +1263,33 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 empty_mps()
         except Exception:
             pass
+
+    def _may_download(self, repo_id: Optional[str] = None) -> bool:
+        """Whether generation may fetch `repo_id` (the configured model when None) from the Hub:
+        `allow_download`, unless the catalog marks that repository for explicit download only."""
+        if not self._cfg.allow_download:
+            return False
+        reg = self._registry()
+        repo = str(repo_id if repo_id is not None else self._cfg.model_id or "")
+        return reg is None or reg.explicit_download_model(repo) is None
+
+    def _not_cached_error(self, model_id: str) -> ValueError:
+        """The refusal of a model that is not in the cache and that this load may not download."""
+        if self._cfg.allow_download:
+            try:
+                how = f"download it with `{download_command(model_id, engine='diffusers')}`"
+            except ValueError:
+                how = f"fetch it from https://huggingface.co/{model_id}"
+            return ValueError(
+                f"Model {model_id!r} is not available locally, and generation never downloads it: the "
+                f"catalog marks it for explicit download only; {how}."
+            )
+        return ValueError(
+            f"Model {model_id!r} is not available locally and downloads are disabled. "
+            "Pre-download it outside the REPL (for example with `huggingface-cli download ...`) or explicitly "
+            "enable runtime downloads (set allow_download=True in Python or ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1). "
+            "If the model is gated, accept its terms on Hugging Face and set `HF_TOKEN` before downloading."
+        )
 
     def _registry(self) -> Optional[VisionModelCapabilitiesRegistry]:
         if self._capability_registry is not None:
@@ -1379,7 +1424,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 if found is not None:
                     return found
 
-            if bool(self._cfg.allow_download):
+            if self._may_download(repo_id):
                 concrete_patterns = [
                     p
                     for p in spec.gguf_patterns
@@ -1432,7 +1477,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             "subfolder": "transformer",
             "quantization_config": q_config,
             "torch_dtype": torch_dtype,
-            "local_files_only": not bool(self._cfg.allow_download),
+            "local_files_only": not self._may_download(spec.base_model_id),
         }
         if self._cfg.cache_dir:
             kwargs["cache_dir"] = str(self._cfg.cache_dir)
@@ -1440,7 +1485,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             kwargs["revision"] = str(self._cfg.revision)
             kwargs["config_revision"] = str(self._cfg.revision)
 
-        with _hf_offline_env(not bool(self._cfg.allow_download)):
+        with _hf_offline_env(not self._may_download(spec.base_model_id)):
             transformer = QwenImageTransformer2DModel.from_single_file(str(gguf_path), **kwargs)
 
         try:
@@ -1574,15 +1619,17 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             return "i2i"
         return "t2i"
 
-    def _warmup_generation_request(self) -> ImageGenerationRequest:
+    def _warmup_generation_request(self, memory_mode: str) -> ImageGenerationRequest:
         return ImageGenerationRequest(
+            memory_mode=memory_mode,
             prompt="abstractvision preload warmup",
             steps=1,
             seed=0,
         )
 
-    def _warmup_video_generation_request(self) -> VideoGenerationRequest:
+    def _warmup_video_generation_request(self, memory_mode: str) -> VideoGenerationRequest:
         return VideoGenerationRequest(
+            memory_mode=memory_mode,
             prompt="abstractvision preload warmup",
             steps=1,
             num_frames=9,
@@ -1590,12 +1637,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             seed=0,
         )
 
-    def _warmup_edit_request(self) -> ImageEditRequest:
+    def _warmup_edit_request(self, memory_mode: str) -> ImageEditRequest:
         Image = _lazy_import_pil()
         img = Image.new("RGB", (256, 256), color=(180, 180, 180))
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return ImageEditRequest(
+            memory_mode=memory_mode,
             prompt="abstractvision preload warmup",
             image=buf.getvalue(),
             # Some edit pipelines can return NaNs/all-black images at extremely low step counts.
@@ -1699,7 +1747,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     ) -> ImageGenerationRequest:
         if request.control_image is not None:
             raise CapabilityNotSupportedError(
-                "Diffusers backend does not support structured control images for text-to-image."
+                "Diffusers backend does not support structured control images for text-to-image.",
+                field="control_image",
+                supported=(),
             )
         spec = self._task_spec("text_to_image")
         if spec is None:
@@ -1919,7 +1969,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     kwargs["weight_name"] = spec["weight_name"]
                 if spec.get("subfolder"):
                     kwargs["subfolder"] = spec["subfolder"]
-                kwargs["local_files_only"] = not bool(self._cfg.allow_download)
+                kwargs["local_files_only"] = not self._may_download(str(spec["source"]))
                 if self._cfg.cache_dir:
                     kwargs["cache_dir"] = str(self._cfg.cache_dir)
 
@@ -1984,11 +2034,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             QwenImageTransformer2DModel = _lazy_import_qwen_image_transformer_2d_model()
             kwargs: Dict[str, Any] = {
                 "subfolder": subfolder,
-                "local_files_only": not bool(self._cfg.allow_download),
+                "local_files_only": not self._may_download(repo),
             }
             if self._cfg.cache_dir:
                 kwargs["cache_dir"] = str(self._cfg.cache_dir)
-            with _hf_offline_env(not bool(self._cfg.allow_download)):
+            with _hf_offline_env(not self._may_download(repo)):
                 tr = QwenImageTransformer2DModel.from_pretrained(
                     repo, torch_dtype=torch_dtype, **kwargs
                 )
@@ -2037,7 +2087,52 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             supported_tasks=supported_tasks,
             supports_mask=supports_mask,
             supports_control_image=False,
+            memory_modes=self.supported_memory_modes(),
+            # cancel_event is checked before a run starts; it cannot stop a running one here.
+            cancellation="start",
         )
+
+    def supported_memory_modes(self, task: Optional[str] = None) -> Tuple[str, ...]:
+        """"low"/"lowest" are model/sequential CPU offload, which this backend runs on CUDA only.
+
+        An explicit device decides. With "auto", macOS has no CUDA (no torch needed); elsewhere
+        torch answers, imported here once (the host where it matters, which runs on torch).
+        """
+        _ = task
+        if self._device_is_auto() and self._resolved_device is None:
+            if sys.platform == "darwin":
+                return (MEMORY_MODE_DEFAULT,)
+            try:
+                self._effective_device(_lazy_import_torch())
+            except OptionalDependencyMissingError:
+                return (MEMORY_MODE_DEFAULT,)  # without torch this backend runs nothing
+        if str(self._effective_device(None)).strip().lower().startswith("cuda"):
+            return MEMORY_MODES
+        return (MEMORY_MODE_DEFAULT,)
+
+    def _drop_pipeline_locked(self, kind: str) -> None:
+        # Offload is fixed when a pipeline loads; a request that needs more offload than the
+        # loaded pipeline has reloads it (the same release steps as unload, for one kind).
+        pipe = self._pipelines.pop(kind, None)
+        self._call_params.pop(kind, None)
+        self._warmed_pipeline_ids.pop(kind, None)
+        self._fused_lora_signature.pop(kind, None)
+        if pipe is not None:
+            _release_pipeline_adapters(pipe)
+            pipe = None
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
+        _return_freed_host_memory()
+        try:
+            cuda = getattr(_lazy_import_torch(), "cuda", None)
+            if cuda is not None and callable(getattr(cuda, "is_available", None)) and cuda.is_available():
+                cuda.empty_cache()
+        except Exception:
+            pass
 
     def _is_hf_model_cached(self, model_id: str) -> bool:
         model_id = str(model_id or "").strip()
@@ -2224,7 +2319,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     require_weight_files=True,
                 )
                 base_cached = self._is_hf_model_cached(base_model_id)
-                if (not gguf_cached_in or not base_cached) and not bool(self._cfg.allow_download):
+                if (not gguf_cached_in or not base_cached) and not (
+                    self._may_download(str(preset.repo_id)) and self._may_download(base_model_id)
+                ):
                     continue
                 add_model(
                     str(preset.key),
@@ -2268,7 +2365,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         configured_model = str(self._cfg.model_id or "").strip()
         if configured_model and configured_model not in seen:
             cached = self._is_hf_model_cached(configured_model)
-            if cached or bool(self._cfg.allow_download):
+            if cached or self._may_download(configured_model):
                 add_model(
                     configured_model,
                     tasks=[str(t) for t in self.get_capabilities().supported_tasks],
@@ -2278,9 +2375,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
 
         return out
 
-    def _pipeline_common_kwargs(self) -> Dict[str, Any]:
+    def _pipeline_common_kwargs(self, model_id: str) -> Dict[str, Any]:
         kwargs: Dict[str, Any] = {
-            "local_files_only": not bool(self._cfg.allow_download),
+            "local_files_only": not self._may_download(model_id),
             "use_safetensors": bool(self._cfg.use_safetensors),
         }
         if self._cfg.cache_dir:
@@ -2487,10 +2584,15 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         except Exception:
             pass
 
-    def _get_or_load_pipeline(self, kind: str) -> Any:
+    def _get_or_load_pipeline(self, kind: str, *, memory_mode: str) -> Any:
+        # The least CPU offload the calling request's mode needs; a pipeline loaded with less is reloaded.
+        floor = _MEMORY_MODE_OFFLOAD_FLOOR[memory_mode]
         existing = self._pipelines.get(kind)
         if existing is not None:
-            return existing
+            if _OFFLOAD_RANK[_pipe_cpu_offload_mode(existing)] >= _OFFLOAD_RANK[floor]:
+                return existing
+            existing = None
+            self._drop_pipeline_locked(kind)
 
         (
             DiffusionPipeline,
@@ -2519,7 +2621,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         if torch_dtype is None:
             torch_dtype = _default_torch_dtype_for_device(torch, device)
         torch_dtype = self._preferred_torch_dtype_for_kind(kind, device, torch, torch_dtype)
-        common = self._pipeline_common_kwargs()
+        load_model_id = str(
+            gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id
+        )
+        may_download = self._may_download(load_model_id)
+        common = self._pipeline_common_kwargs(load_model_id)
         if bool(self._cfg.low_cpu_mem_usage):
             common["low_cpu_mem_usage"] = True
 
@@ -2551,14 +2657,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             if torch_dtype == getattr(torch, "float16", object()):
                 auto_variant = "fp16"
 
-        load_model_id = str(
-            gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id
-        )
         snap: Optional[Path] = None
-        if not bool(self._cfg.allow_download):
+        if not may_download:
             snap = self._resolve_snapshot_dir(model_id=load_model_id)
             if snap is not None:
                 load_model_id = str(snap)
+            elif "/" in load_model_id and self._resolve_any_snapshot_dir(model_id=load_model_id) is None:
+                raise self._not_cached_error(load_model_id)
 
         def _from_pretrained(cls: Any) -> Any:
             load_common = dict(common)
@@ -2575,26 +2680,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                         load_model_id, torch_dtype=torch_dtype, **load_common
                     )
             return cls.from_pretrained(load_model_id, torch_dtype=torch_dtype, **load_common)
-
-        def _maybe_raise_offline_missing_model(e: Exception) -> None:
-            model_id = str(
-                gguf_spec.base_model_id if gguf_spec is not None else self._cfg.model_id or ""
-            ).strip()
-            if not model_id or "/" not in model_id:
-                return
-            # If it's not in cache, provide a clearer message than the upstream
-            # "does not appear to have a file named model_index.json" wording.
-            if self._resolve_snapshot_dir(model_id=model_id) is not None:
-                return
-            msg = str(e)
-            if "model_index.json" not in msg:
-                return
-            raise ValueError(
-                f"Model {model_id!r} is not available locally and downloads are disabled. "
-                "Pre-download it outside the REPL (for example with `huggingface-cli download ...`) or explicitly "
-                "enable runtime downloads (set allow_download=True in Python or ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1). "
-                "If the model is gated, accept its terms on Hugging Face and set `HF_TOKEN` before downloading."
-            ) from e
 
         def _maybe_raise_incomplete_snapshot_error(e: Exception) -> None:
             model_id = str(
@@ -2646,14 +2731,13 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             ) from e
 
         pipe = None
-        with _hf_offline_env(not bool(self._cfg.allow_download)):
+        with _hf_offline_env(not may_download):
             if kind == "t2i":
                 # Prefer AutoPipeline when available, but fall back to DiffusionPipeline for robustness.
                 if AutoPipelineForText2Image is not None:
                     try:
                         pipe = _from_pretrained(AutoPipelineForText2Image)
                     except Exception as e:
-                        _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
                         _maybe_raise_missing_torchvision(e)
                         pipe = None
@@ -2661,7 +2745,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     try:
                         pipe = _from_pretrained(DiffusionPipeline)
                     except Exception as e:
-                        _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
                         _maybe_raise_missing_torchvision(e)
                         raise
@@ -2670,7 +2753,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     try:
                         pipe = _from_pretrained(AutoPipelineForImage2Image)
                     except Exception as e:
-                        _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
                         _maybe_raise_missing_torchvision(e)
                         pipe = None
@@ -2678,7 +2760,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     try:
                         pipe = _from_pretrained(DiffusionPipeline)
                     except Exception as e:
-                        _maybe_raise_offline_missing_model(e)
                         _maybe_raise_incomplete_snapshot_error(e)
                         _maybe_raise_missing_torchvision(e)
                         raise ValueError(
@@ -2697,7 +2778,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 try:
                     pipe = _from_pretrained(AutoPipelineForInpainting)
                 except Exception as e:
-                    _maybe_raise_offline_missing_model(e)
                     _maybe_raise_incomplete_snapshot_error(e)
                     _maybe_raise_missing_torchvision(e)
                     raise
@@ -2705,7 +2785,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 try:
                     pipe = _from_pretrained(DiffusionPipeline)
                 except Exception as e:
-                    _maybe_raise_offline_missing_model(e)
                     _maybe_raise_incomplete_snapshot_error(e)
                     _maybe_raise_missing_torchvision(e)
                     raise ValueError(
@@ -2721,6 +2800,14 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         offload, offload_reason = _cuda_offload_decision(
             torch, pipe, str(device), move_dtype, str(getattr(self._cfg, "cpu_offload", "auto") or "auto")
         )
+        if _OFFLOAD_RANK.get(offload, 0) < _OFFLOAD_RANK[floor]:
+            if not callable(getattr(pipe, f"enable_{floor}_cpu_offload", None)):
+                raise CapabilityNotSupportedError(
+                    f"memory_mode needs {floor} CPU offload, which this pipeline "
+                    f"({type(pipe).__name__}) does not support.",
+                    field="memory_mode",
+                )
+            offload, offload_reason = floor, f"{floor} CPU offload requested by memory_mode"
         if offload == "sequential":
             try:
                 if move_dtype is not None:
@@ -2735,6 +2822,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     offload_reason,
                 )
             except Exception as exc:
+                if floor == "sequential":
+                    raise CapabilityNotSupportedError(
+                        f"memory_mode='lowest' needs sequential CPU offload, which failed: {exc}",
+                        field="memory_mode",
+                    ) from exc
                 logger.warning("Diffusers: sequential CPU offload failed (%s); trying model CPU offload", exc)
                 offload = "model" if callable(getattr(pipe, "enable_model_cpu_offload", None)) else ""
         if offload == "model":
@@ -2746,6 +2838,11 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 setattr(pipe, "_abstractvision_cpu_offload_mode", "model")
                 logger.info("Diffusers: model CPU offload on %s: %s", device, offload_reason)
             except Exception as exc:
+                if floor:
+                    raise CapabilityNotSupportedError(
+                        f"memory_mode needs CPU offload, which failed: {exc}",
+                        field="memory_mode",
+                    ) from exc
                 logger.warning("Diffusers: model CPU offload failed (%s); moving the whole pipeline to %s", exc, device)
                 offload = ""
         if not offload:
@@ -2864,10 +2961,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
         try:
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always", RuntimeWarning)
-                with _hf_offline_env(not bool(self._cfg.allow_download)):
+                with _hf_offline_env(not self._may_download()):
                     out = pipe(**call_kwargs)
         except Exception as e:
-            if _is_gpu_out_of_memory(e):
+            # torch's out-of-memory error; torch is imported when the pipeline raised one.
+            torch = sys.modules.get("torch")
+            if torch is not None and isinstance(e, torch.cuda.OutOfMemoryError):
                 raise self._gpu_out_of_memory_error(pipe, call_kwargs, e) from e
             raise
         had_invalid_cast = any(
@@ -2909,10 +3008,6 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             size += f", {int(frames)} frames"
         offload = _pipe_cpu_offload_mode(pipe)
         placement = f"{offload} CPU offload" if offload else "the whole pipeline on the GPU"
-        import re
-
-        wanted = re.search(r"Tried to allocate ([0-9.]+ [KMG]iB)", str(error))
-        need = f" it needed {wanted.group(1)} more," if wanted else ""
         room = (
             f" {free_total[0] / _GIB:.1f} of {free_total[1] / _GIB:.1f} GiB are free now."
             if free_total
@@ -2923,7 +3018,7 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
             hint += ", cpu_offload='sequential' (much less GPU memory, slower steps)"
         return GpuOutOfMemoryError(
             f"The GPU ran out of memory generating with {self._cfg.model_id} at {size} ({placement}):"
-            f"{need}{room} Try {hint}, or this model's GGUF build on the stable-diffusion.cpp backend."
+            f"{room} Try {hint}, or this model's GGUF build on the stable-diffusion.cpp backend."
         )
 
     def _pipe_progress_param_names(self, pipe: Any) -> set[str]:
@@ -3114,8 +3209,9 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 "This model is temporarily disabled for local Diffusers text_to_image generation."
             )
         with self._backend_lock:
+            request, memory_mode = self.resolve_memory_request(request, task="text_to_image")
             request = self.normalize_image_generation_request(request)
-            pipe = self._get_or_load_pipeline("t2i")
+            pipe = self._get_or_load_pipeline("t2i", memory_mode=memory_mode)
             call_params = self._call_params.get("t2i")
             total_steps = int(request.steps) if request.steps is not None else None
 
@@ -3237,6 +3333,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     meta["cpu_offload"] = offload_mode
             except Exception:
                 pass
+            # The mode this run ran with, "default" included: a host reads it, never guesses it.
+            meta["memory_mode"] = memory_mode
             return GeneratedAsset(
                 media_type="image",
                 data=png,
@@ -3257,13 +3355,14 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 "This model is temporarily disabled for local Diffusers image_to_image generation."
             )
         with self._backend_lock:
+            request, memory_mode = self.resolve_memory_request(request, task="image_to_image")
             request = self.normalize_image_edit_request(request)
             if request.mask is not None:
-                pipe = self._get_or_load_pipeline("inpaint")
+                pipe = self._get_or_load_pipeline("inpaint", memory_mode=memory_mode)
                 call_params = self._call_params.get("inpaint")
                 kind = "inpaint"
             else:
-                pipe = self._get_or_load_pipeline("i2i")
+                pipe = self._get_or_load_pipeline("i2i", memory_mode=memory_mode)
                 call_params = self._call_params.get("i2i")
                 kind = "i2i"
 
@@ -3403,6 +3502,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     meta["cpu_offload"] = offload_mode
             except Exception:
                 pass
+            # The mode this run ran with, "default" included: a host reads it, never guesses it.
+            meta["memory_mode"] = memory_mode
             return GeneratedAsset(
                 media_type="image",
                 data=png,
@@ -3428,7 +3529,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                 "Local Diffusers text_to_video is experimental and temporarily disabled for this model."
             )
         with self._backend_lock:
-            pipe = self._get_or_load_pipeline("t2v")
+            request, memory_mode = self.resolve_memory_request(request, task="text_to_video")
+            pipe = self._get_or_load_pipeline("t2v", memory_mode=memory_mode)
             call_params = self._call_params.get("t2v")
             total_steps = int(request.steps) if request.steps is not None else None
 
@@ -3504,6 +3606,8 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
                     meta["cpu_offload"] = offload_mode
             except Exception:
                 pass
+            # The mode this run ran with, "default" included: a host reads it, never guesses it.
+            meta["memory_mode"] = memory_mode
             return GeneratedAsset(
                 media_type="video",
                 data=mp4,

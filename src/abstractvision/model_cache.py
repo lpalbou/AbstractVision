@@ -146,6 +146,24 @@ def default_hf_cache_root() -> Path:
     return Path.home() / ".cache" / "huggingface" / "hub"
 
 
+def _hub_client_cache_root() -> Path:
+    """The cache huggingface_hub reads, by the precedence of its `constants.HF_HUB_CACHE` (0.x and 1.x).
+
+    Read from the environment when called, as the other roots are: the library's constant is fixed when
+    huggingface_hub is imported.
+    """
+
+    for key in ("HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE"):
+        value = os.environ.get(key)
+        if value:
+            return _expand_path(value)
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return _expand_path(hf_home) / "hub"
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    return (_expand_path(xdg_cache) if xdg_cache else Path.home() / ".cache") / "huggingface" / "hub"
+
+
 def hf_cache_roots(
     *,
     cache_dir: Optional[str] = None,
@@ -186,6 +204,7 @@ def hf_cache_roots(
     if hf_home:
         add("HF_HOME", _expand_path(hf_home) / "hub")
     add("default HF cache", default_hf_cache_root())
+    add("huggingface_hub cache", _hub_client_cache_root())
     for root in extra_roots or ():
         if isinstance(root, tuple) and len(root) == 2:
             label, value = root
@@ -332,7 +351,7 @@ def hf_snapshot_is_usable(
     return True
 
 
-def _iter_hf_repo_snapshots(
+def iter_hf_repo_snapshots(
     repo_id: str,
     *,
     cache_dir: Optional[str] = None,
@@ -362,7 +381,7 @@ def cached_hf_model_sources(
     """Return cache labels that already contain at least one snapshot for a repo."""
 
     sources: List[str] = []
-    for label, snap in _iter_hf_repo_snapshots(model_id, cache_dir=cache_dir, extra_roots=extra_roots):
+    for label, snap in iter_hf_repo_snapshots(model_id, cache_dir=cache_dir, extra_roots=extra_roots):
         if hf_snapshot_is_usable(
             snap,
             required_files=required_files,
@@ -450,7 +469,7 @@ def resolve_hf_repo_snapshot(
 ) -> Optional[Path]:
     """Return the best local snapshot path for a Hugging Face repository."""
 
-    for _, snap in _iter_hf_repo_snapshots(repo_id, cache_dir=cache_dir, revision=revision, extra_roots=extra_roots):
+    for _, snap in iter_hf_repo_snapshots(repo_id, cache_dir=cache_dir, revision=revision, extra_roots=extra_roots):
         if hf_snapshot_is_usable(
             snap,
             required_files=required_files,
@@ -466,10 +485,21 @@ def _legacy_snapshot_name(repo_id: str, source_dir: Path) -> str:
     return digest
 
 
-def _write_ref(repo_dir: Path, ref_name: str, snapshot_name: str) -> None:
-    refs_dir = repo_dir / "refs"
-    refs_dir.mkdir(parents=True, exist_ok=True)
-    (refs_dir / ref_name).write_text(snapshot_name, encoding="utf-8")
+def write_hf_ref(repo_dir: Path, ref_name: str, snapshot_name: str) -> None:
+    """Record that the revision `ref_name` (a branch or tag) is the snapshot `snapshot_name`, as
+    huggingface_hub does: `refs/<ref_name>` holds it. An unchanged ref is not rewritten.
+
+    A name with `/` (`refs/pr/1`, `release/v1`) is a nested ref, as huggingface_hub writes it; a name
+    that would leave `refs/` (an absolute path, an empty, `.` or `..` component) raises ValueError."""
+
+    parts = str(ref_name).replace("\\", "/").split("/")
+    if str(ref_name).startswith(("/", "\\")) or any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"{ref_name!r} is not a revision name a cache ref can hold.")
+    ref = repo_dir / "refs" / ref_name
+    if ref.is_file() and ref.read_text(encoding="utf-8").strip() == snapshot_name:
+        return
+    ref.parent.mkdir(parents=True, exist_ok=True)
+    ref.write_text(snapshot_name, encoding="utf-8")
 
 
 def _best_effort_remove(path: Path) -> None:
@@ -503,7 +533,7 @@ def import_directory_to_hf_cache(
     snapshot_name = _legacy_snapshot_name(repo_id, source)
     snapshot_dir = snapshots_dir / snapshot_name
     if snapshot_dir.exists():
-        _write_ref(repo_dir, ref_name, snapshot_name)
+        write_hf_ref(repo_dir, ref_name, snapshot_name)
         if cleanup_source and source.resolve() != snapshot_dir.resolve():
             _best_effort_remove(source)
         return snapshot_dir
@@ -520,7 +550,7 @@ def import_directory_to_hf_cache(
         _best_effort_remove(snapshot_dir)
         raise
 
-    _write_ref(repo_dir, ref_name, snapshot_name)
+    write_hf_ref(repo_dir, ref_name, snapshot_name)
     return snapshot_dir
 
 

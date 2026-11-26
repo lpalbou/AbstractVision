@@ -22,6 +22,12 @@ class VisionModelDownloadSpec:
     source: str = ""
     notes: str = ""
     aliases: List[str] = field(default_factory=list)
+    # The package `download <model id>` picks among several of one engine when no width is named.
+    recommended: bool = False
+    # The Hugging Face repository is gated: downloading it needs its licence accepted on its page.
+    gated: bool = False
+    # Generation never fetches this repository, even with allow_download (only `download` does).
+    explicit_download: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,6 +49,8 @@ class VisionModelSpec:
     tasks: Dict[str, VisionTaskSpec]
     notes: str = ""
     downloads: List[VisionModelDownloadSpec] = field(default_factory=list)
+    # Human-readable licence name (`license` is its identifier), used where access needs it accepted.
+    license_name: str = ""
 
 
 class VisionModelCapabilitiesRegistry:
@@ -117,7 +125,10 @@ class VisionModelCapabilitiesRegistry:
                                 str(alias).strip()
                                 for alias in item.get("aliases", [])
                                 if isinstance(alias, str) and str(alias).strip()
-                            ]
+                            ],
+                            recommended=item.get("recommended") is True,
+                            gated=item.get("gated") is True,
+                            explicit_download=item.get("explicit_download") is True,
                         )
                     )
                     for alias in [key, repo_id, *downloads[-1].aliases]:
@@ -150,6 +161,7 @@ class VisionModelCapabilitiesRegistry:
                 tasks=tasks,
                 notes=notes,
                 downloads=downloads,
+                license_name=str(spec.get("license_name") or "").strip(),
             )
 
         self._models = parsed
@@ -199,6 +211,20 @@ class VisionModelCapabilitiesRegistry:
 
     def iter_task_specs(self, model_id: str) -> Iterable[VisionTaskSpec]:
         return self.get(model_id).tasks.values()
+
+    def explicit_download_model(self, repo_id: str) -> Optional[VisionModelSpec]:
+        """The model whose download of `repo_id` the catalog marks `explicit_download`, else None.
+
+        Generation never fetches such a repository, even with allow_download; only `download`
+        does. Every backend's implicit download asks here.
+        """
+        wanted = str(repo_id or "").strip().lower()
+        if not wanted:
+            return None
+        for spec in self._models.values():
+            if any(d.explicit_download and str(d.repo_id).strip().lower() == wanted for d in spec.downloads):
+                return spec
+        return None
 
 
 _PathPart = Union[str, int]

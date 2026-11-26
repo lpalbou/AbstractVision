@@ -14,9 +14,11 @@ See also:
 
 Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.py):
 
-- `abstractvision models` — list known registry model ids
+- `abstractvision models` — list known registry model ids (one per line); `--json` adds each model's downloads with the fields `show-model` prints
 - `abstractvision tasks` — list known tasks
-- `abstractvision show-model <id>` — print a model’s tasks + params
+- `abstractvision show-model <id> [--json]` — print a model’s tasks + params and, for each download, whether the Hugging Face repository is gated (and the licence to accept), its cache state (`cached` with its size on disk, `incomplete` with the gap, or `absent`; the download size comes from `download --dry-run`), the `memory_mode` values this host can run and, for MLX-Gen packages whose capability rows publish measured runs, the peak memory of each mode and the smallest memory it was tested on; for MiniMax-H3 it also lists the schedules (`base_model`) and the adapter each loads
+- `abstractvision catalog [--provider ...] [--task ...] [--json]` — browse the downloadable models: target, engine, bits (`*` marks the recommended package), access (gated or open), cache state and the memory modes this host can run
+- `abstractvision download <model id or repo id> [--bits N] [--base-model SCHEDULE] [--dry-run]` — download a curated preset into the Hugging Face cache (see [Downloads](#downloads))
 - `abstractvision adapters --provider mlx-gen --model <id> --task <task>` — list backend-discovered cached adapters for one exact route
 - `abstractvision provider-models --openai --task text_to_image` — explicitly query the official OpenAI `/models` catalog
 - `abstractvision provider-models --base-url http://localhost:1234/v1 --task text_to_image` — explicitly query an OpenAI-compatible provider catalog
@@ -27,7 +29,7 @@ Implemented in [`../../src/abstractvision/cli.py`](../../src/abstractvision/cli.
 - `abstractvision upscale ...` — one-shot SeedVR2 image upscaling; defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --resolution 2x --softness 0.25` and supports `--scale`, `--resolution`, `--softness`, `--seed`, optional source-weight `--quantize`, and `--vae-tiling`
 
 Note:
-- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` run on this machine's local engine by default with FLUX.2 [klein] 4B in 8 bits (MLX-Gen on Apple silicon, stable-diffusion.cpp on an NVIDIA card, Diffusers on a processor); `--base-url` selects the OpenAI-compatible HTTP backend and `--provider` picks another local engine.
+- `abstractvision t2i` / `abstractvision i2i` / `abstractvision t2v` / `abstractvision i2v` run on this machine's local engine by default with FLUX.2 [klein] 4B: the 8-bit MLX-Gen package on Apple silicon, the Q8_0 GGUF on stable-diffusion.cpp on an NVIDIA card, the 16-bit Diffusers pipeline (run in float32) on a processor; `--base-url` selects the OpenAI-compatible HTTP backend and `--provider` picks another local engine.
 - Local Diffusers requires `abstractvision[diffusers]`. stable-diffusion.cpp python binding fallback requires `abstractvision[sdcpp]`; external `sd-cli` can be used without the binding.
 - One-shot image commands write to `ABSTRACTVISION_STORE_DIR` or `--store-dir` and print JSON artifact metadata followed by the local content path. They do not take an `--output` path flag.
 - One-shot generation/edit/video commands support `--count` plus optional `--seeds` for reproducible batch orchestration above the exact single-run request surface.
@@ -53,6 +55,25 @@ abstractvision i2v --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-
 For MLX-Gen Wan, one-shot `t2v` and `i2v` show denoise-step progress with
 frame context on stderr by default. `upscale` also shows denoise-step progress
 by default. Add `--no-progress` when you need quiet shell output.
+
+`t2i`, `i2i`, `upscale`, `t2v` and `i2v` take `--memory-mode default|low|lowest`
+(default: `$ABSTRACTVISION_MEMORY_MODE`, else `default`) to lower the run's
+memory peak at some cost in speed: MLX-Gen low-RAM mode, Diffusers CPU offload
+on CUDA, stable-diffusion.cpp CPU offload of parameters. A mode the provider
+cannot honour is refused. See [Memory modes](../api.md#memory-modes-memory_mode).
+
+```bash
+abstractvision t2v --provider mlx-gen --model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit "a red fox walking through a snowy forest, cinematic" --memory-mode low --open
+```
+
+`t2i`, `i2i`, `t2v` and `i2v` take `--quantize BITS` (load-time quantization of a
+source snapshot on MLX-Gen; refused elsewhere). `t2v` and `i2v` take the soundtrack
+options of MiniMax-H3: `--soundscape`, `--music`, `--no-audio`, `--audio-shift`
+(`--flow-shift` is its video shift):
+
+```bash
+abstractvision t2v --provider mlx-gen --model AbstractFramework/minimax-h3-8bit --mflux-base-model minimax-h3-turbo-544p "A red fox trots through fresh snow at dawn." --soundscape "Paws in dry snow, faint wind." --music "Sparse piano." --width 640 --height 352 --frames 124 --seed 42 --open
+```
 
 ## Interactive CLI backend selection
 
@@ -111,9 +132,101 @@ The interactive CLI state object (`_ReplState` in [`../../src/abstractvision/cli
   - `diffusers`: Diffusers model id or local path
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root imported into the Hugging Face cache when older installs are migrated
 - `ABSTRACTVISION_CAPABILITIES_MODEL_ID` — optional capability-gating model id (must exist in the registry)
+- `ABSTRACTVISION_MEMORY_MODE` — `default`, `low` or `lowest`: the memory mode of every generation request that names none, in the CLI, the playground, Python and the AbstractCore plugin; a request value wins. A mode that comes from `$ABSTRACTVISION_MEMORY_MODE` is one value for every backend of the process, so a backend that cannot honour it for its model and device runs the lowest-memory mode it lists that is not below it (`lowest` becomes `low` where `low` is listed, else `default`) and logs that once; a mode passed on the request is refused instead. Warmups (`preload`) follow the same rule. See [Memory modes](../api.md#memory-modes-memory_mode).
 
 Note:
 - Curated `abstractvision download ...` presets are written to the Hugging Face cache by default, and older `~/models/<preset>` trees are imported into that same cache on first use.
+
+### Downloads
+
+`abstractvision download` takes an exact package repo id (`AbstractFramework/minimax-h3-4bit`), its
+short name (`minimax-h3-4bit`), or a model id (`MiniMaxAI/MiniMax-H3`), and selects one package:
+
+- Without `--bits`, a model with a single package selects it, whatever its width (`stabilityai/stable-diffusion-xl-base-1.0`
+  selects its Diffusers pipeline, `briaai/Fibo-Edit` its 16-bit MLX-Gen snapshot).
+- Across targets, the host's order decides (Apple silicon: `mlx`, `gguf`, `diffusers`, `hf-snapshot`;
+  NVIDIA: `gguf`, `diffusers`, `hf-snapshot`; processor only: `diffusers`, `hf-snapshot`, `gguf`),
+  preferring an 8-bit package. `--target` or `--provider` restricts the choice to one target or engine;
+  a name with no package for it is refused, with the packages it has. `--bits 2|4|8|16` selects among the
+  packages of that width only, in every target of the host, or stops saying none has it and listing the
+  widths there are.
+- Within the chosen target, several packages select the one the catalog marks as recommended (`*` in
+  `catalog`: MiniMax-H3's and SeedVR2's 8-bit packages, FIBO's 4-bit package, Qwen-Image-2512's 4-bit
+  MLX-Gen package, GGUF and Diffusers pipeline). With several and no recommendation the command stops and lists them, whatever
+  `--bits`, `--provider` or `--allow-non-8bit` narrowed them to (`tencent/HunyuanVideo-1.5` lists its eight
+  Diffusers pipelines; FLUX.2 [klein] its 4-bit and 8-bit packages): name one.
+- `--allow-non-8bit`, or naming the MLX-Gen engine (`--provider mlx-gen`), drops the 8-bit preference. A
+  repository named exactly then selects that repository instead of a package made from it (when `--bits`
+  is its width or not given), on every host
+  (`abstractvision download briaai/FIBO --provider mlx-gen` is the FIBO source repository): `abstractvision download
+  MiniMaxAI/MiniMax-H3 --allow-non-8bit` fetches the MiniMax-H3 source repository, which the model id
+  alone does not (it selects the recommended 8-bit package), and `stabilityai/sdxl-turbo` selects that
+  Diffusers pipeline instead of its GGUF package. Where the host's order puts a target without an 8-bit
+  package first (processor only: `diffusers`), that target is chosen (`Qwen/Qwen-Image` then selects the
+  Diffusers pipeline instead of the GGUF package). A model with a single package needs no flag.
+- A Hugging Face `owner/name` that the catalog does not list downloads every file of the repository.
+
+What the command does:
+
+- The plan: before anything is written, every repository the download fetches from is listed on the
+  Hugging Face Hub (metadata only; a Diffusers pipeline's `model_index.json` is read into memory to keep
+  only the files the Diffusers backend loads): the package, a stable-diffusion.cpp bundle's companion
+  repositories (the VAE and text encoder a GGUF diffusion model needs), and the adapter of `--base-model`.
+  Each file is either complete in the cache (huggingface_hub's own test: its snapshot link or its blob
+  exists) or to fetch. The command prints the access, the size and file count, how many files are
+  complete and how many are to fetch, one line per companion or adapter, one total, and the free space
+  of the cache disk.
+- The disk check: the files to fetch must fit at their full size, less what their partial `.incomplete`
+  files already hold (huggingface_hub writes each file into that same file, continuing it over plain
+  HTTP and rewriting it from the start over Xet, so its space is reused); the `disk:` line states this
+  rule and the bytes it needs. Otherwise the download stops and writes nothing.
+- Fetching: only the files to fetch are requested, from the commit the listing named, so a repository
+  updated during the download cannot mix two commits; the cache then records that commit as the
+  repository's `main`. When nothing is to fetch, the command says every file is already present and
+  fetches nothing. Ctrl-C exits with code 130; the files that completed stay in the cache, and the same
+  command fetches the rest. A download that ends with files missing gives their count and one of them.
+- Without the Hub listing, nothing is sized or fetched, and the command says why and what to do:
+  offline mode (`HF_HUB_OFFLINE`), the Hub unreachable, an HTTP error, huggingface_hub (or a module it
+  imports) not installed, or a listing without file sizes (huggingface.co gives every size; a mirror set
+  with `HF_ENDPOINT` may not). What the cache holds is reported as it is, not compared with the Hub;
+  the command stops when a local look sees a gap or a repository is missing.
+- Legacy trees: a `~/models/<preset>` tree (`ABSTRACTVISION_MODEL_DIR`, or `--model-dir`) is moved into
+  the cache; `download` then says it was imported and not compared with the Hub, and fetches nothing for
+  the package on top of it. When the cache already holds the package, the tree is removed.
+- A 401 for a repository not marked gated means it does not exist, is private, or is gated: the Hub
+  does not say which.
+- Gated repositories (for example the `AbstractFramework/minimax-h3-*` packages): accept the licence on
+  the repository page while logged in to Hugging Face, then authenticate (`hf auth login`, `HF_TOKEN`, or
+  `--token`). A refused download ends with a message naming the page and the licence.
+- `--base-model <schedule>`: for MLX-Gen models whose schedules load an adapter, the adapter is part of
+  the plan (what it is, cached or to fetch, its size) and is fetched into huggingface_hub's cache, where
+  mlx-gen finds it. The MiniMax-H3 Turbo schedules `minimax-h3-turbo-544p` and `minimax-h3-turbo` load a
+  lightx2v Turbo LoRA; `minimax-h3` loads none. Which adapter a schedule loads is read from mlx-gen: a
+  `--base-model` that is not a schedule of the package, or an adapter that cannot be named because
+  mlx-gen is not installed, stops the command before anything is fetched. Without `--base-model`, the
+  command prints the schedules whose adapter is absent, with the command that fetches it.
+- `--dry-run`: prints the selection and the same plan (with the commit of each repository the fetch would
+  take), writes nothing and exits 0; when the download
+  would not fit, its last line says so.
+- `catalog` and `show-model` show each download's cache state from a local look, offline: `cached` is a
+  snapshot with no gap that look can see (a partial file, a link without content, a weight file an index
+  names, a component `model_index.json` names whose folder the package's patterns name, such as
+  `transformer_2/`, or no weight file at all), `incomplete` names the gap, `absent` is nothing in the
+  cache. Only `download` (or `--dry-run`) compares a snapshot with the Hub, so a file nothing local
+  refers to, such as one an interrupted download never started, can be missing from a snapshot shown as
+  `cached`.
+- Generation (MLX-Gen and Diffusers) never downloads a repository whose catalog download is marked `explicit_download: true`
+  (today the four MiniMax-H3 repositories: `AbstractFramework/minimax-h3-8bit|bf16|4bit` and
+  `MiniMaxAI/MiniMax-H3`), or an MLX-Gen adapter, even with `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1` or `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`. `gated`
+  only says whether the Hub asks for the licence to be accepted.
+
+```bash
+abstractvision show-model MiniMaxAI/MiniMax-H3
+abstractvision download MiniMaxAI/MiniMax-H3 --dry-run
+abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p
+abstractvision download MiniMaxAI/MiniMax-H3 --bits 4
+abstractvision download MiniMaxAI/MiniMax-H3 --allow-non-8bit   # the source repository
+```
 
 ### OpenAI / OpenAI-Compatible HTTP Backend
 
@@ -145,8 +258,8 @@ Playground-only Diffusers vars:
 ### MLX-Gen backend (Apple-first)
 
 - `ABSTRACTVISION_MFLUX_MODEL` — exact published MLX-Gen repo id, local model path, or custom repo id (examples: `AbstractFramework/flux.2-klein-4b-4bit`, `AbstractFramework/ernie-image-turbo-8bit`, `briaai/FIBO`, `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, `briaai/Fibo-Edit`, `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit`, `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`, `/path/to/preset-dir`)
-- `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional base family for local paths or custom repos (`flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`, `flux2-klein-base-9b`, `bonsai-image-ternary`, `z-image`, `z-image-turbo`, `qwen-image`, `qwen-image-edit-2511`, `ernie-image-turbo`, `fibo`, `fibo-lite`, `fibo-edit`, `fibo-edit-rmbg`, `wan2.2-ti2v-5b`, `wan2.2-t2v-a14b`, `wan2.2-i2v-a14b`)
-- `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache
+- `ABSTRACTVISION_MFLUX_BASE_MODEL` — optional base family for local paths or custom repos (`flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`, `flux2-klein-base-9b`, `bonsai-image-ternary`, `z-image`, `z-image-turbo`, `qwen-image`, `qwen-image-edit-2511`, `ernie-image-turbo`, `fibo`, `fibo-lite`, `fibo-edit`, `fibo-edit-rmbg`, `wan2.2-ti2v-5b`, `wan2.2-t2v-a14b`, `wan2.2-i2v-a14b`), or the MiniMax-H3 schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`)
+- `ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD` — `0` (default) or `1` to permit runtime downloads when a preset/repo is missing from the local cache, except for the repositories the catalog marks `explicit_download` (see [Downloads](#downloads))
 - `ABSTRACTVISION_MODEL_DIR` — legacy preset root only; curated downloads now land in the Hugging Face cache
 - `ABSTRACTVISION_MLX_GEN_LORA_PATHS` / `ABSTRACTVISION_MFLUX_LORA_PATHS` — optional default LoRA adapters applied by the MLX-Gen backend when a request does not carry its own `lora_adapters`
 - `ABSTRACTVISION_MLX_GEN_LORA_SCALES` / `ABSTRACTVISION_MFLUX_LORA_SCALES` — optional default LoRA scales aligned with the configured default paths

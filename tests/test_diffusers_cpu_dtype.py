@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 try:
@@ -64,6 +65,7 @@ class DiffusersCpuDtypeTests(unittest.TestCase):
 
         # A processor-only host: device "auto" (what the AbstractCore plugin passes) resolves to cpu.
         with patch.object(hd, "_lazy_import_diffusers", return_value=(MagicMock(), t2i, None, None, "0.0.0")), \
+             patch.object(hd.HuggingFaceDiffusersVisionBackend, "_resolve_any_snapshot_dir", return_value=Path("/hf-cache/snapshot")), \
              patch.object(torch.cuda, "is_available", return_value=False), \
              patch.object(torch.backends.mps, "is_available", return_value=False):
             backend = hd.HuggingFaceDiffusersVisionBackend(

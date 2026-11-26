@@ -1,24 +1,31 @@
 from __future__ import annotations
 
+import glob
 import os
 import platform
+import shlex
 import shutil
 import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .model_capabilities import VisionModelCapabilitiesRegistry
 from .model_cache import (
     default_hf_cache_root,
     default_legacy_model_root,
     ensure_hf_repo_snapshot,
+    hf_repo_dir,
     hf_snapshot_is_usable,
     resolve_hf_repo_snapshot,
+    write_hf_ref,
 )
 
+
+# The catalog `source` of the packages AbstractFramework prepares with MLX-Gen (`AbstractFramework/*`).
+ABSTRACTFRAMEWORK_MLX_GEN_SOURCE = "abstractframework-mlx-gen"
 
 _GENERIC_MLX_BACKEND_ERROR = (
     "AbstractVision does not have a generic MLX image/video backend yet. "
@@ -74,13 +81,22 @@ class VisionModelDownloadPreset:
     allow_patterns: Tuple[str, ...]
     notes: str = ""
     source_priority: int = 100
+    # From the catalog: the repository is gated (its licence must be accepted on its page), the
+    # package `download <model id>` picks among several when no `--bits` is given, the licence name.
+    gated: bool = False
+    recommended: bool = False
+    license_name: str = ""
+    # From the catalog: generation never fetches this repository, even with allow_download.
+    explicit_download: bool = False
+    # False for a Hugging Face repository the catalog does not list (`repository_preset`).
+    in_catalog: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         out = asdict(self)
         is_exact_mlx_gen = (
             str(self.target).strip().lower() == "mlx"
             and str(self.engine).strip().lower().replace("_", "-") in {"mlx-gen", "mflux", "m-flux", "mlxgen"}
-            and str(self.source).strip().lower() == "abstractframework-mlx-gen"
+            and str(self.source).strip().lower() == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
             and str(self.repo_id).strip().lower().startswith("abstractframework/")
         )
         if is_exact_mlx_gen:
@@ -119,6 +135,13 @@ _COMMON_MLX_PATTERNS = (
     "vae/*",
     "text_encoder-mlx-4bit/*",
     "assets/*",
+    "*.jinja",
+    # Wan 2.2 A14B: the low-noise expert.
+    "transformer_2/*",
+    # MiniMax-H3: the soundtrack decoder and its schedule, and the licence notice.
+    "audio_vae/*",
+    "audio_scheduler/*",
+    "NOTICE*",
 )
 
 _COMMON_DIFFUSERS_PATTERNS = (
@@ -169,25 +192,382 @@ _STABLE_DIFFUSION_DIFFUSERS_PATTERNS = (
 
 
 class HuggingFaceAccessError(RuntimeError):
-    def __init__(self, repo_id: str, *, raw_message: str = "", status_code: Optional[int] = None):
+    """The Hub refused a repository (HTTP 401, 403 or 404).
+
+    `gated` says the repository is known to be gated (the catalog marks it, or, for a repository
+    the catalog does not list, its Hub listing does): the message then names the licence to accept.
+    Otherwise the message says what the status code alone tells: the Hub answers 401 to a request
+    without valid credentials for a repository that does not exist, is private or is gated, and
+    does not say which."""
+
+    def __init__(
+        self,
+        repo_id: str,
+        *,
+        raw_message: str = "",
+        status_code: Optional[int] = None,
+        license_name: str = "",
+        gated: bool = False,
+    ):
         self.repo_id = str(repo_id)
         self.repo_url = f"https://huggingface.co/{self.repo_id}"
         self.token_url = HF_TOKEN_SETTINGS_URL
         self.raw_message = str(raw_message or "").strip()
         self.status_code = status_code
+        self.license_name = str(license_name or "").strip()
+        self.gated = bool(gated)
         detail = f" ({status_code})" if status_code else ""
-        msg = (
-            f"Cannot access Hugging Face repo {self.repo_id!r}{detail}.\n"
-            f"1. Open {self.repo_url} and accept the model terms or request access.\n"
-            f"2. Create or copy a Hugging Face read token at {self.token_url}.\n"
-            "3. Retry with one of:\n"
+        retry = (
+            f"Create or copy a Hugging Face read token at {self.token_url}, then retry with one of:\n"
             "   - `abstractvision download ... --token <HF_TOKEN>`\n"
             "   - `hf auth login` (or `huggingface-cli login`)\n"
             "   - `export HF_TOKEN=...` (or `export HUGGINGFACE_HUB_TOKEN=...`)\n"
         )
-        if self.raw_message:
-            msg += f"Upstream error: {self.raw_message}"
+        if self.gated:
+            terms = f"the {self.license_name}" if self.license_name else "its terms"
+            msg = (
+                f"Cannot access Hugging Face repo {self.repo_id!r}{detail}: the repository is gated, and this "
+                "request has no access to it.\n"
+                f"1. Open {self.repo_url} while logged in to Hugging Face and accept {terms} "
+                "(or request access).\n"
+                f"2. {retry}"
+            )
+        else:
+            why = {
+                401: "the Hub gives this answer to a request without valid credentials when the repository "
+                "does not exist, is private, or is gated, and does not say which.",
+                403: "the Hub refused this account: the repository is private, or gated and this account has "
+                "not been granted access, or the token cannot read it.",
+                404: "the Hub has no repository by that name that this account can see.",
+            }.get(int(status_code or 0), "the Hub refused the request.")
+            msg = (
+                f"Cannot access Hugging Face repo {self.repo_id!r}{detail}: {why}\n"
+                f"1. Check the name at {self.repo_url}.\n"
+                "2. If the repository is private or gated, use an account that has access (for a gated one, "
+                f"accept its terms on that page). {retry}"
+            )
+        first_line = next((line.strip() for line in self.raw_message.splitlines() if line.strip()), "")
+        if first_line:
+            msg += f"Upstream error: {first_line}"
         super().__init__(msg)
+
+
+class InsufficientDiskSpaceError(RuntimeError):
+    """Raised before a download starts when the Hugging Face cache disk cannot hold it."""
+
+
+@dataclass(frozen=True)
+class HubFile:
+    """One file a download selects, as the Hub lists it, and what the cache already holds of it.
+
+    `complete` follows huggingface_hub's own test for a cached file (its snapshot link or its blob
+    exists): a complete file is never fetched again. `partial` is the size of its `.incomplete` blob
+    left by an interrupted download; huggingface_hub writes the file into that same blob, continuing
+    it (plain HTTP) or rewriting it from the start (Xet), so its bytes are space the fetch reuses."""
+
+    name: str
+    size: int
+    complete: bool
+    partial: int = 0
+
+
+# The disk rule every plan applies, stated once in its output.
+DISK_RULE = (
+    "the files to fetch at their full size, less what their partial (.incomplete) files already hold: "
+    "huggingface_hub continues or rewrites each partial file in place"
+)
+
+
+@dataclass(frozen=True)
+class HubDownloadPlan:
+    """What a download fetches from one repository, measured against the Hugging Face cache before it starts.
+
+    Built from the Hub listing (metadata only) at `revision` (None: the default branch), which named
+    `commit`: the fetch takes the files of that commit. `listing_error` says why the listing could
+    not be had; the plan then sizes nothing. `gated` is None when neither the catalog nor the listing
+    says whether the repository is gated."""
+
+    repo_id: str
+    cache_dir: Path
+    free_bytes: Optional[int]
+    files: Tuple[HubFile, ...] = ()
+    commit: Optional[str] = None
+    gated: Optional[bool] = None
+    license_name: str = ""
+    listing_error: Optional[str] = None
+    revision: Optional[str] = None
+
+    @property
+    def listed(self) -> bool:
+        return self.listing_error is None
+
+    @property
+    def total_bytes(self) -> Optional[int]:
+        return sum(f.size for f in self.files) if self.listed else None
+
+    @property
+    def complete_files(self) -> Tuple[HubFile, ...]:
+        return tuple(f for f in self.files if f.complete)
+
+    @property
+    def fetch_files(self) -> Tuple[HubFile, ...]:
+        return tuple(f for f in self.files if not f.complete)
+
+    @property
+    def complete_bytes(self) -> int:
+        return sum(f.size for f in self.complete_files)
+
+    @property
+    def fetch_bytes(self) -> Optional[int]:
+        return sum(f.size for f in self.fetch_files) if self.listed else None
+
+    @property
+    def partial_bytes(self) -> int:
+        return sum(min(f.partial, f.size) for f in self.fetch_files)
+
+    @property
+    def required_bytes(self) -> Optional[int]:
+        """Free space the fetch needs (`DISK_RULE`)."""
+
+        return self.fetch_bytes - self.partial_bytes if self.listed else None
+
+    def access_line(self) -> str:
+        if self.gated is None:
+            return "access: unknown (the Hub listing is not available, and the catalog does not list the repository)"
+        if not self.gated:
+            return "access: open"
+        terms = f"the {self.license_name}" if self.license_name else "its terms"
+        return (
+            f"access: gated; accept {terms} at https://huggingface.co/{self.repo_id} while logged in to "
+            "Hugging Face (`hf auth login`, or --token)"
+        )
+
+    def cache_line(self) -> str:
+        count = len(self.files)
+        if not self.fetch_files:
+            return f"cache: all {_files(count)} already present; nothing to fetch"
+        partial = (
+            f", {format_bytes(self.partial_bytes)} of it already in partial files" if self.partial_bytes else ""
+        )
+        return (
+            f"cache: {len(self.complete_files)} of {_files(count)} complete ({format_bytes(self.complete_bytes)}); "
+            f"{_files(len(self.fetch_files))} to fetch ({format_bytes(self.fetch_bytes)}{partial})"
+        )
+
+    def commit_line(self) -> str:
+        named = f"{self.revision!r}" if self.revision else "the default branch"
+        return f"commit: {self.commit} ({named} as listed; the files are fetched from this commit)"
+
+    def summary_lines(self) -> List[str]:
+        return DownloadPlan(parts=(DownloadPart("package", self),)).summary_lines()
+
+    def disk_space_error(self) -> Optional[str]:
+        return DownloadPlan(parts=(DownloadPart("package", self),)).disk_space_error()
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "repo_id": self.repo_id,
+            "cache_dir": str(self.cache_dir),
+            "revision": self.revision,
+            "commit": self.commit,
+            "gated": self.gated,
+            "listing_error": self.listing_error,
+            "total_bytes": self.total_bytes,
+            "files": len(self.files),
+            "complete_files": len(self.complete_files),
+            "complete_bytes": self.complete_bytes if self.listed else None,
+            "fetch_files": len(self.fetch_files),
+            "fetch_bytes": self.fetch_bytes,
+            "partial_bytes": self.partial_bytes if self.listed else None,
+            "required_bytes": self.required_bytes,
+            "free_bytes": self.free_bytes,
+        }
+
+
+@dataclass(frozen=True)
+class DownloadPart:
+    """One repository a download fetches from: the package itself, or what its engine loads with it
+    (a stable-diffusion.cpp bundle's text encoder or VAE, the adapter an MLX-Gen schedule attaches).
+    `patterns` are the files it selects, for the local look when the Hub listing is not available."""
+
+    role: str
+    plan: HubDownloadPlan
+    patterns: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class DownloadPlan:
+    """Everything `abstractvision download` fetches for one preset, planned before the first byte.
+
+    `parts` are the repositories to fetch from, the package first. `legacy_import` is a legacy
+    `~/models/<preset>` tree imported into the cache instead of fetching the package; `legacy_remove`
+    one deleted because the cache already holds the package. `base_model` is the MLX-Gen schedule
+    asked for, `adapter` the adapter it attaches and `adapter_path` where mlx-gen finds it when it is
+    cached (its fetch is then not a part). The sizes add up over the parts, and the disk check
+    applies `DISK_RULE` to all of them on each disk they write to."""
+
+    parts: Tuple[DownloadPart, ...]
+    legacy_import: Optional[Path] = None
+    legacy_remove: Optional[Path] = None
+    base_model: Optional[str] = None
+    adapter: Optional[str] = None
+    adapter_path: Optional[str] = None
+
+    @property
+    def package(self) -> Optional[HubDownloadPlan]:
+        return next((part.plan for part in self.parts if part.role == "package"), None)
+
+    @property
+    def listed(self) -> bool:
+        return all(part.plan.listed for part in self.parts)
+
+    def _sum(self, field: str) -> Optional[int]:
+        values = [getattr(part.plan, field) for part in self.parts]
+        return None if any(v is None for v in values) else sum(values)
+
+    @property
+    def total_bytes(self) -> Optional[int]:
+        return self._sum("total_bytes")
+
+    @property
+    def fetch_bytes(self) -> Optional[int]:
+        return self._sum("fetch_bytes")
+
+    @property
+    def required_bytes(self) -> Optional[int]:
+        return self._sum("required_bytes")
+
+    @property
+    def free_bytes(self) -> Optional[int]:
+        return next((part.plan.free_bytes for part in self.parts if part.plan.free_bytes is not None), None)
+
+    def summary_lines(self) -> List[str]:
+        """The access, size, cache and disk lines a download (or `--dry-run`) prints before it starts:
+        the package's, one line per other part, then the totals and the disk check."""
+
+        lines: List[str] = []
+        for part in self.parts:
+            plan = part.plan
+            if part.role == "package":
+                lines.append(plan.access_line())
+                if not plan.listed:
+                    lines.append(
+                        f"hub: no usable listing of {plan.repo_id}: {plan.listing_error}. Nothing was sized or "
+                        "compared with the cache"
+                    )
+                elif not plan.files:
+                    lines.append(f"files: the Hub lists no file of {plan.repo_id} that this download selects")
+                else:
+                    lines.append(
+                        f"download size: {format_bytes(plan.total_bytes)} in {_files(len(plan.files))}, "
+                        f"into {plan.cache_dir}"
+                    )
+                    lines.append(plan.cache_line())
+                    lines.append(plan.commit_line())
+                continue
+            head = f"{part.role}: {plan.repo_id}; {plan.access_line()}"
+            if not plan.listed:
+                lines.append(f"{head}; hub: no usable listing: {plan.listing_error}")
+            elif not plan.files:
+                lines.append(f"{head}; the Hub lists no file of it that this download selects")
+            else:
+                lines.append(
+                    f"{head}; {format_bytes(plan.total_bytes)} in {_files(len(plan.files))}; {plan.cache_line()}; "
+                    f"{plan.commit_line()}"
+                )
+        if self.adapter_path is not None:
+            lines.append(f"adapter ({self.base_model}): {self.adapter}, cached at {self.adapter_path}")
+        elif self.base_model is not None and self.adapter is None:
+            lines.append(f"adapter ({self.base_model}): this schedule loads none")
+        listed = [part.plan for part in self.parts if part.plan.listed]
+        fetching = [plan for plan in listed if plan.fetch_files]
+        if not fetching:
+            return lines
+        if len(self.parts) > 1:
+            lines.append(
+                f"total: {format_bytes(sum(p.total_bytes for p in listed))} in "
+                f"{_files(sum(len(p.files) for p in listed))}; "
+                f"{_files(sum(len(p.fetch_files) for p in listed))} to fetch "
+                f"({format_bytes(sum(p.fetch_bytes for p in listed))})"
+            )
+        need = sum(p.required_bytes for p in listed)
+        if self.free_bytes is None:
+            lines.append(f"disk: needs {format_bytes(need)} ({DISK_RULE}); not checked, because the free space is unknown")
+            return lines
+        lines.append(f"free disk space: {format_bytes(self.free_bytes)}")
+        verdict = "not enough free space" if self.disk_space_error() else "enough free space"
+        lines.append(f"disk: needs {format_bytes(need)} ({DISK_RULE}); {verdict}")
+        return lines
+
+    def disk_space_error(self) -> Optional[str]:
+        """Why a cache disk cannot hold what the parts writing to it fetch (`DISK_RULE`), or None when
+        every disk can (or its free space is unknown)."""
+
+        disks: Dict[Any, List[HubDownloadPlan]] = {}
+        for part in self.parts:
+            if part.plan.listed:
+                disks.setdefault(_disk_of(part.plan.cache_dir), []).append(part.plan)
+        for plans in disks.values():
+            need = sum(p.required_bytes for p in plans)
+            free = next((p.free_bytes for p in plans if p.free_bytes is not None), None)
+            if free is None or need <= free:
+                continue
+            partial = sum(p.partial_bytes for p in plans)
+            held = (
+                f" ({format_bytes(sum(p.fetch_bytes for p in plans))} less the {format_bytes(partial)} their "
+                "partial files already hold)"
+                if partial
+                else ""
+            )
+            what = plans[0].repo_id + (
+                f" with {', '.join(p.repo_id for p in plans[1:])}" if len(plans) > 1 else ""
+            )
+            return (
+                f"Not enough free disk space to download {what}: the "
+                f"{_files(sum(len(p.fetch_files) for p in plans))} to fetch take {format_bytes(need)}{held} and "
+                f"{format_bytes(free)} is free at {_existing_parent(plans[0].cache_dir)}. Free some space, or point "
+                "HF_HUB_CACHE (or HF_HOME) at a disk with room, then run the same command again."
+            )
+        return None
+
+    def to_dict(self) -> Dict[str, Any]:
+        package = self.package
+        return {
+            **(package.to_dict() if package is not None else {}),
+            "total_bytes": self.total_bytes,
+            "fetch_bytes": self.fetch_bytes,
+            "required_bytes": self.required_bytes,
+            "free_bytes": self.free_bytes,
+            "disk_space_error": self.disk_space_error(),
+            "parts": [{"role": part.role, **part.plan.to_dict()} for part in self.parts],
+            "legacy_import": str(self.legacy_import) if self.legacy_import is not None else None,
+            "base_model": self.base_model,
+            "adapter": self.adapter,
+            "adapter_path": self.adapter_path,
+        }
+
+
+def _disk_of(path: Path) -> Any:
+    existing = _existing_parent(path)
+    try:
+        return os.stat(existing).st_dev
+    except OSError:
+        return str(existing)
+
+
+def _files(count: int) -> str:
+    return f"{count} file" if count == 1 else f"{count} files"
+
+
+def format_bytes(value: Optional[int]) -> str:
+    if value is None:
+        return "unknown"
+    amount = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if amount < 1024.0 or unit == "GiB":
+            return f"{amount:.0f} {unit}" if unit == "B" else f"{amount:.1f} {unit}"
+        amount /= 1024.0
+    return f"{amount:.1f} GiB"
 
 
 _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
@@ -200,7 +580,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="flux2-klein-4b-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-4B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "flux2-klein-4b",
             "flux-klein-4b",
@@ -225,7 +605,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="flux2-klein-4b-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-4B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/flux.2-klein-4b-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
@@ -252,10 +632,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "LICENSE*",
             *_DIFFUSERS_PIPELINE_DIRS,
         ),
-        notes=(
-            "#FALLBACK: this is a full Diffusers snapshot (not 8-bit). "
-            "FLUX.2 pipeline support may require Diffusers from source (diffusers@main)."
-        ),
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -300,7 +677,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="flux2-klein-base-4b-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-base-4B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "flux2-klein-base-4b",
             "flux-klein-base-4b",
@@ -322,7 +699,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="flux2-klein-base-4b-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-base-4B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/flux.2-klein-base-4b-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
@@ -352,7 +729,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="flux2-klein-9b-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-9B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "flux2-klein-9b",
             "flux-klein-9b",
@@ -377,7 +754,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="flux2-klein-9b-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-9B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/flux.2-klein-9b-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
@@ -404,10 +781,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "LICENSE*",
             *_DIFFUSERS_PIPELINE_DIRS,
         ),
-        notes=(
-            "#FALLBACK: this is a full Diffusers snapshot (not 8-bit). "
-            "The 9B repo is gated on Hugging Face and may require HF_TOKEN."
-        ),
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -452,7 +826,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="flux2-klein-base-9b-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-base-9B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "flux2-klein-base-9b",
             "flux-klein-base-9b",
@@ -474,7 +848,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="flux2-klein-base-9b-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="black-forest-labs/FLUX.2-klein-base-9B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/flux.2-klein-base-9b-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
@@ -519,7 +893,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="z-image-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="Tongyi-MAI/Z-Image",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "z-image",
             "zimage",
@@ -539,7 +913,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="z-image-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="Tongyi-MAI/Z-Image",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/z-image-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
@@ -554,7 +928,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="z-image-turbo-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="Tongyi-MAI/Z-Image-Turbo",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "z-image-turbo",
             "zimage-turbo",
@@ -577,7 +951,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="z-image-turbo-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="Tongyi-MAI/Z-Image-Turbo",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/z-image-turbo-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 folder. Prefer when output quality is paramount.",
@@ -603,7 +977,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "LICENSE*",
             *_DIFFUSERS_PIPELINE_DIRS,
         ),
-        notes="#FALLBACK: this is a full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -630,7 +1004,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="seedvr2-3b-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="ByteDance-Seed/SeedVR2-3B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "seedvr2",
             "seedvr2-3b",
@@ -653,7 +1027,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="seedvr2-3b-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="ByteDance-Seed/SeedVR2-3B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "seedvr2-3b-4bit",
             "AbstractFramework/seedvr2-3b-4bit",
@@ -671,7 +1045,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="seedvr2-7b-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="ByteDance-Seed/SeedVR2-7B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "seedvr2-7b",
             "seedvr2-7b-8bit",
@@ -693,7 +1067,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="seedvr2-7b-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="ByteDance-Seed/SeedVR2-7B",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "seedvr2-7b-4bit",
             "AbstractFramework/seedvr2-7b-4bit",
@@ -711,7 +1085,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-2512-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="Qwen/Qwen-Image-2512",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "qwen-image",
             "qwen-image-2512",
@@ -735,7 +1109,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-2512-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image-2512",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/qwen-image-2512-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 Qwen Image folder. Prefer when output quality is paramount.",
@@ -750,7 +1124,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="Qwen/Qwen-Image",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("qwen-image-legacy", "qwen-image-base", "AbstractFramework/qwen-image-4bit"),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared legacy Qwen Image folder; prefer Qwen-Image-2512 for new runs.",
@@ -765,7 +1139,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/qwen-image-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared legacy q8 Qwen Image folder; prefer Qwen-Image-2512 for new runs.",
@@ -780,7 +1154,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-edit-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="Qwen/Qwen-Image-Edit",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "qwen-image-edit-legacy",
             "qwen-image-edit-base",
@@ -799,7 +1173,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-edit-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image-Edit",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/qwen-image-edit-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared legacy q8 Qwen Image Edit folder; prefer Qwen-Image-Edit-2511 for new runs.",
@@ -814,7 +1188,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-edit-2511-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=(
             "qwen-image-edit",
             "qwen-image-edit-2511",
@@ -833,7 +1207,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-edit-2511-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image-Edit-2511",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/qwen-image-edit-2511-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 Qwen Image Edit 2511 folder. Prefer when output quality is paramount.",
@@ -848,7 +1222,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-edit-2509-mlx-gen-4bit",
         quantization_bits=4,
         upstream_repo_id="Qwen/Qwen-Image-Edit-2509",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("qwen-image-edit-2509", "AbstractFramework/qwen-image-edit-2509-4bit"),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared Qwen Image Edit 2509 folder for image-to-image/edit.",
@@ -863,7 +1237,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         local_dir_name="qwen-image-edit-2509-mlx-gen-8bit",
         quantization_bits=8,
         upstream_repo_id="Qwen/Qwen-Image-Edit-2509",
-        source="abstractframework-mlx-gen",
+        source=ABSTRACTFRAMEWORK_MLX_GEN_SOURCE,
         aliases=("AbstractFramework/qwen-image-edit-2509-8bit",),
         allow_patterns=_COMMON_MLX_PATTERNS,
         notes="AbstractFramework MLX-Gen prepared q8 Qwen Image Edit 2509 folder. Prefer when output quality is paramount.",
@@ -889,7 +1263,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "LICENSE*",
             *_DIFFUSERS_PIPELINE_DIRS,
         ),
-        notes="#FALLBACK: this is a full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -927,7 +1301,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("qwen-image-edit-2511", "Qwen/Qwen-Image-Edit-2511"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -966,7 +1340,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("glm-image", "glm", "zai-org/GLM-Image"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -988,10 +1362,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "stable-diffusion-v1-5/stable-diffusion-v1-5",
         ),
         allow_patterns=_STABLE_DIFFUSION_DIFFUSERS_PATTERNS,
-        notes=(
-            "#FALLBACK: this is a full Diffusers snapshot (not 8-bit). "
-            "Use the Diffusers backend (`--provider diffusers`) to run it."
-        ),
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=80,
     ),
     VisionModelDownloadPreset(
@@ -1006,7 +1377,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("sd1.4", "sd14", "stable-diffusion-v1-4", "CompVis/stable-diffusion-v1-4"),
         allow_patterns=_STABLE_DIFFUSION_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1027,7 +1398,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "stable-diffusion-v1-5/stable-diffusion-inpainting",
         ),
         allow_patterns=_STABLE_DIFFUSION_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1042,7 +1413,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="community",
         aliases=("instruct-pix2pix", "pix2pix", "timbrooks/instruct-pix2pix"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=95,
     ),
     VisionModelDownloadPreset(
@@ -1063,7 +1434,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "stabilityai/stable-diffusion-xl-base-1.0",
         ),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1083,7 +1454,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "stabilityai/stable-diffusion-xl-refiner-1.0",
         ),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1098,7 +1469,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("sdxl-inpaint", "sdxl-inpainting", "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -1113,7 +1484,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("sdxl-turbo", "stabilityai/sdxl-turbo"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1128,7 +1499,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("sd-turbo", "stabilityai/sd-turbo"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=85,
     ),
     VisionModelDownloadPreset(
@@ -1243,7 +1614,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
             "black-forest-labs/FLUX.1-schnell",
         ),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -1258,7 +1629,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("ernie", "ernie-image", "baidu/ERNIE-Image"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -1273,7 +1644,7 @@ _PRESETS: Tuple[VisionModelDownloadPreset, ...] = (
         source="official",
         aliases=("ernie-turbo", "ernie-image-turbo", "baidu/ERNIE-Image-Turbo"),
         allow_patterns=_COMMON_DIFFUSERS_PATTERNS,
-        notes="#FALLBACK: full Diffusers snapshot (not 8-bit).",
+        notes="Official curated Diffusers snapshot (16-bit).",
         source_priority=90,
     ),
     VisionModelDownloadPreset(
@@ -1570,11 +1941,11 @@ def _default_source_priority(*, source: str, target: str, engine: str, bits: Opt
     source_s = str(source or "").strip().lower()
     if target == "fp8" and bits == 8:
         return 0
-    if source_s == "abstractframework-mlx-gen" and target == "mlx" and bits == 4:
+    if source_s == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE and target == "mlx" and bits == 4:
         return 20
-    if source_s == "abstractframework-mlx-gen" and target == "mlx" and bits == 8:
+    if source_s == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE and target == "mlx" and bits == 8:
         return 25
-    if source_s == "abstractframework-mlx-gen" and target == "mlx" and bits == 16:
+    if source_s == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE and target == "mlx" and bits == 16:
         return 28
     if target == "mlx" and bits == 4:
         return 30
@@ -1662,7 +2033,7 @@ def _is_abstractframework_mlx_gen_preset(preset: VisionModelDownloadPreset) -> b
     return (
         str(preset.target).strip().lower() == "mlx"
         and str(preset.engine).strip().lower().replace("_", "-") in {"mlx-gen", "mflux", "m-flux", "mlxgen"}
-        and str(preset.source).strip().lower() == "abstractframework-mlx-gen"
+        and str(preset.source).strip().lower() == ABSTRACTFRAMEWORK_MLX_GEN_SOURCE
         and str(preset.repo_id).strip().lower().startswith("abstractframework/")
     )
 
@@ -1684,10 +2055,22 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
     except Exception:
         return tuple(sorted(out, key=lambda p: (p.key, p.source_priority, p.repo_id)))
 
+    recommended: set[tuple[str, str, str, str]] = set()
+    gated: set[str] = set()
+    explicit: set[str] = set()
+    license_names: Dict[str, str] = {}
     for model_id in reg.list_models():
         spec = reg.get(model_id)
         for dl in spec.downloads:
             key = (dl.key, dl.engine, dl.target, dl.repo_id)
+            if dl.recommended:
+                recommended.add(key)
+            if dl.gated:
+                gated.add(str(dl.repo_id))
+            if dl.explicit_download:
+                explicit.add(str(dl.repo_id))
+            if spec.license_name:
+                license_names.setdefault(str(dl.repo_id), spec.license_name)
             if key in seen:
                 continue
             seen.add(key)
@@ -1731,7 +2114,17 @@ def _all_presets() -> Tuple[VisionModelDownloadPreset, ...]:
                 )
             )
 
-    return tuple(sorted(out, key=lambda p: (p.key, p.source_priority, p.repo_id)))
+    enriched = [
+        replace(
+            p,
+            gated=p.repo_id in gated,
+            explicit_download=p.repo_id in explicit,
+            recommended=(p.key, p.engine, p.target, p.repo_id) in recommended,
+            license_name=license_names.get(p.repo_id, ""),
+        )
+        for p in out
+    ]
+    return tuple(sorted(enriched, key=lambda p: (p.key, p.source_priority, p.repo_id)))
 
 
 @lru_cache(maxsize=1)
@@ -1919,13 +2312,46 @@ def _is_default_quantized_preset(preset: VisionModelDownloadPreset) -> bool:
     return bits == 8
 
 
+def _pick_package(
+    name: str, matches: Sequence[VisionModelDownloadPreset], *, bits: Optional[int]
+) -> Optional[VisionModelDownloadPreset]:
+    """One preset among several packages a model selector matches, or None when it stays ambiguous.
+
+    `bits` names the width; without it the package the catalog marks `recommended` is chosen."""
+
+    if bits is not None:
+        width = [p for p in matches if int(p.quantization_bits or 0) == int(bits)]
+        if not width:
+            available = ", ".join(
+                sorted({f"{p.repo_id} ({p.quantization_bits}-bit)" for p in matches})
+            )
+            raise ValueError(f"No {int(bits)}-bit package for {name!r}. Available: {available}")
+        matches = width
+    if len({p.repo_id for p in matches}) == 1:
+        return sorted(matches, key=lambda p: (p.source_priority, p.repo_id))[0]
+    flagged = [p for p in matches if p.recommended]
+    if len({p.repo_id for p in flagged}) == 1:
+        return flagged[0]
+    return None
+
+
 def find_model_preset(
     name: str,
     *,
     target: Optional[str] = "auto",
     engine: Optional[str] = None,
     require_8bit: bool = True,
+    bits: Optional[int] = None,
+    download_rule: bool = False,
 ) -> VisionModelDownloadPreset:
+    """The catalog preset `name` selects for a target and engine.
+
+    Across targets the host's order decides. Within the chosen target, several packages select the one
+    the catalog recommends; without one, the catalog's own order picks (a curated key such as
+    `qwen-image` resolves to its preferred pipeline, as a backend configured with it does).
+    `download_rule` applies the `download` command's rule instead: a repository named exactly is that
+    repository, and several packages with none recommended raise ValueError listing them."""
+
     raw_target = str(target or "auto").strip().lower()
     requested = str(name or "").strip().lower()
     if requested.startswith("mlx/"):
@@ -1971,6 +2397,7 @@ def find_model_preset(
             and (selected_engine is None or p.engine == selected_engine)
             and "/" in requested
             and requested == str(p.repo_id or "").strip().lower()
+            and (bits is None or int(p.quantization_bits or 0) == int(bits))
         ]
         if exact_non_abstractframework_matches and not require_8bit:
             return sorted(
@@ -1987,23 +2414,24 @@ def find_model_preset(
         ]
         exact_matches = [p for p in mlx_gen_matches if requested in _exact_repo_selectors(p)]
         if exact_matches:
-            return sorted(
+            chosen = sorted(
                 exact_matches,
                 key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
             )[0]
+            if bits is not None and int(chosen.quantization_bits or 0) != int(bits):
+                raise ValueError(
+                    f"{chosen.repo_id} is the {chosen.quantization_bits}-bit package; drop --bits or "
+                    f"name the {int(bits)}-bit package."
+                )
+            return chosen
+        # With --bits, only the packages of that width; when none has it, the general path below looks
+        # through every target of the host for one.
+        mlx_gen_matches = [p for p in mlx_gen_matches if bits is None or int(p.quantization_bits or 0) == int(bits)]
+        if mlx_gen_matches and (bits is not None or any(p.recommended for p in mlx_gen_matches)):
+            picked = _pick_package(name, mlx_gen_matches, bits=bits)
+            if picked is not None:
+                return picked
         if mlx_gen_matches:
-            if requested in {"seedvr2", "seedvr2-3b", "seedvr2-7b"}:
-                preferred = [
-                    p
-                    for p in mlx_gen_matches
-                    if int(p.quantization_bits or 0) == 8
-                    and str(p.repo_id).lower().startswith("abstractframework/seedvr2")
-                ]
-                if preferred:
-                    return sorted(
-                        preferred,
-                        key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
-                    )[0]
             repo_choices = {p.repo_id for p in mlx_gen_matches}
             if len(repo_choices) == 1:
                 return sorted(
@@ -2011,13 +2439,41 @@ def find_model_preset(
                     key=lambda p: (target_rank.get(p.target, len(target_rank)), p.source_priority, p.repo_id),
                 )[0]
             available = ", ".join(sorted({p.repo_id for p in mlx_gen_matches}))
+            source = (
+                f"; the source repository {exact_non_abstractframework_matches[0].repo_id}: add --allow-non-8bit"
+                if exact_non_abstractframework_matches
+                else ""
+            )
             raise ValueError(
-                f"MLX-Gen model selector {name!r} is not an exact published model id. "
-                f"Use one of: {available}"
+                f"{name!r} names several MLX-Gen packages and the catalog recommends none of them: "
+                f"name one of {available}" + (", or pass --bits" if bits is None else "") + f"{source}."
             )
 
     def _sort_key(preset: VisionModelDownloadPreset) -> tuple[int, int, str]:
         return (target_rank.get(preset.target, len(target_rank)), preset.source_priority, preset.repo_id)
+
+    def _choose(choices: Sequence[VisionModelDownloadPreset]) -> VisionModelDownloadPreset:
+        # A repository named exactly is that repository. Otherwise the host's target order picks the
+        # target; within it, several packages select the one the catalog recommends, or stop and are
+        # listed, whatever narrowed them.
+        ordered = sorted(choices, key=_sort_key)
+        exact = [p for p in ordered if p.repo_id.lower() == requested]
+        if download_rule and exact:
+            return exact[0]
+        top = [p for p in ordered if p.target == ordered[0].target]
+        repos = sorted({p.repo_id for p in top})
+        if len(repos) == 1:
+            return ordered[0]
+        flagged = [p for p in top if p.recommended]
+        if len({p.repo_id for p in flagged}) == 1:
+            return flagged[0]
+        if not download_rule:
+            return ordered[0]
+        widths = {p.quantization_bits for p in top}
+        raise ValueError(
+            f"{name!r} names several {ordered[0].target} packages and the catalog recommends none of them: "
+            f"name one of {', '.join(repos)}" + (", or pass --bits." if len(widths) > 1 else ".")
+        )
 
     candidates = [
         p
@@ -2026,24 +2482,13 @@ def find_model_preset(
         and (selected_engine is None or p.engine == selected_engine)
         and matches(p)
     ]
-    if require_8bit:
+    if require_8bit and bits is None:
         candidates = [p for p in candidates if _is_default_quantized_preset(p)]
+    if bits is not None:
+        candidates = [p for p in candidates if int(p.quantization_bits or 0) == int(bits)]
     if candidates:
-        return sorted(candidates, key=_sort_key)[0]
+        return _choose(candidates)
 
-    known_values: set[str] = set()
-    for p in presets:
-        if p.target not in selected_targets or (selected_engine is not None and p.engine != selected_engine):
-            continue
-        if _is_abstractframework_mlx_gen_preset(p):
-            repo = str(p.repo_id or "").strip()
-            if repo:
-                known_values.add(repo)
-                known_values.add(repo.rsplit("/", 1)[-1])
-        else:
-            known_values.add(p.key)
-            known_values.update(p.aliases)
-    known = sorted(known_values)
     any_engine_matches = [p for p in presets if matches(p)]
     target_matches = [
         p
@@ -2060,37 +2505,87 @@ def find_model_preset(
         if len(possible_targets) == 1:
             fallback_target = possible_targets[0]
             fallback = [p for p in any_engine_matches if p.target == fallback_target]
-            if require_8bit:
+            of_width = [p for p in fallback if bits is None or int(p.quantization_bits or 0) == int(bits)]
+            packages = [p for p in of_width if _is_abstractframework_mlx_gen_preset(p)]
+            exact = [p for p in of_width if p.repo_id.lower() == requested]
+            if download_rule and not require_8bit and exact:
+                # As on a host whose targets include it: a repository named exactly is that repository.
+                return sorted(exact, key=_sort_key)[0]
+            if packages and (bits is not None or any(p.recommended for p in packages)):
+                picked = _pick_package(name, packages, bits=bits)
+                if picked is not None:
+                    return picked
+            if bits is not None:
+                if not of_width:
+                    available = ", ".join(sorted({f"{p.repo_id} ({p.quantization_bits}-bit)" for p in fallback}))
+                    raise ValueError(f"No {int(bits)}-bit package for {name!r}. Available: {available}")
+                fallback = of_width
+            elif require_8bit:
                 quantized = [p for p in fallback if _is_default_quantized_preset(p)]
                 if quantized:
                     fallback = quantized
-                elif fallback_target != "hf-snapshot":
-                    raise ValueError(
-                        f"No 8-bit preset for {name!r}. Available target/engine choices: "
-                        + ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
-                        + ". Use --allow-non-8bit, or select an explicit --target/--provider that has an 8-bit artifact."
-                    )
-            return sorted(fallback, key=_sort_key)[0]
+            return _choose(fallback)
+
+    if target_matches and bits is None and len({p.repo_id for p in target_matches}) == 1:
+        # One repository: a model with a single package selects it, whatever its width.
+        return sorted(target_matches, key=_sort_key)[0]
+    width = f"{int(bits)}-bit " if bits is not None else ("8-bit " if require_8bit else "")
+
+    def _listed(choices: Sequence[VisionModelDownloadPreset]) -> str:
+        return ", ".join(
+            sorted(
+                {
+                    f"{p.target}/{p.engine}:{p.repo_id}" + (f" ({p.quantization_bits}-bit)" if bits is not None else "")
+                    for p in choices
+                }
+            )
+        )
 
     if target_matches:
-        available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in target_matches}))
         engine_msg = f" and engine {selected_engine!r}" if selected_engine else ""
         raise ValueError(
-            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
-            f"Available target/repo choices: {available}"
+            f"No {width}preset for {name!r} on target {selected_target_label!r}{engine_msg}. "
+            f"Available target/repo choices: {_listed(target_matches)}"
         )
     if any_engine_matches:
-        available = ", ".join(sorted({f"{p.target}/{p.engine}:{p.repo_id}" for p in any_engine_matches}))
         if selected_engine:
             raise ValueError(
-                f"No {'8-bit ' if require_8bit else ''}preset for {name!r} with engine {selected_engine!r}. "
-                f"Available target/engine choices: {available}"
+                f"No {width}preset for {name!r} with engine {selected_engine!r}. "
+                f"Available target/engine choices: {_listed(any_engine_matches)}"
             )
         raise ValueError(
-            f"No {'8-bit ' if require_8bit else ''}preset for {name!r} on target {selected_target_label!r}. "
-            f"Available target/engine choices: {available}"
+            f"No {width}preset for {name!r} on target {selected_target_label!r}. "
+            f"Available target/engine choices: {_listed(any_engine_matches)}"
         )
-    raise ValueError(f"Unknown vision model preset {name!r}. Known presets: {', '.join(known)}")
+    raise ValueError(
+        f"{name!r} is not in the AbstractVision catalog. `abstractvision catalog` lists its models "
+        "(`--all-targets --all` for every package); a Hugging Face repository outside the catalog is named "
+        "`owner/name`."
+    )
+
+
+def catalog_download_preset(repo_id: str, *, target: str, engine: str) -> Optional[VisionModelDownloadPreset]:
+    """The download preset for one repository, target and engine, or None."""
+
+    for preset in _all_presets():
+        if (preset.repo_id, preset.target, preset.engine) == (str(repo_id), str(target), str(engine)):
+            return preset
+    return None
+
+
+def catalog_names_model(name: str) -> bool:
+    """Whether `name` is a key, alias, repository or upstream model id of any download preset."""
+
+    requested = str(name or "").strip().lower()
+    if not requested:
+        return False
+    for preset in _all_presets():
+        names = {str(preset.key).lower(), str(preset.repo_id).lower(), *(a.lower() for a in preset.aliases)}
+        if preset.upstream_repo_id:
+            names.add(str(preset.upstream_repo_id).lower())
+        if requested in names:
+            return True
+    return False
 
 
 def default_download_root() -> Path:
@@ -2127,20 +2622,214 @@ def resolve_hf_token(token: Optional[str] = None) -> Optional[str]:
     return None
 
 
-def _is_hf_access_error(exc: Exception) -> tuple[bool, Optional[int]]:
-    response = getattr(exc, "response", None)
-    status_code = getattr(response, "status_code", None)
-    msg = str(exc).lower()
-    if status_code in {401, 403}:
-        return True, int(status_code)
-    if "gated repo" in msg or "not in the authorized list" in msg or "accept the conditions" in msg:
-        return True, int(status_code) if isinstance(status_code, int) else None
-    return False, int(status_code) if isinstance(status_code, int) else None
+def repository_preset(repo_id: str) -> VisionModelDownloadPreset:
+    """A Hugging Face repository the catalog does not list: every file it holds, no engine chosen.
+
+    It downloads through the same plan, size and disk check as a catalog package; its access comes
+    from the Hub listing."""
+
+    repo = str(repo_id).strip()
+    return VisionModelDownloadPreset(
+        key=repo,
+        display_name=repo,
+        repo_id=repo,
+        target="hf-snapshot",
+        engine="",
+        local_dir_name="",
+        quantization_bits=None,
+        upstream_repo_id=None,
+        # What `download --json` reports as the source of a repository outside the catalog.
+        source="huggingface_hub_cache",
+        aliases=(),
+        allow_patterns=(),
+        in_catalog=False,
+    )
 
 
-def _snapshot_requirements_for_preset(
+_MLX_GEN_ENGINE_NAMES = {"mflux", "m-flux", "mlx-gen", "mlxgen"}
+_MLX_TARGET_NAMES = {"mlx", "apple", "mac", "macos", "osx", "metal"}
+
+
+def select_download_preset(
+    name: str,
+    *,
+    target: Optional[str] = "auto",
+    engine: Optional[str] = None,
+    bits: Optional[int] = None,
+    allow_non_8bit: bool = False,
+) -> VisionModelDownloadPreset:
+    """The preset `abstractvision download <name>` fetches (`--target`, `--provider`, `--bits`,
+    `--allow-non-8bit`); ValueError says why there is none.
+
+    A catalog model with a single package selects it; with several packages of one engine, the one the
+    catalog recommends, else the packages are listed. `bits` selects among the packages of that width only,
+    in every target of the host, or ValueError says none has it and lists the widths there are. Across
+    targets the host's order decides, preferring an 8-bit package unless `allow_non_8bit`; with
+    `allow_non_8bit` a repository named exactly selects that repository instead of a package made from it.
+    A Diffusers or snapshot target, or an MLX-Gen engine or target named explicitly, does not require 8 bits
+    (so `briaai/FIBO --provider mlx-gen` is that source repository). A
+    Hugging Face `owner/name` the catalog does not name is the whole repository (`repository_preset`)."""
+
+    raw_target = str(target or "auto").strip().lower()
+    raw_engine = str(engine or "auto").strip().lower().replace("_", "-")
+    require_8bit = not (
+        allow_non_8bit
+        or raw_target in {"diffusers", "hf-snapshot", *_MLX_TARGET_NAMES}
+        or raw_engine in {"diffusers", "transformers", *_MLX_GEN_ENGINE_NAMES}
+    )
+    try:
+        return find_model_preset(
+            name, target=target, engine=engine, require_8bit=require_8bit, bits=bits, download_rule=True
+        )
+    except ValueError as refusal:
+        if bits is None and not catalog_names_model(name) and looks_like_hf_repo_id(name):
+            return repository_preset(name)
+        raise refusal
+
+
+def download_command(repo_id: str, *, engine: Optional[str] = None, base_model: Optional[str] = None) -> str:
+    """The `abstractvision download` command that fetches exactly `repo_id` on this host (its `engine`
+    package when the catalog lists the repository for several), with `--base-model` when given.
+
+    Each form of the command is checked with `select_download_preset`, so the command printed is one
+    that selects this repository: a model id that is also a source repository needs `--allow-non-8bit`,
+    because the model id alone selects its recommended package. ValueError when no form selects it, when
+    the catalog lists the repository but not for `engine` (no command would fetch what that engine loads),
+    or when `base_model` is not a schedule of that package. A repository outside the catalog is fetched
+    whole, whatever the engine."""
+
+    repo = str(repo_id).strip()
+    wanted_engine = normalize_model_engine(engine) if engine else None
+    in_catalog = [p for p in _all_presets() if p.repo_id == repo]
+    listed = [p for p in in_catalog if wanted_engine is None or p.engine == wanted_engine]
+    if in_catalog and not listed:
+        engines = ", ".join(sorted({p.engine for p in in_catalog}))
+        raise ValueError(f"The catalog lists {repo} for {engines}, not for {wanted_engine}.")
+    if base_model is not None:
+        if not listed or listed[0].engine != "mlx-gen":
+            raise ValueError(f"--base-model names an MLX-Gen schedule; {repo} is not an MLX-Gen package of the catalog.")
+        from .backends.mflux import mlx_gen_package_schedule
+
+        base_model = mlx_gen_package_schedule(listed[0], base_model)
+    widths = sorted({int(p.quantization_bits) for p in listed if p.quantization_bits in (2, 4, 8, 16)})
+    forms: List[Tuple[str, ...]] = [(), ("--allow-non-8bit",), *[("--bits", str(w)) for w in widths]]
+    if wanted_engine is not None:
+        forms += [("--provider", wanted_engine, *flags) for flags in list(forms)]
+    for flags in forms:
+        provider = flags[1] if flags[:1] == ("--provider",) else None
+        rest = flags[2:] if provider else flags
+        bits = int(rest[1]) if rest[:1] == ("--bits",) else None
+        try:
+            chosen = select_download_preset(
+                repo, engine=provider, bits=bits, allow_non_8bit="--allow-non-8bit" in rest
+            )
+        except ValueError:
+            continue
+        if chosen.repo_id != repo or (listed and chosen.engine not in {p.engine for p in listed}):
+            continue
+        schedule = ("--base-model", str(base_model)) if base_model is not None else ()
+        return shlex.join(("abstractvision", "download", repo, *flags, *schedule))
+    raise ValueError(f"No `abstractvision download` command selects {repo} on this host.")
+
+
+def _hub_refusal_status(exc: BaseException) -> Optional[int]:
+    """The HTTP status when the Hub refused the repository (401, 403, or a repository it does not
+    show), else None. Read from the response and the exception type, never from the message."""
+
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status in (401, 403):
+        return int(status)
+    try:
+        # `huggingface_hub.utils` exports it in 0.x and 1.x; `huggingface_hub.errors` only from 0.25.
+        from huggingface_hub.utils import RepositoryNotFoundError
+    except ImportError:
+        return None
+    if isinstance(exc, RepositoryNotFoundError):
+        return int(status) if isinstance(status, int) else 404
+    return None
+
+
+def hub_import_problem(error: ImportError) -> str:
+    """What is missing when huggingface_hub cannot be imported, from the error's module `name`: the
+    library itself, or a module it imports."""
+
+    missing = str(getattr(error, "name", "") or "")
+    if not missing or missing.split(".")[0] == "huggingface_hub":
+        what = "huggingface_hub is not installed"
+    else:
+        what = f"huggingface_hub cannot be imported, because the module {missing!r} it imports is not installed"
+    return f'{what}; install it with `pip install "abstractvision[models]"`'
+
+
+def _hub_endpoint() -> str:
+    try:
+        from huggingface_hub import constants
+
+        return str(constants.ENDPOINT)
+    except Exception:
+        return "https://huggingface.co"
+
+
+def _hub_unavailable_reason(
+    exc: BaseException, repo_id: str, *, gated: bool, license_name: str, revision: Optional[str] = None
+) -> str:
+    """Why a Hub request failed and what to do, for a plan without a listing; read from the exception type
+    and HTTP status, never from the message. A refusal raises HuggingFaceAccessError.
+
+    huggingface_hub's own types decide: `OfflineModeIsEnabled`, then `HfHubHTTPError` (the Hub answered
+    with an error status), then a request that got no answer: the standard library's `OSError` family
+    (`ConnectionError`, `TimeoutError`) or any error of the base classes `HfHubHTTPError` derives from,
+    which are its transport library's own error base (httpx's in huggingface_hub 1.x, requests' in 0.x)."""
+
+    status = _hub_refusal_status(exc)
+    if status is not None:
+        raise HuggingFaceAccessError(
+            str(repo_id), raw_message=str(exc), status_code=status, gated=gated, license_name=license_name
+        ) from exc
+    first_line = next((line.strip() for line in str(exc).splitlines() if line.strip()), "")
+    detail = f"{type(exc).__name__}: {first_line}" if first_line else type(exc).__name__
+    try:
+        from huggingface_hub.utils import (
+            HfHubHTTPError,
+            OfflineModeIsEnabled,
+            RevisionNotFoundError,
+        )
+    except ImportError:
+        return detail
+    if isinstance(exc, OfflineModeIsEnabled):
+        return "offline mode is on (HF_HUB_OFFLINE), so the Hugging Face Hub was not contacted; unset HF_HUB_OFFLINE to download"
+    if isinstance(exc, RevisionNotFoundError):
+        named = f" {revision!r}" if revision else ""
+        return f"{repo_id} has no revision{named} on the Hugging Face Hub at {_hub_endpoint()}; name an existing branch, tag or commit"
+    if isinstance(exc, HfHubHTTPError):
+        code = getattr(getattr(exc, "response", None), "status_code", None)
+        return f"the Hugging Face Hub at {_hub_endpoint()} answered HTTP {code}; try again later"
+    if isinstance(exc, (OSError, *HfHubHTTPError.__bases__)):
+        return f"the Hugging Face Hub could not be reached at {_hub_endpoint()} ({detail}); check the network connection"
+    return detail
+
+
+def _catalog_access(repo_id: str) -> Tuple[Optional[bool], str]:
+    """(gated, licence name) of a repository as the catalog gives them; (None, "") when it is not listed."""
+
+    listed = [p for p in _all_presets() if p.repo_id == str(repo_id)]
+    if not listed:
+        return None, ""
+    gated = [p for p in listed if p.gated]
+    return (True, gated[0].license_name) if gated else (False, "")
+
+
+def _preset_access(preset: VisionModelDownloadPreset) -> Tuple[Optional[bool], str]:
+    if not preset.in_catalog:
+        return None, ""
+    return bool(preset.gated), str(preset.license_name or "")
+
+
+def snapshot_requirements_for_preset(
     preset: VisionModelDownloadPreset,
 ) -> tuple[Tuple[str, ...], bool]:
+    if not preset.in_catalog:
+        return tuple(), False
     target = str(preset.target or "").strip().lower()
     engine = str(preset.engine or "").strip().lower()
     if target in {"hf-snapshot", "mlx", "gguf", "fp8"}:
@@ -2152,6 +2841,242 @@ def _snapshot_requirements_for_preset(
     return tuple(), False
 
 
+def _existing_parent(path: Path) -> Path:
+    current = Path(path).expanduser()
+    while not current.exists() and current != current.parent:
+        current = current.parent
+    return current
+
+
+def _free_bytes(cache_root: Path) -> Optional[int]:
+    try:
+        return int(shutil.disk_usage(_existing_parent(cache_root)).free)
+    except Exception:
+        return None
+
+
+def _hub_json(repo_id: str, filename: str, *, revision: Optional[str], token: Optional[str]) -> Any:
+    """A small JSON file of a repository, read from the Hub into memory: the cache is not written.
+
+    The request goes through huggingface_hub's own session, as its `HfApi` calls do, with only the
+    arguments both of its session types take (`requests.Session` in 0.x, `httpx.Client` in 1.x); each
+    follows redirects as huggingface_hub configures it."""
+
+    from huggingface_hub import hf_hub_url
+    from huggingface_hub.utils import build_hf_headers, get_session, hf_raise_for_status
+
+    response = get_session().get(
+        hf_hub_url(str(repo_id), filename, revision=revision),
+        headers=build_hf_headers(token=resolve_hf_token(token)),
+    )
+    hf_raise_for_status(response)
+    return response.json()
+
+
+def model_index_components(index: Any) -> List[str]:
+    """The pipeline components a Diffusers `model_index.json` names (entries with a library and class)."""
+
+    if not isinstance(index, dict):
+        return []
+    return [
+        str(k)
+        for k, v in index.items()
+        if not str(k).startswith("_") and isinstance(v, list) and len(v) == 2 and v[0] is not None
+    ]
+
+
+def _hub_file(repo_dir: Path, commit: str, sibling: Any) -> HubFile:
+    # huggingface_hub's own layout (`hf_hub_download`): a file is cached when its snapshot link or its
+    # blob exists, and in flight as `blobs/<etag>.incomplete`, the file it writes into.
+    lfs = getattr(sibling, "lfs", None)
+    etag = str(getattr(lfs, "sha256", "") or getattr(sibling, "blob_id", "") or "")
+    blob = repo_dir / "blobs" / etag if etag else None
+    complete = (repo_dir / "snapshots" / commit / str(sibling.rfilename)).exists() or (
+        blob is not None and blob.exists()
+    )
+    partial = 0
+    if not complete and blob is not None:
+        try:
+            partial = blob.with_name(blob.name + ".incomplete").stat().st_size
+        except OSError:
+            partial = 0
+    return HubFile(name=str(sibling.rfilename), size=int(sibling.size), complete=complete, partial=partial)
+
+
+def _plan_hub_download(
+    repo_id: str,
+    *,
+    cache_root: Path,
+    token: Optional[str],
+    allow_patterns: Optional[Sequence[str]],
+    ignore_patterns: Optional[Sequence[str]],
+    diffusers_trim: bool,
+    gated: Optional[bool],
+    license_name: str,
+    revision: Optional[str] = None,
+) -> HubDownloadPlan:
+    """Size a download against the cache before it starts, from the Hub listing (metadata only).
+
+    The files the patterns select (for a Diffusers pipeline with `diffusers_trim`, only those the
+    Diffusers backend loads, read from its `model_index.json` without writing to the cache) are
+    each complete in the cache or to fetch. A refusal raises `HuggingFaceAccessError`; a listing
+    that cannot be had otherwise gives a plan with `listing_error`. `gated` is what the catalog
+    says (None: not in the catalog, the listing decides)."""
+
+    repo_id = str(repo_id)
+    free_bytes = _free_bytes(cache_root)
+
+    def unlisted(reason: str, access: Optional[bool]) -> HubDownloadPlan:
+        return HubDownloadPlan(
+            repo_id=repo_id,
+            cache_dir=cache_root,
+            free_bytes=free_bytes,
+            gated=access,
+            license_name=license_name,
+            listing_error=reason,
+            revision=str(revision) if revision else None,
+        )
+
+    try:
+        from huggingface_hub import HfApi
+        from huggingface_hub.utils import filter_repo_objects
+    except ImportError as e:
+        return unlisted(hub_import_problem(e), gated)
+    try:
+        info = HfApi().model_info(
+            repo_id,
+            revision=str(revision) if revision else None,
+            files_metadata=True,
+            token=resolve_hf_token(token),
+        )
+    except Exception as e:
+        return unlisted(
+            _hub_unavailable_reason(e, repo_id, gated=bool(gated), license_name=license_name, revision=revision), gated
+        )
+    access = gated if gated is not None else bool(getattr(info, "gated", False))
+    commit = str(getattr(info, "sha", "") or "")
+    selected = list(
+        filter_repo_objects(
+            items=list(getattr(info, "siblings", None) or []),
+            allow_patterns=list(allow_patterns) if allow_patterns else None,
+            ignore_patterns=list(ignore_patterns) if ignore_patterns else None,
+            key=lambda sibling: str(sibling.rfilename),
+        )
+    )
+    if diffusers_trim and any(str(s.rfilename) == "model_index.json" for s in selected):
+        try:
+            index = _hub_json(repo_id, "model_index.json", revision=commit or None, token=token)
+        except Exception as e:
+            return unlisted(
+                _hub_unavailable_reason(e, repo_id, gated=bool(access), license_name=license_name, revision=commit or None),
+                access,
+            )
+        keep = set(
+            diffusers_download_files(
+                [str(s.rfilename) for s in selected],
+                components=model_index_components(index),
+                variant=_diffusers_backend_variant(),
+            )
+        )
+        selected = [s for s in selected if str(s.rfilename) in keep]
+    if not commit:
+        return unlisted("the listing gives no commit", access)
+    unsized = [str(s.rfilename) for s in selected if getattr(s, "size", None) is None]
+    if unsized:
+        # huggingface.co gives every file's size in this listing (`?blobs=true`); a mirror set with
+        # HF_ENDPOINT may not, and a download that cannot be sized is not started.
+        return unlisted(
+            f"the listing from {_hub_endpoint()} gives no size for {unsized[0]}, so the download cannot be sized; "
+            "if HF_ENDPOINT points at a mirror, point it at a server that lists file sizes (huggingface.co does)",
+            access,
+        )
+    repo_dir = hf_repo_dir(repo_id, cache_dir=str(cache_root))
+    files = tuple(_hub_file(repo_dir, commit, s) for s in sorted(selected, key=lambda s: str(s.rfilename)))
+    return HubDownloadPlan(
+        repo_id=repo_id,
+        cache_dir=cache_root,
+        free_bytes=free_bytes,
+        files=files,
+        commit=commit,
+        gated=access,
+        license_name=license_name,
+        revision=str(revision) if revision else None,
+    )
+
+
+def _require_disk_space(plan: HubDownloadPlan | DownloadPlan) -> None:
+    error = plan.disk_space_error()
+    if error is not None:
+        raise InsufficientDiskSpaceError(error)
+
+
+def _require_planned_files(plan: HubDownloadPlan, snapshot: Path) -> None:
+    missing = [f.name for f in plan.files if not (snapshot / f.name).is_file()]
+    if missing:
+        raise RuntimeError(
+            f"The download of {plan.repo_id} is incomplete: {len(missing)} of {len(plan.files)} files are "
+            f"missing from {snapshot} (for example {missing[0]}). Run the same command again to fetch them; "
+            "the files that completed stay in the cache."
+        )
+
+
+def _fetch_plan(plan: HubDownloadPlan, *, token: Optional[str], max_workers: int) -> Path:
+    """Fetch the files of a listed plan that the cache lacks, and return the snapshot holding them all.
+
+    The files are those of the commit the listing named (`plan.commit`), so a repository updated since
+    the listing cannot mix two commits into one snapshot; the plan's revision (the default branch when
+    it named none) is then recorded as that commit in the cache, as huggingface_hub records a branch it
+    downloads. Complete files are not fetched again; when every file is already linked in the snapshot,
+    nothing is requested at all."""
+
+    if not plan.files:
+        raise RuntimeError(f"The Hub lists no file of {plan.repo_id} that the download selects; nothing was fetched.")
+    repo_dir = hf_repo_dir(plan.repo_id, cache_dir=str(plan.cache_dir))
+    snapshot = repo_dir / "snapshots" / str(plan.commit)
+    if not all((snapshot / f.name).exists() for f in plan.files):
+        from huggingface_hub import snapshot_download
+
+        try:
+            snapshot = Path(
+                str(
+                    snapshot_download(
+                        repo_id=plan.repo_id,
+                        repo_type="model",
+                        revision=str(plan.commit),
+                        allow_patterns=[glob.escape(f.name) for f in plan.files],
+                        token=resolve_hf_token(token),
+                        cache_dir=str(plan.cache_dir),
+                        max_workers=max(1, int(max_workers)),
+                    )
+                )
+            )
+        except Exception as e:
+            status = _hub_refusal_status(e)
+            if status is not None:
+                raise HuggingFaceAccessError(
+                    plan.repo_id,
+                    raw_message=str(e),
+                    status_code=status,
+                    gated=bool(plan.gated),
+                    license_name=plan.license_name,
+                ) from e
+            raise
+    _require_planned_files(plan, snapshot)
+    revision = plan.revision or _hub_default_revision()
+    if revision != plan.commit:
+        write_hf_ref(repo_dir, revision, str(plan.commit))
+    return snapshot
+
+
+def _hub_default_revision() -> str:
+    try:
+        from huggingface_hub import constants
+
+        return str(constants.DEFAULT_REVISION)
+    except Exception:
+        return "main"
+
+
 def download_hf_repo_snapshot(
     repo_id: str,
     *,
@@ -2159,38 +3084,53 @@ def download_hf_repo_snapshot(
     revision: Optional[str] = None,
     allow_patterns: Optional[Sequence[str]] = None,
     ignore_patterns: Optional[Sequence[str]] = None,
-    cache_dir: Optional[Path] = None,
+    cache_dir: Optional[Path | str] = None,
     local_files_only: bool = False,
     max_workers: int = 4,
 ) -> Path:
-    """Download (or resolve) a Hugging Face model repo snapshot into the HF cache."""
+    """Download (or resolve) a Hugging Face model repo snapshot into the HF cache.
+
+    The download is planned first, as `download_model_preset` does: the files the patterns select
+    are listed on the Hub, the cache disk must hold the ones to fetch (`InsufficientDiskSpaceError`),
+    and complete files are not fetched again. Without the listing nothing is downloaded
+    (`RuntimeError`). `local_files_only=True` resolves the cached snapshot only."""
 
     try:
         from huggingface_hub import snapshot_download
     except ImportError as e:
-        raise RuntimeError(
-            "Downloading Hugging Face model snapshots requires `huggingface_hub`. "
-            'Install it with `pip install "abstractvision[models]"` or use the `hf download` CLI.'
-        ) from e
+        raise RuntimeError(f"Nothing was downloaded for {repo_id}: {hub_import_problem(e)}.") from e
 
-    try:
-        resolved = snapshot_download(
-            repo_id=str(repo_id),
-            repo_type="model",
-            revision=str(revision) if revision else None,
-            token=resolve_hf_token(token),
-            allow_patterns=list(allow_patterns) if allow_patterns else None,
-            ignore_patterns=list(ignore_patterns) if ignore_patterns else None,
-            cache_dir=str(cache_dir.expanduser()) if cache_dir else None,
-            local_files_only=bool(local_files_only),
-            max_workers=max(1, int(max_workers)),
+    cache_root = Path(cache_dir).expanduser() if cache_dir else default_hf_cache_root()
+    if local_files_only:
+        return Path(
+            str(
+                snapshot_download(
+                    repo_id=str(repo_id),
+                    repo_type="model",
+                    revision=str(revision) if revision else None,
+                    allow_patterns=list(allow_patterns) if allow_patterns else None,
+                    ignore_patterns=list(ignore_patterns) if ignore_patterns else None,
+                    cache_dir=str(cache_root),
+                    local_files_only=True,
+                )
+            )
         )
-    except Exception as e:
-        is_access_error, status_code = _is_hf_access_error(e)
-        if is_access_error:
-            raise HuggingFaceAccessError(str(repo_id), raw_message=str(e), status_code=status_code) from e
-        raise
-    return Path(str(resolved))
+    gated, license_name = _catalog_access(str(repo_id))
+    plan = _plan_hub_download(
+        str(repo_id),
+        cache_root=cache_root,
+        token=token,
+        allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns,
+        diffusers_trim=False,
+        gated=gated,
+        license_name=license_name,
+        revision=revision,
+    )
+    if not plan.listed:
+        raise RuntimeError(f"Nothing was downloaded for {repo_id}: {plan.listing_error}.")
+    _require_disk_space(plan)
+    return _fetch_plan(plan, token=token, max_workers=max_workers)
 
 
 # Weight formats a Hugging Face repo may ship next to its safetensors. The Diffusers backend
@@ -2266,110 +3206,345 @@ def _diffusers_backend_variant() -> Optional[str]:
     return "fp16" if local_model_profile() in {"cuda", "apple-silicon"} else None
 
 
-def _diffusers_preset_download_files(preset: VisionModelDownloadPreset, *, token: Optional[str]) -> List[str]:
-    """`diffusers_download_files` for a preset's repo, among the files its patterns allow.
-    Empty (download by the patterns) when the repo has no model_index.json or the listing fails."""
-
-    import fnmatch
-    import json
-
-    try:
-        from huggingface_hub import HfApi, hf_hub_download
-
-        files = HfApi().list_repo_files(str(preset.repo_id), token=token)
-        if "model_index.json" not in files:
-            return []
-        with open(hf_hub_download(str(preset.repo_id), "model_index.json", token=token), "r", encoding="utf-8") as fh:
-            index = json.load(fh)
-    except Exception:
-        return []
-    components = [
-        k for k, v in index.items()
-        if not str(k).startswith("_") and isinstance(v, list) and len(v) == 2 and v[0] is not None
-    ]
-    patterns = tuple(preset.allow_patterns or ())
-    allowed = [f for f in files if not patterns or any(fnmatch.fnmatch(f, p) for p in patterns)]
-    return diffusers_download_files(allowed, components=components, variant=_diffusers_backend_variant())
-
-
-def download_model_preset(
+def preset_download_patterns(
     preset: VisionModelDownloadPreset,
-    *,
-    model_dir: Optional[Path] = None,
-    token: Optional[str] = None,
-    max_workers: int = 4,
-    all_files: bool = False,
-) -> Path:
-    """Download a curated preset into the Hugging Face cache.
-
-    Existing `~/models/<preset.local_dir_name>` trees are migrated into the same
-    cache layout on first use so older installs do not need a manual re-download.
-
-    A Diffusers preset downloads only what the Diffusers backend loads on this host
-    (`diffusers_download_files`); `all_files=True` takes every file its patterns match.
-    """
-
-    required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
-    cache_root = default_hf_cache_root()
-    legacy_root = Path(model_dir).expanduser() if model_dir is not None else default_legacy_model_root()
-    legacy_dir = legacy_root / preset.local_dir_name
-    cached = ensure_hf_repo_snapshot(
-        preset.repo_id,
-        source_dir=legacy_dir,
-        cache_dir=str(cache_root),
-        cleanup_source=True,
-        required_files=required_files,
-        require_weight_files=require_weight_files,
-    )
-    if cached is not None:
-        return cached
-
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError as e:
-        raise RuntimeError(
-            "Downloading model presets requires `huggingface_hub`. Install it or use the `hf download` CLI."
-        ) from e
+) -> Tuple[Optional[List[str]], Optional[List[str]]]:
+    """(allow, ignore) patterns a preset selects its files with, among those the Hub lists."""
 
     allow_patterns = list(preset.allow_patterns) or None
     ignore_patterns = None
-    if not all_files and preset.target == "diffusers" and preset.engine == "diffusers":
-        trimmed = _diffusers_preset_download_files(preset, token=resolve_hf_token(token))
-        if trimmed:
-            allow_patterns = trimmed
     if preset.target == "gguf" and not any("/" in str(p) for p in (allow_patterns or ())):
         # A GGUF artifact is a root file (the sd.cpp selection globs the snapshot root), and the
         # hub's fnmatch lets `*` cross `/`: `*q8_0.gguf` also took Green-Sky/SD-Turbo-GGUF's
         # `old/sd_turbo-q8_0.gguf`.
         ignore_patterns = ["*/*"]
-    try:
-        snapshot = snapshot_download(
-            repo_id=preset.repo_id,
-            repo_type="model",
-            allow_patterns=allow_patterns,
-            ignore_patterns=ignore_patterns,
-            token=resolve_hf_token(token),
-            cache_dir=str(cache_root),
-            max_workers=max(1, int(max_workers)),
+    return allow_patterns, ignore_patterns
+
+
+def plan_model_preset_download(
+    preset: VisionModelDownloadPreset,
+    *,
+    base_model: Optional[str] = None,
+    model_dir: Optional[Path] = None,
+    token: Optional[str] = None,
+    all_files: bool = False,
+) -> DownloadPlan:
+    """Everything `download_model_preset` fetches for a preset, from the Hub listings, without writing
+    anything (`download --dry-run`).
+
+    The parts are the package, then what its engine loads with it: a stable-diffusion.cpp bundle's
+    companion repositories (text encoder, VAE), and with `base_model` (an MLX-Gen schedule of the
+    package) the adapter it attaches, unless mlx-gen finds it cached already. A legacy tree
+    (`legacy_model_tree`) to import replaces the package part. A Diffusers preset selects only the files
+    the Diffusers backend loads on this host (`diffusers_download_files`; its `model_index.json` is
+    read into memory); `all_files=True` takes every file its patterns match.
+
+    Raises `HuggingFaceAccessError` when the Hub refuses a repository, ValueError when `base_model` is
+    not a schedule of the package, and `OptionalDependencyMissingError` when the adapter it attaches
+    can only be named by mlx-gen and mlx-gen is not installed: all before anything is fetched. A
+    listing that cannot be had otherwise gives a part whose plan has `listing_error`."""
+
+    tree, action = legacy_model_tree(preset, model_dir=model_dir)
+    schedule, adapter, adapter_path, adapter_part = _schedule_adapter_part(preset, base_model, token=token)
+    parts: List[DownloadPart] = []
+    if action != "import":
+        parts.append(_package_part(preset, token=token, all_files=all_files))
+    parts.extend(_bundle_parts(preset, token=token))
+    if adapter_part is not None:
+        parts.append(adapter_part)
+    return DownloadPlan(
+        parts=tuple(parts),
+        legacy_import=tree if action == "import" else None,
+        legacy_remove=tree if action == "remove" else None,
+        base_model=schedule,
+        adapter=adapter,
+        adapter_path=adapter_path,
+    )
+
+
+def _package_part(preset: VisionModelDownloadPreset, *, token: Optional[str], all_files: bool) -> DownloadPart:
+    allow_patterns, ignore_patterns = preset_download_patterns(preset)
+    gated, license_name = _preset_access(preset)
+    plan = _plan_hub_download(
+        preset.repo_id,
+        cache_root=default_hf_cache_root(),
+        token=token,
+        allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns,
+        diffusers_trim=not all_files and preset.target == "diffusers" and preset.engine == "diffusers",
+        gated=gated,
+        license_name=license_name,
+    )
+    return DownloadPart("package", plan)
+
+
+def _sdcpp_bundle(preset: VisionModelDownloadPreset) -> Optional[_SdcppBundleSpec]:
+    return _SDCPP_BUNDLES_BY_REPO_ID.get(str(preset.repo_id).strip().lower(), _SDCPP_BUNDLES.get(preset.key))
+
+
+def _bundle_parts(preset: VisionModelDownloadPreset, *, token: Optional[str]) -> List[DownloadPart]:
+    """The companion repositories stable-diffusion.cpp loads with a GGUF diffusion model, one part per
+    repository (a repository serving two roles, such as a VAE and a text encoder, is listed once)."""
+
+    bundle = _sdcpp_bundle(preset) if preset.engine == "stable-diffusion.cpp" else None
+    if bundle is None or bundle.mode != "component":
+        return []
+    by_repo: Dict[str, Tuple[List[str], List[str]]] = {}
+    for component in bundle.components:
+        roles, patterns = by_repo.setdefault(component.repo_id, ([], []))
+        roles.append(component.role)
+        patterns.extend(component.allow_patterns)
+    parts: List[DownloadPart] = []
+    for repo_id, (roles, patterns) in by_repo.items():
+        gated, license_name = _catalog_access(repo_id)
+        plan = _plan_hub_download(
+            repo_id,
+            cache_root=default_hf_cache_root(),
+            token=token,
+            allow_patterns=patterns,
+            ignore_patterns=None,
+            diffusers_trim=False,
+            gated=gated,
+            license_name=license_name,
         )
-    except Exception as e:
-        is_access_error, status_code = _is_hf_access_error(e)
-        if is_access_error:
-            raise HuggingFaceAccessError(str(preset.repo_id), raw_message=str(e), status_code=status_code) from e
-        raise
-    resolved = Path(str(snapshot))
-    if not hf_snapshot_is_usable(
-        resolved,
+        parts.append(DownloadPart(" and ".join(roles), plan, tuple(patterns)))
+    return parts
+
+
+def _schedule_adapter_part(
+    preset: VisionModelDownloadPreset, base_model: Optional[str], *, token: Optional[str]
+) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[DownloadPart]]:
+    """(schedule, adapter, path where mlx-gen finds it, part to fetch it) for `download --base-model`.
+
+    The adapter is fetched into huggingface_hub's own cache, one of the two places mlx-gen resolves a
+    Hugging Face adapter from (its LoRA cache is the other)."""
+
+    if base_model is None:
+        return None, None, None, None
+    if not preset.in_catalog or str(preset.engine) != "mlx-gen":
+        what = f"a {preset.engine} package" if preset.in_catalog else "not in the AbstractVision catalog"
+        raise ValueError(f"--base-model names an MLX-Gen schedule; {preset.repo_id} is {what}.")
+    from .backends.mflux import mlx_gen_package_schedule, resolve_mlx_gen_schedule_adapter
+    from .errors import OptionalDependencyMissingError
+
+    try:
+        schedule = mlx_gen_package_schedule(preset, base_model)
+    except ValueError as e:
+        raise ValueError(f"--base-model {e}") from None
+    try:
+        resolved = resolve_mlx_gen_schedule_adapter(schedule)
+    except OptionalDependencyMissingError as e:
+        raise OptionalDependencyMissingError(
+            f"--base-model {schedule}: the adapter a schedule loads is named by mlx-gen, which could not be "
+            f"imported here, so it cannot be planned. {e}"
+        ) from None
+    if resolved is None:
+        return schedule, None, None, None
+    adapter, path = resolved
+    if path:
+        return schedule, adapter, str(path), None
+    repo_id, filename = _adapter_hub_file(adapter)
+    pattern = glob.escape(filename)
+    gated, license_name = _catalog_access(repo_id)
+    plan = _plan_hub_download(
+        repo_id,
+        cache_root=_hub_library_cache(),
+        token=token,
+        allow_patterns=[pattern],
+        ignore_patterns=None,
+        diffusers_trim=False,
+        gated=gated,
+        license_name=license_name,
+    )
+    return schedule, adapter, None, DownloadPart(f"adapter ({schedule})", plan, (pattern,))
+
+
+def _adapter_hub_file(adapter: str) -> Tuple[str, str]:
+    """(repository, file) of an mlx-gen Hugging Face adapter id: `hf:<owner>/<repo>/<file>` or
+    `<owner>/<repo>:<file>`, the two forms mlx-gen's LoRA resolution names."""
+
+    text = adapter[len("hf:") :] if adapter.startswith("hf:") else adapter
+    if ":" in text:
+        repo_id, filename = text.split(":", 1)
+    elif text.count("/") == 2:
+        repo_id, filename = text.rsplit("/", 1)
+    else:
+        raise ValueError(f"The adapter {adapter!r} is not a Hugging Face file this command can plan.")
+    return repo_id, filename
+
+
+def _hub_library_cache() -> Path:
+    # huggingface_hub's own cache, which mlx-gen reads with its defaults (ABSTRACTVISION_HF_HUB_CACHE
+    # does not apply to the engine's lookup).
+    try:
+        from huggingface_hub import constants
+
+        return Path(str(constants.HF_HUB_CACHE)).expanduser()
+    except Exception:
+        return default_hf_cache_root()
+
+
+def legacy_model_tree(
+    preset: VisionModelDownloadPreset, *, model_dir: Optional[Path] = None
+) -> Tuple[Optional[Path], str]:
+    """A legacy `<model_dir>/<preset.local_dir_name>` tree (default `model_dir`: `~/models`, or
+    `ABSTRACTVISION_MODEL_DIR`) and what `download_model_preset` does with it: `"import"` (moved into
+    the Hugging Face cache as a snapshot), `"remove"` (the cache already holds a usable snapshot of
+    the repository, so the tree is deleted), or `(None, "")` when there is no tree."""
+
+    if not preset.local_dir_name:
+        return None, ""
+    root = Path(model_dir).expanduser() if model_dir is not None else default_legacy_model_root()
+    tree = root / preset.local_dir_name
+    if not tree.is_dir():
+        return None, ""
+    required_files, require_weight_files = snapshot_requirements_for_preset(preset)
+    cached = resolve_hf_repo_snapshot(
+        preset.repo_id,
+        cache_dir=str(default_hf_cache_root()),
         required_files=required_files,
         require_weight_files=require_weight_files,
-    ):
-        raise RuntimeError(
-            f"Downloaded snapshot for {preset.repo_id!r} is incomplete or missing model weights: {resolved}\n"
-            "This usually means the repository has no matching weight files, the download was interrupted, "
-            "or access is gated. Check that the Hub repository is populated; if it is gated, accept its terms "
-            "first and authenticate with a Hugging Face token."
+    )
+    if cached is not None and cached.resolve() != tree.resolve():
+        return tree, "remove"
+    return tree, "import"
+
+
+def download_model_preset(
+    preset: VisionModelDownloadPreset,
+    *,
+    base_model: Optional[str] = None,
+    model_dir: Optional[Path] = None,
+    token: Optional[str] = None,
+    max_workers: int = 4,
+    all_files: bool = False,
+    report: Optional[Callable[[str], None]] = None,
+) -> Path:
+    """Download a preset into the Hugging Face cache, as its plan says, and return the package snapshot.
+
+    The whole plan (`plan_model_preset_download`: the package, a stable-diffusion.cpp bundle's
+    companions, the adapter of the MLX-Gen schedule `base_model`) is made first, and `report` receives
+    its summary. A legacy `<model_dir>/<preset.local_dir_name>` tree (`legacy_model_tree`) is then
+    moved into the cache layout and used as the package as it is (`report` says it was not compared
+    with the Hub), or deleted when the cache already holds the repository. A cache disk without room
+    for the files to fetch raises `InsufficientDiskSpaceError` before anything is written; files
+    complete in the cache are not fetched again. A repository the Hub refuses raises
+    `HuggingFaceAccessError`. Without a Hub listing nothing is fetched: what a local look finds in the
+    cache is used as it is (`report` says it was not compared with the Hub) when it finds every part,
+    otherwise `RuntimeError`."""
+
+    plan = plan_model_preset_download(
+        preset, base_model=base_model, model_dir=model_dir, token=token, all_files=all_files
+    )
+    say = report or (lambda _line: None)
+    snapshot: Optional[Path] = None
+    tree = plan.legacy_import or plan.legacy_remove
+    if tree is not None:
+        required_files, require_weight_files = snapshot_requirements_for_preset(preset)
+        migrated = ensure_hf_repo_snapshot(
+            preset.repo_id,
+            source_dir=tree,
+            cache_dir=str(default_hf_cache_root()),
+            cleanup_source=True,
+            required_files=required_files,
+            require_weight_files=require_weight_files,
         )
-    return resolved
+        if plan.legacy_import is not None:
+            from .model_inventory import local_cache_state
+
+            snapshot = migrated
+            state = local_cache_state(preset, extra_roots=())
+            say(
+                f"cache: imported {preset.repo_id} from the legacy directory {tree} into {snapshot} "
+                f"({_files(state.files)}, {format_bytes(state.bytes)}); it was not compared with the Hub, so it "
+                "may lack files the package selects; nothing was fetched"
+            )
+        else:
+            say(f"legacy: removed {tree}; the cache already holds a snapshot of {preset.repo_id}")
+    for line in plan.summary_lines():
+        say(line)
+    if not plan.listed:
+        return _unlisted_download(preset, plan, snapshot=snapshot, report=say)
+    _require_disk_space(plan)
+    for part in plan.parts:
+        fetched = _fetch_plan(part.plan, token=token, max_workers=max_workers)
+        if part.role == "package":
+            snapshot = fetched
+    if plan.package is not None and snapshot is not None:
+        required_files, require_weight_files = snapshot_requirements_for_preset(preset)
+        if not hf_snapshot_is_usable(
+            snapshot,
+            required_files=required_files,
+            require_weight_files=require_weight_files,
+            reject_incomplete=False,
+        ):
+            raise RuntimeError(
+                f"The download of {preset.repo_id} holds every file the Hub lists for it, but no model weights the "
+                f"package needs: {snapshot}. Check that the repository is populated."
+            )
+    if plan.adapter is not None and plan.adapter_path is None:
+        from .backends.mflux import resolve_mlx_gen_schedule_adapter
+
+        resolved = resolve_mlx_gen_schedule_adapter(str(plan.base_model))
+        if not resolved or not resolved[1]:
+            raise RuntimeError(
+                f"The adapter {plan.adapter} was fetched into {_hub_library_cache()}, but mlx-gen does not find it "
+                "there; generation with that schedule will not load it."
+            )
+        say(f"adapter ({plan.base_model}): {resolved[1]}")
+    assert snapshot is not None
+    return snapshot
+
+
+def _unlisted_download(
+    preset: VisionModelDownloadPreset, plan: DownloadPlan, *, snapshot: Optional[Path], report: Callable[[str], None]
+) -> Path:
+    """Without the Hub listing of a part nothing is fetched: what the cache holds is used as it is when a
+    local look finds every part, never called complete; otherwise RuntimeError says what is missing."""
+
+    from .model_inventory import local_cache_state
+
+    reason = next(part.plan.listing_error for part in plan.parts if not part.plan.listed)
+    for part in plan.parts:
+        listed = part.plan.listed
+        if part.role == "package":
+            if listed and not part.plan.fetch_files:
+                snapshot = hf_repo_dir(preset.repo_id, cache_dir=str(part.plan.cache_dir)) / "snapshots" / str(
+                    part.plan.commit
+                )
+                continue
+            if listed:
+                raise RuntimeError(f"Nothing was downloaded for {preset.repo_id}: {reason}.")
+            state = local_cache_state(preset, extra_roots=())
+            if state.snapshot_dir is None or state.gaps:
+                raise RuntimeError(f"Nothing was downloaded for {preset.repo_id}: {reason}. {state.describe()}")
+            snapshot = state.snapshot_dir
+            report(
+                f"cache: a snapshot of {preset.repo_id} is at {state.snapshot_dir} ({_files(state.files)}, "
+                f"{format_bytes(state.bytes)}); it was not compared with the Hub, so it may lack files the "
+                "package selects"
+            )
+            continue
+        if listed and not part.plan.fetch_files:
+            continue
+        held = (
+            None
+            if listed
+            else resolve_hf_repo_snapshot(
+                part.plan.repo_id,
+                cache_dir=str(part.plan.cache_dir),
+                required_files=part.patterns,
+                require_weight_files=True,
+            )
+        )
+        if held is None:
+            raise RuntimeError(
+                f"Nothing was downloaded for {preset.repo_id}: its {part.role} {part.plan.repo_id} is not in the cache, "
+                f"and {reason}."
+            )
+        report(f"{part.role}: {part.plan.repo_id} is in the cache at {held}; it was not compared with the Hub")
+    assert snapshot is not None
+    return snapshot
 
 
 def _find_snapshot_file(snapshot_dir: Path, patterns: Sequence[str]) -> Optional[Path]:
@@ -2393,13 +3568,18 @@ def _gguf_patterns_for_preset(preset: VisionModelDownloadPreset) -> Tuple[str, .
     return out or ("*.gguf",)
 
 
-def _sdcpp_bundle_download_hint(name: str) -> str:
-    return f"abstractvision download {name} --provider sdcpp"
+def _sdcpp_bundle_download_hint(repo_id: str) -> str:
+    # The command that fetches this GGUF package with its companions (`download_command`).
+    try:
+        return f"Run `{download_command(repo_id, engine='stable-diffusion.cpp')}` first."
+    except ValueError:
+        return f"No `abstractvision download` command selects {repo_id} on this host; fetch it from https://huggingface.co/{repo_id}."
 
 
 def _resolve_cached_sdcpp_companion(
     *,
     requested_name: str,
+    package_repo_id: str,
     role: str,
     repo_id: str,
     allow_patterns: Sequence[str],
@@ -2418,7 +3598,7 @@ def _resolve_cached_sdcpp_companion(
         if not allow_download:
             raise RuntimeError(
                 f"Missing cached stable-diffusion.cpp companion artifact for {requested_name!r}: "
-                f"{role} from {repo_id!r}. Run `{_sdcpp_bundle_download_hint(requested_name)}` first."
+                f"{role} from {repo_id!r}. {_sdcpp_bundle_download_hint(package_repo_id)}"
             )
         snapshot = download_hf_repo_snapshot(
             repo_id,
@@ -2455,10 +3635,10 @@ def resolve_sdcpp_model_selection(
         engine="stable-diffusion.cpp",
         require_8bit=True,
     )
-    bundle = _SDCPP_BUNDLES_BY_REPO_ID.get(str(preset.repo_id).strip().lower(), _SDCPP_BUNDLES.get(preset.key))
+    bundle = _sdcpp_bundle(preset)
     cache_root = default_hf_cache_root()
 
-    required_files, require_weight_files = _snapshot_requirements_for_preset(preset)
+    required_files, require_weight_files = snapshot_requirements_for_preset(preset)
     legacy_dir = default_legacy_model_root() / preset.local_dir_name
     snapshot = ensure_hf_repo_snapshot(
         preset.repo_id,
@@ -2472,7 +3652,7 @@ def resolve_sdcpp_model_selection(
         if not allow_download:
             raise RuntimeError(
                 f"Missing cached stable-diffusion.cpp model artifact for {requested!r} ({preset.repo_id!r}). "
-                f"Run `{_sdcpp_bundle_download_hint(requested)}` first."
+                f"{_sdcpp_bundle_download_hint(preset.repo_id)}"
             )
         snapshot = download_model_preset(
             preset,
@@ -2501,6 +3681,7 @@ def resolve_sdcpp_model_selection(
         component_values[component.role] = str(
             _resolve_cached_sdcpp_companion(
                 requested_name=requested,
+                package_repo_id=preset.repo_id,
                 role=component.role,
                 repo_id=component.repo_id,
                 allow_patterns=component.allow_patterns,

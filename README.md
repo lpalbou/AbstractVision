@@ -2,7 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/abstractvision.svg)](https://pypi.org/project/abstractvision/)
 [![CI](https://github.com/lpalbou/AbstractVision/actions/workflows/ci.yml/badge.svg)](https://github.com/lpalbou/AbstractVision/actions/workflows/ci.yml)
-[![Tested Python](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Flpalbou%2FAbstractVision%2Fmain%2F.github%2Fworkflows%2Fci.yml&query=%24.jobs.test.strategy.matrix%5B%22python-version%22%5D&label=tested%20python&color=blue)](https://github.com/lpalbou/AbstractVision/actions/workflows/ci.yml)
+[![Tested Python](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2Flpalbou%2FAbstractVision%2Fmain%2F.github%2Fworkflows%2Fci.yml&query=%24.jobs%5B%22test-base%22%5D.strategy.matrix%5B%22python-version%22%5D&label=tested%20python&color=blue)](https://github.com/lpalbou/AbstractVision/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/lpalbou/AbstractVision)](https://github.com/lpalbou/AbstractVision/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/lpalbou/AbstractVision?style=social)](https://github.com/lpalbou/AbstractVision/stargazers)
 
@@ -43,8 +43,8 @@ flowchart LR
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
 - Checked on Linux without a GPU, Linux with an NVIDIA card and Apple silicon; the measured generation times per model are in [docs/benchmark.md](docs/benchmark.md).
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
-- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; and supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`.
-- Local MLX-Gen `0.38.0+` exposes route-aware Qwen structured control on validated base-Qwen routes through `control_image` / `control_strength`, and route-aware masked edit on validated Qwen 2511 edit routes through `mask`.
+- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`; and supports MiniMax-H3, video with a synchronized stereo soundtrack (`text_to_video` and first-frame `image_to_video`, with `soundscape` / `music`), from the gated `AbstractFramework/minimax-h3-*` packages. See [docs/api.md](docs/api.md#video-with-sound-minimax-h3).
+- Local MLX-Gen `0.40.1+` exposes route-aware masked edit on validated Qwen 2511 edit routes through `mask`. It does not run structured control: a `control_image` raises `CapabilityNotSupportedError` (`field="control_image"`).
 - Local MLX-Gen exposes a shared `lora_adapters` contract across `text_to_image`, `image_to_image`, `text_to_video`, and `image_to_video`. Route-level LoRA truth stays backend-owned and is surfaced through provider catalogs as `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
@@ -84,6 +84,11 @@ pip install abstractvision            # light: no dependency
 pip install "abstractvision[apple]"   # Apple Silicon
 pip install "abstractvision[gpu]"     # NVIDIA / Linux
 ```
+
+The MLX-Gen extras (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) install `mlx-gen>=0.40.1,<0.41.0` and,
+on macOS, `mlx>=0.32.4`. Upgrade with the extra (`pip install -U "abstractvision[apple]"`): an upgrade without it
+keeps the installed mlx-gen and MLX, and the MLX-Gen backend then refuses them at the first model load
+([Troubleshooting](docs/troubleshooting.md#mlx-gen-refuses-the-installed-mlx-gen-or-mlx-version)).
 
 The base install is lightweight. It includes the shared API, capability
 registry, artifact helpers, CLI, AbstractCore plugin entry point, and the
@@ -162,9 +167,21 @@ also listed as separate model repos and should be selected explicitly when quali
 than memory footprint. Qwen and ERNIE q4 prepared folders can mix q4 and q8
 components, but they remain the default prepared choice.
 
-The downloader stores curated presets in the Hugging Face cache by default and
-imports older `~/models/<preset>` trees on first use. Generation stays
-cache-only unless you explicitly enable runtime downloads.
+The downloader stores curated presets in the Hugging Face cache and imports
+older `~/models/<preset>` trees into it on first use. Generation stays
+cache-only unless you explicitly enable runtime downloads. `catalog` and
+`show-model` give each download's access (whether its repository is gated),
+its cache state as a local look sees it (with its size on disk) and the memory
+modes this machine can run; for MLX-Gen packages with published measurements,
+`show-model` adds the peak memory of each mode. `download` plans from the
+Hugging Face listings before it writes anything, for every repository it
+fetches from (the package, a GGUF bundle's text encoder and VAE, the adapter of
+a `--base-model` schedule): how many files are already complete in the cache,
+how many are to fetch and their size, and whether they fit on the cache disk
+(a partial file's bytes count as already there). It then fetches only the files
+to fetch, from the commit the listing named; after an interruption the same
+command fetches the rest. `--dry-run` prints the plan without downloading. See
+[Downloads](docs/reference/configuration.md#downloads).
 
 ```bash
 pip install "abstractvision[models,mlx-gen]"
@@ -191,6 +208,12 @@ abstractvision download AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit --provid
 abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen
 abstractvision download AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --provider mlx-gen
 abstractvision download AbstractFramework/seedvr2-3b-8bit --provider mlx-gen
+# MiniMax-H3 (video with sound): gated, accept the licence on the package page first.
+# The model id fetches the recommended 8-bit package; --base-model also caches the Turbo adapter.
+# `--allow-non-8bit` fetches the MiniMaxAI/MiniMax-H3 source repository itself instead.
+abstractvision show-model MiniMaxAI/MiniMax-H3
+abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p --dry-run
+abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p
 abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-4bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 abstractvision t2i --provider mlx-gen --model AbstractFramework/flux.2-klein-4b-8bit "a product photo of a matte black espresso machine" --steps 4 --guidance-scale 1.0
 abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-4bit --image ./input.png "replace the background with a clean white studio setup" --steps 20 --guidance-scale 2.5 --strength 0.75
@@ -215,7 +238,7 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen `0.38.0+` also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen `0.40.1+` also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, the prepared TI2V package
@@ -239,11 +262,9 @@ FLUX.2 and Qwen Image Edit can accept additional references with
 `--reference-image` (or Python `extra={"reference_images": [...]}`) for
 multi-reference edits. FIBO Edit snapshots support mask inputs where the runtime
 supports them, and `AbstractFramework/qwen-image-edit-2511-8bit` supports
-route-aware masked edits. `AbstractFramework/qwen-image-8bit` supports
-route-aware structured control through `abstractvision t2i
---control-image ... --control-strength ...` (or Python `control_image=` /
-`control_strength=`). Edit/control inputs fail closed when the selected route
-does not advertise the matching runtime capability. Edit strength is passed as
+route-aware masked edits. Edit inputs fail closed when the selected route
+does not advertise the matching runtime capability, and a structured control
+image (`--control-image`, Python `control_image=`) is refused. Edit strength is passed as
 `strength` and normalized to MLX-Gen's `image_strength` parameter where the
 runtime supports it. For video,
 prefer the prepared TI2V-5B or task-specific Wan 2.2 A14B packages when memory
@@ -274,6 +295,14 @@ the VAE decode below the denoising peak; pass `extra={"vae_tiling": False}`
 allocator peaks measured with AbstractVision/mlx-gen 0.38 on Apple silicon;
 see [docs/faq.md](docs/faq.md#how-much-memory-does-wan-video-need) for other
 sizes.
+
+Every generation request also takes `memory_mode` (CLI `--memory-mode`,
+process default `ABSTRACTVISION_MEMORY_MODE`): `"low"` runs MLX-Gen in its
+low-RAM mode, Diffusers on CUDA with model CPU offload and stable-diffusion.cpp
+with CPU offload of its parameters; `"lowest"` runs MLX-Gen with block
+streaming (MiniMax-H3) and Diffusers on CUDA with sequential CPU offload. A mode
+the provider cannot honour is refused. See
+[docs/api.md](docs/api.md#memory-modes-memory_mode).
 
 ### Shared LoRA adapters
 
@@ -633,10 +662,11 @@ Current behavior:
 - Local video export packages generated frames into MP4 via an external `ffmpeg` binary on `PATH`.
 - Response logs intentionally show only a shortened `b64_json` preview instead of the full base64 image payload.
 
-One-shot commands pick this machine's local engine and FLUX.2 [klein] 4B in 8 bits when you give no provider, model
-or base URL: MLX-Gen with `AbstractFramework/flux.2-klein-4b-8bit` on Apple silicon, stable-diffusion.cpp with the Q8_0
-GGUF of `black-forest-labs/FLUX.2-klein-4B` on an NVIDIA card, Diffusers with the same model on a processor-only host
-(download the model once with `abstractvision download <model id>`; the command prints the choice). A configured
+One-shot commands pick this machine's local engine and FLUX.2 [klein] 4B when you give no provider, model or base
+URL: MLX-Gen with the 8-bit package `AbstractFramework/flux.2-klein-4b-8bit` on Apple silicon, stable-diffusion.cpp
+with the Q8_0 (8-bit) GGUF of `black-forest-labs/FLUX.2-klein-4B` on an NVIDIA card, Diffusers with that model's
+16-bit pipeline (run in float32 on the processor) on a processor-only host. The command prints its choice and the
+`abstractvision download` command that fetches it. A configured
 `--base-url` (or `$OPENAI_BASE_URL`) selects the OpenAI-compatible HTTP backend instead, and `--provider` always wins:
 
 ```bash

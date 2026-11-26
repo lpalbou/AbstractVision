@@ -480,12 +480,6 @@ abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-2512-
 abstractvision t2i --provider mlx-gen --model prism-ml/bonsai-image-ternary-4B-mlx-2bit "a bonsai tree in a quiet ceramic studio" --steps 4 --guidance-scale 1.0 --open
 ```
 
-Structured control from the shell:
-
-```bash
-abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ./pose.png --control-strength 0.85 "fashion editorial portrait, same pose, soft daylight, neutral studio backdrop" --steps 20 --guidance-scale 4.0 --open
-```
-
 Image-to-image/edit from the shell:
 
 ```bash
@@ -518,9 +512,8 @@ Leave out `--width/--height/--frames/--fps/--steps` to use each model's default
 (832x480 for every Wan model; 121 frames at 24 fps for TI2V-5B, 81 frames at
 16 fps for A14B). The measured memory per size is in
 [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
-For MLX-Gen Qwen structured control, use the validated base route
-`AbstractFramework/qwen-image-8bit` and pass `--control-image` plus optional
-`--control-strength`. For masked edits, use the validated Qwen edit route
+`--control-image` is accepted by `t2i` but refused by every built-in backend in
+this release, MLX-Gen included. For masked edits, use the validated Qwen edit route
 `AbstractFramework/qwen-image-edit-2511-8bit` (or FIBO Edit) and pass
 `--mask`.
 

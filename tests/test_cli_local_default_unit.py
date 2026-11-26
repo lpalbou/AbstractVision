@@ -95,3 +95,24 @@ class LocalDefaultTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalDefaultDownloadHintTests(unittest.TestCase):
+    def test_the_hint_fetches_what_the_default_engine_loads_on_each_host(self):
+        import shlex
+
+        from abstractvision import model_downloads as md
+
+        cli = _cli()
+        engines = {"mlx-gen": "mlx-gen", "sdcpp": "stable-diffusion.cpp", "diffusers": "diffusers"}
+        for profile in ("apple-silicon", "cuda", "cpu"):
+            with self.subTest(profile=profile), patch.object(md, "local_model_profile", return_value=profile):
+                kind = cli.default_local_provider(profile)
+                command = cli._local_default_download_command(kind)
+                args = cli.build_parser().parse_args(shlex.split(command)[1:])
+                chosen = md.select_download_preset(
+                    args.names[0], target=args.target, engine=args.engine, bits=args.bits,
+                    allow_non_8bit=args.allow_non_8bit,
+                )
+                # On a processor-only host the model id alone would select the GGUF package, not the pipeline.
+                self.assertEqual(chosen.engine, engines[kind], command)

@@ -34,6 +34,32 @@ unless you choose the matching extra.
 - `abstractvision cli`
 - `abstractvision catalog --provider diffusers`
 
+## MLX-Gen refuses the installed mlx-gen or MLX version
+
+### Symptom
+
+- The first MLX-Gen model load raises `OptionalDependencyMissingError`: `The MLX-Gen backend needs
+  mlx-gen>=0.40.1,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
+  macOS; mlx <version> is installed`.
+
+### Likely cause
+
+This release calls mlx-gen 0.40.x, and on macOS needs MLX 0.32.4 or later: MLX 0.31.0 to 0.32.3 can end
+the process with a Metal "invalid resource" error during a MiniMax-H3 decode when the MLX cache is small.
+`pip install -U abstractvision` without the extra upgrades AbstractVision and keeps the mlx-gen and MLX
+already installed, so the backend checks both before it loads a model.
+
+### Fix
+
+- `pip install -U "abstractvision[mlx-gen]"` (or the profile you installed, such as `abstractvision[apple]`):
+  it installs `mlx-gen>=0.40.1,<0.41.0` and, on macOS, `mlx>=0.32.4`.
+- With the one-line installer, run the same line again.
+
+### Verify
+
+- `python -c "import importlib.metadata as m; print(m.version('mlx-gen'), m.version('mlx'))"`
+- `abstractvision show-model AbstractFramework/flux.2-klein-4b-8bit`
+
 ## Local Diffusers cannot find the model
 
 ### Symptom
@@ -48,14 +74,14 @@ present in the Hugging Face cache.
 
 Another common case is an interrupted Hugging Face download: the snapshot
 directory exists, but the repo still contains `.incomplete` blobs and the
-package now rejects that cache entry as unusable until the download is resumed.
+package rejects that cache entry as unusable until the download is finished.
 
 ### Fix
 
 - Pre-download the model with `abstractvision download ... --provider diffusers`
 - or allow runtime downloads explicitly with `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`
 - if the repo already exists but is partial, rerun the same `abstractvision download ... --provider diffusers`
-  command to resume it
+  command: it fetches the files that are not complete in the cache
 
 Examples:
 
@@ -132,8 +158,8 @@ The follow-up investigation is tracked in:
 - Install the backend extra: `pip install "abstractvision[mlx-gen]"`
 - Download the prepared model first, for example `abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen`.
 - For MLX-Gen mask edits, use a validated masked-edit route such as `AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, or `briaai/Fibo-Edit-RMBG`.
-- For MLX-Gen structured control, use the validated base-Qwen route `AbstractFramework/qwen-image-8bit` and pass `--control-image` / `--control-strength` (or Python `control_image=` / `control_strength=`).
-- If you need mask/control on another local route, use local Diffusers or `stable-diffusion.cpp` instead of expecting AbstractVision to silently fall back.
+- Structured control (`--control-image` / `--control-strength`, Python `control_image=` / `control_strength=`) is accepted by the request, but in this release every built-in backend, MLX-Gen included, refuses a `control_image` with `CapabilityNotSupportedError` (`field="control_image"`); MLX-Gen also refuses a `control_strength` given alone.
+- If you need a mask on another local route, use local Diffusers or `stable-diffusion.cpp` instead of expecting AbstractVision to silently fall back.
 
 Notes:
 - MLX-Gen edit strength is passed as `strength` and normalized to the runtime `image_strength` parameter where the model supports it.

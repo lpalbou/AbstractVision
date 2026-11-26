@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
@@ -77,16 +78,34 @@ class VisionManager:
     ) -> Union[GeneratedAsset, Dict[str, Any]]:
         if self.store is None:
             return asset
-        return self.store.store_bytes(
+        metadata = dict(asset.metadata or {})
+        track = asset.audio
+        wav_ref: Optional[Dict[str, Any]] = None
+        if track is not None and not track.muxed and track.data:
+            # The soundtrack is not in the MP4: it is stored as an artifact of its own, and the
+            # video's `audio` summary points at it.
+            wav_ref = self.store.store_bytes(
+                track.data,
+                content_type=track.mime_type or "audio/wav",
+                metadata={"task": metadata.get("task"), "role": "soundtrack"},
+                tags={**(tags or {}), "modality": "audio"},
+            )
+        audio = asset.audio_summary(wav=wav_ref)
+        if audio is not None:
+            metadata["audio"] = audio
+        ref = self.store.store_bytes(
             asset.data,
             content_type=asset.mime_type,
-            metadata=asset.metadata,
+            metadata=metadata,
             tags=tags,
         )
+        if audio is not None:
+            ref["audio"] = audio
+        return ref
 
     def _move_progress_callbacks_to_extra(self, kwargs: Dict[str, Any]) -> None:
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in ("on_progress", "progress_event_callback", "progress_callback"):
             if key not in kwargs:
                 continue
@@ -100,6 +119,18 @@ class VisionManager:
         """List models advertised by the configured provider backend, if supported."""
         backend = self._require_backend()
         return backend.list_provider_models(task=task)
+
+    def describe_routes(
+        self, *, model: Optional[str] = None, task: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """The engine's route rows (MLX-Gen capability schema 17) for `model`/`task`, as JSON.
+
+        Empty when the backend publishes none. A host builds its controls and memory planning from
+        them without importing the engine.
+        """
+        backend = self._require_backend()
+        describe = getattr(backend, "describe_routes", None)
+        return list(describe(model=model, task=task)) if callable(describe) else []
 
     def list_provider_adapters(
         self,
@@ -145,7 +176,9 @@ class VisionManager:
         if control_image is not None and caps is not None and caps.supports_control_image is False:
             raise CapabilityNotSupportedError(
                 "Backend does not support structured control images for text-to-image. "
-                "Inspect the selected route with `abstractvision show-model <model-id>`."
+                "Inspect the selected route with `abstractvision show-model <model-id>`.",
+                field="control_image",
+                supported=(),
             )
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageGenerationRequest(prompt=prompt, **kwargs)
@@ -168,8 +201,7 @@ class VisionManager:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
         for planned_seed in planned_seeds:
-            call_kwargs = dict(kwargs)
-            call_kwargs["seed"] = planned_seed
+            call_kwargs = {**kwargs, "seed": planned_seed}
             out.append(self.generate_image(prompt, **call_kwargs))
         return out
 
@@ -183,7 +215,9 @@ class VisionManager:
         if mask is not None and caps is not None and caps.supports_mask is False:
             raise CapabilityNotSupportedError(
                 "Backend does not support masked image edits (mask parameter). "
-                "Inspect the selected route with `abstractvision show-model <model-id>`."
+                "Inspect the selected route with `abstractvision show-model <model-id>`.",
+                field="mask",
+                supported=(),
             )
         self._move_progress_callbacks_to_extra(kwargs)
         request = ImageEditRequest(prompt=prompt, image=image, **kwargs)
@@ -207,8 +241,7 @@ class VisionManager:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
         for planned_seed in planned_seeds:
-            call_kwargs = dict(kwargs)
-            call_kwargs["seed"] = planned_seed
+            call_kwargs = {**kwargs, "seed": planned_seed}
             out.append(self.edit_image(prompt, image=image, **call_kwargs))
         return out
 
@@ -262,8 +295,7 @@ class VisionManager:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
         for planned_seed in planned_seeds:
-            call_kwargs = dict(kwargs)
-            call_kwargs["seed"] = planned_seed
+            call_kwargs = {**kwargs, "seed": planned_seed}
             out.append(self.generate_video(prompt, **call_kwargs))
         return out
 
@@ -292,7 +324,6 @@ class VisionManager:
         planned_seeds = self._batch_seeds(count=count, seed=kwargs.get("seed"), seeds=seeds)
         out: List[Union[GeneratedAsset, Dict[str, Any]]] = []
         for planned_seed in planned_seeds:
-            call_kwargs = dict(kwargs)
-            call_kwargs["seed"] = planned_seed
+            call_kwargs = {**kwargs, "seed": planned_seed}
             out.append(self.image_to_video(image, **call_kwargs))
         return out

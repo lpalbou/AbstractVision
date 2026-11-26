@@ -15,14 +15,15 @@ uses.
 
 - Wan2.1 VAE (patch size 1, used by the A14B routes): mlx-gen ships this tiled
   decode itself; :func:`install_tiled_decode` only switches it on.
-- Wan2.2 VAE (patch size 2, used by TI2V-5B): mlx-gen 0.38 refuses to tile it,
+- Wan2.2 VAE (patch size 2, used by TI2V-5B): mlx-gen refuses to tile it,
   because its decoder output lives at half the final resolution until it is
   unpatchified. This module runs the same algorithm with every sample-space
   tile, stride and blend width divided by the patch size, as Diffusers does.
 
-The helpers use the mlx-gen 0.38 VAE surface (``post_quant_conv``, ``decoder``,
-``unpatchify``, the feature-cache helpers, ``latents_mean``/``latents_std``).
-AbstractVision pins ``mlx-gen>=0.38.0,<0.39.0``; a change to that surface fails
+The helpers use the mlx-gen VAE surface (``post_quant_conv``, ``decoder``,
+``unpatchify``, the feature-cache helpers, ``latents_mean``/``latents_std``),
+unchanged from 0.38 through 0.40.
+AbstractVision pins ``mlx-gen>=0.40.1,<0.41.0``; a change to that surface fails
 loudly here rather than silently decoding untiled.
 """
 

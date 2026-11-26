@@ -23,16 +23,16 @@ All assets referenced here were generated through AbstractVision with
   `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Installed adapter discovery is backend-owned and lists optional overlays only;
   full-model component files are excluded from the adapter inventory.
-- The MLX-Gen surface exposes route-aware Qwen masked edit and
-  structured control through typed request fields instead of `extra`-only
-  escape hatches.
+- The MLX-Gen surface exposes route-aware Qwen masked edit through a typed
+  request field instead of an `extra`-only escape hatch; it refuses structured
+  control images (`control_image`) in this release.
 - The public TI2V-5B visual proofs in this bundle use `832x480`.
 - The public task-specific Wan A14B proofs in this bundle use `480x240`.
 - The LoRA-heavy proof runs on this page use curated 8-bit MLX-Gen routes. For
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.38.0,<0.39.0`.
+  `mlx-gen>=0.40.1,<0.41.0`, with `mlx>=0.32.4` on macOS.
 
 MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
 Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
@@ -85,18 +85,15 @@ Bundled discovery artifacts:
 
 ## Route-aware Qwen extras
 
-The public request surface exposes the validated Qwen MLX-Gen
-extras directly:
+The public request surface exposes the validated Qwen MLX-Gen masked edit
+directly:
 
 - masked edit:
   `abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --image ./input.png --mask ./mask.png "repair the marked area"`
-- structured control:
-  `abstractvision t2i --provider mlx-gen --model AbstractFramework/qwen-image-8bit --control-image ./edges.png --control-strength 0.9 "pagoda at sunrise"`
 
-Those inputs fail closed when the selected route does not advertise the matching
-runtime capability. `0.85` is the packaged default when
-`--control-strength` is omitted; `0.9` above matches the current upstream proof
-setting rather than the default.
+A mask fails closed when the selected route does not advertise the matching
+runtime capability. A structured control image (`--control-image`) is refused by
+MLX-Gen, as by every built-in backend in this release.
 
 ## Shared adapter contract
 

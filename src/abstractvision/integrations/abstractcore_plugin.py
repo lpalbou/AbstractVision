@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import importlib.util
 import ipaddress
+import logging
 import os
 import shlex
 import socket
@@ -14,10 +16,25 @@ from typing import Any, Dict, List, Mapping, Optional, Union
 from urllib.parse import urlparse
 
 from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
-from ..backends.base_backend import VisionBackend
-from ..errors import AbstractVisionError
-from ..types import ProviderAdapterInfo, ProviderModelInfo
+from ..backends.base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend
+from ..backends.huggingface_diffusers import HuggingFaceDiffusersVisionBackend
+from ..backends.mflux import MFluxVisionBackend
+from ..backends.openai_compatible import OpenAICompatibleVisionBackend, looks_like_openai_api
+from ..backends.stable_diffusion_cpp import StableDiffusionCppVisionBackend
+from ..errors import AbstractVisionError, CapabilityNotSupportedError
+from ..types import (
+    MEMORY_MODE_DEFAULT,
+    ImageEditRequest,
+    ImageGenerationRequest,
+    ImageToVideoRequest,
+    ImageUpscaleRequest,
+    ProviderAdapterInfo,
+    ProviderModelInfo,
+    VideoGenerationRequest,
+)
 from ..vision_manager import VisionManager
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_LOCAL_DIFFUSERS_MODEL_ID = "runwayml/stable-diffusion-v1-5"
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
@@ -136,10 +153,6 @@ def _owner_cfg_bool(owner: Any, key: str, default: bool = False) -> bool:
     if v is None:
         return bool(default)
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _looks_like_openai_api(base_url: Optional[str]) -> bool:
-    return "api.openai.com" in str(base_url or "").lower()
 
 
 def _openai_api_key() -> Optional[str]:
@@ -296,7 +309,7 @@ def _configured_openai_base_url(owner: Any) -> Optional[str]:
 
 
 def _base_url_implies_openai_compatible(base_url: Any) -> bool:
-    return bool(str(base_url or "").strip()) and not _looks_like_openai_api(str(base_url or ""))
+    return bool(str(base_url or "").strip()) and not looks_like_openai_api(str(base_url or ""))
 
 
 def _truncate_string(value: str) -> str:
@@ -401,13 +414,8 @@ def _provider_adapter_to_dict(info: ProviderAdapterInfo) -> Dict[str, Any]:
 
 
 def _backend_supports_provider_catalog(backend: Any) -> bool:
-    method = getattr(backend, "list_provider_models", None)
-    if not callable(method):
-        return False
-    if isinstance(backend, VisionBackend):
-        impl = getattr(type(backend), "list_provider_models", None)
-        return impl is not VisionBackend.list_provider_models
-    return True
+    # The base answer is "no catalog": a backend has one when it defines its own.
+    return type(backend).list_provider_models is not VisionBackend.list_provider_models
 
 
 # THE VISION BACKENDS ARE CATALOGUED TOGETHER, NOT ONE AFTER ANOTHER.
@@ -469,17 +477,37 @@ def _probe_backends_concurrently(
         return list(pool.map(_catalog_one, range(len(backends))))
 
 
+# The methods the plugin calls on every backend it holds; `VisionBackend` provides them all.
+_BACKEND_CONTRACT_METHODS = (
+    "has_loaded_model",
+    "preload",
+    "unload",
+    "supported_memory_modes",
+    "list_provider_models",
+    "list_provider_adapters",
+)
+
+
+def _require_backend_contract(backend: Any) -> None:
+    """Refuse an injected backend that lacks a method the plugin calls on every backend."""
+    missing = [name for name in _BACKEND_CONTRACT_METHODS if not callable(getattr(backend, name, None))]
+    if missing:
+        raise TypeError(
+            f"The injected vision backend {type(backend).__name__} lacks {', '.join(missing)}, which the "
+            "AbstractVision plugin calls on every backend. Inherit "
+            "abstractvision.backends.base_backend.VisionBackend, which provides them."
+        )
+
+
 def _provider_id_for_backend(backend: Any) -> Optional[str]:
-    name = type(backend).__name__.lower()
-    if "mflux" in name:
+    if isinstance(backend, MFluxVisionBackend):
         return "mlx-gen"
-    if "huggingface" in name or "diffusers" in name:
+    if isinstance(backend, HuggingFaceDiffusersVisionBackend):
         return "huggingface"
-    if "stable" in name and "diffusion" in name:
+    if isinstance(backend, StableDiffusionCppVisionBackend):
         return "sdcpp"
-    if "openai" in name:
-        base_url = getattr(getattr(backend, "_cfg", None), "base_url", None)
-        return "openai" if _looks_like_openai_api(str(base_url or "")) else "openai-compatible"
+    if isinstance(backend, OpenAICompatibleVisionBackend):
+        return "openai" if looks_like_openai_api(backend._cfg.base_url) else "openai-compatible"
     return None
 
 
@@ -610,6 +638,55 @@ def _read_bytes_from_path(path: Union[str, Path]) -> bytes:
     return p.read_bytes()
 
 
+# Fields passed positionally or resolved by the facade itself, never as keyword pass-through.
+_FACADE_HANDLED_FIELDS = frozenset({"prompt", "image", "mask"})
+# Video-only keywords an image call refuses, rather than passing them on in `extra`.
+_REFUSED_ON_IMAGE_CALLS = {
+    ImageGenerationRequest: frozenset({"guidance_2"}),
+    ImageEditRequest: frozenset({"guidance_2"}),
+}
+
+
+def _request_kwarg_names(request_cls: Any) -> set:
+    """The keyword options a facade method forwards as typed request fields: the request's own."""
+    names = {field.name for field in dataclasses.fields(request_cls)} - _FACADE_HANDLED_FIELDS
+    if request_cls is ImageToVideoRequest:
+        names.add("prompt")
+    return names
+
+
+def _refuse_misplaced_typed_options(request_cls: Any, kwargs: Mapping[str, Any], *, method: str) -> None:
+    """Refuse what the call's request type cannot take and no backend would read from `extra`.
+
+    That is `guidance_2` on an image call, and a typed request option a backend must apply or
+    refuse (OPTIONAL_REQUEST_FIELDS: the soundtrack options on an image call). Every other unknown
+    keyword stays a backend-specific `extra` parameter (`vae_tiling` on `t2v`, which Wan reads there).
+    """
+    own = _request_kwarg_names(request_cls)
+    refused_names = _REFUSED_ON_IMAGE_CALLS.get(request_cls, frozenset()) | frozenset(OPTIONAL_REQUEST_FIELDS)
+    misplaced = sorted(
+        key for key, value in kwargs.items() if value is not None and key in refused_names and key not in own
+    )
+    if misplaced:
+        raise CapabilityNotSupportedError(
+            f"{method}() does not take {', '.join(misplaced)}: "
+            f"{'it is an option' if len(misplaced) == 1 else 'they are options'} of other tasks.",
+            field=misplaced[0] if len(misplaced) == 1 else None,
+            supported=() if len(misplaced) == 1 else None,
+        )
+
+
+def _media_bytes(asset: Any) -> bytes:
+    """The bytes a facade method returns without an artifact store (the media file only)."""
+    summary = asset.audio_summary() if callable(getattr(asset, "audio_summary", None)) else None
+    if summary is not None and not summary["muxed"]:
+        logger.warning(
+            "The soundtrack of this video could not be muxed into the MP4 and is not in the returned "
+            "bytes; pass an artifact_store to keep it (stored as a WAV artifact)."
+        )
+    return bytes(getattr(asset, "data", b""))
+
+
 def _resolve_bytes_input(value: Union[bytes, Dict[str, Any], str], *, artifact_store: Any) -> bytes:
     if isinstance(value, (bytes, bytearray)):
         return bytes(value)
@@ -637,10 +714,14 @@ class _AbstractVisionCapability:
     def __init__(self, owner: Any, *, backend_id: Optional[str] = None):
         self._owner = owner
         self.backend_id = backend_id or type(self).backend_id
-        self._backend = None
+        # An injected backend is taken, and checked against the plugin's contract, here and once.
+        self._backend = self._injected_backend()
         self._routed_backends: Dict[tuple[Any, ...], Any] = {}
         self._state_lock = threading.RLock()
-        self._loaded_models: Dict[tuple[Any, ...], Dict[str, Any]] = {}
+        # What only the plugin knows about the loads of its local backends, per backend key: the
+        # binding, the tasks served, whether a load pinned it, when. Whether a model is loaded is
+        # the backend's answer (`has_loaded_model`), read whenever the loads are listed.
+        self._load_facts: Dict[tuple[Any, ...], Dict[str, Any]] = {}
         self._active_request_backend: Any = None
         self._active_request_backend_key: Optional[tuple[Any, ...]] = None
         self._backend_refcounts: Dict[int, int] = {}
@@ -649,12 +730,10 @@ class _AbstractVisionCapability:
     def _unload_backend(self, backend: Optional[Any]) -> None:
         if backend is None:
             return
-        unload = getattr(backend, "unload", None)
-        if callable(unload):
-            try:
-                unload()
-            except Exception:
-                pass
+        try:
+            backend.unload()
+        except Exception:
+            pass
 
     def _retire_backend_locked(self, backend: Optional[Any]) -> Optional[Any]:
         if backend is None:
@@ -731,10 +810,8 @@ class _AbstractVisionCapability:
 
         An endpoint profile is a named OpenAI-compatible connection (an
         AbstractCore `provider_profiles` row, or one a host such as
-        AbstractGateway keeps in its own store). Before this, `endpoint:<id>`
-        fell through to the configured default backend, so an image route set
-        to an endpoint profile never reached that endpoint. Resolution order,
-        first hit wins:
+        AbstractGateway keeps in its own store). Resolution order, first hit
+        wins:
 
         1. the resolver the host attached to the owning Core provider
            (`resolve_provider_endpoint_profile`; AbstractRuntime attaches the
@@ -827,6 +904,7 @@ class _AbstractVisionCapability:
             "backend_kind": backend_kind,
             "provider": _canonical_provider_for_backend_kind(backend_kind),
             "model": resolved_model,
+            "remote_model": str(model or "").strip() or None,
             "load_id": _canonical_load_id(backend_kind, resolved_model),
             "local_control": False,
         }
@@ -837,6 +915,9 @@ class _AbstractVisionCapability:
             return self._endpoint_backend_binding(raw_provider, model)
         provider_id = raw_provider.lower().replace("_", "-")
         model_id = str(model or "").strip()
+        # The model a remote backend sends: as the request names it, less an `openai/` or
+        # `openai-compatible/` head that chose the provider here.
+        remote_model = model_id
         if model_id and "/" in model_id:
             head, tail = model_id.split("/", 1)
             head_id = head.strip().lower().replace("_", "-")
@@ -854,6 +935,7 @@ class _AbstractVisionCapability:
             elif head_id in {"openai", "openai-compatible"}:
                 if not provider_id:
                     provider_id = "openai" if head_id == "openai" else "openai-compatible"
+                    remote_model = tail.strip()
                 model_id = _strip_openai_model_prefixes(model_id)
         if model_id and not provider_id and _has_local_mflux_preset(model_id):
             provider_id = "mlx-gen"
@@ -931,6 +1013,7 @@ class _AbstractVisionCapability:
                 "backend_kind": backend_kind,
                 "provider": _canonical_provider_for_backend_kind(backend_kind),
                 "model": resolved_model,
+                "remote_model": remote_model or None,
                 "load_id": _canonical_load_id(backend_kind, resolved_model),
                 "local_control": backend_kind in _LOCAL_RESIDENCY_BACKEND_KINDS,
             }
@@ -946,6 +1029,7 @@ class _AbstractVisionCapability:
             "backend_kind": backend_kind,
             "provider": _canonical_provider_for_backend_kind(backend_kind),
             "model": resolved_model,
+            "remote_model": remote_model or None,
             "load_id": _canonical_load_id(backend_kind, resolved_model),
             "local_control": backend_kind in _LOCAL_RESIDENCY_BACKEND_KINDS,
         }
@@ -1021,92 +1105,136 @@ class _AbstractVisionCapability:
             ),
         )
 
-    def _find_loaded_backends(self, filters: Mapping[str, Any]) -> List[tuple[tuple[Any, ...], Dict[str, Any], Any]]:
-        matches: List[tuple[tuple[Any, ...], Dict[str, Any], Any]] = []
-        with self._state_lock:
-            for backend_key, record in self._loaded_models.items():
-                if not self._match_loaded_record(record, filters):
-                    continue
-                backend = None
-                if self._active_request_backend_key == backend_key:
-                    backend = self._active_request_backend
-                elif backend_key in self._routed_backends:
-                    backend = self._routed_backends.get(backend_key)
-                elif backend_key and backend_key[0] == "configured":
-                    backend = self._backend
-                matches.append((backend_key, dict(record), backend))
-        return matches
+    def _held_backend_locked(self, backend_key: tuple[Any, ...]) -> Any:
+        if self._active_request_backend_key == backend_key:
+            return self._active_request_backend
+        if backend_key in self._routed_backends:
+            return self._routed_backends.get(backend_key)
+        if backend_key and backend_key[0] == "configured":
+            return self._backend
+        return None
 
-    def _record_loaded_model(
-        self,
-        binding: Mapping[str, Any],
-        *,
-        task: Optional[str],
-        resident: bool,
-        source: str,
-        loaded_at: Optional[float] = None,
+    def _live_loads_locked(self) -> Dict[tuple[Any, ...], tuple[Dict[str, Any], Any]]:
+        """The loads the plugin's backends hold now: backend key -> (the plugin's facts, backend).
+
+        A load whose backend holds no model any more ended (a run or a failed preload released
+        it, or the backend was unloaded): its facts go, so the next load of that binding starts
+        afresh, unpinned.
+        """
+        live: Dict[tuple[Any, ...], tuple[Dict[str, Any], Any]] = {}
+        for backend_key, facts in list(self._load_facts.items()):
+            backend = self._held_backend_locked(backend_key)
+            if backend is None or not backend.has_loaded_model():
+                del self._load_facts[backend_key]
+                continue
+            live[backend_key] = (facts, backend)
+        return live
+
+    @staticmethod
+    def _loaded_record(facts: Mapping[str, Any]) -> Dict[str, Any]:
+        pinned = bool(facts["pinned"])
+        return {
+            "task": facts["task"],
+            "tasks": sorted(facts["tasks"]),
+            "provider": facts["provider"],
+            "model": facts["model"],
+            "load_id": facts["load_id"],
+            "backend_kind": facts["backend_kind"],
+            "scope": "process",
+            "state": "resident" if pinned else "active",
+            "resident": pinned,
+            "loaded": True,
+            "source": facts["source"],
+            "loaded_at": facts["loaded_at"],
+            "last_used_at": facts["last_used_at"],
+            "error": None,
+        }
+
+    @staticmethod
+    def _absent_record(
+        facts: Mapping[str, Any], *, task: Optional[str], state: str, reason: Optional[str] = None
     ) -> Dict[str, Any]:
+        """The record of a binding whose backend holds no model: unloaded, or never loaded here."""
+        record = {
+            "task": task,
+            "provider": facts.get("provider"),
+            "model": facts.get("model"),
+            "load_id": facts.get("load_id"),
+            "backend_kind": facts.get("backend_kind"),
+            "scope": "process",
+            "state": state,
+            "resident": False,
+            "loaded": False,
+            "source": facts.get("source"),
+            "loaded_at": None,
+            "last_used_at": facts.get("last_used_at"),
+            "error": None,
+        }
+        if reason is not None:
+            record["reason"] = reason
+        return record
+
+    def _note_load(
+        self, binding: Mapping[str, Any], *, task: Optional[str], pinned: bool, source: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """Record the plugin's facts about a load of `binding` (a request for `task`, whatever its
+        outcome, or a preload) when its backend holds a model now. Returns the load as listed, or
+        None when the backend holds none. `source` is what loaded a model the plugin had not listed
+        (`request`, `explicit_preload`, or None when unknown); a pinning preload makes it `explicit_preload`."""
         now = time.time()
         backend_key = tuple(binding["backend_key"])
         with self._state_lock:
-            existing = dict(self._loaded_models.get(backend_key, {}))
-            merged_tasks = {
-                str(item)
-                for item in (existing.get("tasks") or [])
-                if str(item).strip()
-            }
+            live = self._live_loads_locked()
+            if backend_key in live:
+                facts = live[backend_key][0]
+            else:
+                backend = self._held_backend_locked(backend_key)
+                if backend is None or not backend.has_loaded_model():
+                    return None
+                facts = {
+                    "provider": binding.get("provider"),
+                    "model": binding.get("model"),
+                    "load_id": binding.get("load_id"),
+                    "backend_kind": binding.get("backend_kind"),
+                    "task": None,
+                    "tasks": set(),
+                    "pinned": False,
+                    "source": source,
+                    "loaded_at": now,
+                }
             if task:
-                merged_tasks.add(str(task))
-            record = {
-                "task": task,
-                "tasks": sorted(merged_tasks),
-                "provider": binding.get("provider"),
-                "model": binding.get("model"),
-                "load_id": binding.get("load_id"),
-                "backend_kind": binding.get("backend_kind"),
-                "scope": "process",
-                "state": "resident" if resident else "active",
-                "resident": bool(resident),
-                "loaded": True,
-                "source": str(source),
-                "loaded_at": (
-                    existing.get("loaded_at")
-                    if existing.get("loaded_at") is not None
-                    else (loaded_at if loaded_at is not None else now)
-                ),
-                "last_used_at": now,
-                "error": None,
-            }
-            if existing.get("resident"):
-                record["resident"] = True
-                record["state"] = "resident"
-                record["source"] = "explicit_preload"
-            if existing.get("task") and record.get("task") is None:
-                record["task"] = existing.get("task")
-            if not record["tasks"] and record.get("task"):
-                record["tasks"] = [str(record["task"])]
-            self._loaded_models[backend_key] = record
-            return dict(record)
+                facts["task"] = str(task)
+                facts["tasks"].add(str(task))
+            facts["pinned"] = bool(facts["pinned"] or pinned)
+            if pinned:
+                facts["source"] = "explicit_preload"
+            facts["last_used_at"] = now
+            self._load_facts[backend_key] = facts
+            return self._loaded_record(facts)
 
-    def _remove_loaded_model_locked(self, backend_key: tuple[Any, ...]) -> Optional[Dict[str, Any]]:
-        existing = self._loaded_models.pop(backend_key, None)
-        return dict(existing) if existing is not None else None
+    def _record_request_run(self, binding: Mapping[str, Any], *, task: str) -> None:
+        # After a request, whatever its outcome: the model its backend holds now is listed.
+        if binding.get("local_control"):
+            self._note_load(binding, task=task, pinned=False, source="request")
 
     def _activate_request_backend(self, binding: Mapping[str, Any]) -> Any:
         backend = binding["backend"]
         backend_key = tuple(binding["backend_key"])
         unload_after_lock: Optional[Any] = None
         with self._state_lock:
+            # Read at every request start: a load that ended since (its backend released the
+            # model) does not lend its facts to the load this request may start.
+            live = self._live_loads_locked()
             previous = self._active_request_backend
             previous_key = self._active_request_backend_key
             self._active_request_backend = backend
             self._active_request_backend_key = backend_key
             if previous is None or previous is backend:
                 return backend
-            previous_record = self._loaded_models.get(previous_key or ())
-            if previous_record and bool(previous_record.get("resident")):
+            previous_load = live.get(previous_key or ())
+            if previous_load is not None and previous_load[0]["pinned"]:
                 return backend
-            self._remove_loaded_model_locked(previous_key or ())
+            self._load_facts.pop(previous_key or (), None)
             unload_after_lock = self._retire_backend_locked(previous)
         self._unload_backend(unload_after_lock)
         return backend
@@ -1390,24 +1518,23 @@ class _AbstractVisionCapability:
         )
         return StableDiffusionCppVisionBackend(config=cfg)
 
+    def _injected_backend(self) -> Any:
+        """The owner's `vision_backend_instance`, else what its `vision_backend_factory` returns
+        (called once), checked against the plugin's contract; None when neither is configured."""
+        cfg = getattr(self._owner, "config", None)
+        if not isinstance(cfg, dict):
+            return None
+        injected = cfg.get("vision_backend_instance")
+        factory = cfg.get("vision_backend_factory")
+        if injected is None and callable(factory):
+            injected = factory(self._owner)
+        if injected is not None:
+            _require_backend_contract(injected)
+        return injected
+
     def _get_backend(self):
         if self._backend is not None:
             return self._backend
-
-        # Injection hook (useful for tests and advanced embedding).
-        try:
-            cfg = getattr(self._owner, "config", None)
-            if isinstance(cfg, dict):
-                inst = cfg.get("vision_backend_instance")
-                if inst is not None:
-                    self._backend = inst
-                    return self._backend
-                factory = cfg.get("vision_backend_factory")
-                if callable(factory):
-                    self._backend = factory(self._owner)
-                    return self._backend
-        except Exception:
-            pass
 
         # Prefer AbstractCore config keys when present; fall back to standard OpenAI env vars.
         # Hosted OpenAI is the default unless a non-OpenAI base URL or the legacy
@@ -1581,6 +1708,9 @@ class _AbstractVisionCapability:
         )
         skipped_remote_catalog = False
         attempted_catalog = False
+        # A backend that states it has no model catalog (CapabilityNotSupportedError) neither
+        # answered nor failed; when no backend did either, that is the answer.
+        no_catalog: Optional[CapabilityNotSupportedError] = None
         try:
             owner_cfg = getattr(self._owner, "config", None)
             injected_backend = isinstance(owner_cfg, dict) and (
@@ -1639,8 +1769,11 @@ class _AbstractVisionCapability:
                 continue
             if not outcome.get("attempted"):
                 continue
-            attempted_catalog = True
             error = outcome.get("error")
+            if isinstance(error, CapabilityNotSupportedError):
+                no_catalog = error
+                continue
+            attempted_catalog = True
             if error is not None:
                 last_error = error
                 continue
@@ -1666,7 +1799,7 @@ class _AbstractVisionCapability:
             return []
         if attempted_catalog or skipped_remote_catalog:
             return []
-        raise AbstractVisionError(
+        raise no_catalog or CapabilityNotSupportedError(
             "The selected AbstractVision backend does not support provider model catalogs."
         )
 
@@ -1755,12 +1888,9 @@ class _AbstractVisionCapability:
                 self._owner, backend_provider, backend
             ):
                 continue
-            method = getattr(backend, "list_provider_adapters", None)
-            if not callable(method):
-                continue
             attempted = True
             try:
-                adapters = list(method(model=model, task=task) or [])
+                adapters = list(backend.list_provider_adapters(model=model, task=task) or [])
             except Exception as exc:
                 last_error = exc
                 continue
@@ -1838,6 +1968,10 @@ class _AbstractVisionCapability:
                     "weights_present": _mflux_weights_present() if provider in {"mlx-gen", "mflux"} else None,
                     "remote": provider in {"openai", "openai-compatible"},
                     "local": provider not in {"openai", "openai-compatible"},
+                    # Per-request `memory_mode` values the provider's backend can honour with its
+                    # configured model and device. MLX-Gen also lists them per model, in each
+                    # catalog entry's parameter_constraints["memory_mode"]["enum"].
+                    "memory_modes": self._provider_memory_modes(provider, task),
                     "reachable": (
                         openai_available
                         if provider == "openai"
@@ -1852,6 +1986,30 @@ class _AbstractVisionCapability:
             "has_api_key": bool(str(api_key or "").strip()),
         }
 
+    def _provider_memory_modes(self, provider: str, task: Optional[str]) -> List[str]:
+        """`supported_memory_modes()` of the backend a request for `provider` runs on.
+
+        The configured backend when it is that provider's (requests that name no provider run on
+        it), else the one routed for the provider. Backends answer without loading a model or
+        sending a request; one that cannot be built answers "default".
+        """
+        try:
+            backend = self._get_backend()
+        except Exception:
+            backend = None
+        try:
+            if backend is None or _provider_id_for_backend(backend) != provider:
+                backend = self._resolve_backend_binding(provider=provider)["backend"]
+            return list(backend.supported_memory_modes(task))
+        except Exception:
+            return [MEMORY_MODE_DEFAULT]
+
+    def memory_peaks(self, model: str) -> List[Dict[str, Any]]:
+        """MLX-Gen's measured memory peaks for one catalog package (`model_inventory.memory_peaks`)."""
+        from ..model_inventory import memory_peaks
+
+        return memory_peaks(model)
+
     def list_available_providers(self, *, task: Optional[str] = None) -> Dict[str, Any]:
         return self.available_providers(task=task)
 
@@ -1865,30 +2023,31 @@ class _AbstractVisionCapability:
         model = payload.get("model") or payload.get("load_id")
         binding = self._resolve_backend_binding(provider=provider, model=model)
         self._ensure_local_residency_supported(binding)
-        backend = binding["backend"]
         with self._state_lock:
-            existing = self._loaded_models.get(tuple(binding["backend_key"]))
-            already_loaded = bool(existing and existing.get("loaded"))
-        preload = getattr(backend, "preload", None)
-        if callable(preload):
-            preload()
-        loaded_at = time.time()
-        record = self._record_loaded_model(
-            binding,
-            task=task,
-            resident=True,
-            source="explicit_preload",
-            loaded_at=loaded_at,
-        )
+            already_loaded = tuple(binding["backend_key"]) in self._live_loads_locked()
+        # Loaded as requests with this memory_mode / quantize load it, so they reuse it; passed only
+        # when given, so a backend whose preload takes neither keeps working.
+        options = {name: payload[name] for name in ("memory_mode", "quantize") if payload.get(name) is not None}
+        try:
+            binding["backend"].preload(**options)
+        except BaseException:
+            # What a failed preload leaves held is listed, unpinned.
+            self._note_load(binding, task=task, pinned=False, source="explicit_preload")
+            raise
+        record = self._note_load(binding, task=task, pinned=True, source="explicit_preload")
+        if record is None:
+            record = self._absent_record(
+                binding, task=task, state="not_loaded", reason="this backend holds no model in this process"
+            )
         # Per-operation fact (not stored in the loaded-model record): whether this call loaded the
         # model or found it already in memory. Core and Runtime read it as the load's `loaded_new`.
-        record["loaded_new"] = not already_loaded
+        record["loaded_new"] = bool(record["loaded"]) and not already_loaded
         return record
 
     def list_loaded_models(self, filters: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
         filter_map = self._normalize_loaded_filters(filters)
         with self._state_lock:
-            records = [dict(item) for item in self._loaded_models.values()]
+            records = [self._loaded_record(facts) for facts, _ in self._live_loads_locked().values()]
         filtered = [item for item in records if self._match_loaded_record(item, filter_map)]
         return self._sorted_loaded_records(filtered)
 
@@ -1899,64 +2058,56 @@ class _AbstractVisionCapability:
 
     def unload_resident_model(self, request: Mapping[str, Any]) -> Dict[str, Any]:
         payload = self._normalize_loaded_filters(request)
-        matched = self._find_loaded_backends(payload)
-        unload_after_lock: Optional[Any] = None
-        removed: Optional[Dict[str, Any]] = None
+        with self._state_lock:
+            loads = [
+                (backend_key, self._loaded_record(facts), backend)
+                for backend_key, (facts, backend) in self._live_loads_locked().items()
+            ]
+        matched = [load for load in loads if self._match_loaded_record(load[1], payload)]
         if len(matched) > 1:
             raise AbstractVisionError(
                 "Ambiguous unload request: more than one loaded local model matched. "
                 "Specify `load_id`, or include both provider/backend and model."
             )
-        if len(matched) == 1:
-            backend_key, matched_record, backend = matched[0]
-            with self._state_lock:
-                removed = self._remove_loaded_model_locked(backend_key)
-                if backend is not None and self._active_request_backend is backend:
-                    self._active_request_backend = None
-                    self._active_request_backend_key = None
-                unload_after_lock = self._retire_backend_locked(backend)
-            self._unload_backend(unload_after_lock)
-            return {
-                "task": matched_record.get("task"),
-                "provider": matched_record.get("provider"),
-                "model": matched_record.get("model"),
-                "load_id": matched_record.get("load_id"),
-                "backend_kind": matched_record.get("backend_kind"),
-                "scope": "process",
-                "state": "unloaded",
-                "resident": False,
-                "loaded": False,
-                "source": matched_record.get("source"),
-                "loaded_at": None,
-                "last_used_at": matched_record.get("last_used_at"),
-                "error": None,
-            }
+        if matched:
+            backend_key, record, backend = matched[0]
+            task = record.get("task")
+        else:
+            if not self._has_loaded_selector(payload):
+                raise AbstractVisionError(
+                    "Unload request did not identify a model. Specify `load_id`, or include both "
+                    "provider/backend and model."
+                )
+            binding = self._configured_binding_matching(payload)
+            if binding is None:
+                provider = payload.get("provider") or payload.get("backend") or payload.get("backend_kind")
+                model = payload.get("model") or payload.get("load_id")
+                binding = self._resolve_backend_binding(provider=provider, model=model)
+            self._ensure_local_residency_supported(binding)
+            backend_key, record, backend = tuple(binding["backend_key"]), binding, binding["backend"]
+            task = _normalize_residency_task(payload.get("task"))
+        unload_now: Optional[Any] = None
+        with self._state_lock:
+            facts = self._load_facts.get(backend_key)
+            if facts is not None:
+                facts["pinned"] = False
+            if self._active_request_backend is backend:
+                self._active_request_backend = None
+                self._active_request_backend_key = None
+            # A backend a running request holds is unloaded when that request ends.
+            unload_now = self._retire_backend_locked(backend)
+        self._unload_backend(unload_now)
+        # Reported as listed now: a model a running request still holds stays listed until it ends.
+        held = self._note_load({**record, "backend_key": backend_key}, task=None, pinned=False, source="request")
+        return held if held is not None else self._absent_record(record, task=task, state="unloaded")
 
-        if not self._has_loaded_selector(payload):
-            raise AbstractVisionError(
-                "Unload request did not identify a model. Specify `load_id`, or include both "
-                "provider/backend and model."
-            )
-
-        provider = payload.get("provider") or payload.get("backend") or payload.get("backend_kind")
-        model = payload.get("model") or payload.get("load_id")
-        binding = self._resolve_backend_binding(provider=provider, model=model)
-        self._ensure_local_residency_supported(binding)
-        return {
-            "task": removed.get("task") if isinstance(removed, dict) else _normalize_residency_task(payload.get("task")),
-            "provider": binding.get("provider"),
-            "model": binding.get("model"),
-            "load_id": binding.get("load_id"),
-            "backend_kind": binding.get("backend_kind"),
-            "scope": "process",
-            "state": "unloaded",
-            "resident": False,
-            "loaded": False,
-            "source": removed.get("source") if isinstance(removed, dict) else None,
-            "loaded_at": None,
-            "last_used_at": removed.get("last_used_at") if isinstance(removed, dict) else None,
-            "error": None,
-        }
+    def _configured_binding_matching(self, filters: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+        """The configured backend's binding when the plugin holds that backend and the unload
+        selector names it; it is reached by no provider/model route of its own."""
+        if self._backend is None:
+            return None
+        binding = self._resolve_backend_binding()
+        return binding if self._match_loaded_record(binding, filters) else None
 
     # Aliases for Core route adapters that prefer load/list/unload naming.
     def load_model(self, request: Mapping[str, Any]) -> Dict[str, Any]:
@@ -1973,26 +2124,19 @@ class _AbstractVisionCapability:
         model = kwargs.pop("model", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "width",
-            "height",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "lora_adapters",
-            "extra",
-        }
+        if kwargs.get("control_image") is not None:
+            kwargs["control_image"] = _resolve_bytes_input(kwargs["control_image"], artifact_store=store)
+        allowed_request_keys = _request_kwarg_names(ImageGenerationRequest)
+        _refuse_misplaced_typed_options(ImageGenerationRequest, kwargs, method="t2i")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in list(kwargs.keys()):
             if key not in allowed_request_keys:
                 value = kwargs.pop(key)
                 if value is not None:
                     merged_extra[str(key)] = value
-        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
-            merged_extra["model"] = model.strip()
+        if binding.get("remote_model") and isinstance(backend, OpenAICompatibleVisionBackend):
+            merged_extra["model"] = binding["remote_model"]
         if merged_extra:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
@@ -2002,13 +2146,12 @@ class _AbstractVisionCapability:
         self._acquire_backend_snapshot(backend)
         try:
             out = vm.generate_image(str(prompt), **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="text_to_image", resident=False, source="request")
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="text_to_image")
 
     def t2i_batch(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
@@ -2020,26 +2163,19 @@ class _AbstractVisionCapability:
         seeds = kwargs.pop("seeds", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "width",
-            "height",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "lora_adapters",
-            "extra",
-        }
+        if kwargs.get("control_image") is not None:
+            kwargs["control_image"] = _resolve_bytes_input(kwargs["control_image"], artifact_store=store)
+        allowed_request_keys = _request_kwarg_names(ImageGenerationRequest)
+        _refuse_misplaced_typed_options(ImageGenerationRequest, kwargs, method="t2i_batch")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in list(kwargs.keys()):
             if key not in allowed_request_keys:
                 value = kwargs.pop(key)
                 if value is not None:
                     merged_extra[str(key)] = value
-        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
-            merged_extra["model"] = model.strip()
+        if binding.get("remote_model") and isinstance(backend, OpenAICompatibleVisionBackend):
+            merged_extra["model"] = binding["remote_model"]
         if merged_extra:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
@@ -2054,11 +2190,10 @@ class _AbstractVisionCapability:
                 seeds=seeds,
                 **kwargs,
             )
-            if binding.get("local_control") and outputs:
-                self._record_loaded_model(binding, task="text_to_image", resident=False, source="request")
-            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
+            return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="text_to_image")
 
     def i2i(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
@@ -2073,17 +2208,10 @@ class _AbstractVisionCapability:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageEditRequest)
+        _refuse_misplaced_typed_options(ImageEditRequest, kwargs, method="i2i")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in ("strength", "width", "height"):
             if key not in kwargs:
                 continue
@@ -2095,8 +2223,8 @@ class _AbstractVisionCapability:
                 value = kwargs.pop(key)
                 if value is not None:
                     merged_extra[str(key)] = value
-        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
-            merged_extra["model"] = model.strip()
+        if binding.get("remote_model") and isinstance(backend, OpenAICompatibleVisionBackend):
+            merged_extra["model"] = binding["remote_model"]
         if merged_extra:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
@@ -2106,13 +2234,12 @@ class _AbstractVisionCapability:
         self._acquire_backend_snapshot(backend)
         try:
             out = vm.edit_image(str(prompt), image=image_b, mask=mask_b, **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="image_to_image", resident=False, source="request")
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="image_to_image")
 
     def i2i_batch(self, prompt: str, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
@@ -2129,17 +2256,10 @@ class _AbstractVisionCapability:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageEditRequest)
+        _refuse_misplaced_typed_options(ImageEditRequest, kwargs, method="i2i_batch")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in ("strength", "width", "height"):
             if key not in kwargs:
                 continue
@@ -2151,8 +2271,8 @@ class _AbstractVisionCapability:
                 value = kwargs.pop(key)
                 if value is not None:
                     merged_extra[str(key)] = value
-        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
-            merged_extra["model"] = model.strip()
+        if binding.get("remote_model") and isinstance(backend, OpenAICompatibleVisionBackend):
+            merged_extra["model"] = binding["remote_model"]
         if merged_extra:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
@@ -2169,11 +2289,10 @@ class _AbstractVisionCapability:
                 seeds=seeds,
                 **kwargs,
             )
-            if binding.get("local_control") and outputs:
-                self._record_loaded_model(binding, task="image_to_image", resident=False, source="request")
-            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
+            return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="image_to_image")
 
     def multi_view_image(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
@@ -2181,7 +2300,7 @@ class _AbstractVisionCapability:
         out = vm.generate_angles(str(prompt), **kwargs)
         if isinstance(out, list) and all(isinstance(x, dict) for x in out):
             return out
-        return [bytes(getattr(asset, "data", b"")) for asset in out]
+        return [_media_bytes(asset) for asset in out]
 
     def generate_angles(self, prompt: str, **kwargs: Any):
         return self.multi_view_image(prompt, **kwargs)
@@ -2195,17 +2314,10 @@ class _AbstractVisionCapability:
         image_b = _resolve_bytes_input(image, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "resolution",
-            "scale",
-            "seed",
-            "softness",
-            "quantize",
-            "vae_tiling",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageUpscaleRequest)
+        _refuse_misplaced_typed_options(ImageUpscaleRequest, kwargs, method="upscale_image")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in list(kwargs.keys()):
             if key not in allowed_request_keys:
                 value = kwargs.pop(key)
@@ -2220,13 +2332,12 @@ class _AbstractVisionCapability:
         self._acquire_backend_snapshot(backend)
         try:
             out = vm.upscale_image(image=image_b, **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="image_upscale", resident=False, source="request")
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="image_upscale")
 
     def image_upscale(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         return self.upscale_image(image=image, **kwargs)
@@ -2239,29 +2350,17 @@ class _AbstractVisionCapability:
         model = kwargs.pop("model", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "width",
-            "height",
-            "fps",
-            "num_frames",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "flow_shift",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(VideoGenerationRequest)
+        _refuse_misplaced_typed_options(VideoGenerationRequest, kwargs, method="t2v")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in list(kwargs.keys()):
             if key not in allowed_request_keys:
                 value = kwargs.pop(key)
                 if value is not None:
                     merged_extra[str(key)] = value
-        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
-            merged_extra["model"] = model.strip()
+        if binding.get("remote_model") and isinstance(backend, OpenAICompatibleVisionBackend):
+            merged_extra["model"] = binding["remote_model"]
         if merged_extra:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
@@ -2271,13 +2370,12 @@ class _AbstractVisionCapability:
         self._acquire_backend_snapshot(backend)
         try:
             out = vm.generate_video(str(prompt), **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="text_to_video", resident=False, source="request")
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="text_to_video")
 
     def t2v_batch(self, prompt: str, **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
@@ -2289,29 +2387,17 @@ class _AbstractVisionCapability:
         seeds = kwargs.pop("seeds", None)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "negative_prompt",
-            "width",
-            "height",
-            "fps",
-            "num_frames",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "flow_shift",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(VideoGenerationRequest)
+        _refuse_misplaced_typed_options(VideoGenerationRequest, kwargs, method="t2v_batch")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in list(kwargs.keys()):
             if key not in allowed_request_keys:
                 value = kwargs.pop(key)
                 if value is not None:
                     merged_extra[str(key)] = value
-        if isinstance(model, str) and model.strip() and "openai" in type(backend).__name__.lower():
-            merged_extra["model"] = model.strip()
+        if binding.get("remote_model") and isinstance(backend, OpenAICompatibleVisionBackend):
+            merged_extra["model"] = binding["remote_model"]
         if merged_extra:
             kwargs["extra"] = merged_extra
         vm = VisionManager(
@@ -2326,11 +2412,10 @@ class _AbstractVisionCapability:
                 seeds=seeds,
                 **kwargs,
             )
-            if binding.get("local_control") and outputs:
-                self._record_loaded_model(binding, task="text_to_video", resident=False, source="request")
-            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
+            return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="text_to_video")
 
     def i2v(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
@@ -2341,23 +2426,10 @@ class _AbstractVisionCapability:
         image_b = _resolve_bytes_input(image, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "prompt",
-            "negative_prompt",
-            "width",
-            "height",
-            "fps",
-            "num_frames",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "flow_shift",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageToVideoRequest)
+        _refuse_misplaced_typed_options(ImageToVideoRequest, kwargs, method="i2v")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in list(kwargs.keys()):
             if key not in allowed_request_keys:
                 value = kwargs.pop(key)
@@ -2372,13 +2444,12 @@ class _AbstractVisionCapability:
         self._acquire_backend_snapshot(backend)
         try:
             out = vm.image_to_video(image=image_b, **kwargs)
-            if binding.get("local_control"):
-                self._record_loaded_model(binding, task="image_to_video", resident=False, source="request")
             if isinstance(out, dict):
                 return out
-            return bytes(getattr(out, "data", b""))
+            return _media_bytes(out)
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="image_to_video")
 
     def i2v_batch(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         store = kwargs.pop("artifact_store", None)
@@ -2391,23 +2462,10 @@ class _AbstractVisionCapability:
         image_b = _resolve_bytes_input(image, artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
-        allowed_request_keys = {
-            "prompt",
-            "negative_prompt",
-            "width",
-            "height",
-            "fps",
-            "num_frames",
-            "seed",
-            "steps",
-            "guidance_scale",
-            "guidance_2",
-            "flow_shift",
-            "lora_adapters",
-            "extra",
-        }
+        allowed_request_keys = _request_kwarg_names(ImageToVideoRequest)
+        _refuse_misplaced_typed_options(ImageToVideoRequest, kwargs, method="i2v_batch")
         extra = kwargs.get("extra")
-        merged_extra = dict(extra) if isinstance(extra, dict) else {}
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
         for key in list(kwargs.keys()):
             if key not in allowed_request_keys:
                 value = kwargs.pop(key)
@@ -2427,11 +2485,10 @@ class _AbstractVisionCapability:
                 seeds=seeds,
                 **kwargs,
             )
-            if binding.get("local_control") and outputs:
-                self._record_loaded_model(binding, task="image_to_video", resident=False, source="request")
-            return [dict(item) if isinstance(item, dict) else bytes(getattr(item, "data", b"")) for item in outputs]
+            return [dict(item) if isinstance(item, dict) else _media_bytes(item) for item in outputs]
         finally:
             self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="image_to_video")
 
 
 def register(registry: Any) -> None:

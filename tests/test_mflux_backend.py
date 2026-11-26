@@ -9,6 +9,22 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from _mlx_gen_versions import real_runtime_versions, setUpModule, tearDownModule  # noqa: F401
+
+try:
+    import yaml  # noqa: F401
+
+    _YAML_INSTALLED = True
+except ImportError:
+    _YAML_INSTALLED = False
+
+try:
+    import packaging.specifiers  # noqa: F401
+
+    _PACKAGING_INSTALLED = True
+except ImportError:
+    _PACKAGING_INSTALLED = False
+
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X9+QAAAABJRU5ErkJggg=="
 )
@@ -473,6 +489,66 @@ class _CountingFlux2:
         return _Generated()
 
 
+class _RegisteringCallbackRegistry(_FakeCallbackRegistry):
+    def __init__(self):
+        super().__init__()
+        self.registered = []
+
+    def register(self, callback):
+        self.registered.append(callback)
+
+
+# The MLX cache limit in force before a run (mlx-gen's RAM/8 default on a 64 GiB or larger Mac).
+_CAP_IN_FORCE = 8 * 1024**3
+_MEMORY_EVENTS = []
+
+
+class _LowRamFlux2(_FakeFlux2):
+    instances = []
+    during_generate = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.callbacks = _RegisteringCallbackRegistry()
+        self.tiling_config = None
+        _LowRamFlux2.instances.append(self)
+        _MEMORY_EVENTS.append(("init", None))
+
+    def generate_image(self, **kwargs):
+        if _LowRamFlux2.during_generate is not None:
+            _LowRamFlux2.during_generate()
+        return super().generate_image(**kwargs)
+
+
+class _LowRamSeedVR2(_FakeSeedVR2):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.callbacks = _RegisteringCallbackRegistry()
+        _MEMORY_EVENTS.append(("init", None))
+
+
+class _FakeMemorySaver:
+    """Stands in for mlx-gen's MemorySaver (mflux.callbacks.instances.memory_saver)."""
+
+    instances = []
+
+    def __init__(self, model, keep_transformer=True, cache_limit_bytes=1000**3, args=None):
+        self.model = model
+        self.keep_transformer = keep_transformer
+        self.cache_limit_bytes = cache_limit_bytes
+        model.tiling_config = "low-ram-tiling"
+        _FakeMemorySaver.instances.append(self)
+
+
+def _route_capabilities(*tasks, block_streaming=False):
+    return SimpleNamespace(
+        capabilities=tuple(
+            SimpleNamespace(public_task=task, supports_block_streaming=block_streaming)
+            for task in tasks
+        )
+    )
+
+
 class TestMFluxVisionBackend(unittest.TestCase):
     def _lazy_import_return(self, flux_cls=_FakeFlux2, flux_edit_cls=_FakeFlux2Edit, z_cls=_FakeZImage):
         return (_FakeModelConfig, _FakeDownloadRequiredError, flux_cls, flux_edit_cls, z_cls, z_cls)
@@ -619,7 +695,6 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             scale=2,
                             seed=42,
                             softness=0.25,
-                            quantize=8,
                             vae_tiling=True,
                             extra={"on_progress": seen.append},
                         ),
@@ -638,7 +713,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertTrue(asset.metadata["vae_tiling"])
         self.assertEqual(_FakeSeedVR2.last_init["model_config"], "seedvr2-3b-config")
         self.assertEqual(_FakeSeedVR2.last_init["model_path"], str(snapshot))
-        self.assertEqual(_FakeSeedVR2.last_init["quantize"], 8)
+        # A prepared package loads as stored; its stored width is recorded.
+        self.assertIsNone(_FakeSeedVR2.last_init["quantize"])
         self.assertEqual(_FakeSeedVR2.last_generate["seed"], 42)
         self.assertTrue(_FakeSeedVR2.last_image_path_existed)
         self.assertEqual(str(_FakeSeedVR2.last_generate["resolution"]), "2x")
@@ -841,11 +917,11 @@ class TestMFluxVisionBackend(unittest.TestCase):
             )
             adapter_snapshot = self._make_adapter_snapshot(
                 cache_root,
-                "diroverflo/FLux_Klein_9B_NSFW",
-                "Flux Klein - NSFW v2.safetensors",
+                "example-org/Flux_Klein_9B_Style",
+                "Flux Klein - Style v2.safetensors",
                 base_model="black-forest-labs/FLUX.2-klein-base-9B",
             )
-            expected_adapter = adapter_snapshot / "Flux Klein - NSFW v2.safetensors"
+            expected_adapter = adapter_snapshot / "Flux Klein - Style v2.safetensors"
             backend = MFluxVisionBackend(
                 config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
             )
@@ -862,7 +938,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             seed=3,
                             lora_adapters=(
                                 LoRAAdapterSpec(
-                                    source="diroverflo/FLux_Klein_9B_NSFW",
+                                    source="example-org/Flux_Klein_9B_Style",
                                     scale=0.75,
                                 ),
                             ),
@@ -884,11 +960,11 @@ class TestMFluxVisionBackend(unittest.TestCase):
             )
             adapter_snapshot = self._make_adapter_snapshot(
                 cache_root,
-                "diroverflo/FLux_Klein_9B_NSFW",
-                "Flux Klein - NSFW v2.safetensors",
+                "example-org/Flux_Klein_9B_Style",
+                "Flux Klein - Style v2.safetensors",
                 base_model="black-forest-labs/FLUX.2-klein-base-9B",
             )
-            expected_adapter = adapter_snapshot / "Flux Klein - NSFW v2.safetensors"
+            expected_adapter = adapter_snapshot / "Flux Klein - Style v2.safetensors"
             backend = MFluxVisionBackend(
                 config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit")
             )
@@ -905,7 +981,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             seed=4,
                             lora_adapters=(
                                 LoRAAdapterSpec(
-                                    source="diroverflo/FLux_Klein_9B_NSFW:Flux Klein - NSFW v2.safetensors",
+                                    source="example-org/Flux_Klein_9B_Style:Flux Klein - Style v2.safetensors",
                                     scale=0.5,
                                 ),
                             ),
@@ -1400,6 +1476,56 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertIn("832x480", str(ctx.exception))
 
+    def test_wan_refuses_malformed_values_and_keyframes_like_minimax_h3(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageToVideoRequest, VideoGenerationRequest
+
+        _FakeWan.last_init = None
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-I2V-A14B-Diffusers")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers"))
+            # The keyframe cases need a model with an image_to_video route.
+            i2v_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="Wan-AI/Wan2.2-I2V-A14B-Diffusers"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True), patch(
+                "abstractvision.backends.mflux._lazy_import_mflux", return_value=self._lazy_import_return()
+            ), patch("abstractvision.backends.mflux._lazy_import_mflux_wan", return_value=_FakeWan):
+                for request, error, pattern in (
+                    (VideoGenerationRequest(prompt="fox", width="wide", height=480), ValueError, "width"),
+                    (VideoGenerationRequest(prompt="fox", width=832.5, height=480), ValueError, "width"),
+                    (VideoGenerationRequest(prompt="fox", num_frames="many"), ValueError, "num_frames"),
+                    (VideoGenerationRequest(prompt="fox", steps="x"), ValueError, "steps"),
+                    (VideoGenerationRequest(prompt="fox", seed="abc"), ValueError, "seed"),
+                    (VideoGenerationRequest(prompt="fox", width=-16, height=480), CapabilityNotSupportedError, "width"),
+                    (ImageToVideoRequest(image=b"", prompt="fox"), ValueError, "image.*empty"),
+                    (ImageToVideoRequest(image=b"garbage", prompt="fox"), ValueError, "image.*decode"),
+                ):
+                    with self.subTest(request=type(request).__name__, pattern=pattern):
+                        run = backend.generate_video if isinstance(request, VideoGenerationRequest) else i2v_backend.image_to_video
+                        with self.assertRaisesRegex(error, pattern):
+                            run(request)
+        self.assertIsNone(_FakeWan.last_init)
+
+    def test_a_failed_preload_warmup_leaves_no_model_resident(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        class _FailingFlux2(_FakeFlux2):
+            def generate_image(self, **kwargs):
+                raise RuntimeError("warm-up failed")
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit"))
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True), patch(
+                "abstractvision.backends.mflux._lazy_import_mflux",
+                return_value=self._lazy_import_return(flux_cls=_FailingFlux2),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
+                    backend.preload()
+        self.assertFalse(backend.has_loaded_model())
+        self.assertIsNone(backend._model_key)
+
     def test_wan_ti2v_explicit_flow_shift_is_preserved(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import VideoGenerationRequest
@@ -1600,7 +1726,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         active_limit = [None]
 
         def fake_set_limit(limit_bytes):
-            previous = active_limit[0] if active_limit[0] is not None else 999
+            previous = active_limit[0] if active_limit[0] is not None else _CAP_IN_FORCE
             active_limit[0] = int(limit_bytes)
             events.append(("set_limit", int(limit_bytes)))
             return previous
@@ -1637,12 +1763,11 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ), patch(
                     "abstractvision.backends.mflux._set_mlx_cache_limit",
                     side_effect=fake_set_limit,
-                ), patch(
-                    "abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes",
-                    return_value=8 * 1024**3,
-                ):
+                ), patch("abstractvision.backends.mflux._apply_mlx_gen_default_cache_limit"):
                     for request in requests:
-                        assets.append(backend.generate_video(request))
+                        assets.append(
+                            request(backend) if callable(request) else backend.generate_video(request)
+                        )
         return backend, assets, events, _RecordingWan
 
     def test_wan_ti2v_releases_denoiser_before_decode_and_rebuilds_next_request(self):
@@ -1665,7 +1790,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(assets[1].metadata["base_model"], "wan2.2-ti2v-5b")
         self.assertEqual(assets[1].metadata["seed"], 2)
 
-    def test_wan_video_decode_runs_under_mlx_cache_ceiling_then_restores(self):
+    def test_a_default_wan_run_leaves_the_cache_limit_to_mlx_gen(self):
         from abstractvision.types import VideoGenerationRequest
 
         _backend, _assets, events, _wan_cls = self._run_wan_videos_recording_memory_policy(
@@ -1674,13 +1799,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
             [VideoGenerationRequest(prompt="fox", width=832, height=480, num_frames=5, steps=2, seed=1)],
         )
 
-        limit = 8 * 1024**3
-        # Generation AND save (where mlx-gen streams the VAE decode) run capped,
-        # and the host's previous limit is restored afterwards.
-        self.assertIn(("generate", limit), events)
-        self.assertIn(("save", limit), events)
-        set_calls = [value for kind, value in events if kind == "set_limit"]
-        self.assertEqual(set_calls, [limit, 999])
+        # mlx-gen caps the cache itself at its first weight load (RAM/8, 1-8 GiB) and keeps a
+        # cap the host set; a default-mode run never sets one, so it never raises the operator's.
+        self.assertEqual([value for kind, value in events if kind == "set_limit"], [])
 
     def test_wan_a14b_keeps_its_denoisers_between_requests(self):
         from abstractvision.types import VideoGenerationRequest
@@ -1694,9 +1815,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertNotIn("release_denoisers_before_decode", _FakeWan.last_generate)
         self.assertEqual(wan_cls.instances, 1)
         self.assertIsNotNone(backend._model)
-        self.assertIn(("save", 8 * 1024**3), events)
+        self.assertNotIn("set_limit", [kind for kind, _value in events])
 
-    def test_wan_ti2v_failed_decode_still_drops_released_model_and_restores_limit(self):
+    def test_wan_ti2v_failed_decode_still_drops_released_model(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import VideoGenerationRequest
 
@@ -1726,9 +1847,6 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ), patch(
                     "abstractvision.backends.mflux._set_mlx_cache_limit",
                     side_effect=lambda value: limits.append(value) or 777,
-                ), patch(
-                    "abstractvision.backends.mflux._wan_video_mlx_cache_limit_bytes",
-                    return_value=8 * 1024**3,
                 ):
                     with self.assertRaisesRegex(RuntimeError, "decode failed"):
                         backend.generate_video(
@@ -1739,18 +1857,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertIsNone(backend._model)
         self.assertIsNone(backend._model_key)
-        self.assertEqual(limits, [8 * 1024**3, 777])
-
-    def test_wan_video_mlx_cache_limit_follows_machine_ram(self):
-        from abstractvision.backends import mflux as mflux_mod
-
-        gib = 1024**3
-        for total, expected in ((128 * gib, 8 * gib), (32 * gib, 4 * gib), (4 * gib, 1 * gib)):
-            with patch.object(mflux_mod.os, "sysconf", side_effect=lambda name, t=total: {
-                "SC_PAGE_SIZE": 16384,
-                "SC_PHYS_PAGES": t // 16384,
-            }[name]):
-                self.assertEqual(mflux_mod._wan_video_mlx_cache_limit_bytes(), expected)
+        self.assertEqual(limits, [])
 
     def test_wan_a14b_text_to_video_accepts_explicit_guidance_2(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -2148,7 +2255,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.38\.0",
+                        r"mlx-gen>=0\.40\.1",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(
@@ -2333,94 +2440,29 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(normalized.steps, 4)
         self.assertEqual(normalized.guidance_scale, 1.0)
 
-    def test_qwen_base_control_image_maps_to_mlx_gen_controlnet_args(self):
+    def test_a_control_image_is_refused_before_anything_loads(self):
+        # MLX-Gen runs structured control through QwenImageControlNet and a ControlNet sidecar
+        # repository; this backend loads neither, so the field is refused, typed or in `extra`.
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
         from abstractvision.types import ImageGenerationRequest
 
-        _FakeQwenImage.last_generate = None
-        fake_capabilities = SimpleNamespace(
-            capabilities=(
-                SimpleNamespace(public_task="text-to-image", default_for_task=True),
-                SimpleNamespace(public_task="text-to-image", supports_control_image=True),
-            )
-        )
-
-        with tempfile.TemporaryDirectory() as cache_td:
-            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-8bit")
-            backend = MFluxVisionBackend(
-                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit")
-            )
-            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
-                with patch(
-                    "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=self._lazy_import_return(),
-                ):
-                    with patch(
-                        "abstractvision.backends.mflux._lazy_import_mflux_qwen",
-                        return_value=(_FakeQwenImage, _FakeQwenImageEdit),
-                    ):
-                        with patch(
-                            "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
-                            return_value=(lambda **kwargs: fake_capabilities, None),
-                        ):
-                            asset = backend.generate_image(
-                                ImageGenerationRequest(
-                                    prompt="hello",
-                                    control_image=PNG_1X1,
-                                    control_strength=0.9,
-                                    seed=1,
-                                    steps=4,
-                                )
-                            )
-
-        self.assertTrue(asset.data.startswith(b"\x89PNG"))
-        self.assertIn("controlnet_image_path", _FakeQwenImage.last_generate)
-        self.assertEqual(_FakeQwenImage.last_generate["controlnet_strength"], 0.9)
-        self.assertTrue(asset.metadata["control_image"])
-        self.assertEqual(asset.metadata["control_strength"], 0.9)
-
-    def test_qwen_base_control_uses_default_strength_when_omitted(self):
-        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
-        from abstractvision.types import ImageGenerationRequest
-
-        _FakeQwenImage.last_generate = None
-        fake_capabilities = SimpleNamespace(
-            capabilities=(
-                SimpleNamespace(public_task="text-to-image", default_for_task=True),
-                SimpleNamespace(public_task="text-to-image", supports_control_image=True),
-            )
-        )
-
-        with tempfile.TemporaryDirectory() as cache_td:
-            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/qwen-image-8bit")
-            backend = MFluxVisionBackend(
-                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit")
-            )
-            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
-                with patch(
-                    "abstractvision.backends.mflux._lazy_import_mflux",
-                    return_value=self._lazy_import_return(),
-                ):
-                    with patch(
-                        "abstractvision.backends.mflux._lazy_import_mflux_qwen",
-                        return_value=(_FakeQwenImage, _FakeQwenImageEdit),
-                    ):
-                        with patch(
-                            "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
-                            return_value=(lambda **kwargs: fake_capabilities, None),
-                        ):
-                            asset = backend.generate_image(
-                                ImageGenerationRequest(
-                                    prompt="hello",
-                                    control_image=PNG_1X1,
-                                    seed=1,
-                                    steps=4,
-                                )
-                            )
-
-        self.assertTrue(asset.data.startswith(b"\x89PNG"))
-        self.assertEqual(_FakeQwenImage.last_generate["controlnet_strength"], 0.85)
-        self.assertEqual(asset.metadata["control_strength"], 0.85)
+        _FakeQwenImage.last_init = None
+        backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit"))
+        for request, field in (
+            (ImageGenerationRequest(prompt="hello", control_image=PNG_1X1, control_strength=0.9), "control_image"),
+            (ImageGenerationRequest(prompt="hello", extra={"control_image": PNG_1X1}), "control_image"),
+            # The strength alone applies to nothing: refused the same way, not ignored.
+            (ImageGenerationRequest(prompt="hello", control_strength=0.9), "control_strength"),
+            (ImageGenerationRequest(prompt="hello", extra={"control_strength": 0.9}), "control_strength"),
+        ):
+            with self.subTest(field=field, extra=sorted(request.extra)):
+                with patch.object(MFluxVisionBackend, "_find_configured_model", side_effect=AssertionError("resolved")):
+                    with self.assertRaises(CapabilityNotSupportedError) as caught:
+                        backend.generate_image(request)
+                self.assertEqual((caught.exception.field, caught.exception.supported), (field, ()))
+        self.assertIsNone(_FakeQwenImage.last_init)
+        self.assertFalse(backend.has_loaded_model())
 
     def test_qwen_edit_2511_masked_edit_maps_to_mask_path(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -2586,7 +2628,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(caps.supported_tasks, ["text_to_image"])
         self.assertFalse(caps.supports_mask)
 
-    def test_qwen_base_control_capabilities_follow_route_truth(self):
+    def test_qwen_base_control_is_not_advertised_although_the_route_row_has_it(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         fake_capabilities = SimpleNamespace(
@@ -2616,7 +2658,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(caps.supported_tasks, ["text_to_image"])
         self.assertFalse(caps.supports_mask)
-        self.assertTrue(caps.supports_control_image)
+        # The engine's row supports control; this backend does not run that variant.
+        self.assertFalse(caps.supports_control_image)
 
     def test_qwen_image_provider_catalog_does_not_advertise_image_to_image(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -2636,7 +2679,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(tuple(models[0].capabilities), ("text_to_image",))
         self.assertEqual(image_edit_models, [])
 
-    def test_qwen_base_provider_catalog_surfaces_structured_control_params(self):
+    def test_qwen_base_provider_catalog_lists_no_structured_control_params(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         fake_capabilities = SimpleNamespace(
@@ -2669,8 +2712,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(len(models), 1)
         params = models[0].raw["task_specs"]["text_to_image"]["params"]
-        self.assertIn("control_image", params)
-        self.assertIn("control_strength", params)
+        self.assertNotIn("control_image", params)
+        self.assertNotIn("control_strength", params)
 
     def test_wan_provider_catalog_advertises_video_tasks(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -2816,6 +2859,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         )
         self.assertEqual(task_spec["lora_validation_profile"], "wan_a14b_lora_profile")
 
+    @unittest.skipUnless(_YAML_INSTALLED, "PyYAML is not installed: adapter cards are not read")
     def test_provider_adapter_inventory_discovers_ti2v_and_a14b_cached_adapters(self):
         from types import SimpleNamespace
 
@@ -3449,6 +3493,1039 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(warmup["num_inference_steps"], 4)
         self.assertEqual(warmup["guidance"], 1.0)
         self.assertEqual(warmup["seed"], 0)
+
+
+    def _memory_patches(self, stack, cache_td, *, caps, flux_cls=_LowRamFlux2):
+        _LowRamFlux2.instances = []
+        _LowRamFlux2.during_generate = None
+        _FakeMemorySaver.instances = []
+        _MEMORY_EVENTS.clear()
+        limit = [_CAP_IN_FORCE]
+
+        def fake_set_limit(value):
+            previous, limit[0] = limit[0], int(value)
+            _MEMORY_EVENTS.append(("limit", int(value)))
+            return previous
+
+        stack.enter_context(
+            patch.dict("os.environ", {"HF_HUB_CACHE": cache_td, "ABSTRACTVISION_MEMORY_MODE": ""}, clear=True)
+        )
+        stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mflux",
+                return_value=self._lazy_import_return(flux_cls=flux_cls, flux_edit_cls=flux_cls),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                return_value=(lambda **kwargs: caps, None),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mlx_gen_memory_saver",
+                return_value=_FakeMemorySaver,
+            )
+        )
+        stack.enter_context(
+            patch("abstractvision.backends.mflux._set_mlx_cache_limit", side_effect=fake_set_limit)
+        )
+        stack.enter_context(patch("abstractvision.backends.mflux._clear_mlx_cache"))
+        stack.enter_context(patch("abstractvision.backends.mflux._apply_mlx_gen_default_cache_limit"))
+        return limit
+
+    def _run_flux2_with_memory_modes(self, requests, *, block_streaming=False, flux_cls=_LowRamFlux2):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        assets = []
+        caps = _route_capabilities("text-to-image", "image-to-image", block_streaming=block_streaming)
+        with tempfile.TemporaryDirectory() as cache_td, contextlib.ExitStack() as stack:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit")
+            )
+            self._memory_patches(stack, cache_td, caps=caps, flux_cls=flux_cls)
+            self._last_low_ram_backend = backend
+            capabilities = backend.get_capabilities()
+            for request in requests:
+                if callable(request):
+                    assets.append(request(backend))
+                elif hasattr(request, "image"):
+                    assets.append(backend.edit_image(request))
+                else:
+                    assets.append(backend.generate_image(request))
+        return backend, assets, capabilities
+
+    def test_memory_mode_low_runs_image_route_in_mlx_gen_low_ram_mode(self):
+        from abstractvision.backends.mflux import LOW_RAM_MLX_CACHE_LIMIT_BYTES
+        from abstractvision.types import ImageGenerationRequest
+
+        backend, assets, capabilities = self._run_flux2_with_memory_modes(
+            [
+                ImageGenerationRequest(prompt="fox", steps=4, seed=1, memory_mode="low"),
+                ImageGenerationRequest(prompt="fox", steps=4, seed=2),
+            ]
+        )
+
+        self.assertEqual(tuple(capabilities.memory_modes), ("default", "low"))
+        # As `mlxgen generate --low-ram` (flux2_generate.py): the 1 GB cache is set before the
+        # model loads, then one MemorySaver frees the text encoders and, for one seed, the transformer.
+        self.assertEqual(
+            _MEMORY_EVENTS[:3], [("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES), ("init", None), ("limit", _CAP_IN_FORCE)]
+        )
+        self.assertEqual(len(_FakeMemorySaver.instances), 1)
+        saver = _FakeMemorySaver.instances[0]
+        self.assertFalse(saver.keep_transformer)
+        self.assertEqual(saver.cache_limit_bytes, LOW_RAM_MLX_CACHE_LIMIT_BYTES)
+        self.assertIs(saver.model, _LowRamFlux2.instances[0])
+        self.assertEqual(_LowRamFlux2.instances[0].callbacks.registered, [saver])
+        # The released instance is rebuilt for the next (default) request, which runs as before.
+        self.assertEqual(len(_LowRamFlux2.instances), 2)
+        self.assertEqual(_LowRamFlux2.instances[1].callbacks.registered, [])
+        self.assertNotIn("stream_blocks", _FakeFlux2.last_init)
+        self.assertEqual(
+            {key: assets[0].metadata[key] for key in ("memory_mode", "low_ram", "stream_blocks")},
+            {"memory_mode": "low", "low_ram": True, "stream_blocks": False},
+        )
+        self.assertEqual(assets[1].metadata["memory_mode"], "default")
+        self.assertTrue(backend.has_loaded_model())
+
+    def test_memory_mode_lowest_is_refused_where_the_route_cannot_stream_blocks(self):
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageEditRequest
+
+        with self.assertRaisesRegex(CapabilityNotSupportedError, r"memory_mode='lowest'.*supported: default, low"):
+            self._run_flux2_with_memory_modes(
+                [ImageEditRequest(prompt="edit", image=PNG_1X1, steps=4, seed=1, memory_mode="lowest")]
+            )
+        self.assertEqual(_LowRamFlux2.instances, [])
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertEqual(_MEMORY_EVENTS, [])
+
+    def test_memory_mode_lowest_streams_blocks_where_the_route_publishes_it(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        backend, assets, capabilities = self._run_flux2_with_memory_modes(
+            [ImageGenerationRequest(prompt="fox", steps=4, seed=1, memory_mode="lowest")],
+            block_streaming=True,
+        )
+
+        self.assertEqual(tuple(capabilities.memory_modes), ("default", "low", "lowest"))
+        self.assertIs(_FakeFlux2.last_init.get("stream_blocks"), True)
+        self.assertEqual(len(_FakeMemorySaver.instances), 1)
+        self.assertEqual(assets[0].metadata["memory_mode"], "lowest")
+        self.assertTrue(assets[0].metadata["stream_blocks"])
+        self.assertTrue(assets[0].metadata["low_ram"])
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_memory_mode_default_sends_nothing_new(self):
+        from abstractvision.types import ImageGenerationRequest
+
+        _backend, assets, _caps = self._run_flux2_with_memory_modes(
+            [ImageGenerationRequest(prompt="fox", steps=4, seed=1, memory_mode="default")],
+            block_streaming=True,
+        )
+
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertEqual(_MEMORY_EVENTS, [("init", None)])
+        self.assertNotIn("stream_blocks", _FakeFlux2.last_init)
+        # The mode is recorded on every run, "default" included (AbstractCore reads memory_mode_used from it).
+        self.assertEqual(
+            {key: assets[0].metadata[key] for key in ("memory_mode", "low_ram", "stream_blocks")},
+            {"memory_mode": "default", "low_ram": False, "stream_blocks": False},
+        )
+
+    def test_memory_mode_low_failed_run_still_drops_the_model_and_restores_the_cache(self):
+        from abstractvision.backends.mflux import LOW_RAM_MLX_CACHE_LIMIT_BYTES
+        from abstractvision.types import ImageGenerationRequest
+
+        class _FailingLowRamFlux2(_LowRamFlux2):
+            def generate_image(self, **kwargs):
+                raise RuntimeError("denoise failed")
+
+        with self.assertRaisesRegex(RuntimeError, "denoise failed"):
+            self._run_flux2_with_memory_modes(
+                [ImageGenerationRequest(prompt="fox", steps=4, memory_mode="low")],
+                flux_cls=_FailingLowRamFlux2,
+            )
+        # The failed instance carried a MemorySaver: it must not be reused.
+        self.assertEqual(len(_FakeMemorySaver.instances), 1)
+        self.assertEqual(_MEMORY_EVENTS[-1], ("limit", _CAP_IN_FORCE))
+        self.assertEqual(_MEMORY_EVENTS[0], ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES))
+        self.assertFalse(self._last_low_ram_backend.has_loaded_model())
+
+    def test_memory_mode_low_batch_items_are_runs_like_any_other(self):
+        from abstractvision import VisionManager
+
+        def batch(backend):
+            return VisionManager(backend=backend).generate_image_batch(
+                "fox", count=3, seed=1, steps=4, memory_mode="low"
+            )
+
+        backend, assets, _caps = self._run_flux2_with_memory_modes([batch])
+
+        # Each item is `mlxgen generate --low-ram` for one seed: its own load, a MemorySaver that
+        # frees the text encoders and the transformer, and the instance dropped after it.
+        self.assertEqual(len(_LowRamFlux2.instances), 3)
+        self.assertEqual([saver.keep_transformer for saver in _FakeMemorySaver.instances], [False] * 3)
+        self.assertEqual([model.callbacks.registered for model in _LowRamFlux2.instances],
+                         [[saver] for saver in _FakeMemorySaver.instances])
+        self.assertEqual(len(assets[0]), 3)
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_one_release_rule_for_every_family(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        # (base model, mode) -> the run frees part of the instance, which is then dropped
+        cases = {
+            ("flux2-klein-4b", "default"): False,
+            ("flux2-klein-4b", "low"): True,
+            ("fibo", "low"): True,
+            ("wan2.2-t2v-a14b", "default"): False,
+            ("wan2.2-t2v-a14b", "low"): True,
+            ("wan2.2-ti2v-5b", "default"): True,
+            ("minimax-h3-turbo-544p", "default"): False,
+            ("minimax-h3-turbo-544p", "low"): True,
+            ("minimax-h3-turbo-544p", "lowest"): True,
+            ("seedvr2-3b", "low"): False,
+        }
+        for (base_model, mode), expected in cases.items():
+            with self.subTest(base_model=base_model, mode=mode):
+                backend = MFluxVisionBackend(config=MFluxBackendConfig(model=base_model, base_model=base_model))
+                # The plan is built from a checked memory_mode and the resolved model.
+                with patch.object(
+                    MFluxVisionBackend, "_find_configured_model", return_value=("/m", base_model, None)
+                ):
+                    plan = backend._memory_plan(mode)
+                self.assertEqual(plan.releases_model, expected)
+
+    def test_preload_warmup_ignores_a_process_low_memory_default(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as cache_td, contextlib.ExitStack() as stack:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit"))
+            self._memory_patches(stack, cache_td, caps=_route_capabilities("text-to-image"))
+            stack.enter_context(patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": "low"}))
+            backend.preload()
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertTrue(backend.has_loaded_model())
+
+    def test_overlapping_runs_share_one_cache_limit_and_restore_it_last(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import (
+            LOW_RAM_MLX_CACHE_LIMIT_BYTES,
+            MFluxBackendConfig,
+            MFluxVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest, VideoGenerationRequest
+
+        seen = {}
+        with tempfile.TemporaryDirectory() as cache_td, contextlib.ExitStack() as stack:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+            self._make_cache_snapshot(Path(cache_td), "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+            image_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit"))
+            video_backend = MFluxVisionBackend(config=MFluxBackendConfig(model="Wan-AI/Wan2.2-T2V-A14B-Diffusers"))
+            limit = self._memory_patches(stack, cache_td, caps=_route_capabilities("text-to-image"))
+            stack.enter_context(patch("abstractvision.backends.mflux._lazy_import_mflux_wan", return_value=_FakeWan))
+
+            def runs_inside_the_low_image_run():
+                # On another backend thread, a default Wan run (which holds no limit) and a low one
+                # start and end while the low-RAM image run holds 1 GB: it stays until both end.
+                video_backend.generate_video(VideoGenerationRequest(prompt="fox", seed=1))
+                video_backend.generate_video(VideoGenerationRequest(prompt="fox", seed=2, memory_mode="low"))
+                seen["after_video"] = limit[0]
+
+            _LowRamFlux2.during_generate = runs_inside_the_low_image_run
+            image_backend.generate_image(ImageGenerationRequest(prompt="fox", steps=4, memory_mode="low"))
+            seen["after_both"] = limit[0]
+
+        self.assertEqual(seen["after_video"], LOW_RAM_MLX_CACHE_LIMIT_BYTES)
+        self.assertEqual(seen["after_both"], _CAP_IN_FORCE)
+        limits = [value for kind, value in _MEMORY_EVENTS if kind == "limit"]
+        self.assertEqual(limits[-1], _CAP_IN_FORCE)
+        self.assertTrue(all(value <= LOW_RAM_MLX_CACHE_LIMIT_BYTES for value in limits[:-1]), limits)
+
+    def test_memory_mode_low_on_wan_a14b_matches_the_single_seed_cli(self):
+        from abstractvision.backends.mflux import LOW_RAM_MLX_CACHE_LIMIT_BYTES
+        from abstractvision.types import VideoGenerationRequest
+
+        backend, assets, events, _wan_cls = self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+            _FakeWan,
+            [VideoGenerationRequest(prompt="fox", seed=1, memory_mode="low")],
+        )
+
+        # wan_generate.py: release_denoisers_before_decode = low_ram and single_seed (75),
+        # release_inactive_denoiser=True on single-seed dual-expert runs (83-89),
+        # clear_cache_each_step / clear_cache_each_transformer_block = low_ram (145-149).
+        low_kwargs = dict(_FakeWan.last_generate)
+        for key in (
+            "release_denoisers_before_decode",
+            "release_inactive_denoiser",
+            "clear_cache_each_step",
+            "clear_cache_each_transformer_block",
+        ):
+            self.assertIs(low_kwargs.get(key), True, key)
+        # The 1 GB limit is set before the model loads (wan_generate.py:58, the load is at :62).
+        self.assertEqual(events[0], ("set_limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES))
+        self.assertLess(events.index(("set_limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES)), events.index(("init", None)))
+        self.assertIn(("save", LOW_RAM_MLX_CACHE_LIMIT_BYTES), events)
+        self.assertEqual(assets[0].metadata["memory_mode"], "low")
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_memory_mode_low_wan_batch_items_each_release(self):
+        from abstractvision import VisionManager
+
+        class _BatchWan(_FakeWan):
+            calls = []
+
+            def generate_video(self, **kwargs):
+                _BatchWan.calls.append(dict(kwargs))
+                return super().generate_video(**kwargs)
+
+        _BatchWan.calls = []
+
+        def batch(backend):
+            return VisionManager(backend=backend).generate_video_batch(
+                "fox", count=2, seed=1, memory_mode="low"
+            )
+
+        backend, _assets, _events, wan_cls = self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers", _BatchWan, [batch]
+        )
+
+        # Each item is `mlxgen generate --low-ram` for one seed (wan_generate.py:75): both release
+        # the denoisers (and the inactive expert), and each runs on its own instance.
+        for call in _BatchWan.calls:
+            self.assertIs(call.get("release_denoisers_before_decode"), True)
+            self.assertIs(call.get("release_inactive_denoiser"), True)
+            self.assertIs(call.get("clear_cache_each_step"), True)
+        self.assertEqual(wan_cls.instances, 2)
+        self.assertFalse(backend.has_loaded_model())
+
+    def test_memory_mode_low_on_wan_ti2v_has_no_inactive_expert_to_release(self):
+        from abstractvision.types import VideoGenerationRequest
+
+        self._run_wan_videos_recording_memory_policy(
+            "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+            _FakeWan,
+            [VideoGenerationRequest(prompt="fox", width=832, height=480, num_frames=5, steps=2, seed=1, extra={"memory_mode": "low"})],
+        )
+        self.assertNotIn("release_inactive_denoiser", _FakeWan.last_generate)
+        self.assertNotIn("stream_blocks", _FakeWan.last_init)
+        self.assertIs(_FakeWan.last_generate.get("clear_cache_each_transformer_block"), True)
+
+    def test_memory_mode_low_on_seedvr2_upscale_is_the_cache_limit_only(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import (
+            LOW_RAM_MLX_CACHE_LIMIT_BYTES,
+            MFluxBackendConfig,
+            MFluxVisionBackend,
+        )
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageUpscaleRequest
+
+        with tempfile.TemporaryDirectory() as cache_td, contextlib.ExitStack() as stack:
+            self._make_cache_snapshot(Path(cache_td), "AbstractFramework/seedvr2-3b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="seedvr2-3b"))
+            self._memory_patches(stack, cache_td, caps=_route_capabilities("image-upscale", block_streaming=True))
+            stack.enter_context(
+                patch(
+                    "abstractvision.backends.mflux._lazy_import_mflux_seedvr2",
+                    return_value=(_FakeModelConfig, _LowRamSeedVR2, _FakeScaleFactor, _FakeTilingConfig),
+                )
+            )
+            self.assertEqual(tuple(backend.supported_memory_modes("image_upscale")), ("default", "low"))
+            first = backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1, seed=1, memory_mode="low"))
+            instance = _FakeSeedVR2.last_instance
+            second = backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1, seed=2, memory_mode="low"))
+            with self.assertRaises(CapabilityNotSupportedError):
+                backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1, memory_mode="lowest"))
+
+        # seedvr2_upscale.py:1031-1053: images get the 1 GB cache (apply_runtime_memory_options),
+        # no MemorySaver, and SeedVR2's own tiling. The instance is reused.
+        self.assertEqual(_FakeMemorySaver.instances, [])
+        self.assertEqual(instance.tiling_config, "unset")
+        self.assertIs(_FakeSeedVR2.last_instance, instance)
+        self.assertEqual(
+            _MEMORY_EVENTS,
+            [
+                ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES),
+                ("init", None),
+                ("limit", _CAP_IN_FORCE),
+                ("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES),
+                ("limit", _CAP_IN_FORCE),
+            ],
+        )
+        self.assertEqual(first.metadata["memory_mode"], "low")
+        self.assertEqual(second.metadata["vae_tiling_policy"], "runtime_default")
+        self.assertTrue(backend.has_loaded_model())
+
+    def test_provider_catalog_lists_the_memory_modes_each_model_can_honour(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        for block_streaming, modes in ((False, ["default", "low"]), (True, ["default", "low", "lowest"])):
+            caps = _route_capabilities("text-to-image", block_streaming=block_streaming)
+            with tempfile.TemporaryDirectory() as cache_td:
+                self._make_cache_snapshot(Path(cache_td), "AbstractFramework/flux.2-klein-4b-8bit")
+                backend = MFluxVisionBackend(
+                    config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit")
+                )
+                with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True), patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(lambda caps=caps, **kwargs: caps, None),
+                ):
+                    models = [
+                        model
+                        for model in backend.list_provider_models(task="text_to_image")
+                        if model.id == "AbstractFramework/flux.2-klein-4b-8bit"
+                    ]
+
+            self.assertEqual(len(models), 1)
+            raw = models[0].raw
+            self.assertEqual(raw["parameter_defaults"]["memory_mode"], "default")
+            # The modes alone say what the model can do; no engine term beside them.
+            self.assertEqual(raw["parameter_constraints"]["memory_mode"], {"enum": modes})
+            self.assertEqual(raw["parameters"]["constraints"]["memory_mode"]["enum"], modes)
+
+    # --- the resolved model, load-time quantize, preload, entry points ---------------------------
+
+    def _state_patches(self, stack, cache_td, *, caps):
+        limit = self._memory_patches(stack, cache_td, caps=caps)
+        # Only the test's own cache: no framework root on this machine is scanned.
+        stack.enter_context(patch("abstractvision.model_cache.framework_candidate_roots", return_value=[]))
+        stack.enter_context(
+            patch("abstractvision.backends.mflux._mlx_gen_quantize_choices", return_value=(3, 4, 5, 6, 8))
+        )
+        stack.enter_context(patch("abstractvision.backends.mflux._lazy_import_mflux_wan", return_value=_FakeWan))
+        stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mflux_qwen",
+                return_value=(_FakeQwenImage, _FakeQwenImageEdit),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "abstractvision.backends.mflux._lazy_import_mflux_seedvr2",
+                return_value=(_FakeModelConfig, _LowRamSeedVR2, _FakeScaleFactor, _FakeTilingConfig),
+            )
+        )
+        _FakeWan.last_generate = None
+        _FakeSeedVR2.last_init = None
+        _FakeQwenImageEdit.last_init = None
+        _FakeQwenImageEdit.last_generate = None
+        return limit
+
+    def test_load_time_quantize_is_recorded_on_every_request_and_after_preload(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            source = self._make_model_dir(Path(td), "klein-source")
+            config = MFluxBackendConfig(model=str(source), base_model="flux2-klein-4b")
+            backend = MFluxVisionBackend(config=config)
+            bits = [
+                backend.generate_image(
+                    ImageGenerationRequest(prompt="fox", steps=2, seed=seed, quantize=8)
+                ).metadata["quantization_bits"]
+                for seed in range(3)
+            ]
+            self.assertEqual(bits, [8, 8, 8])
+            self.assertEqual(len(_LowRamFlux2.instances), 1)
+            self.assertEqual(_FakeFlux2.last_init["quantize"], 8)
+            unquantized = backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2, seed=4))
+            self.assertIsNone(unquantized.metadata["quantization_bits"])
+
+            preloaded = MFluxVisionBackend(config=config)
+            preloaded.preload(quantize=8)
+            bits = [
+                preloaded.generate_image(
+                    ImageGenerationRequest(prompt="fox", steps=2, seed=seed, quantize=8)
+                ).metadata["quantization_bits"]
+                for seed in range(2)
+            ]
+            self.assertEqual(bits, [8, 8])
+            self.assertEqual(len(_LowRamFlux2.instances), 3)
+
+    def test_the_memory_plan_reads_the_resolved_model_on_a_backend_with_none_configured(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageUpscaleRequest, VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-video"))
+            empty = Path(td) / "no-local-models"
+            empty.mkdir()
+            self._make_cache_snapshot(Path(td), "Wan-AI/Wan2.2-TI2V-5B-Diffusers")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model_dir=str(empty)))
+            for seed in range(2):
+                with self.subTest(request=seed):
+                    backend.generate_video(
+                        VideoGenerationRequest(
+                            prompt="a paper boat", width=832, height=480, num_frames=5, steps=2, seed=seed,
+                            extra={"vae_tiling": False},
+                        )
+                    )
+                    # Every Wan TI2V-5B run releases its denoiser before the decode and drops the model.
+                    self.assertTrue(_FakeWan.last_generate.get("release_denoisers_before_decode"))
+                    self.assertFalse(backend.has_loaded_model())
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("image-upscale"))
+            empty = Path(td) / "no-local-models"
+            empty.mkdir()
+            self._make_cache_snapshot(Path(td), "AbstractFramework/seedvr2-3b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model_dir=str(empty)))
+            for seed in range(2):
+                backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1, seed=seed, memory_mode="low"))
+                # SeedVR2's low mode is the cache limit alone: it keeps its model.
+                self.assertTrue(backend.has_loaded_model(), seed)
+
+    def test_preload_of_an_edit_only_model_loads_it_for_edits_without_a_warm_up(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageEditRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("image-to-image"))
+            self._make_cache_snapshot(Path(td), "AbstractFramework/qwen-image-edit-2511-8bit")
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model="AbstractFramework/qwen-image-edit-2511-8bit")
+            )
+            backend.preload()
+            self.assertTrue(backend.has_loaded_model())
+            self.assertIsNotNone(_FakeQwenImageEdit.last_init)
+            self.assertIsNone(_FakeQwenImageEdit.last_generate)
+            _FakeQwenImageEdit.last_init = None
+            backend.edit_image(ImageEditRequest(prompt="a red door", image=PNG_1X1, steps=2, seed=1))
+            self.assertIsNone(_FakeQwenImageEdit.last_init)  # the preloaded instance served the edit
+            self.assertIsNotNone(_FakeQwenImageEdit.last_generate)
+
+    def test_preload_in_low_loads_under_the_cache_hold_runs_no_warm_up_and_serves_one_request(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import (
+            LOW_RAM_MLX_CACHE_LIMIT_BYTES,
+            MFluxBackendConfig,
+            MFluxVisionBackend,
+        )
+        from abstractvision.types import ImageGenerationRequest
+
+        for process_mode, preload_mode in (("", "low"), ("low", None)):
+            with self.subTest(process_mode=process_mode, preload_mode=preload_mode):
+                with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+                    self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+                    stack.enter_context(patch.dict("os.environ", {"ABSTRACTVISION_MEMORY_MODE": process_mode}))
+                    self._make_cache_snapshot(Path(td), "AbstractFramework/flux.2-klein-4b-8bit")
+                    backend = MFluxVisionBackend(
+                        config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit")
+                    )
+                    _FakeFlux2.last_generate = None
+                    backend.preload(memory_mode=preload_mode)
+                    # The load ran under the 1 GB hold, restored after it; no generation ran.
+                    self.assertEqual(
+                        _MEMORY_EVENTS,
+                        [("limit", LOW_RAM_MLX_CACHE_LIMIT_BYTES), ("init", None), ("limit", _CAP_IN_FORCE)],
+                    )
+                    self.assertIsNone(_FakeFlux2.last_generate)
+                    self.assertEqual(_FakeMemorySaver.instances, [])
+                    self.assertTrue(backend.has_loaded_model())
+                    asset = backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2, memory_mode="low"))
+                    self.assertEqual(asset.metadata["memory_mode"], "low")
+                    self.assertEqual(len(_LowRamFlux2.instances), 1)  # the first low request reused it
+                    self.assertFalse(backend.has_loaded_model())  # and dropped it
+
+    def test_load_time_quantize_on_seedvr2_goes_through_the_one_check(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageUpscaleRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("image-upscale"))
+            self._make_cache_snapshot(Path(td), "AbstractFramework/seedvr2-3b-8bit")
+            prepared = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/seedvr2-3b-8bit"))
+            self.assertEqual(prepared.get_capabilities().quantize_bits, ())
+            for run in (
+                lambda: prepared.upscale_image(ImageUpscaleRequest(image=PNG_1X1, quantize=4)),
+                lambda: prepared.preload(quantize=4),
+            ):
+                with self.assertRaises(CapabilityNotSupportedError) as caught:
+                    run()
+                self.assertEqual((caught.exception.field, caught.exception.supported), ("quantize", ()))
+            self.assertIsNone(_FakeSeedVR2.last_init)
+
+            source = MFluxVisionBackend(
+                config=MFluxBackendConfig(model=str(self._make_model_dir(Path(td), "upscaler")), base_model="seedvr2-3b")
+            )
+            for run in (
+                lambda: source.upscale_image(ImageUpscaleRequest(image=PNG_1X1, quantize=7)),
+                lambda: source.preload(quantize=7),
+            ):
+                with self.assertRaises(CapabilityNotSupportedError) as caught:
+                    run()
+                self.assertEqual((caught.exception.field, caught.exception.supported), ("quantize", (3, 4, 5, 6, 8)))
+            self.assertIsNone(_FakeSeedVR2.last_init)
+            asset = source.upscale_image(ImageUpscaleRequest(image=PNG_1X1, quantize=4))
+            self.assertEqual((_FakeSeedVR2.last_init["quantize"], asset.metadata["quantization_bits"]), (4, 4))
+
+    def test_with_progress_entry_points_check_a_request_once(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest, ImageUpscaleRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("image-upscale"))
+            source = MFluxVisionBackend(
+                config=MFluxBackendConfig(model=str(self._make_model_dir(Path(td), "upscaler")), base_model="seedvr2-3b")
+            )
+            checks = []
+            original = MFluxVisionBackend._normalize_image_upscale
+
+            def counted(backend, request):
+                checks.append(request)
+                return original(backend, request)
+
+            stack.enter_context(patch.object(MFluxVisionBackend, "_normalize_image_upscale", counted))
+            steps = []
+            request = ImageUpscaleRequest(image=PNG_1X1, quantize="none")
+            source.upscale_image(request)
+            plain = _FakeSeedVR2.last_init["quantize"]
+            source.unload()
+            source.upscale_image_with_progress(request, progress_callback=lambda *a: steps.append(a))
+            # The same result whichever entry point runs it, one check each.
+            self.assertEqual((plain, _FakeSeedVR2.last_init["quantize"]), (None, None))
+            self.assertEqual(len(checks), 2)
+            self.assertTrue(steps)
+            # A request a caller already normalized (as VisionManager does) is not checked again.
+            normalized = source.normalize_image_upscale_request(ImageUpscaleRequest(image=PNG_1X1))
+            source.upscale_image_with_progress(normalized, progress_callback=lambda *a: None)
+            self.assertEqual(len(checks), 3)
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            self._make_cache_snapshot(Path(td), "AbstractFramework/flux.2-klein-4b-8bit")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-4b-8bit"))
+            with patch.object(
+                MFluxVisionBackend,
+                "_normalize_image_generation",
+                autospec=True,
+                side_effect=MFluxVisionBackend._normalize_image_generation,
+            ) as check:
+                backend.generate_image_with_progress(
+                    ImageGenerationRequest(prompt="fox", steps=2), progress_callback=lambda *a: None
+                )
+            self.assertEqual(check.call_count, 1)
+
+    def test_unload_drops_the_resolution_and_capabilities_read_it_once(self):
+        import contextlib
+
+        from abstractvision.backends import mflux
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        repo = "AbstractFramework/flux.2-klein-4b-8bit"
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            first = self._make_cache_snapshot(Path(td), repo, "rev1")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=repo))
+            backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2))
+            self.assertEqual(_FakeFlux2.last_init["model_path"], str(first))
+            reads = patch.object(mflux, "_is_prepared_mlx_gen_package", wraps=mflux._is_prepared_mlx_gen_package)
+            with reads as counted:
+                for _ in range(3):
+                    backend.get_capabilities()
+                backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2))
+            self.assertEqual(counted.call_count, 0)
+
+            newer = self._make_cache_snapshot(Path(td), repo, "rev2")
+            backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2))
+            self.assertEqual(_FakeFlux2.last_init["model_path"], str(first))  # resolved until unload
+            backend.unload()
+            backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2))
+            self.assertEqual(_FakeFlux2.last_init["model_path"], str(newer))
+
+    def _installed(self, **versions):
+        # importlib.metadata.version for the given distributions ("mlx_gen" stands for mlx-gen); others absent.
+        from importlib import metadata
+
+        installed = {name.replace("_", "-"): version for name, version in versions.items()}
+
+        def version(distribution):
+            if distribution not in installed:
+                raise metadata.PackageNotFoundError(distribution)
+            return installed[distribution]
+
+        return patch("importlib.metadata.version", side_effect=version)
+
+    @unittest.skipUnless(_PACKAGING_INSTALLED, "packaging is not installed (it comes with huggingface_hub)")
+    def test_runtime_versions_outside_the_pins_are_refused_before_the_model_is_looked_for(self):
+        import contextlib
+
+        from abstractvision.backends import mflux
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import OptionalDependencyMissingError
+        from abstractvision.types import ImageGenerationRequest, ImageUpscaleRequest
+
+        self.addCleanup(mflux._require_runtime_versions.cache_clear)
+        refused = {
+            "mlx-gen too old": ("darwin", {"mlx_gen": "0.38.0", "mlx": "0.32.5"}, "mlx-gen>=0.40.1,<0.41.0", "0.38.0"),
+            "mlx-gen a pre-release of the floor": ("linux", {"mlx_gen": "0.40.1rc1"}, "mlx-gen>=0.40.1,<0.41.0", "0.40.1rc1"),
+            "mlx-gen too new": ("linux", {"mlx_gen": "0.41.0"}, "mlx-gen>=0.40.1,<0.41.0", "0.41.0"),
+            "mlx-gen a pre-release of the ceiling": ("linux", {"mlx_gen": "0.41.0rc1"}, "mlx-gen>=0.40.1,<0.41.0", "0.41.0rc1"),
+            "mlx too old on macOS": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}, "mlx>=0.32.4 on macOS", "0.31.2"),
+            "mlx a pre-release of the floor": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.32.4.dev20261101"}, "mlx>=0.32.4 on macOS", "0.32.4.dev20261101"),
+        }
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            stack.enter_context(patch.object(mflux, "_require_runtime_versions", real_runtime_versions()))
+            # Nothing is cached: without the check, these would answer that the model is not cached.
+            calls = {
+                "generate_image": lambda backend: backend.generate_image(ImageGenerationRequest(prompt="fox")),
+                "preload": lambda backend: backend.preload(),
+                "upscale_image": lambda backend: backend.upscale_image(ImageUpscaleRequest(image=PNG_1X1)),
+            }
+            for case, (platform, versions, required, installed) in refused.items():
+                for call_name, call in calls.items():
+                    with self.subTest(case=case, call=call_name):
+                        mflux._require_runtime_versions.cache_clear()
+                        model = "AbstractFramework/seedvr2-3b-8bit" if call_name == "upscale_image" else "AbstractFramework/flux.2-klein-4b-8bit"
+                        backend = MFluxVisionBackend(config=MFluxBackendConfig(model=model))
+                        with patch.object(mflux.sys, "platform", platform), self._installed(**versions):
+                            with self.assertRaises(OptionalDependencyMissingError) as caught:
+                                call(backend)
+                        message = str(caught.exception)
+                        self.assertIn(required, message)
+                        self.assertIn(f" {installed} is installed", message)
+                        self.assertIn('pip install -U "abstractvision[mlx-gen]"', message)
+            accepted = {
+                "in range": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.32.4"}),
+                "in range, a later patch and its pre-release": ("darwin", {"mlx_gen": "0.40.2rc1", "mlx": "0.33.0"}),
+                "old mlx off macOS": ("linux", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}),
+                "engine absent": ("darwin", {}),
+            }
+            for case, (platform, versions) in accepted.items():
+                with self.subTest(case=case):
+                    mflux._require_runtime_versions.cache_clear()
+                    with patch.object(mflux.sys, "platform", platform), self._installed(**versions):
+                        self.assertIsNone(mflux._require_runtime_versions())
+
+    def test_a_catalog_read_needs_no_runtime_within_the_pins(self):
+        # The schedule's adapter is read from mlx-gen's catalog, which an out-of-range engine still answers.
+        import importlib
+
+        from abstractvision.backends import mflux
+
+        stack = patch.object(mflux, "_require_runtime_versions", real_runtime_versions())
+        stack.start()
+        self.addCleanup(stack.stop)
+
+        try:
+            importlib.import_module("mflux.models.common.config")
+        except Exception:
+            self.skipTest("mlx-gen is not installed")
+        self.addCleanup(mflux._require_runtime_versions.cache_clear)
+        mflux._require_runtime_versions.cache_clear()
+        with patch.object(mflux.sys, "platform", "darwin"), self._installed(mlx_gen="0.38.0", mlx="0.31.2"):
+            self.assertTrue(str(mflux._mlx_gen_schedule_adapter("minimax-h3-turbo")).startswith("hf:"))
+
+    def test_the_runtime_bounds_are_the_ones_the_extras_require(self):
+        from abstractvision.backends import mflux
+
+        pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+        block = pyproject[pyproject.index("\nmlx-gen = [") : ]
+        block = block[: block.index("\n]")]
+        requirements = [line.strip().strip(",").strip('"') for line in block.splitlines()[1:] if line.strip()]
+        bounds = {}
+        for requirement in requirements:
+            specifiers = requirement.split(";", 1)[0]
+            name = specifiers.split(">=", 1)[0].strip()
+            bounds[name] = {
+                operator: value.strip()
+                for part in specifiers[len(name):].split(",")
+                for operator in (">=", "<")
+                if part.strip().startswith(operator) and not part.strip().startswith("<=")
+                for value in (part.strip()[len(operator):],)
+            }
+        self.assertEqual(bounds["mlx-gen"], {">=": mflux.MLX_GEN_VERSION_FLOOR, "<": mflux.MLX_GEN_VERSION_CEILING})
+        self.assertEqual(bounds["mlx"], {">=": mflux.MLX_VERSION_FLOOR})
+
+    def test_load_time_quantize_widths_are_the_engines_and_none_without_it(self):
+        import sys
+        import types
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        with tempfile.TemporaryDirectory() as td:
+            backend = MFluxVisionBackend(
+                config=MFluxBackendConfig(model=str(self._make_model_dir(Path(td), "klein")), base_model="flux2-klein-4b")
+            )
+            defaults = types.ModuleType("mflux.cli.defaults")
+            defaults.defaults = SimpleNamespace(QUANTIZE_CHOICES=[3, 5, 4, 6, 8])
+            engine = {"mflux": types.ModuleType("mflux"), "mflux.cli": types.ModuleType("mflux.cli")}
+            with patch.object(MFluxVisionBackend, "_route_rows", return_value=[]):
+                with patch.dict(sys.modules, {**engine, "mflux.cli.defaults": defaults}):
+                    self.assertEqual(backend.quantize_bits(), (3, 4, 5, 6, 8))
+                with patch.dict(sys.modules, {**engine, "mflux.cli.defaults": None}):
+                    self.assertEqual(backend.quantize_bits(), ())
+
+    def test_a_first_frame_may_be_any_bytes_like_object(self):
+        from abstractvision.backends.mflux import _checked_keyframe_size
+
+        png = _solid_png(3, 2, (10, 20, 30))
+        for image in (png, bytearray(png), memoryview(png)):
+            self.assertEqual(_checked_keyframe_size(image), (3, 2), type(image).__name__)
+        for image in ("a.png", None, 3):
+            with self.assertRaisesRegex(ValueError, "image must be the image file's bytes"):
+                _checked_keyframe_size(image)
+
+    def test_the_out_of_memory_message_reads_as_sentences(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend, _MemoryPlan
+
+        backend = MFluxVisionBackend(config=MFluxBackendConfig())
+        with patch.object(MFluxVisionBackend, "supported_memory_modes", return_value=("default", "low")):
+            higher = backend._out_of_memory_error(
+                MemoryError("needs 61 GB"), _MemoryPlan(mode="default", low_ram=False, stream_blocks=False), task="text_to_video"
+            )
+            lowest = backend._out_of_memory_error(
+                MemoryError("needs 61 GB"), _MemoryPlan(mode="low", low_ram=True, stream_blocks=False), task="text_to_video"
+            )
+        self.assertEqual(
+            str(higher),
+            "MLX-Gen cannot fit this text_to_video run in memory with memory_mode='default' (needs 61 GB). "
+            "memory_mode='low' lowers the peak, as does a shorter clip or a smaller canvas.",
+        )
+        self.assertEqual(
+            str(lowest),
+            "MLX-Gen cannot fit this text_to_video run in memory with memory_mode='low' (needs 61 GB). "
+            "This is the lowest memory mode; what lowers the peak is a shorter clip or a smaller canvas.",
+        )
+
+    def test_a_boolean_or_non_integral_quantize_is_a_value_error_on_every_family_and_preload(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import (
+            ImageEditRequest,
+            ImageGenerationRequest,
+            ImageUpscaleRequest,
+            VideoGenerationRequest,
+        )
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(
+                stack, td, caps=_route_capabilities("text-to-image", "image-to-image", "text-to-video", "image-upscale")
+            )
+            root = Path(td)
+            flux = MFluxBackendConfig(model=str(self._make_model_dir(root, "klein")), base_model="flux2-klein-4b")
+            wan = MFluxBackendConfig(model=str(self._make_model_dir(root, "wan-src")), base_model="wan2.2-t2v-a14b")
+            seedvr2 = MFluxBackendConfig(model=str(self._make_model_dir(root, "upscaler")), base_model="seedvr2-3b")
+            runs = {
+                "text_to_image": (flux, lambda b, q: b.generate_image(ImageGenerationRequest(prompt="fox", steps=2, quantize=q))),
+                "image_to_image": (flux, lambda b, q: b.edit_image(ImageEditRequest(prompt="fox", image=PNG_1X1, steps=2, quantize=q))),
+                "text_to_video": (
+                    wan,
+                    lambda b, q: b.generate_video(
+                        VideoGenerationRequest(prompt="fox", num_frames=5, steps=2, quantize=q, extra={"vae_tiling": False})
+                    ),
+                ),
+                "image_upscale": (seedvr2, lambda b, q: b.upscale_image(ImageUpscaleRequest(image=PNG_1X1, quantize=q))),
+                "image_upscale (extra)": (
+                    seedvr2,
+                    lambda b, q: b.upscale_image(ImageUpscaleRequest(image=PNG_1X1, extra={"quantize": q})),
+                ),
+                "preload (image)": (flux, lambda b, q: b.preload(quantize=q)),
+                "preload (upscale)": (seedvr2, lambda b, q: b.preload(quantize=q)),
+            }
+            for name, (config, run) in runs.items():
+                # False is an unquantized spelling on the upscale route, requests and preload alike
+                # (`test_upscale_quantize_values_read_as_0_3_36_read_them`).
+                upscale = name.startswith("image_upscale") or name == "preload (upscale)"
+                values = (True, 8.5, "8.5") if upscale else (True, False, 8.5, "8.5")
+                for value in values:
+                    with self.subTest(run=name, quantize=value):
+                        backend = MFluxVisionBackend(config=config)
+                        with self.assertRaisesRegex(ValueError, "quantize must be an integer"):
+                            run(backend, value)
+                        self.assertFalse(backend.has_loaded_model())
+                with self.subTest(run=name, quantize=8.0):
+                    backend = MFluxVisionBackend(config=config)
+                    run(backend, 8.0)
+                    self.assertEqual(backend._model_key.quantize, 8)
+
+    def test_upscale_quantize_values_read_as_0_3_36_read_them(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageUpscaleRequest
+
+        def published(value):
+            # 0.3.36's `MFluxVisionBackend._normalize_upscale_quantize` (commit eea267d), the reference outcome.
+            if value is None:
+                return None
+            text = str(value).strip().lower()
+            if text in {"", "0", "none", "false", "off", "no"}:
+                return None
+            try:
+                quantize = int(value)
+            except Exception as exc:
+                raise ValueError("image_upscale quantize must be 3, 4, 5, 6, 8, or none.") from exc
+            if quantize not in {3, 4, 5, 6, 8}:
+                raise ValueError("image_upscale quantize must be 3, 4, 5, 6, 8, or none.")
+            return quantize
+
+        def outcome(run, value):
+            try:
+                result = run(value)
+            except (ValueError, CapabilityNotSupportedError) as error:
+                return type(error).__name__
+            return "unquantized" if result is None else result
+
+        table = (
+            "", " ", "0", 0, "none", "None", " NONE ", "false", "False", False, "off", "OFF", "no", " No ",
+            3, 4, 5, 6, 8, "4", " 8 ", 8.0,
+            True, 1, 2, 7, 16, -8, "7", 0.0, 8.5, 3.9, "8.0", "8.5", "true", "yes", "auto", "abc",
+        )
+        # The intended differences from 0.3.36, and only these:
+        intended = {
+            # A non-integral number is a ValueError (0.3.36 truncated it to a width).
+            8.5: (8, "ValueError"),
+            3.9: (3, "ValueError"),
+            # An integer that is not one of the engine's widths is refused by the one check every family uses, which
+            # names the field and the accepted widths (0.3.36 raised ValueError). The widths are the engine's
+            # (`--quantize` choices); with mlx-gen 0.40.1 they are 0.3.36's hard-coded {3, 4, 5, 6, 8}.
+            1: ("ValueError", "CapabilityNotSupportedError"),
+            2: ("ValueError", "CapabilityNotSupportedError"),
+            7: ("ValueError", "CapabilityNotSupportedError"),
+            16: ("ValueError", "CapabilityNotSupportedError"),
+            -8: ("ValueError", "CapabilityNotSupportedError"),
+            "7": ("ValueError", "CapabilityNotSupportedError"),
+            0.0: ("ValueError", "CapabilityNotSupportedError"),
+        }
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("image-upscale"))
+            source = MFluxVisionBackend(
+                config=MFluxBackendConfig(model=str(self._make_model_dir(Path(td), "upscaler")), base_model="seedvr2-3b")
+            )
+
+            def upscale(value):
+                source.upscale_image(ImageUpscaleRequest(image=PNG_1X1, quantize=value))
+                return _FakeSeedVR2.last_init["quantize"]
+
+            def preload(value):
+                # A preload reads `quantize` as an upscale request does, so that request reuses the instance.
+                backend = MFluxVisionBackend(config=source._cfg)
+                backend.preload(quantize=value)
+                return _FakeSeedVR2.last_init["quantize"]
+
+            for value in table:
+                with self.subTest(quantize=value):
+                    before, now = outcome(published, value), outcome(upscale, value)
+                    key = next((k for k in intended if type(k) is type(value) and k == value), None)
+                    self.assertEqual((before, now), intended[key] if key is not None else (before, before))
+                    self.assertEqual(outcome(preload, value), now)
+            # Unset is the model's default: 8 on the source.
+            self.assertEqual(upscale(None), 8)
+            self.assertEqual(preload(None), 8)
+
+    def test_a_refused_preload_leaves_a_held_model_held(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.errors import CapabilityNotSupportedError
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            source = self._make_model_dir(Path(td), "klein")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=str(source), base_model="flux2-klein-4b"))
+            backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2))
+            held = backend._model
+            for options, error in (
+                ({"memory_mode": "lowest"}, CapabilityNotSupportedError),
+                ({"memory_mode": "bogus"}, ValueError),
+                ({"quantize": True}, ValueError),
+                ({"quantize": 7}, CapabilityNotSupportedError),
+            ):
+                with self.subTest(options=options):
+                    with self.assertRaises(error):
+                        backend.preload(**options)
+                    self.assertIs(backend._model, held)
+            self.assertEqual(len(_LowRamFlux2.instances), 1)
+
+            # A preload that fails after reusing the held instance keeps it; one that fails after building an
+            # instance drops what it built.
+            backend._warmed_model_key = None
+            with patch.object(MFluxVisionBackend, "_generate_impl", side_effect=RuntimeError("warm-up failed")):
+                with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
+                    backend.preload()
+                self.assertIs(backend._model, held)
+                with self.assertRaisesRegex(RuntimeError, "warm-up failed"):
+                    backend.preload(quantize=8)
+            self.assertFalse(backend.has_loaded_model())
+            self.assertEqual(len(_LowRamFlux2.instances), 2)
+
+    def test_every_numeric_wan_option_is_a_finite_number_typed_or_from_extra(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import VideoGenerationRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-video"))
+            source = self._make_model_dir(Path(td), "wan-src")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model=str(source), base_model="wan2.2-t2v-a14b"))
+            refused = {
+                "guidance_2": {"guidance_2": float("nan")},
+                "flow_shift": {"flow_shift": float("inf")},
+            }
+            refused_extra = {
+                "flow_shift": {"flow_shift": "nan"},
+                "max_sequence_length": {"max_sequence_length": "long"},
+            }
+            for field, values in refused.items():
+                with self.subTest(typed=field):
+                    with self.assertRaisesRegex(ValueError, f"Wan {field} must be"):
+                        backend.normalize_video_generation_request(VideoGenerationRequest(prompt="fox", **values))
+            for field, extra in refused_extra.items():
+                with self.subTest(extra=field):
+                    with self.assertRaisesRegex(ValueError, f"Wan {field} must be"):
+                        backend.normalize_video_generation_request(VideoGenerationRequest(prompt="fox", extra=extra))
+            normalized = backend.normalize_video_generation_request(
+                VideoGenerationRequest(prompt="fox", guidance_2="3", extra={"flow_shift": "5", "max_sequence_length": 0})
+            )
+            self.assertEqual((normalized.guidance_2, normalized.flow_shift), (3.0, 5.0))
+            self.assertEqual(normalized.extra["max_sequence_length"], 1)
+
+
+
+class TestModelCardFrontMatter(unittest.TestCase):
+    @unittest.skipUnless(_YAML_INSTALLED, "PyYAML is not installed")
+    def test_a_card_that_starts_with_a_byte_order_mark_is_read(self):
+        from abstractvision.backends.mflux import _read_card_frontmatter
+
+        with tempfile.TemporaryDirectory() as td:
+            card = Path(td) / "README.md"
+            for prefix in (b"", b"\xef\xbb\xbf"):
+                with self.subTest(byte_order_mark=bool(prefix)):
+                    card.write_bytes(prefix + b"---\nbase_model: org/base\n---\n\n# adapter\n")
+                    self.assertEqual(_read_card_frontmatter(card), {"base_model": "org/base"})
 
 
 if __name__ == "__main__":

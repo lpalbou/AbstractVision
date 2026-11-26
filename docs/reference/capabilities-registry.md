@@ -34,7 +34,7 @@ Important boundary:
 
 - `vision_model_capabilities.json` is the curated package view of model-family tasks, downloadable variants, and model-level defaults.
 - `vision_adapter_capabilities.json` is the curated package view of adapter families, compatible base-model aliases, and adapter default/recommended parameters.
-- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask`, `control_image`, or LoRA target roles at runtime.
+- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask` or LoRA target roles at runtime (it refuses `control_image` on every route in this release).
 
 ## What the registry is used for
 
@@ -120,6 +120,7 @@ The validator enforces a “soft schema”:
 - Each model entry includes:
   - `provider` (string)
   - `license` (string; informational)
+  - optional `license_name` (the licence's display name, used where access requires accepting it)
   - optional `downloads` (list of downloadable artifacts; informational metadata used by `abstractvision show-model`)
   - `tasks` (map of task name → task spec)
 - Each task spec includes:
@@ -145,6 +146,18 @@ Some models include a `downloads` list to document what AbstractVision considers
 - `bits`: typically `8` (quantized) or `16` (full snapshot)
 - `repo_id`: Hugging Face repo id to download
 - optional `source`, `notes`
+- optional `recommended: true`: the package `download <name>` selects when several packages of one target
+  remain and no `--bits` is given; at most one per model and target (a test checks it). It marks
+  MiniMax-H3's and SeedVR2's 8-bit packages, FIBO's 4-bit package and Qwen-Image-2512's 4-bit MLX-Gen
+  package, GGUF and Diffusers pipeline, and `catalog` shows it with `*` in `bits`
+- optional `gated: true`: the Hugging Face repository is gated; downloading it needs its licence
+  accepted on the repository page (the model's optional `license_name` names it in messages)
+- optional `explicit_download: true`: generation (MLX-Gen and Diffusers) never downloads this repository, even with
+  `allow_download` (`ABSTRACTVISION_MFLUX_ALLOW_DOWNLOAD=1`, `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`); it is fetched only by an explicit
+  `abstractvision download`, and the refusal names that command. Today the four MiniMax-H3 repositories
+  carry it. `gated` says only whether the Hub asks for the licence to be accepted.
+
+Download sizes are not stored: `download` and `download --dry-run` read them from the Hub listing.
 
 This metadata is descriptive, but in this repo it is maintained to align with the curated
 download surfaces exposed by `abstractvision catalog`, `abstractvision model-presets`, and

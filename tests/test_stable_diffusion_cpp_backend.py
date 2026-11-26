@@ -92,7 +92,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
             out_path = cmd[cmd.index("--output") + 1]
             Path(out_path).write_bytes(PNG_1X1)
 
-        with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"):
+        with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="/usr/bin/sd-cli"):
             with patch("abstractvision.backends.stable_diffusion_cpp.subprocess.run", side_effect=fake_run) as run_mock:
                 asset = backend.generate_image(
                     ImageGenerationRequest(
@@ -155,7 +155,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
             out_path = cmd[cmd.index("--output") + 1]
             Path(out_path).write_bytes(PNG_1X1)
 
-        with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"):
+        with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="/usr/bin/sd-cli"):
             with patch("abstractvision.backends.stable_diffusion_cpp.subprocess.run", side_effect=fake_run) as run_mock:
                 asset = backend.edit_image(
                     ImageEditRequest(
@@ -242,7 +242,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         )
 
         with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}):
-            with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", side_effect=OptionalDependencyMissingError("no sd-cli")):
+            with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", side_effect=OptionalDependencyMissingError("no sd-cli")):
                 asset = backend.generate_image(
                     ImageGenerationRequest(
                         prompt="hello",
@@ -289,7 +289,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         )
 
         with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}), patch(
-            "abstractvision.backends.stable_diffusion_cpp._require_sd_cli",
+            "abstractvision.backends.stable_diffusion_cpp.require_sd_cli",
             side_effect=OptionalDependencyMissingError("no sd-cli"),
         ), patch(
             "abstractvision.backends.stable_diffusion_cpp._try_read_gguf_architecture",
@@ -324,7 +324,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
             out_path = cmd[cmd.index("--output") + 1]
             Path(out_path).write_bytes(PNG_1X1)
 
-        with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"), patch(
+        with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="/usr/bin/sd-cli"), patch(
             "abstractvision.backends.stable_diffusion_cpp.subprocess.run",
             side_effect=fake_run,
         ) as run_mock, patch(
@@ -392,7 +392,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
         )
 
         with patch.dict(sys.modules, {"stable_diffusion_cpp": fake_mod}):
-            with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", side_effect=OptionalDependencyMissingError("no sd-cli")):
+            with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", side_effect=OptionalDependencyMissingError("no sd-cli")):
                 backend.preload()
                 backend.preload()
 
@@ -409,7 +409,7 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
             )
         )
 
-        with patch("abstractvision.backends.stable_diffusion_cpp._require_sd_cli", return_value="/usr/bin/sd-cli"):
+        with patch("abstractvision.backends.stable_diffusion_cpp.require_sd_cli", return_value="/usr/bin/sd-cli"):
             with patch("abstractvision.backends.stable_diffusion_cpp.subprocess.run") as run_mock:
                 backend.preload()
 

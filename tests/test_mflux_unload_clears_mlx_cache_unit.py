@@ -31,9 +31,7 @@ class TestMFluxUnloadClearsMlxCache(unittest.TestCase):
             backend._model = object()
             backend._model_key = "k"
             backend._warmed_model_key = "k"
-            backend._resolved_model_path = "p"
-            backend._resolved_base_model = "b"
-            backend._resolved_quantization_bits = 8
+            backend._resolution = object()
             backend._runtime_queue = None
             backend._runtime_thread = None
             backend._runtime_thread_id = None
@@ -41,6 +39,7 @@ class TestMFluxUnloadClearsMlxCache(unittest.TestCase):
             backend.unload()
 
         self.assertIsNone(backend._model)
+        self.assertIsNone(backend._resolution)
         self.assertEqual(calls["clear"], 1, "unload must clear MLX's allocator cache")
 
 
