@@ -62,17 +62,25 @@ class TestOneDefinitionOfTheOptions(unittest.TestCase):
     def test_the_option_fields_are_fields_of_the_requests_that_carry_them(self):
         from abstractvision import types as av_types
         from abstractvision.backends.base_backend import (
+            EDIT_REQUEST_FIELDS,
             OPTIONAL_REQUEST_FIELDS,
             REQUEST_OPTION_FIELDS,
             SOUNDTRACK_REQUEST_FIELDS,
         )
 
-        self.assertEqual(REQUEST_OPTION_FIELDS, ("memory_mode", "quantize", *SOUNDTRACK_REQUEST_FIELDS))
+        self.assertEqual(
+            REQUEST_OPTION_FIELDS, ("memory_mode", "quantize", *SOUNDTRACK_REQUEST_FIELDS, *EDIT_REQUEST_FIELDS)
+        )
         self.assertEqual(OPTIONAL_REQUEST_FIELDS, REQUEST_OPTION_FIELDS[1:])
-        self.assertEqual(set(OPTION_VALUES), set(REQUEST_OPTION_FIELDS))
+        # The video requests carry every option but the edit ones (test_mlx_gen_route_latent.py covers those).
+        video_options = set(REQUEST_OPTION_FIELDS) - set(EDIT_REQUEST_FIELDS)
+        self.assertEqual(set(OPTION_VALUES), video_options)
         for cls in (av_types.VideoGenerationRequest, av_types.ImageToVideoRequest):
-            self.assertLessEqual(set(REQUEST_OPTION_FIELDS), {f.name for f in dataclasses.fields(cls)}, cls)
-        for cls in (av_types.ImageGenerationRequest, av_types.ImageEditRequest, av_types.ImageUpscaleRequest):
+            carried = {f.name for f in dataclasses.fields(cls)} & set(REQUEST_OPTION_FIELDS)
+            self.assertEqual(carried, video_options, cls)
+        edit_fields = {f.name for f in dataclasses.fields(av_types.ImageEditRequest)} & set(REQUEST_OPTION_FIELDS)
+        self.assertEqual(edit_fields, {"memory_mode", "quantize", *EDIT_REQUEST_FIELDS})
+        for cls in (av_types.ImageGenerationRequest, av_types.ImageUpscaleRequest):
             carried = {f.name for f in dataclasses.fields(cls)} & set(REQUEST_OPTION_FIELDS)
             self.assertEqual(carried, {"memory_mode", "quantize"}, cls)
 

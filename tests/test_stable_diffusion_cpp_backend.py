@@ -69,8 +69,10 @@ class TestStableDiffusionCppVisionBackend(unittest.TestCase):
 
         caps = backend.get_capabilities()
 
-        self.assertEqual(caps.supported_tasks, ["text_to_image"])
-        self.assertFalse(caps.supports_mask)
+        # Every catalog task of the model, as in 0.3.37 (which lists ERNIE-Image-Turbo's MLX-Gen
+        # image_to_image the same way): Qwen-Image-2512 gained MLX-Gen's latent image_to_image in 0.3.38.
+        self.assertEqual(caps.supported_tasks, ["image_to_image", "text_to_image"])
+        self.assertTrue(caps.supports_mask)
 
     def test_generate_image_builds_cmd_and_reads_output(self):
         from abstractvision.backends.stable_diffusion_cpp import StableDiffusionCppBackendConfig, StableDiffusionCppVisionBackend

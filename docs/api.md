@@ -38,6 +38,8 @@ The package exports the following symbols from `abstractvision` (see [`../src/ab
 - `generate_video_batch(...)` → repeated `text_to_video` orchestration with explicit seed planning
 - `image_to_video(...)` → `image_to_video` (backend-dependent)
 - `image_to_video_batch(...)` → repeated `image_to_video` orchestration with explicit seed planning
+- `video_to_video(...)` → `video_to_video` (backend-dependent)
+- `upscale_video(...)` → `video_upscale` (backend-dependent)
 - `generate_angles(...)` → `multi_view_image` (API exists; no built-in backend implements it yet)
 
 Task names are also used by the capability registry ([`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json)).
@@ -149,7 +151,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen `0.40.1+` supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.40.2+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
@@ -158,10 +160,11 @@ packaging.
 
 `ImageGenerationRequest` includes typed `control_image` and `control_strength`
 fields: a structure guide such as edges, sketch, or pose, not a source-image edit
-input. No built-in backend applies them; each one, MLX-Gen included, refuses a
-`control_image` with `CapabilityNotSupportedError` (`field="control_image"`). MLX-Gen
-also refuses a `control_strength` given alone (`field="control_strength"`); the other
-built-in backends do not use it.
+input. MLX-Gen applies them on `AbstractFramework/qwen-image-8bit` (see
+[Control image](#control-image-control_image)) and refuses a `control_image` on
+any other model (`field="control_image"`) and a `control_strength` given alone
+(`field="control_strength"`); the other built-in backends refuse a `control_image`
+and do not use `control_strength`.
 
 ### Local example (MLX-Gen backend)
 
@@ -191,28 +194,26 @@ image_asset = image_vm.generate_image(
     height=512,
     steps=12,
     guidance_scale=1.0,
+    on_progress=on_progress,
+)
+
+# A plain edit runs FLUX.2's edit route, on which MLX-Gen validated this LoRA on the 8-bit package.
+edit_asset = image_vm.edit_image(
+    "Turn this cat into a dog.",
+    image=Path("./cat.png").read_bytes(),
     lora_adapters=[
-        LoRAAdapterSpec(
-            source="prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
-            scale=1.0,
-        )
+        LoRAAdapterSpec(source="dx8152/Flux2-Klein-9B-Consistency:Flux2-Klein-9B-consistency-V2.safetensors")
     ],
     on_progress=on_progress,
 )
 
-edit_asset = image_vm.edit_image(
+reference_asset = image_vm.edit_image(
     "compose the subject using the second image as a style and layout reference",
     image=Path("./subject.png").read_bytes(),
     steps=12,
     guidance_scale=1.0,
-    lora_adapters=[
-        LoRAAdapterSpec(
-            source="fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors",
-            scale=0.9,
-        )
-    ],
     on_progress=on_progress,
-    extra={"reference_images": [Path("./style-reference.png").read_bytes()]},
+    reference_images=[Path("./style-reference.png").read_bytes()],
 )
 
 upscale_backend = MLXGenVisionBackend(config=MLXGenBackendConfig(model="AbstractFramework/seedvr2-3b-8bit"))
@@ -226,29 +227,60 @@ upscaled_asset = upscale_vm.upscale_image(
     on_progress=on_progress,
 )
 
+ti2v_backend = MLXGenVisionBackend(
+    config=MLXGenBackendConfig(model="AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit")
+)
+ti2v_vm = VisionManager(backend=ti2v_backend)
+
+# TI2V-5B has one transformer: its adapters take target_role="transformer".
+styled_asset = ti2v_vm.generate_video(
+    "HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk",
+    width=832,
+    height=480,
+    num_frames=17,
+    fps=16,
+    steps=20,
+    guidance_scale=4.0,
+    flow_shift=3.0,
+    lora_adapters=[
+        LoRAAdapterSpec(
+            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+            scale=0.8,
+            target_role="transformer",
+        )
+    ],
+    on_progress=on_progress,
+)
+
 t2v_backend = MLXGenVisionBackend(
     config=MLXGenBackendConfig(model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit")
 )
 t2v_vm = VisionManager(backend=t2v_backend)
 
+# A14B has two denoisers: each adapter names the one it targets (here the Wan 2.2 Lightning pair).
 asset = t2v_vm.generate_video(
     "a red fox walking through a snowy forest, cinematic",
-    width=432,
+    width=480,
     height=240,
     num_frames=41,
-    fps=10,
-    steps=20,
-    guidance_scale=4.0,
-    guidance_2=3.0,
+    fps=20,
+    steps=4,
+    guidance_scale=1.0,
+    guidance_2=1.0,
+    flow_shift=5.0,
     lora_adapters=[
         LoRAAdapterSpec(
-            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
-            scale=0.9,
-            target_role="transformer",
-        )
+            source="lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+            scale=1.0,
+            target_role="high_noise_transformer",
+        ),
+        LoRAAdapterSpec(
+            source="lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+            scale=1.0,
+            target_role="low_noise_transformer",
+        ),
     ],
     on_progress=on_progress,
-    extra={"max_sequence_length": 256},
 )
 
 i2v_backend = MLXGenVisionBackend(
@@ -259,24 +291,120 @@ i2v_vm = VisionManager(backend=i2v_backend)
 first_frame_asset = i2v_vm.image_to_video(
     image=Path("./first-frame.png").read_bytes(),
     prompt="slow camera push-in",
-    width=432,
+    width=480,
     height=240,
     num_frames=41,
-    fps=10,
-    steps=20,
-    guidance_scale=3.5,
-    guidance_2=3.5,
+    fps=20,
+    steps=4,
+    guidance_scale=1.0,
+    guidance_2=1.0,
+    flow_shift=5.0,
     lora_adapters=[
         LoRAAdapterSpec(
-            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
-            scale=0.9,
-            target_role="transformer",
-        )
+            source="lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+            scale=1.0,
+            target_role="high_noise_transformer",
+        ),
+        LoRAAdapterSpec(
+            source="lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors",
+            scale=1.0,
+            target_role="low_noise_transformer",
+        ),
     ],
     on_progress=on_progress,
-    extra={"max_sequence_length": 256},
 )
 ```
+
+### Control image (`control_image`)
+
+On `AbstractFramework/qwen-image-8bit`, the only model whose MLX-Gen rows have a
+control route (`qwen.control`), `generate_image(..., control_image=...)` runs
+`QwenImageControlNet` with the row's ControlNet
+(`InstantX/Qwen-Image-ControlNet-Union:diffusion_pytorch_model.safetensors`);
+`control_strength` is a finite number (unset: the engine CLI's 0.4). The
+ControlNet's side weights are looked up in the Hugging Face cache before any
+weights load and never downloaded during a generation: when they are missing the
+request is refused (`field="control_image"`) with the command that fetches them,
+`abstractvision download InstantX/Qwen-Image-ControlNet-Union`.
+`get_capabilities().supports_control_image` is true on that model only. `i2i`
+refuses `control_image` and `control_strength` (`field=`).
+
+### Video-to-video (`video_to_video`)
+
+`VisionManager.video_to_video(prompt, video, **kwargs)` (`VideoToVideoRequest`;
+the plugin's `v2v(prompt, video, ...)`) edits a source clip. `video` is its bytes,
+written once to the run's directory, or a local file `Path` the engine reads in
+place (the plugin takes a file path, bytes or an artifact ref). On MLX-Gen it
+runs Wan 2.2 T2V-A14B's video-to-video route (`Wan2_2_TI2V`) with the A14B
+defaults and memory plan of text-to-video:
+
+- Guidance as the engine CLI sets it on this route: unset, 4.0 and `guidance_2`
+  3.0; a `guidance_scale` set alone leaves `guidance_2` to the engine, which then
+  uses the same value (text-to-video and image-to-video keep `guidance_2` at the
+  model's default).
+- `video_strength` in `(0, 1]` (unset: the engine's 0.8) and an optional `mask`
+  (one image, white is the region to change; one with no white pixel raises
+  `ValueError`). A negative prompt is passed only when set, so the model's own
+  default applies.
+- Before any weights load, the clip is probed by the engine's rule: one too short
+  for `num_frames` at `fps` is refused (`field="num_frames"`); `extra` takes the
+  progress callbacks, `max_sequence_length` and `vae_tiling` (as on the other Wan
+  routes), and any other key is refused naming it.
+- The result is the engine's MP4 (the source's audio is not carried; the engine
+  records whether there was one) and `num_frames` is the engine's count, snapped
+  down to `4n+1`.
+
+Wan 2.1 VACE 1.3B (`Wan-AI/Wan2.1-VACE-1.3B-diffusers`, `WanVace`; defaults
+832x480, 81 frames at 16 fps, 30 steps, guidance 5.0) runs the same task with
+other controls: `reference_images` (images in order, no published maximum),
+`masked_region_mode` (`"generate"` or `"repaint"` the region the `mask` marks;
+it needs a mask) and `conditioning_scale` (a finite number, default 1.0). It
+takes no `video_strength` and no `guidance_2` (one transformer), and refuses
+them by name; T2V-A14B refuses the three VACE fields the same way. A VACE
+preload loads `WanVace` and runs no warm-up generation; in `"default"` it reads
+the transformer and the VAE ahead, as the other Wan preloads do.
+
+TI2V-5B and I2V-A14B have no video-to-video route and refuse the task, as do the
+other backends.
+
+### Video restoration (`video_upscale`)
+
+`VisionManager.upscale_video(video, **kwargs)` (`VideoUpscaleRequest`; the
+plugin's `upscale_video(video, ...)`) restores a clip on SeedVR2 3B or 7B
+(MLX-Gen 0.40.2). `video` is handled as for video-to-video. The options are
+`resolution` (unset: 1x), `softness` (`[0, 1]`, unset: 0.0), `start_seconds`
+(unset: the clip's start), `max_frames` (unset: to its end), `seed`, `quantize`
+(as for `upscale_image`) and `drop_audio` (True: the result is always silent,
+MLX-Gen does not copy the source's soundtrack; unset or False: MLX-Gen copies it,
+and fails the run after the restoration when it cannot). Before any weights load,
+MLX-Gen's own plan (`SeedVR2VideoRestorePlan.for_video`, the one `mlxgen upscale
+--video-path` uses) probes the clip and decides the chunking and the memory
+profile, counting the model's weights as loaded when this backend already holds
+the instance the run reuses:
+
+- a scale above 1x is refused (`CapabilityNotSupportedError`,
+  `field="resolution"`, `supported=None`), and a clip beyond the safe memory
+  profile or below its temporal quality floor is refused (`field=None`), each with
+  MLX-Gen's message (on the safe profile's 48 GB budget a frame of up to about
+  1.4 megapixels fits, 1280x720 included; a larger one is refused with the
+  largest size that fits); MLX-Gen's argument errors (`start_seconds` below 0,
+  `max_frames` below 1) stay `ValueError`, as does a clip it cannot decode
+  ("video is not a readable clip"); an `extra` key other than the progress
+  callbacks is refused naming it (`vae_tiling` included).
+- The run applies the plan as the CLI does: MLX-Gen's low-RAM saver keeping the
+  transformer, in `memory_mode="default"` and `"low"` alike (`"lowest"` is
+  refused); metadata reports the mode asked and `low_ram: true`. The MLX cache
+  limit is one value from before the model loads to the end of the run: the
+  plan's (8 GB, what MLX-Gen's CLI runs with on any Mac, above its default cap
+  where that is lower), except that a limit the host set (by MLX-Gen's own rule:
+  one at or below half of physical memory found before its default applied) is
+  never raised, so the smaller of the two applies; the limit in force before the
+  run is restored after it. The run drops the model at its end, so a later image
+  upscale loads a fresh one.
+- The result is an MP4 whatever the source's container (as MLX-Gen writes it:
+  H.264, and AAC for the source's audio, which MLX-Gen copies);
+  `metadata["mlx_gen"]` is its sidecar.
+  Progress is per chunk; a cancel removes the partial output.
 
 Wan 2.2 A14B has two guidance controls. Use `guidance_scale` for the
 primary/high-noise stage and `guidance_2` for the second/low-noise stage. The
@@ -298,6 +426,10 @@ each model's `raw["parameter_defaults"]`. The Wan VAE decode runs in overlapping
 default, which bounds its memory; pass `extra={"vae_tiling": False}` to decode
 whole frames at once. Generated asset metadata records `vae_tiling`. Measured
 memory per size: [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
+MLX-Gen encodes the prompt with its UMT5 text encoder in float32 on the GPU: with mlx-gen 0.40.2 a
+new prompt is encoded in seconds, a prompt already used is served from MLX-Gen's on-disk cache, and
+results for a given prompt and seed differ slightly from those made with mlx-gen 0.40.1; see
+MLX-Gen's [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
 
 For MLX-Gen, `on_progress` receives an `abstractvision.VideoProgressEvent`.
 Image generation/editing/upscaling events carry `phase`, `step`, `total_steps`,
@@ -309,6 +441,133 @@ and denoise-step `progress`. Wan video events add `frame`, `total_frames`, and
 two-argument `(current, total)` callback for backend-agnostic progress bars.
 For MLX-Gen, that callback reports denoise step counts; use
 `on_progress(event)` when a UI also needs video frame context.
+
+## MLX-Gen image routes
+
+MLX-Gen publishes, per model, the routes it can run (its capability rows,
+`backend.describe_routes()`), and `mlxgen generate` picks one with its planner.
+The MLX-Gen backend asks the same planner for every `image_to_image` request on
+FLUX.2, Z-Image and base Qwen-Image, and for a request on any model that sets an
+option only a route applies (`image_strength` below). The route it selects
+decides the MLX-Gen class and call; other requests run as in 0.3.37. On a model
+the engine publishes no rows for (a local folder whose name it cannot place),
+the model has its 0.3.37 tasks, and an option runs its 0.3.37 branch on the
+families 0.3.37 applied it on (`image_strength` on ERNIE-Image-Turbo, reference
+images on FLUX.2 and Qwen-Image-Edit, a mask on Qwen-Image-Edit and FIBO-Edit)
+and is refused on any other with `field=<option>`, `supported=()`. On every
+MLX-Gen image route, text-to-image included, a negative prompt is passed where
+the row of the route the request runs takes one (`supports_negative_prompt`) and
+dropped silently where it takes none; a model without rows keeps 0.3.37's answer.
+`parameter_constraints["negative_prompt"]` in `list_provider_models()` says the same.
+A request is refused before any weights load, in `normalize_image_edit_request`
+as in `edit_image`:
+
+- with `ValueError` when two of its options contradict each other (`mask` with
+  `image_strength`), or a value is not of its type (a picture that fails to
+  decode, checked once the route takes it);
+- with `CapabilityNotSupportedError(field=<option>, supported=())` when no row of
+  the model applies an option it sets, and `field="lora_adapters"` when the
+  selected row takes no adapters;
+- with `CapabilityNotSupportedError(field=None, supported=None)` and the planner's
+  message when no row serves that combination of options.
+
+Those are check point 1, from the request's values and the engine's rows. An
+outpaint or a reframe adds check point 2 at the start of `edit_image`, still
+before any weights load: the source is written to the run's directory and
+MLX-Gen's canvas session is built from it, which refuses a box it cannot apply
+and a two-pass outpaint in low-RAM mode. A caller who only calls
+`normalize_image_edit_request` sees check point 1 only.
+
+### Latent image-to-image (`image_strength`)
+
+`ImageEditRequest.image_strength` (`edit_image(..., image_strength=0.6)`, the
+plugin's `i2i(image_strength=...)`) noises the source before denoising, in
+`(0, 1]`; a value outside is refused with `field="image_strength"`. On MLX-Gen,
+`extra["image_strength"]` is the same option (both set and different:
+`ValueError`); the other backends refuse the typed field and pass `extra` on
+unchanged.
+
+- FLUX.2 klein: setting it selects the latent route (`Flux2Klein`); without it
+  an edit stays the reference edit (`Flux2KleinEdit`).
+- Base Qwen-Image (`AbstractFramework/qwen-image-8bit`, the Qwen-Image-2512
+  packages): `image_to_image` runs latent (`QwenImage`), at `image_strength=0.4`
+  when the request names none; so do Z-Image and Z-Image-Turbo (`ZImage`).
+  ERNIE-Image-Turbo runs latent as before.
+- Qwen-Image-Edit, FIBO, Fibo-lite and FIBO-Edit have no latent route and
+  refuse it (`field="image_strength", supported=()`).
+
+`list_provider_models()` publishes `parameter_defaults["image_strength"] = 0.4`
+and `parameter_constraints["image_strength"] = {"min": 0.0, "min_exclusive":
+true, "max": 1.0}` for every model with a latent route.
+
+### FLUX.2 masked edits (`mask`)
+
+On FLUX.2 klein, an edit with a `mask` runs `Flux2KleinInpaint` (route
+`flux2.inpaint`): white in the mask is the region to change (MLX-Gen reads its
+luminance, resizes it to the canvas and ignores an alpha channel; the bytes are
+passed unchanged). The mask is decoded first, and one that is not a picture
+raises `ValueError` naming `mask`. An unset `guidance_scale` stays unset, so the
+class applies its default (4.0 on the base models, 1.0 on the distilled ones);
+the base models take a negative prompt. `get_capabilities().supports_mask` is
+true on FLUX.2 klein. A masked edit and a plain edit run on different classes,
+so alternating them reloads the model each time (never two instances at once).
+
+On Z-Image-Turbo a `mask` runs its masked edit (route `z-image.inpaint`, the
+mask instead of a strength); base Z-Image has no masked route and refuses it.
+
+### Multi-reference edits (`reference_images`)
+
+`ImageEditRequest.reference_images` lists the images after `image`, in order:
+bytes, or local file paths the engine reads in place (the plugin's
+`i2i(reference_images=...)` and `i2i_batch` take bytes-like values, file paths
+(any path-like) and artifact
+refs, and pass bytes). On MLX-Gen, `extra["reference_images"]` is the same
+option, and the 0.3.37 keys `extra["images"]`, `["additional_images"]` and
+`["image_paths"]` keep working but raise `ValueError` with the typed list. The
+request runs MLX-Gen's multi-reference route: FLUX.2 klein (`Flux2KleinEdit`)
+and Qwen-Image-Edit 2509 and 2511 (`QwenImageEdit`); the first image decides the
+canvas, and no maximum count is published or enforced. A model without that
+route (plain Qwen-Image-Edit, ERNIE, base Qwen-Image) refuses it
+(`field="reference_images"`, `supported=()`), as does a combination with a mask
+or a strength (`field=None`); every picture counts there, those of the 0.3.37
+`extra` keys included, so none is dropped. An empty list is no reference.
+`extra["reference_images"]` is read as 0.3.37 read it (any iterable; `None` and
+blank items skipped), and only what that reading keeps counts; the typed field
+takes a list of image bytes or paths.
+
+### Outpaint and reframe
+
+`outpaint_padding` grows the canvas by a box in MLX-Gen's syntax
+(`"top,right,bottom,left"`, each in pixels or `"N%"`; one to four values) and
+fills the new area, keeping the source; `reframe_padding` grows it the same way
+and lets the model recompose the whole picture. They run MLX-Gen's own canvas
+session (`mflux.outpaint`), which builds the conditioning canvas, plans the
+passes and owns the canvas size, so `extra["width"]` / `["height"]` are refused
+with them (`field="width"`). FLUX.2 klein runs outpaint with `Flux2KleinOutpaint`
+and reframe (distilled weights only) with `Flux2KleinEdit`; Qwen-Image-Edit runs
+both with `QwenImageEdit`.
+
+- `outpaint_fill` is one of the route's fill modes (FLUX.2: `auto`, `edge`,
+  `neutral`, `solid`, `blur`; unset: `auto`), `outpaint_fill_color` (`"R,G,B"`
+  or `"#rrggbb"`) the color of `outpaint_fill="solid"`. Qwen-Image-Edit's fill is
+  fixed (`edge`) and refuses both, and either one without an outpaint is refused.
+- A box that pads both axes deeply runs as two passes (MLX-Gen's `auto` plan);
+  progress counts the steps across both, and `memory_mode="low"` refuses it
+  (`field="memory_mode"`, `supported=("default",)`: low-RAM mode frees the
+  transformer the second pass needs). An unset `guidance_scale` stays unset, so
+  the class applies its default.
+- A box outside MLX-Gen's validated envelope runs, as on the engine's CLI;
+  `metadata["outpaint_warnings"]` says so, and `metadata["outpaint_notice"]` gives
+  the resolved canvas and passes. The engine's geometry fields are under
+  `metadata["mlx_gen"]`.
+
+`extra["strength"]` (the CLI's `--strength`, the plugin's `strength=`) is the
+0.3.37 cross-backend keyword, not a second spelling of the typed field: on every
+route 0.3.37 had it keeps exactly its 0.3.37 meaning (clamped to `[0, 1]`,
+dropped when not a number, ignored by the FLUX.2 and Qwen-Image-Edit reference
+edits), and on the latent routes new in 0.3.38 it is read as the run's strength
+with the same clamp. It never selects a route and is not read on a masked route.
+Combined with `image_strength` it raises `ValueError`.
 
 ## Memory modes (`memory_mode`)
 
@@ -322,6 +581,10 @@ The environment value is one setting for every backend in the process: a
 backend that cannot honour it runs the lowest-memory mode it lists that is not
 below it (`"lowest"` becomes `"low"` where `"low"` is listed, else `"default"`)
 and logs that once per process, while a mode passed on the request is refused.
+On MLX-Gen, every mode starts with the engine's default MLX cache cap, as its CLI
+applies it (total RAM / 8, between 1 and 8 GiB, once per process; a limit the
+host set at or below half of physical memory is left alone, a higher one is
+replaced by the default cap). `"low"` then lowers it to 1 GB for the run.
 `backend.preload(memory_mode=None, quantize=None)` loads the model as a request
 carrying those values would, so the first such request reuses it: the values
 are checked by the same function as a request's, before anything loads, with
@@ -331,12 +594,34 @@ MLX-Gen, `preload()` loads the model as the first request with those values
 starts it (under the same 1 GB cache hold in `"low"` and `"lowest"`) into the
 instance that request reuses, so in a mode whose runs drop the model (`"low"`,
 `"lowest"`, and every mode on Wan TI2V-5B, which releases its denoiser before
-the decode) the preloaded instance serves one request. A text-to-image model loaded for a mode
-that keeps it also runs one image generation in that mode as its warm-up;
-edit-only, video (Wan, MiniMax-H3) and upscale (SeedVR2) models load without one.
+the decode) the preloaded instance serves one request.
+In `"default"` an MLX-Gen preload warms exactly what a run of its task reads, so
+the first request reads no weights (MLX-Gen binds them lazily at load): an image
+task (text-to-image, image-to-image, upscale) runs one warm-up of that task on
+its plain route, its output discarded, with a small ordinary request: a
+neutral 256x256 picture or canvas (352 on base Qwen-Image, FIBO and Fibo-lite,
+384 on FIBO-Edit, 512 on ERNIE-Image-Turbo and Bonsai, the smallest side MLX-Gen
+runs those families at) at 2 steps, or for SeedVR2 a 64x64 picture at 1x; a
+backend whose `default_width` / `default_height` are set warms at that canvas
+instead. A video task, whose warm-up run would take minutes, reads the first
+denoiser and, where the run encodes an input (image-to-video, video-to-video),
+the VAE (the Wan A14B second expert is read at the switch, as in a run;
+MiniMax-H3 reads its transformer at load). `"low"` and `"lowest"` read nothing
+ahead. `preload(..., warm_up=False)` skips all of it: the model is still resolved
+(its files found), checked (MLX-Gen version, the task, the
+memory mode and `quantize`) and built, so a bad model fails at the preload and not
+at the first request, but nothing is run or read ahead, and the first request
+reads the weights as a request without a preload does, minus the construction;
+`backend.preload_warmed()` says which the held model got.
 When anything in a preload fails, the model it loaded is dropped before the error
 is raised. A preload refused for its values, or one that fails after reusing the
-model already held, leaves that model held.
+model already held, leaves that model held. The MLX-Gen backend's `preload` also
+takes `task`, the task the host is about to run, as a hint: when the model has
+that task, the model is loaded as a request of that task loads it (on FLUX.2
+klein, `task="image_to_image"` loads `Flux2KleinEdit`, the class of a plain or
+multi-reference edit; a latent, masked or outpaint request then rebuilds its own
+class), and when it does not, or `task` is `None`, the preload chooses as before.
+`task` is never a reason to refuse; the other backends' `preload` takes no `task`.
 
 ```python
 asset_or_ref = vm.generate_video(
@@ -719,7 +1004,7 @@ snapshot_dir = download_model_preset(preset, base_model="minimax-h3-turbo-544p",
   `{task, memory_mode, width, height, frames, steps, peak_bytes, machine_total_ram_bytes}` (`peak_bytes` is
   the whole-process footprint, `machine_total_ram_bytes` the memory of the Mac it ran on), kept to the
   package's stored width. A run names its canvas, frames and steps but not the schedule it ran with, and
-  mlx-gen 0.40.1 publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
+  mlx-gen publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
   per package, not per schedule. Empty for a repository that is not a prepared MLX-Gen package of the
   catalog, or when mlx-gen is not installed or publishes nothing; no model is built.
 - `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`: the
@@ -746,4 +1031,4 @@ Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstrac
 - `GenerationCancelledError` (the request's `cancel_event` was set)
 - `UnknownModelError` (model id isn’t present in the registry)
 - `OptionalDependencyMissingError` (backend dependency is missing, e.g. Diffusers/Torch)
-- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen MiniMax-H3 routes, raised when MLX-Gen's preflight reports that the weights or a run cannot fit, naming the `memory_mode` it used and the lower ones; MLX-Gen 0.40.1 reports this for MiniMax-H3 only)
+- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen MiniMax-H3 routes, raised when MLX-Gen's preflight reports that the weights or a run cannot fit, naming the `memory_mode` it used and the lower ones; MLX-Gen reports this for MiniMax-H3 only)

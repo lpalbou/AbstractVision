@@ -34,7 +34,7 @@ Important boundary:
 
 - `vision_model_capabilities.json` is the curated package view of model-family tasks, downloadable variants, and model-level defaults.
 - `vision_adapter_capabilities.json` is the curated package view of adapter families, compatible base-model aliases, and adapter default/recommended parameters.
-- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask` or LoRA target roles at runtime (it refuses `control_image` on every route in this release).
+- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask` or LoRA target roles at runtime (it runs `control_image` only on the Qwen-Image route whose row has a ControlNet).
 
 ## What the registry is used for
 
@@ -49,6 +49,7 @@ Important boundary:
   - additive parameter metadata such as `default`, `const`, `min`, `multiple_of`, `supported`, and `auto_derived_from_input` can be consumed by backends to keep model-specific defaults and constraints in one packaged source of truth.
 - **Adapter-aware request normalization hints**:
   - adapter profiles carry package-owned defaults such as recommended `steps`, `guidance_scale`, documentation links, and quantization notes.
+  - the packaged profiles cover the LightX2V Qwen-Image and Wan Lightning adapters and `dx8152/Flux2-Klein-9B-Consistency` (its V2 file: an image-to-image LoRA for FLUX.2 klein 9B edits, validated by MLX-Gen on the 8-bit package's `flux2.edit` route); `abstractvision adapters --provider mlx-gen --model AbstractFramework/flux.2-klein-9b-8bit --task image_to_image` lists it once it is in the Hugging Face cache (`--json` adds its notes and link); [MLX-Gen local examples](../mlx-gen-local-examples.md#flux2-klein-9b-edit-with-the-consistency-lora) shows an edit with it.
 
 Important:
 - The registry describes **model capability intent**.

@@ -20,6 +20,14 @@
     "image_to_video": {
       "description": "Generate a video conditioned on an image (optionally with text guidance).",
       "maturity": "experimental"
+    },
+    "video_to_video": {
+      "description": "Edit a source video with a text prompt (optionally with a mask).",
+      "maturity": "experimental"
+    },
+    "video_upscale": {
+      "description": "Restore a source video at its own size, or smaller, without changing its content.",
+      "maturity": "experimental"
     }
   },
   "models": {
@@ -142,9 +150,15 @@
               "required": false,
               "default": 1.0
             },
+            "image_strength": {
+              "required": false,
+              "default": 0.4,
+              "description": "Latent image-to-image strength, in (0, 1]."
+            },
             "strength": {
               "required": false,
-              "default": 0.4
+              "default": 0.4,
+              "description": "The 0.3.37 keyword: read as the strength of the latent edit (clamped to [0, 1]); it never selects a route and is not combined with image_strength."
             },
             "seed": {
               "required": false
@@ -872,12 +886,32 @@
             "image": {
               "required": true
             },
+            "image_strength": {
+              "required": false,
+              "description": "Latent image-to-image strength, in (0, 1]. On MLX-Gen, setting it selects the latent route."
+            },
             "reference_images": {
               "required": false,
-              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode, after `image` in order; no published maximum."
             },
             "mask": {
               "required": false
+            },
+            "outpaint_padding": {
+              "required": false,
+              "description": "Outpaint box 'top,right,bottom,left' (pixels or N%): grows the canvas and fills the new area."
+            },
+            "outpaint_fill": {
+              "required": false,
+              "description": "Outpaint conditioning-canvas fill; unset: the route's default."
+            },
+            "outpaint_fill_color": {
+              "required": false,
+              "description": "'R,G,B' or '#rrggbb', with outpaint_fill='solid'."
+            },
+            "reframe_padding": {
+              "required": false,
+              "description": "Reframe box 'top,right,bottom,left' (pixels or N%): grows the canvas and recomposes the picture."
             },
             "negative_prompt": {
               "required": false,
@@ -1001,12 +1035,28 @@
             "image": {
               "required": true
             },
+            "image_strength": {
+              "required": false,
+              "description": "Latent image-to-image strength, in (0, 1]. On MLX-Gen, setting it selects the latent route."
+            },
             "reference_images": {
               "required": false,
-              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode, after `image` in order; no published maximum."
             },
             "mask": {
               "required": false
+            },
+            "outpaint_padding": {
+              "required": false,
+              "description": "Outpaint box 'top,right,bottom,left' (pixels or N%): grows the canvas and fills the new area."
+            },
+            "outpaint_fill": {
+              "required": false,
+              "description": "Outpaint conditioning-canvas fill; unset: the route's default."
+            },
+            "outpaint_fill_color": {
+              "required": false,
+              "description": "'R,G,B' or '#rrggbb', with outpaint_fill='solid'."
             },
             "negative_prompt": {
               "required": false,
@@ -1134,12 +1184,32 @@
             "image": {
               "required": true
             },
+            "image_strength": {
+              "required": false,
+              "description": "Latent image-to-image strength, in (0, 1]. On MLX-Gen, setting it selects the latent route."
+            },
             "reference_images": {
               "required": false,
-              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode, after `image` in order; no published maximum."
             },
             "mask": {
               "required": false
+            },
+            "outpaint_padding": {
+              "required": false,
+              "description": "Outpaint box 'top,right,bottom,left' (pixels or N%): grows the canvas and fills the new area."
+            },
+            "outpaint_fill": {
+              "required": false,
+              "description": "Outpaint conditioning-canvas fill; unset: the route's default."
+            },
+            "outpaint_fill_color": {
+              "required": false,
+              "description": "'R,G,B' or '#rrggbb', with outpaint_fill='solid'."
+            },
+            "reframe_padding": {
+              "required": false,
+              "description": "Reframe box 'top,right,bottom,left' (pixels or N%): grows the canvas and recomposes the picture."
             },
             "negative_prompt": {
               "required": false,
@@ -1267,12 +1337,28 @@
             "image": {
               "required": true
             },
+            "image_strength": {
+              "required": false,
+              "description": "Latent image-to-image strength, in (0, 1]. On MLX-Gen, setting it selects the latent route."
+            },
             "reference_images": {
               "required": false,
-              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode, after `image` in order; no published maximum."
             },
             "mask": {
               "required": false
+            },
+            "outpaint_padding": {
+              "required": false,
+              "description": "Outpaint box 'top,right,bottom,left' (pixels or N%): grows the canvas and fills the new area."
+            },
+            "outpaint_fill": {
+              "required": false,
+              "description": "Outpaint conditioning-canvas fill; unset: the route's default."
+            },
+            "outpaint_fill_color": {
+              "required": false,
+              "description": "'R,G,B' or '#rrggbb', with outpaint_fill='solid'."
             },
             "negative_prompt": {
               "required": false,
@@ -1622,6 +1708,14 @@
             "prompt": {
               "required": true
             },
+            "control_image": {
+              "required": false,
+              "description": "Structure guide (edges, depth, pose) for MLX-Gen's Qwen ControlNet route, on AbstractFramework/qwen-image-8bit; its ControlNet side weights must be in the cache."
+            },
+            "control_strength": {
+              "required": false,
+              "default": 0.4
+            },
             "negative_prompt": {
               "required": false
             },
@@ -1640,6 +1734,43 @@
             "seed": {
               "required": false
             }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "image_strength": {
+              "required": false,
+              "default": 0.4,
+              "description": "Latent image-to-image strength, in (0, 1]."
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen"
           }
         }
       }
@@ -1720,6 +1851,43 @@
               "required": false
             }
           }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "image_strength": {
+              "required": false,
+              "default": 0.4,
+              "description": "Latent image-to-image strength, in (0, 1]."
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen"
+          }
         }
       }
     },
@@ -1781,12 +1949,16 @@
             "image": {
               "required": true
             },
-            "reference_images": {
-              "required": false,
-              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
-            },
             "mask": {
               "required": false
+            },
+            "outpaint_padding": {
+              "required": false,
+              "description": "Outpaint box 'top,right,bottom,left' (pixels or N%): grows the canvas and fills the new area."
+            },
+            "reframe_padding": {
+              "required": false,
+              "description": "Reframe box 'top,right,bottom,left' (pixels or N%): grows the canvas and recomposes the picture."
             },
             "negative_prompt": {
               "required": false
@@ -1864,10 +2036,18 @@
             },
             "reference_images": {
               "required": false,
-              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode, after `image` in order; no published maximum."
             },
             "mask": {
               "required": false
+            },
+            "outpaint_padding": {
+              "required": false,
+              "description": "Outpaint box 'top,right,bottom,left' (pixels or N%): grows the canvas and fills the new area."
+            },
+            "reframe_padding": {
+              "required": false,
+              "description": "Reframe box 'top,right,bottom,left' (pixels or N%): grows the canvas and recomposes the picture."
             },
             "negative_prompt": {
               "required": false
@@ -1947,10 +2127,18 @@
             },
             "reference_images": {
               "required": false,
-              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode."
+              "description": "Optional additional reference images for MLX-Gen multi-reference edit mode, after `image` in order; no published maximum."
             },
             "mask": {
               "required": false
+            },
+            "outpaint_padding": {
+              "required": false,
+              "description": "Outpaint box 'top,right,bottom,left' (pixels or N%): grows the canvas and fills the new area."
+            },
+            "reframe_padding": {
+              "required": false,
+              "description": "Reframe box 'top,right,bottom,left' (pixels or N%): grows the canvas and recomposes the picture."
             },
             "negative_prompt": {
               "required": false
@@ -3357,6 +3545,43 @@
               "required": false
             }
           }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "image_strength": {
+              "required": false,
+              "default": 0.4,
+              "description": "Latent image-to-image strength, in (0, 1]."
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen"
+          }
         }
       }
     },
@@ -3436,6 +3661,48 @@
             "seed": {
               "required": false
             }
+          }
+        },
+        "image_to_image": {
+          "inputs": [
+            "image",
+            "text"
+          ],
+          "outputs": [
+            "image"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "image": {
+              "required": true
+            },
+            "image_strength": {
+              "required": false,
+              "default": 0.4,
+              "description": "Latent image-to-image strength, in (0, 1]."
+            },
+            "mask": {
+              "required": false
+            },
+            "negative_prompt": {
+              "required": false,
+              "supported": false
+            },
+            "steps": {
+              "required": false
+            },
+            "guidance_scale": {
+              "required": false,
+              "const": 0.0
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen"
           }
         }
       }
@@ -3536,6 +3803,74 @@
           "requires": {
             "backend": "mlx-gen",
             "min_runtime_version": "0.18.8"
+          }
+        },
+        "video_to_video": {
+          "inputs": [
+            "video",
+            "text"
+          ],
+          "outputs": [
+            "video"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "video": {
+              "required": true
+            },
+            "video_strength": {
+              "required": false,
+              "default": 0.8,
+              "description": "How far the source is noised, in (0, 1]."
+            },
+            "mask": {
+              "required": false,
+              "description": "One image; white is the region to change."
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 832
+            },
+            "height": {
+              "required": false,
+              "default": 480
+            },
+            "fps": {
+              "required": false,
+              "default": 16
+            },
+            "num_frames": {
+              "required": false,
+              "default": 81
+            },
+            "steps": {
+              "required": false,
+              "default": 40
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 4.0
+            },
+            "guidance_2": {
+              "required": false,
+              "default": 3.0
+            },
+            "flow_shift": {
+              "required": false,
+              "default": 3.0
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.40.2"
           }
         }
       }
@@ -3640,6 +3975,98 @@
           "requires": {
             "backend": "mlx-gen",
             "min_runtime_version": "0.18.8"
+          }
+        }
+      }
+    },
+    "Wan-AI/Wan2.1-VACE-1.3B-diffusers": {
+      "provider": "huggingface",
+      "license": "apache-2.0",
+      "notes": "Wan 2.1 VACE 1.3B Diffusers checkpoint: video-to-video conditioned on a source clip, an optional mask (generate or repaint the masked region) and reference images. AbstractVision runs it locally through the MLX-Gen Wan runtime (WanVace) on Apple Silicon.",
+      "downloads": [
+        {
+          "key": "wan2.1-vace-1.3b",
+          "engine": "mlx-gen",
+          "target": "mlx",
+          "bits": 16,
+          "repo_id": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
+          "source": "official",
+          "notes": "Official Wan 2.1 VACE 1.3B Diffusers snapshot, run by MLX-Gen 0.40.2+ (WanVace). Not a prepared q4/q8 folder."
+        }
+      ],
+      "tasks": {
+        "video_to_video": {
+          "inputs": [
+            "video",
+            "text"
+          ],
+          "outputs": [
+            "video"
+          ],
+          "params": {
+            "prompt": {
+              "required": true
+            },
+            "video": {
+              "required": true
+            },
+            "mask": {
+              "required": false,
+              "description": "One image; white is the region masked_region_mode treats."
+            },
+            "reference_images": {
+              "required": false,
+              "description": "Reference images, in order; no published maximum."
+            },
+            "masked_region_mode": {
+              "required": false,
+              "enum": [
+                "generate",
+                "repaint"
+              ],
+              "default": "generate"
+            },
+            "conditioning_scale": {
+              "required": false,
+              "default": 1.0
+            },
+            "negative_prompt": {
+              "required": false
+            },
+            "width": {
+              "required": false,
+              "default": 832
+            },
+            "height": {
+              "required": false,
+              "default": 480
+            },
+            "fps": {
+              "required": false,
+              "default": 16
+            },
+            "num_frames": {
+              "required": false,
+              "default": 81
+            },
+            "steps": {
+              "required": false,
+              "default": 30
+            },
+            "guidance_scale": {
+              "required": false,
+              "default": 5.0
+            },
+            "flow_shift": {
+              "required": false
+            },
+            "seed": {
+              "required": false
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.40.2"
           }
         }
       }
@@ -4351,6 +4778,65 @@
             "backend": "mlx-gen",
             "min_runtime_version": "0.18.13"
           }
+        },
+        "video_upscale": {
+          "inputs": [
+            "video"
+          ],
+          "outputs": [
+            "video"
+          ],
+          "params": {
+            "video": {
+              "required": true
+            },
+            "resolution": {
+              "required": false,
+              "default": "1x",
+              "max_scale": 1,
+              "description": "Target shortest edge in pixels or a scale factor; MLX-Gen's safe video profile restores at source size or smaller."
+            },
+            "softness": {
+              "required": false,
+              "default": 0.0,
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "start_seconds": {
+              "required": false,
+              "default": 0.0,
+              "minimum": 0.0
+            },
+            "max_frames": {
+              "required": false,
+              "minimum": 1,
+              "description": "Frames restored from start_seconds; unset: to the clip's end."
+            },
+            "drop_audio": {
+              "required": false,
+              "default": null,
+              "description": "True: the result is always silent (MLX-Gen does not copy the source's soundtrack); unset or false: MLX-Gen copies it and fails the run after the restoration when it cannot."
+            },
+            "seed": {
+              "required": false
+            },
+            "quantize": {
+              "required": false,
+              "default": null,
+              "enum": [
+                3,
+                4,
+                5,
+                6,
+                8,
+                null
+              ]
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.40.2"
+          }
         }
       }
     },
@@ -4453,6 +4939,65 @@
           "requires": {
             "backend": "mlx-gen",
             "min_runtime_version": "0.18.13"
+          }
+        },
+        "video_upscale": {
+          "inputs": [
+            "video"
+          ],
+          "outputs": [
+            "video"
+          ],
+          "params": {
+            "video": {
+              "required": true
+            },
+            "resolution": {
+              "required": false,
+              "default": "1x",
+              "max_scale": 1,
+              "description": "Target shortest edge in pixels or a scale factor; MLX-Gen's safe video profile restores at source size or smaller."
+            },
+            "softness": {
+              "required": false,
+              "default": 0.0,
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "start_seconds": {
+              "required": false,
+              "default": 0.0,
+              "minimum": 0.0
+            },
+            "max_frames": {
+              "required": false,
+              "minimum": 1,
+              "description": "Frames restored from start_seconds; unset: to the clip's end."
+            },
+            "drop_audio": {
+              "required": false,
+              "default": null,
+              "description": "True: the result is always silent (MLX-Gen does not copy the source's soundtrack); unset or false: MLX-Gen copies it and fails the run after the restoration when it cannot."
+            },
+            "seed": {
+              "required": false
+            },
+            "quantize": {
+              "required": false,
+              "default": null,
+              "enum": [
+                3,
+                4,
+                5,
+                6,
+                8,
+                null
+              ]
+            }
+          },
+          "requires": {
+            "backend": "mlx-gen",
+            "min_runtime_version": "0.40.2"
           }
         }
       }
@@ -4656,7 +5201,7 @@
           "repo_id": "MiniMaxAI/MiniMax-H3",
           "explicit_download": true,
           "source": "official",
-          "notes": "Official MiniMax-H3 source repository, consumed by MLX-Gen 0.40.1+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Not gated; the MiniMax H3 Community License applies. `download` fetches the files MLX-Gen loads, not the whole repository."
+          "notes": "Official MiniMax-H3 source repository, consumed by MLX-Gen 0.40.2+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Not gated; the MiniMax H3 Community License applies. `download` fetches the files MLX-Gen loads, not the whole repository."
         }
       ],
       "tasks": {
@@ -4733,7 +5278,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.1"
+            "min_runtime_version": "0.40.2"
           }
         },
         "image_to_video": {
@@ -4814,7 +5359,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.1"
+            "min_runtime_version": "0.40.2"
           }
         }
       }

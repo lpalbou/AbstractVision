@@ -39,7 +39,7 @@ class TestVisionManagerCapabilityChecks(unittest.TestCase):
 
         reg = VisionModelCapabilitiesRegistry()
         backend = CountingBackend()
-        vm = VisionManager(backend=backend, model_id="Qwen/Qwen-Image-2512", registry=reg)
+        vm = VisionManager(backend=backend, model_id="Alpha-VLLM/Lumina-Image-2.0", registry=reg)
 
         with self.assertRaises(CapabilityNotSupportedError):
             vm.edit_image("edit", image=b"img")
