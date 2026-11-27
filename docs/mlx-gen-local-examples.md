@@ -24,15 +24,15 @@ All assets referenced here were generated through AbstractVision with
 - Installed adapter discovery is backend-owned and lists optional overlays only;
   full-model component files are excluded from the adapter inventory.
 - The MLX-Gen surface exposes route-aware Qwen masked edit through a typed
-  request field instead of an `extra`-only escape hatch; it refuses structured
-  control images (`control_image`) in this release.
+  request field instead of an `extra`-only escape hatch; it runs a structured
+  control image (`control_image`) on `AbstractFramework/qwen-image-8bit` only.
 - The public TI2V-5B visual proofs in this bundle use `832x480`.
 - The public task-specific Wan A14B proofs in this bundle use `480x240`.
 - The LoRA-heavy proof runs on this page use curated 8-bit MLX-Gen routes. For
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.40.1,<0.41.0`, with `mlx>=0.32.4` on macOS.
+  `mlx-gen>=0.40.3,<0.41.0`, with `mlx>=0.32.4` on macOS.
 
 MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
 Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
@@ -56,6 +56,7 @@ abstractvision show-model AbstractFramework/qwen-image-edit-2509-8bit
 abstractvision show-model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit
 abstractvision show-model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
 abstractvision adapters --provider mlx-gen --model AbstractFramework/qwen-image-edit-2509-8bit --task image_to_image
+abstractvision adapters --provider mlx-gen --model AbstractFramework/flux.2-klein-9b-8bit --task image_to_image
 abstractvision adapters --provider mlx-gen --model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit --task text_to_video
 abstractvision adapters --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --task image_to_video
 ```
@@ -92,8 +93,8 @@ directly:
   `abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --image ./input.png --mask ./mask.png "repair the marked area"`
 
 A mask fails closed when the selected route does not advertise the matching
-runtime capability. A structured control image (`--control-image`) is refused by
-MLX-Gen, as by every built-in backend in this release.
+runtime capability. A structured control image (`--control-image`) runs on
+`AbstractFramework/qwen-image-8bit` only and is refused on every other model.
 
 ## Shared adapter contract
 
@@ -148,6 +149,50 @@ edited = i2i.edit_image(
 In the CLI, the equivalent surface is repeated `--lora*` flags. Passing no
 LoRA flags keeps the base-model route. Passing one or more adapter flags stacks
 them in order.
+
+## FLUX.2 klein 9B edit with the consistency LoRA
+
+[`dx8152/Flux2-Klein-9B-Consistency`](https://huggingface.co/dx8152/Flux2-Klein-9B-Consistency)
+is an image-to-image LoRA for FLUX.2 klein 9B that improves the consistency of
+edits (apache-2.0, no trigger word). Use its V2 file, the one the author
+recommends; MLX-Gen validated it on `AbstractFramework/flux.2-klein-9b-8bit`'s
+edit route (`flux2.edit`). The author gives no scale, so the examples leave the
+default. Fetch it (the whole repository, both files, into the Hugging Face
+cache) and check that the model lists it:
+
+```bash
+abstractvision download dx8152/Flux2-Klein-9B-Consistency
+abstractvision adapters --provider mlx-gen --model AbstractFramework/flux.2-klein-9b-8bit --task image_to_image
+```
+
+```bash
+abstractvision i2i \
+  --provider mlx-gen \
+  --model AbstractFramework/flux.2-klein-9b-8bit \
+  --image ./cat.png \
+  --lora dx8152/Flux2-Klein-9B-Consistency:Flux2-Klein-9B-consistency-V2.safetensors \
+  "Turn this cat into a dog."
+```
+
+```python
+from pathlib import Path
+
+from abstractvision import LoRAAdapterSpec, VisionManager
+from abstractvision.backends import MLXGenBackendConfig, MLXGenVisionBackend
+
+klein = MLXGenVisionBackend(config=MLXGenBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit"))
+edited = VisionManager(backend=klein).edit_image(
+    "Turn this cat into a dog.",
+    image=Path("./cat.png").read_bytes(),
+    lora_adapters=[
+        LoRAAdapterSpec(source="dx8152/Flux2-Klein-9B-Consistency:Flux2-Klein-9B-consistency-V2.safetensors")
+    ],
+)
+```
+
+A plain edit runs the `flux2.edit` route. The adapter also attaches to the other
+routes whose rows take a LoRA (multi-reference, masked edit, outpaint); the
+latent route (`image_strength`) and reframe take none and refuse it.
 
 ## Proof bundle
 

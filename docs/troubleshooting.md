@@ -39,7 +39,7 @@ unless you choose the matching extra.
 ### Symptom
 
 - The first MLX-Gen model load raises `OptionalDependencyMissingError`: `The MLX-Gen backend needs
-  mlx-gen>=0.40.1,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
+  mlx-gen>=0.40.3,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
   macOS; mlx <version> is installed`.
 
 ### Likely cause
@@ -52,7 +52,7 @@ already installed, so the backend checks both before it loads a model.
 ### Fix
 
 - `pip install -U "abstractvision[mlx-gen]"` (or the profile you installed, such as `abstractvision[apple]`):
-  it installs `mlx-gen>=0.40.1,<0.41.0` and, on macOS, `mlx>=0.32.4`.
+  it installs `mlx-gen>=0.40.3,<0.41.0` and, on macOS, `mlx>=0.32.4`.
 - With the one-line installer, run the same line again.
 
 ### Verify
@@ -157,8 +157,8 @@ The follow-up investigation is tracked in:
 - Upgrade AbstractVision to a version that supports MLX-Gen q4/q8 presets.
 - Install the backend extra: `pip install "abstractvision[mlx-gen]"`
 - Download the prepared model first, for example `abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen`.
-- For MLX-Gen mask edits, use a validated masked-edit route such as `AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, or `briaai/Fibo-Edit-RMBG`.
-- Structured control (`--control-image` / `--control-strength`, Python `control_image=` / `control_strength=`) is accepted by the request, but in this release every built-in backend, MLX-Gen included, refuses a `control_image` with `CapabilityNotSupportedError` (`field="control_image"`); MLX-Gen also refuses a `control_strength` given alone.
+- For MLX-Gen mask edits, use a validated masked-edit route such as `AbstractFramework/qwen-image-edit-2511-8bit`, FLUX.2 klein, Z-Image Turbo, `briaai/Fibo-Edit`, or `briaai/Fibo-Edit-RMBG`.
+- Structured control (`--control-image` / `--control-strength`, Python `control_image=` / `control_strength=`) runs on MLX-Gen's `AbstractFramework/qwen-image-8bit` only, with the ControlNet side weights in the cache (`abstractvision download InstantX/Qwen-Image-ControlNet-Union`); every other model and backend refuses a `control_image` with `CapabilityNotSupportedError` (`field="control_image"`), and MLX-Gen also refuses a `control_strength` given alone.
 - If you need a mask on another local route, use local Diffusers or `stable-diffusion.cpp` instead of expecting AbstractVision to silently fall back.
 
 Notes:

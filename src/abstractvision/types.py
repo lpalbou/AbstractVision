@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 # Memory modes a caller can request on a generation call, from the fastest run to the lowest
@@ -187,6 +188,20 @@ class ImageEditRequest:
     # A threading.Event-like object (anything with is_set()). When it is set, the backend stops
     # at its next progress boundary and raises GenerationCancelledError.
     cancel_event: Optional[Any] = None
+    # Latent image-to-image: how far the source is noised before denoising, in (0, 1]. A backend
+    # or route without a latent image-to-image route refuses it.
+    image_strength: Optional[float] = None
+    # Images after `image`, in order (bytes, or a local file's path): a multi-reference edit. A
+    # backend or route without one refuses them.
+    reference_images: Sequence[Union[bytes, Path, str]] = ()
+    # Outpaint: grow the canvas by a box ("top,right,bottom,left", pixels or "N%"), filling the new
+    # area; `outpaint_fill` names the conditioning-canvas fill (None: the route's default) and
+    # `outpaint_fill_color` its color ("R,G,B" or "#rrggbb", with outpaint_fill="solid").
+    # Reframe: grow the canvas by a box and let the model recompose the whole picture.
+    outpaint_padding: Optional[str] = None
+    outpaint_fill: Optional[str] = None
+    outpaint_fill_color: Optional[str] = None
+    reframe_padding: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -277,6 +292,65 @@ class ImageToVideoRequest:
     music: Optional[str] = None
     generate_audio: Optional[bool] = None
     audio_shift: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class VideoToVideoRequest:
+    """A video edited from a source clip (`video`: its bytes, or a local file read in place)."""
+
+    prompt: str
+    video: Union[bytes, Path]
+    # How far the source is noised, in (0, 1]; None: the engine's default (0.8).
+    video_strength: Optional[float] = None
+    # One image; white is the region to change.
+    mask: Optional[bytes] = None
+    # Images after the clip, in order; and how a masked region is treated (Wan VACE only).
+    reference_images: Sequence[bytes] = ()
+    masked_region_mode: Optional[str] = None
+    conditioning_scale: Optional[float] = None
+    negative_prompt: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    fps: Optional[int] = None
+    num_frames: Optional[int] = None
+    seed: Optional[int] = None
+    steps: Optional[int] = None
+    guidance_scale: Optional[float] = None
+    guidance_2: Optional[float] = None
+    flow_shift: Optional[float] = None
+    lora_adapters: Sequence[LoRAAdapterSpec] = field(default_factory=tuple)
+    extra: Dict[str, Any] = field(default_factory=dict)
+    memory_mode: Optional[str] = None
+    # Load-time quantization of the model's weights, in bits. Backends list what they accept;
+    # a value a backend or route cannot apply is refused.
+    quantize: Optional[int] = None
+    # A threading.Event-like object (anything with is_set()). When it is set, the backend stops
+    # at its next progress boundary and raises GenerationCancelledError.
+    cancel_event: Optional[Any] = None
+
+
+@dataclass(frozen=True)
+class VideoUpscaleRequest:
+    """A source clip restored (`video`: its bytes, or a local file read in place)."""
+
+    video: Union[bytes, Path]
+    # Shortest edge in pixels or a scale such as "1x"; None: "1x".
+    resolution: Optional[Union[int, str]] = None
+    # In [0, 1]; None: 0.0.
+    softness: Optional[float] = None
+    seed: Optional[int] = None
+    # Where the clip starts, in seconds (>= 0); None: 0.0.
+    start_seconds: Optional[float] = None
+    # How many frames are restored (>= 1); None: to the clip's end.
+    max_frames: Optional[int] = None
+    # True: the result is always silent (the engine does not copy the source's soundtrack); None or False: the
+    # engine copies it, and fails the run after the restoration when it cannot.
+    drop_audio: Optional[bool] = None
+    quantize: Optional[int] = None
+    extra: Dict[str, Any] = field(default_factory=dict)
+    memory_mode: Optional[str] = None
+    # See ImageGenerationRequest.cancel_event.
+    cancel_event: Optional[Any] = None
 
 
 @dataclass(frozen=True)

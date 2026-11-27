@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import importlib.util
+import inspect
 import ipaddress
 import logging
 import os
@@ -16,7 +17,7 @@ from typing import Any, Dict, List, Mapping, Optional, Union
 from urllib.parse import urlparse
 
 from ..artifacts import RuntimeArtifactStoreAdapter, get_artifact_id, is_artifact_ref
-from ..backends.base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend
+from ..backends.base_backend import OPTIONAL_REQUEST_FIELDS, VisionBackend, option_is_set
 from ..backends.huggingface_diffusers import HuggingFaceDiffusersVisionBackend
 from ..backends.mflux import MFluxVisionBackend
 from ..backends.openai_compatible import OpenAICompatibleVisionBackend, looks_like_openai_api
@@ -31,6 +32,8 @@ from ..types import (
     ProviderAdapterInfo,
     ProviderModelInfo,
     VideoGenerationRequest,
+    VideoToVideoRequest,
+    VideoUpscaleRequest,
 )
 from ..vision_manager import VisionManager
 
@@ -74,6 +77,14 @@ _RESIDENCY_TASK_ALIASES = {
     "image_to_video": "image_to_video",
     "image-to-video": "image_to_video",
     "i2v": "image_to_video",
+    "video_to_video": "video_to_video",
+    "video-to-video": "video_to_video",
+    "v2v": "video_to_video",
+    "video_upscale": "video_upscale",
+    "video-upscale": "video_upscale",
+    "upscale_video": "video_upscale",
+    "video_restoration": "video_upscale",
+    "video-restoration": "video_upscale",
 }
 
 
@@ -555,7 +566,7 @@ def _normalize_residency_task(value: Any) -> Optional[str]:
     task = _RESIDENCY_TASK_ALIASES.get(raw)
     if task is None:
         raise AbstractVisionError(
-            f"Unsupported residency task {value!r}. Use 'text_to_image', 'image_to_image', 'image_upscale', 'text_to_video', or 'image_to_video'."
+            f"Unsupported residency task {value!r}. Use 'text_to_image', 'image_to_image', 'image_upscale', 'text_to_video', 'image_to_video', 'video_to_video', or 'video_upscale'."
         )
     return task
 
@@ -623,6 +634,11 @@ def _canonical_mflux_model_id(model_id: Optional[str]) -> Optional[str]:
         if requested == str(preset.key).strip().lower().replace("_", "-"):
             return str(preset.key)
         if upstream and requested == upstream:
+            from ..backends.mflux import MFluxVisionBackend
+
+            # A source id the backend resolves to its own cached snapshot reaches it unchanged.
+            if MFluxVisionBackend._cached_source_snapshot(s) is not None:
+                return s
             return str(preset.key)
         if any(token in requested for token in ("q8", "8bit", "q4", "4bit", "legacy", "2509", "2511")):
             return s
@@ -639,11 +655,11 @@ def _read_bytes_from_path(path: Union[str, Path]) -> bytes:
 
 
 # Fields passed positionally or resolved by the facade itself, never as keyword pass-through.
-_FACADE_HANDLED_FIELDS = frozenset({"prompt", "image", "mask"})
+_FACADE_HANDLED_FIELDS = frozenset({"prompt", "image", "mask", "reference_images", "video"})
 # Video-only keywords an image call refuses, rather than passing them on in `extra`.
 _REFUSED_ON_IMAGE_CALLS = {
     ImageGenerationRequest: frozenset({"guidance_2"}),
-    ImageEditRequest: frozenset({"guidance_2"}),
+    ImageEditRequest: frozenset({"guidance_2", "control_image", "control_strength"}),
 }
 
 
@@ -665,7 +681,7 @@ def _refuse_misplaced_typed_options(request_cls: Any, kwargs: Mapping[str, Any],
     own = _request_kwarg_names(request_cls)
     refused_names = _REFUSED_ON_IMAGE_CALLS.get(request_cls, frozenset()) | frozenset(OPTIONAL_REQUEST_FIELDS)
     misplaced = sorted(
-        key for key, value in kwargs.items() if value is not None and key in refused_names and key not in own
+        key for key, value in kwargs.items() if option_is_set(value) and key in refused_names and key not in own
     )
     if misplaced:
         raise CapabilityNotSupportedError(
@@ -687,8 +703,29 @@ def _media_bytes(asset: Any) -> bytes:
     return bytes(getattr(asset, "data", b""))
 
 
-def _resolve_bytes_input(value: Union[bytes, Dict[str, Any], str], *, artifact_store: Any) -> bytes:
-    if isinstance(value, (bytes, bytearray)):
+def _resolve_video_input(value: Any, *, artifact_store: Any) -> Union[bytes, Path]:
+    """A source clip: a file path stays a path (read in place; it must exist), bytes stay bytes, an
+    artifact ref is loaded as bytes."""
+    if isinstance(value, (str, os.PathLike)):
+        path = Path(value).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(f"File not found: {value}")
+        return path
+    return _resolve_bytes_input(value, artifact_store=artifact_store)
+
+
+def _resolve_reference_images(value: Any, *, artifact_store: Any) -> List[bytes]:
+    """An edit's `reference_images` as bytes, each item resolved as `image` is (one item may be given alone)."""
+    if value is None:
+        return []
+    single = (bytes, bytearray, memoryview, dict, str, os.PathLike)
+    items = [value] if isinstance(value, single) else list(value)
+    return [_resolve_bytes_input(item, artifact_store=artifact_store) for item in items]
+
+
+def _resolve_bytes_input(value: Union[bytes, Dict[str, Any], str, os.PathLike], *, artifact_store: Any) -> bytes:
+    """An image input as bytes: bytes-like as they are, a file path (any path-like) read, an artifact ref loaded."""
+    if isinstance(value, (bytes, bytearray, memoryview)):
         return bytes(value)
     if isinstance(value, dict):
         if not is_artifact_ref(value):
@@ -697,7 +734,7 @@ def _resolve_bytes_input(value: Union[bytes, Dict[str, Any], str], *, artifact_s
             raise ValueError("artifact_store is required to resolve artifact refs to bytes")
         store = RuntimeArtifactStoreAdapter(artifact_store)
         return store.load_bytes(get_artifact_id(value))
-    if isinstance(value, str):
+    if isinstance(value, (str, os.PathLike)):
         p = Path(value).expanduser()
         if p.exists() and p.is_file():
             return p.read_bytes()
@@ -1147,6 +1184,8 @@ class _AbstractVisionCapability:
             "source": facts["source"],
             "loaded_at": facts["loaded_at"],
             "last_used_at": facts["last_used_at"],
+            # Whether the preload that pinned it warmed it (MLX-Gen); None when no preload said so.
+            "warmed": facts.get("warmed"),
             "error": None,
         }
 
@@ -1175,7 +1214,13 @@ class _AbstractVisionCapability:
         return record
 
     def _note_load(
-        self, binding: Mapping[str, Any], *, task: Optional[str], pinned: bool, source: Optional[str]
+        self,
+        binding: Mapping[str, Any],
+        *,
+        task: Optional[str],
+        pinned: bool,
+        source: Optional[str],
+        warmed: Optional[bool] = None,
     ) -> Optional[Dict[str, Any]]:
         """Record the plugin's facts about a load of `binding` (a request for `task`, whatever its
         outcome, or a preload) when its backend holds a model now. Returns the load as listed, or
@@ -1201,7 +1246,10 @@ class _AbstractVisionCapability:
                     "pinned": False,
                     "source": source,
                     "loaded_at": now,
+                    "warmed": None,
                 }
+            if warmed is not None:
+                facts["warmed"] = warmed
             if task:
                 facts["task"] = str(task)
                 facts["tasks"].add(str(task))
@@ -2025,16 +2073,23 @@ class _AbstractVisionCapability:
         self._ensure_local_residency_supported(binding)
         with self._state_lock:
             already_loaded = tuple(binding["backend_key"]) in self._live_loads_locked()
-        # Loaded as requests with this memory_mode / quantize load it, so they reuse it; passed only
-        # when given, so a backend whose preload takes neither keeps working.
+        # Loaded as requests with this memory_mode / quantize load it, so they reuse it. The keywords are
+        # passed only when given, so a backend whose preload takes neither keeps working; `task`, the
+        # hint of the task the host is about to run, and `warm_up` only to a preload that takes them.
         options = {name: payload[name] for name in ("memory_mode", "quantize") if payload.get(name) is not None}
+        if task is not None and self._preload_takes(binding["backend"], "task"):
+            options["task"] = task
+        if payload.get("warm_up") is not None and self._preload_takes(binding["backend"], "warm_up"):
+            options["warm_up"] = bool(payload["warm_up"])
         try:
             binding["backend"].preload(**options)
         except BaseException:
             # What a failed preload leaves held is listed, unpinned.
             self._note_load(binding, task=task, pinned=False, source="explicit_preload")
             raise
-        record = self._note_load(binding, task=task, pinned=True, source="explicit_preload")
+        record = self._note_load(
+            binding, task=task, pinned=True, source="explicit_preload", warmed=self._preload_warmed(binding["backend"])
+        )
         if record is None:
             record = self._absent_record(
                 binding, task=task, state="not_loaded", reason="this backend holds no model in this process"
@@ -2043,6 +2098,27 @@ class _AbstractVisionCapability:
         # model or found it already in memory. Core and Runtime read it as the load's `loaded_new`.
         record["loaded_new"] = bool(record["loaded"]) and not already_loaded
         return record
+
+    @staticmethod
+    def _preload_takes(backend: Any, name: str) -> bool:
+        # A parameter of that name, or `**kwargs`: the plugin takes backends by the methods they have.
+        try:
+            parameters = inspect.signature(backend.preload).parameters.values()
+        except (TypeError, ValueError):
+            return False
+        return any(p.name == name or p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters)
+
+    @staticmethod
+    def _preload_warmed(backend: Any) -> Optional[bool]:
+        # Whether the preload warmed the model, from a backend that says (MLX-Gen); None from one that does not.
+        answer = getattr(backend, "preload_warmed", None)
+        if not callable(answer):
+            return None
+        try:
+            warmed = answer()
+        except Exception:
+            return None
+        return None if warmed is None else bool(warmed)
 
     def list_loaded_models(self, filters: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
         filter_map = self._normalize_loaded_filters(filters)
@@ -2206,6 +2282,7 @@ class _AbstractVisionCapability:
         mask_b = None
         if mask is not None:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
+        references = _resolve_reference_images(kwargs.pop("reference_images", None), artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
         allowed_request_keys = _request_kwarg_names(ImageEditRequest)
@@ -2233,7 +2310,7 @@ class _AbstractVisionCapability:
         )
         self._acquire_backend_snapshot(backend)
         try:
-            out = vm.edit_image(str(prompt), image=image_b, mask=mask_b, **kwargs)
+            out = vm.edit_image(str(prompt), image=image_b, mask=mask_b, reference_images=references, **kwargs)
             if isinstance(out, dict):
                 return out
             return _media_bytes(out)
@@ -2254,6 +2331,7 @@ class _AbstractVisionCapability:
         mask_b = None
         if mask is not None:
             mask_b = _resolve_bytes_input(mask, artifact_store=store)
+        references = _resolve_reference_images(kwargs.pop("reference_images", None), artifact_store=store)
         binding = self._resolve_backend_binding(provider=provider, model=model)
         backend = self._activate_request_backend(binding)
         allowed_request_keys = _request_kwarg_names(ImageEditRequest)
@@ -2285,6 +2363,7 @@ class _AbstractVisionCapability:
                 str(prompt),
                 image=image_b,
                 mask=mask_b,
+                reference_images=references,
                 count=int(count or 1),
                 seeds=seeds,
                 **kwargs,
@@ -2450,6 +2529,80 @@ class _AbstractVisionCapability:
         finally:
             self._release_backend_snapshot(backend)
             self._record_request_run(binding, task="image_to_video")
+
+    def v2v(self, prompt: str, video: Union[bytes, Dict[str, Any], str, Path], **kwargs: Any):
+        store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        video_in = _resolve_video_input(video, artifact_store=store)
+        mask = kwargs.pop("mask", None)
+        mask_b = _resolve_bytes_input(mask, artifact_store=store) if mask is not None else None
+        references = _resolve_reference_images(kwargs.pop("reference_images", None), artifact_store=store)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        allowed_request_keys = _request_kwarg_names(VideoToVideoRequest)
+        _refuse_misplaced_typed_options(VideoToVideoRequest, kwargs, method="v2v")
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            out = vm.video_to_video(
+                str(prompt), video=video_in, mask=mask_b, reference_images=references, **kwargs
+            )
+            if isinstance(out, dict):
+                return out
+            return _media_bytes(out)
+        finally:
+            self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="video_to_video")
+
+    def upscale_video(self, video: Union[bytes, Dict[str, Any], str, Path], **kwargs: Any):
+        """A source clip restored: `video` as v2v takes it (a path is read in place)."""
+        store = kwargs.pop("artifact_store", None)
+        run_id = kwargs.pop("run_id", None)
+        tags = kwargs.pop("tags", None)
+        provider = kwargs.pop("provider", None)
+        model = kwargs.pop("model", None)
+        video_in = _resolve_video_input(video, artifact_store=store)
+        binding = self._resolve_backend_binding(provider=provider, model=model)
+        backend = self._activate_request_backend(binding)
+        allowed_request_keys = _request_kwarg_names(VideoUpscaleRequest)
+        _refuse_misplaced_typed_options(VideoUpscaleRequest, kwargs, method="upscale_video")
+        extra = kwargs.get("extra")
+        merged_extra = dict(extra) if isinstance(extra, Mapping) else {}
+        for key in list(kwargs.keys()):
+            if key not in allowed_request_keys:
+                value = kwargs.pop(key)
+                if value is not None:
+                    merged_extra[str(key)] = value
+        if merged_extra:
+            kwargs["extra"] = merged_extra
+        vm = VisionManager(
+            backend=backend,
+            store=self._request_store_adapter(store, run_id=run_id, tags=tags),
+        )
+        self._acquire_backend_snapshot(backend)
+        try:
+            out = vm.upscale_video(video=video_in, **kwargs)
+            if isinstance(out, dict):
+                return out
+            return _media_bytes(out)
+        finally:
+            self._release_backend_snapshot(backend)
+            self._record_request_run(binding, task="video_upscale")
 
     def i2v_batch(self, image: Union[bytes, Dict[str, Any], str], **kwargs: Any):
         store = kwargs.pop("artifact_store", None)

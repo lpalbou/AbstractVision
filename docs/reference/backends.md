@@ -13,7 +13,7 @@ See also:
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. Local `text_to_video` groundwork exists but is currently experimental and disabled from the normal local surfaces. |
-| MLX-Gen (local, Apple-first) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image`, `text_to_video`, `image_to_video` | Requires `abstractvision[mlx-gen]` (or compatibility extra `abstractvision[mflux]`, or `abstractvision[all-apple]`). The current AbstractVision release is validated on Apple Silicon first; the install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Uses downloaded AbstractFramework q4/q8 MLX-Gen image preset snapshots plus official FIBO/Wan runtime snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
+| MLX-Gen (local, Apple-first) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image`, `text_to_video`, `image_to_video`, `video_to_video` | Requires `abstractvision[mlx-gen]` (or compatibility extra `abstractvision[mflux]`, or `abstractvision[all-apple]`). The current AbstractVision release is validated on Apple Silicon first; the install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Uses downloaded AbstractFramework q4/q8 MLX-Gen image preset snapshots plus official FIBO/Wan runtime snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
@@ -121,6 +121,7 @@ Config fields:
 
 Runtime behavior notes:
 - The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
+- A local `model_id` is identified by its own folder or file name (a GGUF file by its file name), or, inside a Hugging Face cache, by the repository id followed by the path below the snapshot for a file or subfolder in it (`org/name`, `org/name/model.gguf`), never by a parent directory or the snapshot revision; a repository id, or a relative text that is not on disk, is its own name. That name sets the bfloat16 default of Qwen-Image-Edit `image_to_image` and inpainting on MPS, and the fallback chat template of a pipeline whose snapshot ships none (Qwen, FLUX.2, Z-Image, ERNIE-Image, GLM-Image). A Qwen-Image-Edit folder whose own name does not say so runs in the automatic dtype unless `torch_dtype="bfloat16"` is set.
 - Local Diffusers `GLM-Image` is temporarily disabled for both `text_to_image` and `image_to_image` pending the follow-up in [`../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Local Diffusers `text_to_video` is currently experimental and disabled from the normal local surfaces.
 - Local video export still requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for MP4 packaging.
@@ -137,10 +138,10 @@ Runtime behavior notes:
 **When to use**
 - You want local quantized MLX generation through the optional MLX-Gen runtime. This release is validated on Apple Silicon first, and the install extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers apply.
 - You want the AbstractFramework-published q4/q8 prepared folders from the [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
-- You want the official MLX-Gen `0.40.1+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
+- You want the official MLX-Gen `0.40.3+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
 - You want the official Prism ML Bonsai ternary 2-bit checkpoint (`prism-ml/bonsai-image-ternary-4B-mlx-2bit`) for very small local `text_to_image`.
 - You want SeedVR2 single-image upscaling through canonical `AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}` packages or the official `ByteDance-Seed/SeedVR2-*` bases.
-- You want local Wan 2.2 video generation through MLX-Gen `0.40.1+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
+- You want local Wan 2.2 video generation through MLX-Gen `0.40.3+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
 
 Install:
 - `pip install "abstractvision[mlx-gen]"` (or `pip install "abstractvision[all-apple]"`)
@@ -176,6 +177,16 @@ Model presets:
 - `abstractvision t2i`, `abstractvision i2i`, and Python callers select q4/q8
   by exact model id. Quantization is metadata of the published folder, not a
   generation-time parameter.
+- A source repository id (`black-forest-labs/FLUX.2-klein-4B`, `Tongyi-MAI/Z-Image`, `Qwen/Qwen-Image-2512`,
+  `baidu/ERNIE-Image-Turbo`, ...) whose own snapshot is in the Hugging Face cache is that model: it runs the
+  released 16-bit weights, unquantized, as `mlxgen generate --model <id>` does, even when one of its
+  prepared packages is cached too. The snapshot counts when it can load as the model: `model_index.json` and
+  readable `transformer/*.safetensors`, no partial download. It is a source, not a prepared package, as id or
+  as folder: `get_capabilities().quantize_bits` lists the engine's load-time widths and a request may set
+  `quantize`. The AbstractCore plugin passes such an id to the backend unchanged. A source runs at several
+  times a prepared package's memory (the 16-bit weights against q8 or q4). When the source is not cached (or
+  lacks those files), an id that maps to several prepared packages is refused as ambiguous, naming them: use
+  the exact package id.
 - `abstractvision upscale` defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --resolution 2x --softness 0.25`.
   Use `--resolution <pixels>` for a target short edge,
   `AbstractFramework/seedvr2-7b-8bit` when memory allows, and q4 SeedVR2
@@ -189,7 +200,7 @@ Model presets:
 - Prepared local folders work as model values. For example:
   `abstractvision upscale --provider mlx-gen --model /path/to/seedvr2-7b-8bit --image ./input.png --resolution 2x --softness 0.25 --open`.
 - Bonsai ternary is a pre-packed low-bit MLX artifact, not a q4/q8 prepared folder. Use the exact repo id; guidance is fixed at 1.0 and negative prompts are ignored. The binary 1-bit Bonsai checkpoint is not surfaced because stock MLX cannot run it yet.
-- Current shipped backend coverage includes `text_to_image` for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, ERNIE Image Turbo, FIBO, Fibo-lite, and Bonsai ternary. `image_to_image` edits are implemented for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, Fibo-lite, Fibo-Edit, and Fibo-Edit-RMBG; FIBO Edit snapshots support masks where the runtime supports them. `image_upscale` is implemented for SeedVR2.
+- Current shipped backend coverage includes `text_to_image` for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, ERNIE Image Turbo, FIBO, Fibo-lite, and Bonsai ternary. `image_to_image` edits are implemented for FLUX.2 klein/base, base Qwen Image and Z-Image (latent image-to-image; Z-Image Turbo also masked), Qwen Image Edit, ERNIE Image Turbo, FIBO, Fibo-lite, Fibo-Edit, and Fibo-Edit-RMBG; `image_strength` selects FLUX.2's latent route (see [docs/api.md](../api.md#mlx-gen-image-routes)); FIBO Edit snapshots support masks where the runtime supports them, and FLUX.2 klein runs masked edits with `Flux2KleinInpaint`. `image_upscale` is implemented for SeedVR2.
 
 One-shot shell commands:
 
@@ -269,12 +280,12 @@ Config/env:
 Non-curated MLX-Gen models:
 - If you have an MLX-Gen-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
   - Pre-download it with `abstractvision download org/name` (HF cache) or `hf download org/name`
-  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (base model usually auto-infers; override with `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image` if needed).
+  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (the base model is inferred from a local folder's own name or card, or, inside a Hugging Face cache, its repo id, never from a parent directory; otherwise set `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image`).
 
 Runtime behavior notes:
 - MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
-- Local MLX-Gen `image_to_image` is supported for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models. Route-aware masked edit is available on `AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, and `briaai/Fibo-Edit-RMBG`; unsupported routes fail closed instead of silently dropping the mask.
-- Local MLX-Gen does not run structured control: a typed `control_image` (CLI `--control-image`) is refused with `CapabilityNotSupportedError` (`field="control_image"`), as on every built-in backend in this release, and is never reinterpreted as an image edit.
+- Local MLX-Gen `image_to_image` is supported for FLUX.2 klein/base, base Qwen Image, Z-Image, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models. Route-aware masked edit is available on `AbstractFramework/qwen-image-edit-2511-8bit`, FLUX.2 klein, Z-Image Turbo, `briaai/Fibo-Edit`, and `briaai/Fibo-Edit-RMBG`; unsupported routes fail closed instead of silently dropping the mask.
+- Local MLX-Gen runs structured control on `AbstractFramework/qwen-image-8bit` only (`QwenImageControlNet`, see [docs/api.md](../api.md#control-image-control_image)); on any other model a typed `control_image` (CLI `--control-image`) is refused with `CapabilityNotSupportedError` (`field="control_image"`), as on every other built-in backend, and is never reinterpreted as an image edit.
 - Edit strength is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter where the runtime supports it.
 - Local MLX-Gen video is implemented for `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`, and the task-specific Wan A14B packages `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. TI2V-5B should be run at `832x480` / `480x832` or above in practice. Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at `480x240`.
 - Local MLX-Gen also serves MiniMax-H3 (`MiniMaxAI/MiniMax-H3`; packages `AbstractFramework/minimax-h3-8bit`, `-bf16`, `-4bit`): a video with a synchronized stereo soundtrack, `text_to_video` and first-frame `image_to_video`. Set `base_model` to `minimax-h3-turbo-544p`, `minimax-h3-turbo` or `minimax-h3` to pick the schedule. Requests take `soundscape`, `music`, `generate_audio`, `flow_shift` (the video shift) and `audio_shift`; MLX-Gen's capability row and its own MiniMax-H3 planning code (aspect window, prompt composition, adapter check) decide what is accepted, and every value is checked before any weights load, with an error that names the field. Results are the MP4 with its AAC track plus `GeneratedAsset.audio` and `GeneratedAsset.audio_summary()`; a track MLX-Gen could not mux is kept as a WAV (a second artifact when a store is set). `preload()` loads the model without a warm-up run, as for Wan. The weights are never downloaded during generation (gated; territorial licence). See [Video with sound](../api.md#video-with-sound-minimax-h3). `abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p` fetches the recommended package and the Turbo adapter.

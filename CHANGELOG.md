@@ -1,6 +1,279 @@
 # Changelog
 
-## Unreleased
+## 0.3.38 - 2026-11-27
+
+This release adds typed image-edit options on MLX-Gen (latent image-to-image, FLUX.2 masked edits,
+multi-reference edits, outpaint and reframe), Z-Image edits, a control image on Qwen-Image, video-to-video
+on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B, SeedVR2 video restoration (`video_upscale`), cached source
+repository ids, and `preload(task=..., warm_up=...)`. The MLX-Gen backend requires
+`mlx-gen>=0.40.3,<0.41.0` and, on macOS, MLX 0.32.4 or later. Requests that set none of the new fields run
+as in 0.3.37, except for the changes listed under Changed.
+
+### New
+
+- **MLX-Gen image routes chosen by the engine's planner.** Every `image_to_image` request on FLUX.2, Z-Image and
+  base Qwen-Image, and a request on any MLX-Gen model that sets `image_strength`, is routed by mlx-gen's own planner
+  (`resolve_generation_plan`, the one `mlxgen generate` uses) against the model's capability rows; the capability id
+  it selects decides the MLX-Gen class and call (`abstractvision.backends.mlx_gen_routes`). Other requests run as in
+  0.3.37. Everything is checked before any weights load, in `normalize_image_edit_request` as in `edit_image`: two
+  options that contradict each other raise `ValueError`; an option no row of the model applies, and adapters on a
+  row that takes none, raise `CapabilityNotSupportedError` naming the field (`supported=()`); a combination no row
+  serves raises it with the planner's message (`field=None`). A route new in this release writes the run's files
+  into one temporary directory, removed whatever the outcome; no metadata names it.
+- **Latent image-to-image: `ImageEditRequest.image_strength`**, in `(0, 1]` (the plugin's `i2i(image_strength=...)`).
+  On MLX-Gen, `extra["image_strength"]` is the same option. FLUX.2 klein runs it with `Flux2Klein` (the base models
+  pass the negative prompt, which their latent row takes); base Qwen-Image (`AbstractFramework/qwen-image-8bit`, the
+  Qwen-Image-2512 packages) now runs `image_to_image` with `QwenImage`, at `image_strength=0.4` when the request
+  names none; ERNIE-Image-Turbo runs it as its 0.3.37 latent edit. `list_provider_models()` publishes
+  `parameter_defaults["image_strength"] = 0.4` and its range for every model with a latent route, and the catalog
+  names the parameter `image_strength` on FLUX.2 klein, Qwen-Image, Z-Image and ERNIE (ERNIE's `strength` is
+  described as the 0.3.37 keyword below).
+  `extra["strength"]` (the CLI's `--strength`, the plugin's `strength=`) is the 0.3.37 cross-backend keyword: on
+  every route 0.3.37 had it keeps exactly its 0.3.37 meaning, and on the latent routes new in this release it is
+  read as the run's strength with the same clamp to `[0, 1]`. It never selects a route and is not read on a masked
+  route, and combined with `image_strength` it raises `ValueError`. A task this release adds to a model
+  (`image_to_image` on base Qwen-Image and Z-Image, `video_to_video` on Wan) is published and accepted only where the
+  engine's rows carry a route for it; without rows the model has its 0.3.37 tasks.
+
+- **FLUX.2 masked edits.** An edit with a `mask` on FLUX.2 klein runs `Flux2KleinInpaint` (MLX-Gen's
+  `flux2.inpaint`): the mask is decoded before any weights load (`ValueError` naming `mask` when it is not a
+  picture), the bytes are passed unchanged, an unset `guidance_scale` stays unset so the class applies its default,
+  and the base models take a negative prompt. A mask with `image_strength` raises `ValueError`; adapters on a row
+  that takes none are refused (`field="lora_adapters"`). The instance is built for masked edits: a plain edit after
+  it builds `Flux2KleinEdit` again, after releasing it.
+
+- **Multi-reference edits: `ImageEditRequest.reference_images`**, the images after `image` in order (bytes or file
+  paths; the plugin's `i2i` and `i2i_batch` resolve file paths and artifact refs to bytes). On MLX-Gen,
+  `extra["reference_images"]` is the same option. FLUX.2 klein and Qwen-Image-Edit 2509/2511 run it on their
+  multi-reference route (the 0.3.37 edit call with the list after the source); no maximum count is published or
+  enforced. A model without that route refuses it (`field="reference_images"`, `supported=()`), as does a
+  combination with a mask or a strength (`field=None`): the planner counts every picture, those of the 0.3.37
+  `extra` keys included, so a reference is never dropped. An item that is not image bytes or a path, or a picture
+  that fails to decode, raises `ValueError`. On a model the engine publishes no rows for, references run their
+  0.3.37 edit branch. The pictures a routed request carries (a mask, references) are decoded once
+  its route is known, still before any weights load.
+
+- **Outpaint and reframe: `ImageEditRequest.outpaint_padding`, `outpaint_fill`, `outpaint_fill_color`,
+  `reframe_padding`.** They run MLX-Gen's own canvas session (`mflux.outpaint`: canvas, fill policy, pass plan),
+  its workspace in the run's directory: FLUX.2 klein outpaint with `Flux2KleinOutpaint` and reframe (distilled)
+  with `Flux2KleinEdit`, Qwen-Image-Edit both with `QwenImageEdit`. The session is built before any weights load
+  and refuses a box the engine cannot apply (`ValueError` naming the field); a fill the row does not list, a fill or
+  color on Qwen's fixed fill, a color without `outpaint_fill="solid"`, a fill without an outpaint and
+  `extra["width"]`/`["height"]` with either are refused naming the field. A two-pass outpaint counts its progress
+  across both passes and is refused in low-RAM mode (`field="memory_mode"`, `supported=("default",)`). Results carry
+  `outpaint_notice` and `outpaint_warnings`.
+
+- **Video-to-video: `VideoToVideoRequest`, `VisionBackend.video_to_video`, `VisionManager.video_to_video` and the
+  plugin's `v2v`**, a new task `video_to_video` (catalog, residency names `video_to_video`, `video-to-video`, `v2v`).
+  On MLX-Gen, Wan 2.2 T2V-A14B runs it with `Wan2_2_TI2V`: `video_strength` in `(0, 1]` (unset: the engine's 0.8),
+  an optional one-image `mask`, the A14B defaults and memory plan of text-to-video, and a negative prompt only when
+  set; as on the engine CLI, `guidance_2` takes the model's 3.0 only when the request sets neither guidance (a
+  `guidance_scale` set alone leaves it to the engine, which then uses the same value). The source is a file read in place or bytes written once to the run's directory, and is probed before any
+  weights load (a clip too short for `num_frames` at `fps` is refused with `field="num_frames"`); `extra` takes the
+  progress callbacks, `max_sequence_length` and `vae_tiling`. The other backends refuse the task.
+
+- **Wan 2.1 VACE 1.3B (`Wan-AI/Wan2.1-VACE-1.3B-diffusers`)**, a new catalog entry and MLX-Gen model
+  (`wan2.1-vace-1.3b`, run by `WanVace`) for `video_to_video`: `reference_images` (any number, in order),
+  `masked_region_mode` (`generate` or `repaint`, with a mask) and `conditioning_scale` (default 1.0); it refuses
+  `video_strength` and `guidance_2` by name, and Wan 2.2 T2V-A14B refuses the three VACE fields. Defaults 832x480,
+  81 frames at 16 fps, 30 steps, guidance 5.0; `memory_mode="low"` releases the denoiser before the decode and drops
+  the model. A VACE preload loads `WanVace` and runs no warm-up generation; in the default mode it reads the
+  transformer and the VAE ahead, as the other Wan preloads do (Changed 23).
+
+- **Z-Image edits.** `image_to_image` on Z-Image and Z-Image-Turbo runs `ZImage` latent (at `image_strength=0.4`
+  when the request names none; Turbo keeps its forced guidance 0.0 and passes a negative prompt, which its row takes), and a `mask` on
+  Z-Image-Turbo runs its masked edit (the mask instead of the strength). Base Z-Image refuses a mask
+  (`field="mask"`), and both refuse references, outpaint and reframe by name.
+
+- **Control image on Qwen-Image (`AbstractFramework/qwen-image-8bit`).** `control_image` (and `control_strength`,
+  unset: the engine CLI's 0.4) runs `QwenImageControlNet` with the ControlNet its row names
+  (`InstantX/Qwen-Image-ControlNet-Union`). Its side weights are looked up in the Hugging Face cache before any
+  weights load and never downloaded during a generation; when missing, the request is refused
+  (`field="control_image"`) naming the repository, the file and `abstractvision download
+  InstantX/Qwen-Image-ControlNet-Union`. Any other model refuses `control_image`; a `control_strength` without it is
+  refused, and one that is not a finite number raises `ValueError`. A plain generation after a control run builds
+  `QwenImage` again.
+
+- **`preload(task=...)` on MLX-Gen.** The MLX-Gen backend's `preload` takes `task`, the task the host is about to
+  run, as a hint: a model that has it is loaded as a request of that task loads it (on FLUX.2 klein,
+  `task="image_to_image"` loads `Flux2KleinEdit`; a latent, masked or outpaint request rebuilds its own class); a
+  model without it, or `task=None`, preloads as before. It never refuses. The AbstractCore plugin's
+  `load_resident_model` passes the payload's `task` to a backend whose `preload` takes a `task` (or `**kwargs`).
+
+- **FLUX.2 klein 9B consistency LoRA profile.** `vision_adapter_capabilities.json` describes
+  `dx8152/Flux2-Klein-9B-Consistency` (file `Flux2-Klein-9B-consistency-V2.safetensors`): an image-to-image LoRA that
+  improves the consistency of klein 9B edits, no trigger word, apache-2.0, validated by MLX-Gen on
+  `AbstractFramework/flux.2-klein-9b-8bit`'s edit route; no parameter recommendation (the model card gives none).
+  `list_provider_adapters` (and `abstractvision adapters`) carries its notes and link once it is cached.
+
+- **`preload(warm_up=False)` on MLX-Gen.** The warm-up is optional: `warm_up=False` resolves, checks and builds the
+  model (a bad model still fails at the preload) and runs and reads nothing ahead; the default, `True`, warms as
+  Changed 23 says, and `low` / `lowest` are the same either way. `preload_warmed()` says whether the held model was
+  warmed; the plugin passes the load payload's `warm_up` to a `preload` that takes it, and its loaded-model records
+  carry `warmed` (`None` from a backend that does not say).
+
+- **SeedVR2 video restoration (`video_upscale`).** `VideoUpscaleRequest(video, resolution, softness, seed,
+  start_seconds, max_frames, drop_audio, quantize, ...)`, `VisionManager.upscale_video(video, **kwargs)` and the plugin's
+  `upscale_video(video, **kwargs)` restore a clip on SeedVR2 3B and 7B (MLX-Gen). `video` is the clip's bytes or a
+  local file read in place (a `str` or `Path` in the plugin). Before any weights load, MLX-Gen's own plan
+  (`SeedVR2VideoRestorePlan.for_video`, the one `mlxgen upscale --video-path` uses) probes the clip and decides the
+  scale, the chunking and the memory profile; a scale above 1x is refused (`field="resolution"`), a clip beyond the
+  safe memory profile or below its temporal quality floor is refused (`field=None`), each with the engine's message.
+  The plan counts the weights as loaded when this backend already holds the instance the run reuses. The run
+  applies the plan as the CLI does (MLX-Gen's low-RAM saver keeping the transformer, `restore_video_to_path` with
+  the planned chunks) in `memory_mode` `default` and `low` alike, under one MLX cache limit from before the load to
+  the end (the plan's 8 GB, never above a limit the host set), and drops the model at its end. The result is an MP4
+  whatever the source's container (the source's audio copied by MLX-Gen, which fails the run after the restoration when it
+  cannot; `drop_audio=True` gives a silent result, no copy attempted), progress is per chunk, a cancel removes the partial output. Unset values are the engine's: 1x, softness 0.0, from the clip's start to its
+  end. `preload(task="video_upscale")` reads the transformer and the VAE the run keeps.
+- **MLX-Gen 0.40.3.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`)
+  requires `mlx-gen>=0.40.3,<0.41.0` (0.3.37 required `>=0.40.1`) and, on macOS, `mlx>=0.32.4` as before.
+  0.40.3 is required because in it the engine names a local model by the same rule as AbstractVision (Changed
+  28): its own folder or file name, or its repository id inside a Hugging Face cache, never a parent directory.
+  Upgrade with `pip install -U "abstractvision[mlx-gen]"`. `video_upscale` runs on the SeedVR2 video
+  restoration plan that 0.40.2 adds. 0.40.2 also changes, with no change to AbstractVision's calls: the Wan
+  prompt encoding (Changed 27); SeedVR2 video restoration, which needs a fraction of 0.40.1's memory with
+  identical output and restores frames up to about 1.4 megapixels on its safe memory profile's 48 GB budget
+  (1280x720 fits), a larger frame being refused before the model loads (`field=None`) with a message naming the
+  largest size that fits; and FLUX.2 klein, which keeps one copy of its transformer weights whatever the number
+  of canvas sizes a process runs.
+
+### Changed
+
+Against 0.3.37 (the entries are numbered so that others can refer to them):
+
+1. MLX-Gen refuses an `image_strength`, typed or `extra["image_strength"]`, outside `(0, 1]`
+   (`CapabilityNotSupportedError`, `field="image_strength"`); 0.3.37 clamped `extra["image_strength"]` to `[0, 1]`.
+2. MLX-Gen raises `ValueError` for an `extra["image_strength"]` that is not a finite number; 0.3.37 dropped it.
+3. `extra["image_strength"]` on FLUX.2 (a model the engine publishes rows for) runs the latent route
+   (`Flux2Klein`); 0.3.37 ignored it and ran `Flux2KleinEdit`.
+4. `extra["image_strength"]` on Qwen-Image-Edit and FIBO-Edit is refused (`field="image_strength"`, `supported=()`);
+   0.3.37 ignored it.
+5. `extra["image_strength"]` on FIBO and Fibo-lite is refused before the model loads; 0.3.37 loaded it, then the
+   engine raised.
+6. `extra["reference_images"]` on a model whose rows have no multi-reference route is refused
+   (`field="reference_images"`): on plain Qwen-Image-Edit (not 2509 or 2511), where 0.3.37 passed the references to
+   the edit, and on ERNIE-Image-Turbo, FIBO and Fibo-lite, where 0.3.37 ran the edit and ignored them. A local
+   ERNIE-Image-Turbo, FIBO or Fibo-lite folder the engine publishes no rows for refuses them too; a FLUX.2 or
+   Qwen-Image-Edit folder without rows runs them as 0.3.37 did.
+7. `extra["reference_images"]` with an adapter on a route that takes none (`AbstractFramework/qwen-image-edit-2509-8bit`)
+   is refused (`field="lora_adapters"`); 0.3.37 ran it.
+8. A typed `image_strength` or `reference_images` with the same `extra` key of another value raises `ValueError`, as
+   does `image_strength` with `extra["strength"]` and `reference_images` with `extra["images"]`,
+   `["additional_images"]` or `["image_paths"]`.
+9. The plugin keywords `image_strength=`, `reference_images=`, `outpaint_padding=`, `outpaint_fill=`,
+   `outpaint_fill_color=` and `reframe_padding=` are refused with `field=` on `t2i`, `t2v`, `i2v` and
+   `upscale_image` on every backend, where 0.3.37 put them in `extra` and nothing read them; on `i2i` they are typed
+   fields, which Diffusers, OpenAI-compatible and stable-diffusion.cpp refuse by name (0.3.37 put them in `extra`,
+   which the OpenAI-compatible backend forwarded to the remote). An unset value (None, an empty list, a blank
+   string) is never refused. Passed as `extra={...}`, and `strength=`, they travel unchanged.
+10. `i2i(control_image=...)` and `i2i(control_strength=...)` are refused (`field=`); 0.3.37 put them in `extra`, where
+    nothing read them.
+11. `image_to_image` on base Qwen-Image and on Z-Image runs latent, at `image_strength=0.4` unless set; 0.3.37
+    refused the task.
+12. A `mask` on FLUX.2 klein runs `Flux2KleinInpaint`; 0.3.37 refused it (`field="mask"`) after loading the model.
+13. `control_image` on `AbstractFramework/qwen-image-8bit` runs `QwenImageControlNet`; 0.3.37 refused it
+    (`field="control_image"`).
+14. Published answers: `get_capabilities().supports_mask` is true on FLUX.2 klein and Z-Image-Turbo, and
+    `supports_control_image` on `AbstractFramework/qwen-image-8bit`;
+    `supported_tasks` and `list_provider_models(task="image_to_image")` include base Qwen-Image and Z-Image, and
+    `supported_tasks` gains `video_to_video` on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B. The catalog lists
+    `image_to_image` on `Qwen/Qwen-Image`, `Qwen/Qwen-Image-2512`, `Tongyi-MAI/Z-Image` and
+    `Tongyi-MAI/Z-Image-Turbo` (for the MLX-Gen backend), `image_strength` on FLUX.2 klein, ERNIE-Image-Turbo and
+    those four, `outpaint_padding`, `outpaint_fill` and `outpaint_fill_color` on FLUX.2 klein, `reframe_padding` on
+    the distilled FLUX.2 klein 4B and 9B (not on klein Base), `outpaint_padding` and `reframe_padding` on
+    Qwen-Image-Edit, 2509 and 2511 (no fill fields),
+    `control_image` and `control_strength` on `Qwen/Qwen-Image`'s `text_to_image`, and the new task
+    `video_to_video`. `reference_images` is no longer listed for `Qwen/Qwen-Image-Edit`.
+    `list_provider_models()`' `parameter_constraints["negative_prompt"]` follows the engine's rows as the runs do
+    (Changed 21): FLUX.2 klein Base and Z-Image-Turbo no longer publish `{"supported": false}` (a task whose routes
+    disagree publishes `supported: true` with a description naming it); a model without rows keeps 0.3.37's answer.
+15. A typed request option that is an empty list or tuple counts as unset (`option_is_set`). No 0.3.37 option is a
+    sequence, so no 0.3.37 request changes.
+16. stable-diffusion.cpp, which lists every catalog task of a model, lists `image_to_image` (and `supports_mask`)
+    with `capabilities_model_id` set to `Qwen/Qwen-Image`, `Qwen/Qwen-Image-2512`, `Tongyi-MAI/Z-Image` or
+    `Tongyi-MAI/Z-Image-Turbo`, and `video_to_video` with
+    `Wan-AI/Wan2.2-T2V-A14B`.
+17. On a model the engine publishes no rows for (a local folder whose name it cannot place), `extra["image_strength"]`
+    is refused (`field="image_strength"`) on every family but ERNIE-Image-Turbo, where it runs 0.3.37's latent edit;
+    0.3.37 ignored it on the other families.
+18. `metadata["mlx_gen"]` no longer carries `controlnet_image_path`, which 0.3.37 returned (always `None` then): it
+    is left out like the other temporary file paths of a run.
+19. In `memory_mode="default"` the MLX cache is capped as the engine's CLI caps it (total RAM / 8, between 1 and 8
+    GiB, once per process; a limit the host set at or below half of physical memory is left alone, a higher one is
+    replaced by the default cap) for every MLX-Gen model; 0.3.37 left Wan models uncapped (the Wan loader does not
+    apply the cap itself).
+20. Some requests 0.3.37 refused are now refused before the model loads instead of after, or with a different
+    `field` or exception type: a mask with references on FLUX.2; `extra["reference_images"]` on FIBO-Edit;
+    references with `extra["images"]` on FIBO-Edit; a mask on a FLUX.2 folder the engine cannot place; a mask with
+    `extra["reference_images"]` on ERNIE-Image-Turbo, FIBO, Fibo-lite and Qwen-Image-Edit 2509 and 2511 (now refused
+    before the load); `supported` on FIBO's and Fibo-lite's refusals goes from `None` to `()`. Nothing that ran is
+    affected.
+21. A negative prompt follows the row of the route a request runs (`supports_negative_prompt`) on every MLX-Gen
+    image route of a model the engine publishes rows for. It is now passed on FLUX.2 klein Base (4B and 9B) on
+    text-to-image, edit and multi-reference (0.3.37 dropped it; the latent, masked and outpaint routes already
+    passed it), and on Z-Image-Turbo on text-to-image, latent and masked edits (0.3.37 dropped it; at its forced
+    guidance 0.0 the engine runs no negative branch). FLUX.2 klein Base with a negative prompt at `guidance_scale`
+    1.0 or below now raises the engine's `ValueError` after the model loads. A route whose row takes none still
+    drops it silently; a model without rows keeps 0.3.37's answer.
+22. `load_resident_model({"task": "image_to_image", ...})` on an MLX-Gen model that has both text-to-image and
+    image-to-image (FLUX.2 klein, ERNIE-Image-Turbo, FIBO, Fibo-lite, and base Qwen-Image and Z-Image, which gain
+    image-to-image in this release) loads the model for image-to-image (on FLUX.2 klein `Flux2KleinEdit`) and warms
+    it with one image-to-image run (Changed 23) where 0.3.37 loaded the text-to-image class and ran its text-to-image
+    warm-up. A payload without `task`, or with
+    `text_to_image`, loads as in 0.3.37; other backends are unchanged.
+23. A default-mode MLX-Gen `preload` warms what a run of its task reads with a small ordinary request of that
+    route. 0.3.37 ran one text-to-image generation at the backend's default canvas (1024x1024 unless
+    `default_width` / `default_height` were set) and the model's default steps, and only built the object for every
+    other task. Now an image task runs one warm-up of the task on its plain route, its output discarded, at 256x256
+    (352 on base Qwen-Image, FIBO and Fibo-lite, 384 on FIBO-Edit, 512 on ERNIE-Image-Turbo and Bonsai: the smallest
+    side MLX-Gen itself runs those families at) and 2 steps (the fewest MLX-Gen's flow-match scheduler takes); a
+    backend whose `default_width` / `default_height` were set keeps that canvas, as in 0.3.37. Image-to-image preloads (Qwen-Image-Edit, FIBO-Edit,
+    and the image models given `task="image_to_image"`: `Flux2KleinEdit` on FLUX.2 klein) and SeedVR2 preloads (a
+    64x64 picture at 1x) run one too. Video preloads read the first denoiser and, where the run encodes an input
+    (image-to-video, video-to-video), the VAE (Wan TI2V-5B, T2V-A14B, I2V-A14B, VACE). The preload is short and the
+    weights are resident when it returns; the first request reads none. MiniMax-H3 and the `low` and `lowest` modes
+    are unchanged.
+24. SeedVR2's published answers gain `video_upscale`: `get_capabilities().supported_tasks` and
+    `list_provider_models()` on SeedVR2 3B and 7B, and the catalog (a top-level `video_upscale` task, with its params
+    on `ByteDance-Seed/SeedVR2-3B` and `-7B`). The catalog's `min_runtime_version` of Wan T2V-A14B and VACE
+    `video_to_video` and of MiniMax-H3 is 0.40.3, the package floor. The image upscale is unchanged.
+25. With mlx-gen 0.40.1 or 0.40.2 installed, every MLX-Gen request now raises `OptionalDependencyMissingError` naming
+    `mlx-gen>=0.40.3,<0.41.0`, as any version outside the pins already did.
+26. On MLX-Gen, a source repository id that maps to several prepared packages (the four FLUX.2 klein repos,
+    `Tongyi-MAI/Z-Image` and `Z-Image-Turbo`, the five Qwen-Image repos, `baidu/ERNIE-Image-Turbo`) runs its own
+    cached snapshot as released (16-bit, unquantized, as `mlxgen generate --model <id>` does), even when a
+    prepared package of it is cached too; 0.3.37 refused the id as ambiguous whatever was cached. Cached means a
+    snapshot that can load as the model: `model_index.json` and readable `transformer/*.safetensors`, no partial
+    download. It is a source, not a prepared package: it publishes the engine's load-time `quantize` widths and
+    accepts `quantize`. Through the AbstractCore plugin the id reaches the backend unchanged (0.3.37 rewrote
+    `Qwen/Qwen-Image-2512` to `qwen-image`, which it still does when that source is not cached). A source needs
+    several times a prepared package's memory. Not cached, or cached without those files, the id is refused as
+    ambiguous as before. The `Qwen/Qwen-Image-2512` source snapshot given as a folder, which 0.3.37 answered as a
+    prepared package (no `quantize` widths, `quantize` refused), is a source too.
+27. With mlx-gen 0.40.2 and later, Wan videos on MLX-Gen (Wan 2.2 text-, image- and video-to-video, Wan 2.1
+    VACE) for a given prompt and seed differ slightly from those of 0.3.37 with mlx-gen 0.40.1: the same scene and
+    composition, with small differences in details, because the engine's prompt encoding is now exact (float32).
+    A new prompt is encoded in seconds instead of more than a minute. See MLX-Gen's
+    [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
+28. On MLX-Gen and Diffusers, a local model is identified by its own name, by the rule mlx-gen 0.40.3 follows
+    too: a local folder or file by its own name (`~/models/qwen-image-edit/my-flux` is `my-flux`, a GGUF file
+    its file name); a path inside a Hugging Face cache by the repository id, followed by the path below the
+    snapshot for a file or subfolder in it (`models--org--name/snapshots/<revision>` is `org/name`, its
+    `transformer` folder `org/name/transformer`, a file in it `org/name/<file>`); a repository id, an alias, or a
+    relative text that is not on disk, as written. A parent directory and the snapshot revision never decide; on
+    MLX-Gen the model's own card does as before. On MLX-Gen this name sets its base model when `base_model` is not
+    given, its stored width (`metadata["quantization_bits"]` of a request without `quantize`, and the SeedVR2
+    local-folder match), the routes MLX-Gen publishes for it, and whether discovery skips it as a partial or
+    incompatible download. On Diffusers it sets the bfloat16 default of Qwen-Image-Edit image-to-image and
+    inpainting on Apple MPS, and the fallback chat template a pipeline gets when its snapshot ships none (Qwen,
+    FLUX.2, Z-Image, ERNIE-Image, GLM-Image). 0.3.37 read the whole path, so a model under a parent named after
+    another model or width (`~/models/qwen-image-edit_q4/flux2-klein-4b`, `~/models/qwen-image-edit/my-flux`,
+    `models_q4`, a temporary folder whose random name holds `_q1`) could be identified, routed or refused as that
+    other model, get a width it does not have, or run on Diffusers with another family's dtype or chat template,
+    and a parent named `*.partial`, `*-partial` or `*.incompatible` hid every MLX-Gen model under it. On MLX-Gen a
+    folder whose own name and card place no model needs `base_model`; on Diffusers a Qwen-Image-Edit folder whose
+    own name does not say so runs in the automatic dtype unless `torch_dtype="bfloat16"` is set.
 
 ## 0.3.37 - 2026-11-26
 

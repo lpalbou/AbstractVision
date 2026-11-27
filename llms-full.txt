@@ -59,12 +59,12 @@ Agent quickstart (choose the path that matches your goal):
 - **Need the model/adapter curation policy**: read `docs/reference/capabilities-registry.md`, `docs/adr/0005_curated_capability_registry_and_download_catalog.md`, and `docs/adr/0006_operator_control_configuration_precedence_and_explicit_network_use.md`.
 - **Need a single file**: open `llms-full.txt` (generated bundle of the core docs).
 - **Need local Diffusers**: install `abstractvision[diffusers]`, set `ABSTRACTVISION_BACKEND=diffusers`, pre-download `runwayml/stable-diffusion-v1-5`, or set `ABSTRACTVISION_DIFFUSERS_ALLOW_DOWNLOAD=1`.
-- **Need local MLX-Gen**: install `abstractvision[mlx-gen]`. MLX-Gen is validated on Apple Silicon; the extra also installs on Linux, where it is not validated yet, and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Choose exact published model ids such as `AbstractFramework/qwen-image-2512-4bit` for `t2i`, `AbstractFramework/qwen-image-edit-2511-4bit` or `briaai/Fibo-Edit` for `i2i`, `AbstractFramework/seedvr2-3b-8bit` / `AbstractFramework/seedvr2-7b-8bit` for SeedVR2 `upscale`, and `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit` for Wan A14B `t2v`/`i2v`; use typed `guidance_2` / CLI `--guidance-2` for the A14B second-stage guidance control, and `mask` for validated Qwen/FIBO masked-edit routes (every built-in backend refuses `control_image` / `--control-image` in this release); pre-download with `abstractvision download ... --provider mlx-gen`.
+- **Need local MLX-Gen**: install `abstractvision[mlx-gen]`. MLX-Gen is validated on Apple Silicon; the extra also installs on Linux, where it is not validated yet, and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Choose exact published model ids such as `AbstractFramework/qwen-image-2512-4bit` for `t2i`, `AbstractFramework/qwen-image-edit-2511-4bit` or `briaai/Fibo-Edit` for `i2i`, `AbstractFramework/seedvr2-3b-8bit` / `AbstractFramework/seedvr2-7b-8bit` for SeedVR2 `upscale`, and `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit` for Wan A14B `t2v`/`i2v`; use typed `guidance_2` / CLI `--guidance-2` for the A14B second-stage guidance control, and `mask` for validated Qwen/FIBO/FLUX.2 klein/Z-Image Turbo masked-edit routes (`control_image` / `--control-image` runs on `AbstractFramework/qwen-image-8bit` only); pre-download with `abstractvision download ... --provider mlx-gen`.
 - **Need LoRA adapters**: prefer the shared typed contract `lora_adapters=[LoRAAdapterSpec(...)]` in Python and repeated `--lora` / `--lora-scale` / `--lora-target-role` flags in the CLI. Use provider/model discovery to inspect `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile` before long runs.
 
 Reality checks (current shipped behavior, anchored in code):
 - Built-in backends implement `text_to_image`, `image_to_image`, `image_upscale`, and backend-dependent `text_to_video` / `image_to_video`.
-- Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, FLUX.2/Qwen multi-reference image edits, Qwen/FIBO masked edits (every built-in backend refuses `control_image` in this release), canonical SeedVR2 q8/q4 image upscaling packages, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`.
+- Local MLX-Gen supports curated q4/q8 image presets, official FIBO image snapshots, FLUX.2/Qwen multi-reference image edits, latent image-to-image, outpaint and reframe, Qwen/FIBO/FLUX.2 klein/Z-Image Turbo masked edits, a structured control image on `AbstractFramework/qwen-image-8bit` only, canonical SeedVR2 q8/q4 image upscaling packages and SeedVR2 video restoration (`video_upscale`), shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`, with `video_to_video` on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B.
 - Wan video defaults live in one per-model table (`WAN_VIDEO_DEFAULT_CANVASES` in `backends/mflux.py`): 832x480 for TI2V-5B (121 frames, 24 fps, 50 steps) and the A14B models (81 frames, 16 fps, 40 steps); explicit `width`/`height`/`num_frames`/`fps`/`steps` override them. The VAE decode is tiled by default (`extra={"vae_tiling": False}` / `--no-vae-tiling` to disable); measured memory per size is in `docs/faq.md`.
 - Every generation request takes `memory_mode` (`default`, `low`, `lowest`; CLI `--memory-mode`; AbstractCore keyword or `extra`; process default `ABSTRACTVISION_MEMORY_MODE`, which degrades to the closest mode a backend can honour, while a request value is refused; `make_vision_tools(..., memory_mode=...)` fixes it for all tool calls). MLX-Gen: `low` = its low-RAM mode per route, `lowest` = low-RAM plus block streaming, accepted where routes stream transformer blocks: MiniMax-H3, and no other current catalog model. Diffusers on CUDA: `low`/`lowest` = model/sequential CPU offload (the request only raises the configured `cpu_offload`). stable-diffusion.cpp: `low` = CPU offload of parameters. OpenAI-compatible: the modes the remote lists for the model in `GET /vision/models` (AbstractCore's server), sent with `quantize` and the soundtrack fields; `default` only for a plain OpenAI endpoint. Every backend refuses a mode it cannot honour with `CapabilityNotSupportedError`, also when called directly. Discovery: `get_capabilities().memory_modes`, MLX-Gen catalog `parameter_constraints["memory_mode"]` (also over HTTP), plugin `available_providers()` details (also read by AbstractCore's server).
 - MiniMax-H3 (`MiniMaxAI/MiniMax-H3`, packages `AbstractFramework/minimax-h3-8bit|bf16|4bit`, gated, territorial licence, never downloaded during generation; `abstractvision download MiniMaxAI/MiniMax-H3 [--bits 4|16] [--base-model minimax-h3-turbo-544p]` fetches the recommended 8-bit package, or the width named, and the Turbo adapter of that schedule; `--allow-non-8bit` fetches the source repository itself): video with a stereo soundtrack through MLX-Gen; `base_model` picks the schedule (`minimax-h3-turbo-544p`, `minimax-h3-turbo`, `minimax-h3`); typed `soundscape`, `music`, `generate_audio`, `audio_shift` (and `flow_shift` as the video shift); frame grid and defaults from MLX-Gen's capability row; result MP4 with AAC plus `GeneratedAsset.audio`; `memory_mode` low = 1 GB cache + transformer release, lowest = block streaming.
@@ -185,10 +185,11 @@ flowchart LR
 ## Status (current backend support)
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
+- What's new in 0.3.38: MLX-Gen latent, masked, multi-reference, outpaint and reframe edits, video-to-video on Wan, and SeedVR2 video restoration; it requires `mlx-gen>=0.40.3,<0.41.0`. See [CHANGELOG.md](CHANGELOG.md#0338---2026-11-27).
 - Checked on Linux without a GPU, Linux with an NVIDIA card and Apple silicon; the measured generation times per model are in [docs/benchmark.md](docs/benchmark.md).
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
-- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`; and supports MiniMax-H3, video with a synchronized stereo soundtrack (`text_to_video` and first-frame `image_to_video`, with `soundscape` / `music`), from the gated `AbstractFramework/minimax-h3-*` packages. See [docs/api.md](docs/api.md#video-with-sound-minimax-h3).
-- Local MLX-Gen `0.40.1+` exposes route-aware masked edit on validated Qwen 2511 edit routes through `mask`. It does not run structured control: a `control_image` raises `CapabilityNotSupportedError` (`field="control_image"`).
+- Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, base Qwen Image, Z-Image, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`, and `video_to_video` on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B; supports SeedVR2 video restoration (`video_upscale`, see [docs/api.md](docs/api.md#video-restoration-video_upscale)); and supports MiniMax-H3, video with a synchronized stereo soundtrack (`text_to_video` and first-frame `image_to_video`, with `soundscape` / `music`), from the gated `AbstractFramework/minimax-h3-*` packages. See [docs/api.md](docs/api.md#video-with-sound-minimax-h3).
+- Local MLX-Gen `0.40.3+` exposes route-aware masked edit on validated Qwen 2511 edit routes, FLUX.2 klein and Z-Image Turbo through `mask`. It runs structured control (`control_image`) on `AbstractFramework/qwen-image-8bit` only, with the ControlNet side weights in the cache; any other model raises `CapabilityNotSupportedError` (`field="control_image"`).
 - Local MLX-Gen exposes a shared `lora_adapters` contract across `text_to_image`, `image_to_image`, `text_to_video`, and `image_to_video`. Route-level LoRA truth stays backend-owned and is surfaced through provider catalogs as `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
@@ -229,7 +230,7 @@ pip install "abstractvision[apple]"   # Apple Silicon
 pip install "abstractvision[gpu]"     # NVIDIA / Linux
 ```
 
-The MLX-Gen extras (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) install `mlx-gen>=0.40.1,<0.41.0` and,
+The MLX-Gen extras (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) install `mlx-gen>=0.40.3,<0.41.0` and,
 on macOS, `mlx>=0.32.4`. Upgrade with the extra (`pip install -U "abstractvision[apple]"`): an upgrade without it
 keeps the installed mlx-gen and MLX, and the MLX-Gen backend then refuses them at the first model load
 ([Troubleshooting](docs/troubleshooting.md#mlx-gen-refuses-the-installed-mlx-gen-or-mlx-version)).
@@ -382,7 +383,7 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen `0.40.1+` also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen `0.40.3+` also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, the prepared TI2V package
@@ -401,14 +402,20 @@ needed for official/source weights. Bonsai is a pre-packed
 ternary 2-bit checkpoint, not a q4/q8 prepared folder; use its exact repo id
 and keep guidance at 1.0. The binary 1-bit Bonsai checkpoint is not surfaced
 because stock MLX cannot run it yet. `image_to_image` is implemented for FLUX.2
-klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models.
-FLUX.2 and Qwen Image Edit can accept additional references with
-`--reference-image` (or Python `extra={"reference_images": [...]}`) for
+klein/base, base Qwen Image and Z-Image (latent, at strength 0.4 unless set;
+Z-Image Turbo also takes a mask), Qwen Image Edit, ERNIE Image Turbo, FIBO, and
+FIBO Edit models; Python
+`image_strength=` selects FLUX.2's latent route.
+FLUX.2 klein and Qwen Image Edit outpaint and reframe with `outpaint_padding=` /
+`reframe_padding=` (see [docs/api.md](docs/api.md#outpaint-and-reframe)).
+FLUX.2 and Qwen Image Edit 2509/2511 can accept additional references with
+`--reference-image` (or Python `reference_images=[...]`) for
 multi-reference edits. FIBO Edit snapshots support mask inputs where the runtime
-supports them, and `AbstractFramework/qwen-image-edit-2511-8bit` supports
-route-aware masked edits. Edit inputs fail closed when the selected route
+supports them, and `AbstractFramework/qwen-image-edit-2511-8bit` and FLUX.2
+klein support route-aware masked edits. Edit inputs fail closed when the selected route
 does not advertise the matching runtime capability, and a structured control
-image (`--control-image`, Python `control_image=`) is refused. Edit strength is passed as
+image (`--control-image`, Python `control_image=`) runs on
+`AbstractFramework/qwen-image-8bit` only. Edit strength is passed as
 `strength` and normalized to MLX-Gen's `image_strength` parameter where the
 runtime supports it. For video,
 prefer the prepared TI2V-5B or task-specific Wan 2.2 A14B packages when memory
@@ -949,7 +956,7 @@ Public API surface: [`VisionManager`](../src/abstractvision/vision_manager.py) e
 
 Built-in backends implement:
 - **Images**: Diffusers, stable-diffusion.cpp, MLX-Gen, OpenAI-compatible HTTP ([`../src/abstractvision/backends/`](../src/abstractvision/backends/))
-- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, Qwen/FIBO masked edits (structured control images are refused), official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V/A14B video. MLX-Gen is validated on Apple Silicon; the explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)), and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
+- **Current local policy**: MLX-Gen supports curated q4/q8 image presets, Qwen/FIBO/FLUX.2 klein/Z-Image Turbo masked edits, a structured control image on `AbstractFramework/qwen-image-8bit` only, official FIBO image snapshots, SeedVR2 image upscaling and video restoration, shared LoRA adapters, and Wan 2.2 TI2V/A14B video (with `video_to_video` on T2V-A14B and Wan 2.1 VACE 1.3B). MLX-Gen is validated on Apple Silicon; the explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)), and the NVIDIA/Linux `gpu` / `all-gpu` profiles do not include it. Local Diffusers `text_to_video` is experimental and temporarily disabled from normal local surfaces.
 - **Video**:
   - MLX-Gen for Wan 2.2 local `text_to_video` and first-frame `image_to_video`
   - OpenAI-compatible HTTP for optional `text_to_video` / `image_to_video` when endpoints are configured ([`openai_compatible.py`](../src/abstractvision/backends/openai_compatible.py))
@@ -1491,9 +1498,9 @@ Leave out `--width/--height/--frames/--fps/--steps` to use each model's default
 (832x480 for every Wan model; 121 frames at 24 fps for TI2V-5B, 81 frames at
 16 fps for A14B). The measured memory per size is in
 [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
-`--control-image` is accepted by `t2i` but refused by every built-in backend in
-this release, MLX-Gen included. For masked edits, use the validated Qwen edit route
-`AbstractFramework/qwen-image-edit-2511-8bit` (or FIBO Edit) and pass
+`--control-image` on `t2i` runs on MLX-Gen's `AbstractFramework/qwen-image-8bit`
+only; every other model and backend refuses it. For masked edits, use the validated Qwen edit route
+`AbstractFramework/qwen-image-edit-2511-8bit` (or FIBO Edit, FLUX.2 klein, Z-Image Turbo) and pass
 `--mask`.
 
 Shared LoRA adapters:
@@ -1927,15 +1934,15 @@ All assets referenced here were generated through AbstractVision with
 - Installed adapter discovery is backend-owned and lists optional overlays only;
   full-model component files are excluded from the adapter inventory.
 - The MLX-Gen surface exposes route-aware Qwen masked edit through a typed
-  request field instead of an `extra`-only escape hatch; it refuses structured
-  control images (`control_image`) in this release.
+  request field instead of an `extra`-only escape hatch; it runs a structured
+  control image (`control_image`) on `AbstractFramework/qwen-image-8bit` only.
 - The public TI2V-5B visual proofs in this bundle use `832x480`.
 - The public task-specific Wan A14B proofs in this bundle use `480x240`.
 - The LoRA-heavy proof runs on this page use curated 8-bit MLX-Gen routes. For
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.40.1,<0.41.0`, with `mlx>=0.32.4` on macOS.
+  `mlx-gen>=0.40.3,<0.41.0`, with `mlx>=0.32.4` on macOS.
 
 MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
 Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
@@ -1959,6 +1966,7 @@ abstractvision show-model AbstractFramework/qwen-image-edit-2509-8bit
 abstractvision show-model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit
 abstractvision show-model AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit
 abstractvision adapters --provider mlx-gen --model AbstractFramework/qwen-image-edit-2509-8bit --task image_to_image
+abstractvision adapters --provider mlx-gen --model AbstractFramework/flux.2-klein-9b-8bit --task image_to_image
 abstractvision adapters --provider mlx-gen --model AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit --task text_to_video
 abstractvision adapters --provider mlx-gen --model AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit --task image_to_video
 ```
@@ -1995,8 +2003,8 @@ directly:
   `abstractvision i2i --provider mlx-gen --model AbstractFramework/qwen-image-edit-2511-8bit --image ./input.png --mask ./mask.png "repair the marked area"`
 
 A mask fails closed when the selected route does not advertise the matching
-runtime capability. A structured control image (`--control-image`) is refused by
-MLX-Gen, as by every built-in backend in this release.
+runtime capability. A structured control image (`--control-image`) runs on
+`AbstractFramework/qwen-image-8bit` only and is refused on every other model.
 
 ## Shared adapter contract
 
@@ -2051,6 +2059,50 @@ edited = i2i.edit_image(
 In the CLI, the equivalent surface is repeated `--lora*` flags. Passing no
 LoRA flags keeps the base-model route. Passing one or more adapter flags stacks
 them in order.
+
+## FLUX.2 klein 9B edit with the consistency LoRA
+
+[`dx8152/Flux2-Klein-9B-Consistency`](https://huggingface.co/dx8152/Flux2-Klein-9B-Consistency)
+is an image-to-image LoRA for FLUX.2 klein 9B that improves the consistency of
+edits (apache-2.0, no trigger word). Use its V2 file, the one the author
+recommends; MLX-Gen validated it on `AbstractFramework/flux.2-klein-9b-8bit`'s
+edit route (`flux2.edit`). The author gives no scale, so the examples leave the
+default. Fetch it (the whole repository, both files, into the Hugging Face
+cache) and check that the model lists it:
+
+```bash
+abstractvision download dx8152/Flux2-Klein-9B-Consistency
+abstractvision adapters --provider mlx-gen --model AbstractFramework/flux.2-klein-9b-8bit --task image_to_image
+```
+
+```bash
+abstractvision i2i \
+  --provider mlx-gen \
+  --model AbstractFramework/flux.2-klein-9b-8bit \
+  --image ./cat.png \
+  --lora dx8152/Flux2-Klein-9B-Consistency:Flux2-Klein-9B-consistency-V2.safetensors \
+  "Turn this cat into a dog."
+```
+
+```python
+from pathlib import Path
+
+from abstractvision import LoRAAdapterSpec, VisionManager
+from abstractvision.backends import MLXGenBackendConfig, MLXGenVisionBackend
+
+klein = MLXGenVisionBackend(config=MLXGenBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit"))
+edited = VisionManager(backend=klein).edit_image(
+    "Turn this cat into a dog.",
+    image=Path("./cat.png").read_bytes(),
+    lora_adapters=[
+        LoRAAdapterSpec(source="dx8152/Flux2-Klein-9B-Consistency:Flux2-Klein-9B-consistency-V2.safetensors")
+    ],
+)
+```
+
+A plain edit runs the `flux2.edit` route. The adapter also attaches to the other
+routes whose rows take a LoRA (multi-reference, masked edit, outpaint); the
+latent route (`image_strength`) and reframe take none and refuse it.
 
 ## Proof bundle
 
@@ -2317,6 +2369,8 @@ The package exports the following symbols from `abstractvision` (see [`../src/ab
 - `generate_video_batch(...)` → repeated `text_to_video` orchestration with explicit seed planning
 - `image_to_video(...)` → `image_to_video` (backend-dependent)
 - `image_to_video_batch(...)` → repeated `image_to_video` orchestration with explicit seed planning
+- `video_to_video(...)` → `video_to_video` (backend-dependent)
+- `upscale_video(...)` → `video_upscale` (backend-dependent)
 - `generate_angles(...)` → `multi_view_image` (API exists; no built-in backend implements it yet)
 
 Task names are also used by the capability registry ([`../src/abstractvision/assets/vision_model_capabilities.json`](../src/abstractvision/assets/vision_model_capabilities.json)).
@@ -2428,7 +2482,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen `0.40.1+` supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.40.3+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
@@ -2437,10 +2491,11 @@ packaging.
 
 `ImageGenerationRequest` includes typed `control_image` and `control_strength`
 fields: a structure guide such as edges, sketch, or pose, not a source-image edit
-input. No built-in backend applies them; each one, MLX-Gen included, refuses a
-`control_image` with `CapabilityNotSupportedError` (`field="control_image"`). MLX-Gen
-also refuses a `control_strength` given alone (`field="control_strength"`); the other
-built-in backends do not use it.
+input. MLX-Gen applies them on `AbstractFramework/qwen-image-8bit` (see
+[Control image](#control-image-control_image)) and refuses a `control_image` on
+any other model (`field="control_image"`) and a `control_strength` given alone
+(`field="control_strength"`); the other built-in backends refuse a `control_image`
+and do not use `control_strength`.
 
 ### Local example (MLX-Gen backend)
 
@@ -2470,28 +2525,26 @@ image_asset = image_vm.generate_image(
     height=512,
     steps=12,
     guidance_scale=1.0,
+    on_progress=on_progress,
+)
+
+# A plain edit runs FLUX.2's edit route, on which MLX-Gen validated this LoRA on the 8-bit package.
+edit_asset = image_vm.edit_image(
+    "Turn this cat into a dog.",
+    image=Path("./cat.png").read_bytes(),
     lora_adapters=[
-        LoRAAdapterSpec(
-            source="prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors",
-            scale=1.0,
-        )
+        LoRAAdapterSpec(source="dx8152/Flux2-Klein-9B-Consistency:Flux2-Klein-9B-consistency-V2.safetensors")
     ],
     on_progress=on_progress,
 )
 
-edit_asset = image_vm.edit_image(
+reference_asset = image_vm.edit_image(
     "compose the subject using the second image as a style and layout reference",
     image=Path("./subject.png").read_bytes(),
     steps=12,
     guidance_scale=1.0,
-    lora_adapters=[
-        LoRAAdapterSpec(
-            source="fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors",
-            scale=0.9,
-        )
-    ],
     on_progress=on_progress,
-    extra={"reference_images": [Path("./style-reference.png").read_bytes()]},
+    reference_images=[Path("./style-reference.png").read_bytes()],
 )
 
 upscale_backend = MLXGenVisionBackend(config=MLXGenBackendConfig(model="AbstractFramework/seedvr2-3b-8bit"))
@@ -2505,29 +2558,60 @@ upscaled_asset = upscale_vm.upscale_image(
     on_progress=on_progress,
 )
 
+ti2v_backend = MLXGenVisionBackend(
+    config=MLXGenBackendConfig(model="AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit")
+)
+ti2v_vm = VisionManager(backend=ti2v_backend)
+
+# TI2V-5B has one transformer: its adapters take target_role="transformer".
+styled_asset = ti2v_vm.generate_video(
+    "HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk",
+    width=832,
+    height=480,
+    num_frames=17,
+    fps=16,
+    steps=20,
+    guidance_scale=4.0,
+    flow_shift=3.0,
+    lora_adapters=[
+        LoRAAdapterSpec(
+            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
+            scale=0.8,
+            target_role="transformer",
+        )
+    ],
+    on_progress=on_progress,
+)
+
 t2v_backend = MLXGenVisionBackend(
     config=MLXGenBackendConfig(model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit")
 )
 t2v_vm = VisionManager(backend=t2v_backend)
 
+# A14B has two denoisers: each adapter names the one it targets (here the Wan 2.2 Lightning pair).
 asset = t2v_vm.generate_video(
     "a red fox walking through a snowy forest, cinematic",
-    width=432,
+    width=480,
     height=240,
     num_frames=41,
-    fps=10,
-    steps=20,
-    guidance_scale=4.0,
-    guidance_2=3.0,
+    fps=20,
+    steps=4,
+    guidance_scale=1.0,
+    guidance_2=1.0,
+    flow_shift=5.0,
     lora_adapters=[
         LoRAAdapterSpec(
-            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
-            scale=0.9,
-            target_role="transformer",
-        )
+            source="lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors",
+            scale=1.0,
+            target_role="high_noise_transformer",
+        ),
+        LoRAAdapterSpec(
+            source="lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors",
+            scale=1.0,
+            target_role="low_noise_transformer",
+        ),
     ],
     on_progress=on_progress,
-    extra={"max_sequence_length": 256},
 )
 
 i2v_backend = MLXGenVisionBackend(
@@ -2538,24 +2622,120 @@ i2v_vm = VisionManager(backend=i2v_backend)
 first_frame_asset = i2v_vm.image_to_video(
     image=Path("./first-frame.png").read_bytes(),
     prompt="slow camera push-in",
-    width=432,
+    width=480,
     height=240,
     num_frames=41,
-    fps=10,
-    steps=20,
-    guidance_scale=3.5,
-    guidance_2=3.5,
+    fps=20,
+    steps=4,
+    guidance_scale=1.0,
+    guidance_2=1.0,
+    flow_shift=5.0,
     lora_adapters=[
         LoRAAdapterSpec(
-            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
-            scale=0.9,
-            target_role="transformer",
-        )
+            source="lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors",
+            scale=1.0,
+            target_role="high_noise_transformer",
+        ),
+        LoRAAdapterSpec(
+            source="lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors",
+            scale=1.0,
+            target_role="low_noise_transformer",
+        ),
     ],
     on_progress=on_progress,
-    extra={"max_sequence_length": 256},
 )
 ```
+
+### Control image (`control_image`)
+
+On `AbstractFramework/qwen-image-8bit`, the only model whose MLX-Gen rows have a
+control route (`qwen.control`), `generate_image(..., control_image=...)` runs
+`QwenImageControlNet` with the row's ControlNet
+(`InstantX/Qwen-Image-ControlNet-Union:diffusion_pytorch_model.safetensors`);
+`control_strength` is a finite number (unset: the engine CLI's 0.4). The
+ControlNet's side weights are looked up in the Hugging Face cache before any
+weights load and never downloaded during a generation: when they are missing the
+request is refused (`field="control_image"`) with the command that fetches them,
+`abstractvision download InstantX/Qwen-Image-ControlNet-Union`.
+`get_capabilities().supports_control_image` is true on that model only. `i2i`
+refuses `control_image` and `control_strength` (`field=`).
+
+### Video-to-video (`video_to_video`)
+
+`VisionManager.video_to_video(prompt, video, **kwargs)` (`VideoToVideoRequest`;
+the plugin's `v2v(prompt, video, ...)`) edits a source clip. `video` is its bytes,
+written once to the run's directory, or a local file `Path` the engine reads in
+place (the plugin takes a file path, bytes or an artifact ref). On MLX-Gen it
+runs Wan 2.2 T2V-A14B's video-to-video route (`Wan2_2_TI2V`) with the A14B
+defaults and memory plan of text-to-video:
+
+- Guidance as the engine CLI sets it on this route: unset, 4.0 and `guidance_2`
+  3.0; a `guidance_scale` set alone leaves `guidance_2` to the engine, which then
+  uses the same value (text-to-video and image-to-video keep `guidance_2` at the
+  model's default).
+- `video_strength` in `(0, 1]` (unset: the engine's 0.8) and an optional `mask`
+  (one image, white is the region to change; one with no white pixel raises
+  `ValueError`). A negative prompt is passed only when set, so the model's own
+  default applies.
+- Before any weights load, the clip is probed by the engine's rule: one too short
+  for `num_frames` at `fps` is refused (`field="num_frames"`); `extra` takes the
+  progress callbacks, `max_sequence_length` and `vae_tiling` (as on the other Wan
+  routes), and any other key is refused naming it.
+- The result is the engine's MP4 (the source's audio is not carried; the engine
+  records whether there was one) and `num_frames` is the engine's count, snapped
+  down to `4n+1`.
+
+Wan 2.1 VACE 1.3B (`Wan-AI/Wan2.1-VACE-1.3B-diffusers`, `WanVace`; defaults
+832x480, 81 frames at 16 fps, 30 steps, guidance 5.0) runs the same task with
+other controls: `reference_images` (images in order, no published maximum),
+`masked_region_mode` (`"generate"` or `"repaint"` the region the `mask` marks;
+it needs a mask) and `conditioning_scale` (a finite number, default 1.0). It
+takes no `video_strength` and no `guidance_2` (one transformer), and refuses
+them by name; T2V-A14B refuses the three VACE fields the same way. A VACE
+preload loads `WanVace` and runs no warm-up generation; in `"default"` it reads
+the transformer and the VAE ahead, as the other Wan preloads do.
+
+TI2V-5B and I2V-A14B have no video-to-video route and refuse the task, as do the
+other backends.
+
+### Video restoration (`video_upscale`)
+
+`VisionManager.upscale_video(video, **kwargs)` (`VideoUpscaleRequest`; the
+plugin's `upscale_video(video, ...)`) restores a clip on SeedVR2 3B or 7B
+(MLX-Gen 0.40.2 and later). `video` is handled as for video-to-video. The options are
+`resolution` (unset: 1x), `softness` (`[0, 1]`, unset: 0.0), `start_seconds`
+(unset: the clip's start), `max_frames` (unset: to its end), `seed`, `quantize`
+(as for `upscale_image`) and `drop_audio` (True: the result is always silent,
+MLX-Gen does not copy the source's soundtrack; unset or False: MLX-Gen copies it,
+and fails the run after the restoration when it cannot). Before any weights load,
+MLX-Gen's own plan (`SeedVR2VideoRestorePlan.for_video`, the one `mlxgen upscale
+--video-path` uses) probes the clip and decides the chunking and the memory
+profile, counting the model's weights as loaded when this backend already holds
+the instance the run reuses:
+
+- a scale above 1x is refused (`CapabilityNotSupportedError`,
+  `field="resolution"`, `supported=None`), and a clip beyond the safe memory
+  profile or below its temporal quality floor is refused (`field=None`), each with
+  MLX-Gen's message (on the safe profile's 48 GB budget a frame of up to about
+  1.4 megapixels fits, 1280x720 included; a larger one is refused with the
+  largest size that fits); MLX-Gen's argument errors (`start_seconds` below 0,
+  `max_frames` below 1) stay `ValueError`, as does a clip it cannot decode
+  ("video is not a readable clip"); an `extra` key other than the progress
+  callbacks is refused naming it (`vae_tiling` included).
+- The run applies the plan as the CLI does: MLX-Gen's low-RAM saver keeping the
+  transformer, in `memory_mode="default"` and `"low"` alike (`"lowest"` is
+  refused); metadata reports the mode asked and `low_ram: true`. The MLX cache
+  limit is one value from before the model loads to the end of the run: the
+  plan's (8 GB, what MLX-Gen's CLI runs with on any Mac, above its default cap
+  where that is lower), except that a limit the host set (by MLX-Gen's own rule:
+  one at or below half of physical memory found before its default applied) is
+  never raised, so the smaller of the two applies; the limit in force before the
+  run is restored after it. The run drops the model at its end, so a later image
+  upscale loads a fresh one.
+- The result is an MP4 whatever the source's container (as MLX-Gen writes it:
+  H.264, and AAC for the source's audio, which MLX-Gen copies);
+  `metadata["mlx_gen"]` is its sidecar.
+  Progress is per chunk; a cancel removes the partial output.
 
 Wan 2.2 A14B has two guidance controls. Use `guidance_scale` for the
 primary/high-noise stage and `guidance_2` for the second/low-noise stage. The
@@ -2577,6 +2757,10 @@ each model's `raw["parameter_defaults"]`. The Wan VAE decode runs in overlapping
 default, which bounds its memory; pass `extra={"vae_tiling": False}` to decode
 whole frames at once. Generated asset metadata records `vae_tiling`. Measured
 memory per size: [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
+MLX-Gen encodes the prompt with its UMT5 text encoder in float32 on the GPU: with mlx-gen 0.40.2 and later a
+new prompt is encoded in seconds, a prompt already used is served from MLX-Gen's on-disk cache, and
+results for a given prompt and seed differ slightly from those made with mlx-gen 0.40.1; see
+MLX-Gen's [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
 
 For MLX-Gen, `on_progress` receives an `abstractvision.VideoProgressEvent`.
 Image generation/editing/upscaling events carry `phase`, `step`, `total_steps`,
@@ -2588,6 +2772,133 @@ and denoise-step `progress`. Wan video events add `frame`, `total_frames`, and
 two-argument `(current, total)` callback for backend-agnostic progress bars.
 For MLX-Gen, that callback reports denoise step counts; use
 `on_progress(event)` when a UI also needs video frame context.
+
+## MLX-Gen image routes
+
+MLX-Gen publishes, per model, the routes it can run (its capability rows,
+`backend.describe_routes()`), and `mlxgen generate` picks one with its planner.
+The MLX-Gen backend asks the same planner for every `image_to_image` request on
+FLUX.2, Z-Image and base Qwen-Image, and for a request on any model that sets an
+option only a route applies (`image_strength` below). The route it selects
+decides the MLX-Gen class and call; other requests run as in 0.3.37. On a model
+the engine publishes no rows for (a local folder whose own name it cannot place),
+the model has its 0.3.37 tasks, and an option runs its 0.3.37 branch on the
+families 0.3.37 applied it on (`image_strength` on ERNIE-Image-Turbo, reference
+images on FLUX.2 and Qwen-Image-Edit, a mask on Qwen-Image-Edit and FIBO-Edit)
+and is refused on any other with `field=<option>`, `supported=()`. On every
+MLX-Gen image route, text-to-image included, a negative prompt is passed where
+the row of the route the request runs takes one (`supports_negative_prompt`) and
+dropped silently where it takes none; a model without rows keeps 0.3.37's answer.
+`parameter_constraints["negative_prompt"]` in `list_provider_models()` says the same.
+A request is refused before any weights load, in `normalize_image_edit_request`
+as in `edit_image`:
+
+- with `ValueError` when two of its options contradict each other (`mask` with
+  `image_strength`), or a value is not of its type (a picture that fails to
+  decode, checked once the route takes it);
+- with `CapabilityNotSupportedError(field=<option>, supported=())` when no row of
+  the model applies an option it sets, and `field="lora_adapters"` when the
+  selected row takes no adapters;
+- with `CapabilityNotSupportedError(field=None, supported=None)` and the planner's
+  message when no row serves that combination of options.
+
+Those are check point 1, from the request's values and the engine's rows. An
+outpaint or a reframe adds check point 2 at the start of `edit_image`, still
+before any weights load: the source is written to the run's directory and
+MLX-Gen's canvas session is built from it, which refuses a box it cannot apply
+and a two-pass outpaint in low-RAM mode. A caller who only calls
+`normalize_image_edit_request` sees check point 1 only.
+
+### Latent image-to-image (`image_strength`)
+
+`ImageEditRequest.image_strength` (`edit_image(..., image_strength=0.6)`, the
+plugin's `i2i(image_strength=...)`) noises the source before denoising, in
+`(0, 1]`; a value outside is refused with `field="image_strength"`. On MLX-Gen,
+`extra["image_strength"]` is the same option (both set and different:
+`ValueError`); the other backends refuse the typed field and pass `extra` on
+unchanged.
+
+- FLUX.2 klein: setting it selects the latent route (`Flux2Klein`); without it
+  an edit stays the reference edit (`Flux2KleinEdit`).
+- Base Qwen-Image (`AbstractFramework/qwen-image-8bit`, the Qwen-Image-2512
+  packages): `image_to_image` runs latent (`QwenImage`), at `image_strength=0.4`
+  when the request names none; so do Z-Image and Z-Image-Turbo (`ZImage`).
+  ERNIE-Image-Turbo runs latent as before.
+- Qwen-Image-Edit, FIBO, Fibo-lite and FIBO-Edit have no latent route and
+  refuse it (`field="image_strength", supported=()`).
+
+`list_provider_models()` publishes `parameter_defaults["image_strength"] = 0.4`
+and `parameter_constraints["image_strength"] = {"min": 0.0, "min_exclusive":
+true, "max": 1.0}` for every model with a latent route.
+
+### FLUX.2 masked edits (`mask`)
+
+On FLUX.2 klein, an edit with a `mask` runs `Flux2KleinInpaint` (route
+`flux2.inpaint`): white in the mask is the region to change (MLX-Gen reads its
+luminance, resizes it to the canvas and ignores an alpha channel; the bytes are
+passed unchanged). The mask is decoded first, and one that is not a picture
+raises `ValueError` naming `mask`. An unset `guidance_scale` stays unset, so the
+class applies its default (4.0 on the base models, 1.0 on the distilled ones);
+the base models take a negative prompt. `get_capabilities().supports_mask` is
+true on FLUX.2 klein. A masked edit and a plain edit run on different classes,
+so alternating them reloads the model each time (never two instances at once).
+
+On Z-Image-Turbo a `mask` runs its masked edit (route `z-image.inpaint`, the
+mask instead of a strength); base Z-Image has no masked route and refuses it.
+
+### Multi-reference edits (`reference_images`)
+
+`ImageEditRequest.reference_images` lists the images after `image`, in order:
+bytes, or local file paths the engine reads in place (the plugin's
+`i2i(reference_images=...)` and `i2i_batch` take bytes-like values, file paths
+(any path-like) and artifact
+refs, and pass bytes). On MLX-Gen, `extra["reference_images"]` is the same
+option, and the 0.3.37 keys `extra["images"]`, `["additional_images"]` and
+`["image_paths"]` keep working but raise `ValueError` with the typed list. The
+request runs MLX-Gen's multi-reference route: FLUX.2 klein (`Flux2KleinEdit`)
+and Qwen-Image-Edit 2509 and 2511 (`QwenImageEdit`); the first image decides the
+canvas, and no maximum count is published or enforced. A model without that
+route (plain Qwen-Image-Edit, ERNIE, base Qwen-Image) refuses it
+(`field="reference_images"`, `supported=()`), as does a combination with a mask
+or a strength (`field=None`); every picture counts there, those of the 0.3.37
+`extra` keys included, so none is dropped. An empty list is no reference.
+`extra["reference_images"]` is read as 0.3.37 read it (any iterable; `None` and
+blank items skipped), and only what that reading keeps counts; the typed field
+takes a list of image bytes or paths.
+
+### Outpaint and reframe
+
+`outpaint_padding` grows the canvas by a box in MLX-Gen's syntax
+(`"top,right,bottom,left"`, each in pixels or `"N%"`; one to four values) and
+fills the new area, keeping the source; `reframe_padding` grows it the same way
+and lets the model recompose the whole picture. They run MLX-Gen's own canvas
+session (`mflux.outpaint`), which builds the conditioning canvas, plans the
+passes and owns the canvas size, so `extra["width"]` / `["height"]` are refused
+with them (`field="width"`). FLUX.2 klein runs outpaint with `Flux2KleinOutpaint`
+and reframe (distilled weights only) with `Flux2KleinEdit`; Qwen-Image-Edit runs
+both with `QwenImageEdit`.
+
+- `outpaint_fill` is one of the route's fill modes (FLUX.2: `auto`, `edge`,
+  `neutral`, `solid`, `blur`; unset: `auto`), `outpaint_fill_color` (`"R,G,B"`
+  or `"#rrggbb"`) the color of `outpaint_fill="solid"`. Qwen-Image-Edit's fill is
+  fixed (`edge`) and refuses both, and either one without an outpaint is refused.
+- A box that pads both axes deeply runs as two passes (MLX-Gen's `auto` plan);
+  progress counts the steps across both, and `memory_mode="low"` refuses it
+  (`field="memory_mode"`, `supported=("default",)`: low-RAM mode frees the
+  transformer the second pass needs). An unset `guidance_scale` stays unset, so
+  the class applies its default.
+- A box outside MLX-Gen's validated envelope runs, as on the engine's CLI;
+  `metadata["outpaint_warnings"]` says so, and `metadata["outpaint_notice"]` gives
+  the resolved canvas and passes. The engine's geometry fields are under
+  `metadata["mlx_gen"]`.
+
+`extra["strength"]` (the CLI's `--strength`, the plugin's `strength=`) is the
+0.3.37 cross-backend keyword, not a second spelling of the typed field: on every
+route 0.3.37 had it keeps exactly its 0.3.37 meaning (clamped to `[0, 1]`,
+dropped when not a number, ignored by the FLUX.2 and Qwen-Image-Edit reference
+edits), and on the latent routes new in 0.3.38 it is read as the run's strength
+with the same clamp. It never selects a route and is not read on a masked route.
+Combined with `image_strength` it raises `ValueError`.
 
 ## Memory modes (`memory_mode`)
 
@@ -2601,6 +2912,10 @@ The environment value is one setting for every backend in the process: a
 backend that cannot honour it runs the lowest-memory mode it lists that is not
 below it (`"lowest"` becomes `"low"` where `"low"` is listed, else `"default"`)
 and logs that once per process, while a mode passed on the request is refused.
+On MLX-Gen, every mode starts with the engine's default MLX cache cap, as its CLI
+applies it (total RAM / 8, between 1 and 8 GiB, once per process; a limit the
+host set at or below half of physical memory is left alone, a higher one is
+replaced by the default cap). `"low"` then lowers it to 1 GB for the run.
 `backend.preload(memory_mode=None, quantize=None)` loads the model as a request
 carrying those values would, so the first such request reuses it: the values
 are checked by the same function as a request's, before anything loads, with
@@ -2610,12 +2925,34 @@ MLX-Gen, `preload()` loads the model as the first request with those values
 starts it (under the same 1 GB cache hold in `"low"` and `"lowest"`) into the
 instance that request reuses, so in a mode whose runs drop the model (`"low"`,
 `"lowest"`, and every mode on Wan TI2V-5B, which releases its denoiser before
-the decode) the preloaded instance serves one request. A text-to-image model loaded for a mode
-that keeps it also runs one image generation in that mode as its warm-up;
-edit-only, video (Wan, MiniMax-H3) and upscale (SeedVR2) models load without one.
+the decode) the preloaded instance serves one request.
+In `"default"` an MLX-Gen preload warms exactly what a run of its task reads, so
+the first request reads no weights (MLX-Gen binds them lazily at load): an image
+task (text-to-image, image-to-image, upscale) runs one warm-up of that task on
+its plain route, its output discarded, with a small ordinary request: a
+neutral 256x256 picture or canvas (352 on base Qwen-Image, FIBO and Fibo-lite,
+384 on FIBO-Edit, 512 on ERNIE-Image-Turbo and Bonsai, the smallest side MLX-Gen
+runs those families at) at 2 steps, or for SeedVR2 a 64x64 picture at 1x; a
+backend whose `default_width` / `default_height` are set warms at that canvas
+instead. A video task, whose warm-up run would take minutes, reads the first
+denoiser and, where the run encodes an input (image-to-video, video-to-video),
+the VAE (the Wan A14B second expert is read at the switch, as in a run;
+MiniMax-H3 reads its transformer at load). `"low"` and `"lowest"` read nothing
+ahead. `preload(..., warm_up=False)` skips all of it: the model is still resolved
+(its files found), checked (MLX-Gen version, the task, the
+memory mode and `quantize`) and built, so a bad model fails at the preload and not
+at the first request, but nothing is run or read ahead, and the first request
+reads the weights as a request without a preload does, minus the construction;
+`backend.preload_warmed()` says which the held model got.
 When anything in a preload fails, the model it loaded is dropped before the error
 is raised. A preload refused for its values, or one that fails after reusing the
-model already held, leaves that model held.
+model already held, leaves that model held. The MLX-Gen backend's `preload` also
+takes `task`, the task the host is about to run, as a hint: when the model has
+that task, the model is loaded as a request of that task loads it (on FLUX.2
+klein, `task="image_to_image"` loads `Flux2KleinEdit`, the class of a plain or
+multi-reference edit; a latent, masked or outpaint request then rebuilds its own
+class), and when it does not, or `task` is `None`, the preload chooses as before.
+`task` is never a reason to refuse; the other backends' `preload` takes no `task`.
 
 ```python
 asset_or_ref = vm.generate_video(
@@ -2998,7 +3335,7 @@ snapshot_dir = download_model_preset(preset, base_model="minimax-h3-turbo-544p",
   `{task, memory_mode, width, height, frames, steps, peak_bytes, machine_total_ram_bytes}` (`peak_bytes` is
   the whole-process footprint, `machine_total_ram_bytes` the memory of the Mac it ran on), kept to the
   package's stored width. A run names its canvas, frames and steps but not the schedule it ran with, and
-  mlx-gen 0.40.1 publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
+  mlx-gen publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
   per package, not per schedule. Empty for a repository that is not a prepared MLX-Gen package of the
   catalog, or when mlx-gen is not installed or publishes nothing; no model is built.
 - `abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)`: the
@@ -3025,7 +3362,7 @@ Common exceptions (defined in [`../src/abstractvision/errors.py`](../src/abstrac
 - `GenerationCancelledError` (the request's `cancel_event` was set)
 - `UnknownModelError` (model id isn’t present in the registry)
 - `OptionalDependencyMissingError` (backend dependency is missing, e.g. Diffusers/Torch)
-- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen MiniMax-H3 routes, raised when MLX-Gen's preflight reports that the weights or a run cannot fit, naming the `memory_mode` it used and the lower ones; MLX-Gen 0.40.1 reports this for MiniMax-H3 only)
+- `GpuOutOfMemoryError` (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen MiniMax-H3 routes, raised when MLX-Gen's preflight reports that the weights or a run cannot fit, naming the `memory_mode` it used and the lower ones; MLX-Gen reports this for MiniMax-H3 only)
 --- >8 --- END FILE: docs/api.md --- >8 ---
 
 --- 8< --- FILE: docs/architecture.md --- 8< ---
@@ -3212,7 +3549,7 @@ Where AbstractVision fits:
 ## What does AbstractVision support today?
 
 - Built-in backends implement **images**: `text_to_image` and `image_to_image`.
-- Local MLX-Gen supports curated q4/q8 image presets, Qwen/FIBO masked edits (structured control images are refused), official FIBO image snapshots, SeedVR2 upscaling, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`. MLX-Gen is validated on Apple Silicon. The explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the NVIDIA/Linux `gpu` and `all-gpu` profiles do not include it.
+- Local MLX-Gen supports curated q4/q8 image presets, Qwen/FIBO/FLUX.2 klein/Z-Image Turbo masked edits, a structured control image on `AbstractFramework/qwen-image-8bit` only, official FIBO image snapshots, SeedVR2 image upscaling and video restoration, shared LoRA adapters, and Wan 2.2 TI2V plus task-specific Wan 2.2 A14B `text_to_video` / first-frame `image_to_video`, with `video_to_video` on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B. MLX-Gen is validated on Apple Silicon. The explicit `mlx-gen` extra also installs on Linux, where it is not validated yet (see [backlog 030](backlog/planned/030_gpu_parity_with_mlx_gen.md)); the NVIDIA/Linux `gpu` and `all-gpu` profiles do not include it.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces.
 - OpenAI-compatible HTTP can also provide `text_to_video` / `image_to_video` **when** video endpoints are configured.
 - `multi_view_image` exists in the public API (`VisionManager.generate_angles`) but no built-in backend implements it yet (they raise `CapabilityNotSupportedError`).
@@ -3477,7 +3814,7 @@ unless you choose the matching extra.
 ### Symptom
 
 - The first MLX-Gen model load raises `OptionalDependencyMissingError`: `The MLX-Gen backend needs
-  mlx-gen>=0.40.1,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
+  mlx-gen>=0.40.3,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
   macOS; mlx <version> is installed`.
 
 ### Likely cause
@@ -3490,7 +3827,7 @@ already installed, so the backend checks both before it loads a model.
 ### Fix
 
 - `pip install -U "abstractvision[mlx-gen]"` (or the profile you installed, such as `abstractvision[apple]`):
-  it installs `mlx-gen>=0.40.1,<0.41.0` and, on macOS, `mlx>=0.32.4`.
+  it installs `mlx-gen>=0.40.3,<0.41.0` and, on macOS, `mlx>=0.32.4`.
 - With the one-line installer, run the same line again.
 
 ### Verify
@@ -3595,8 +3932,8 @@ The follow-up investigation is tracked in:
 - Upgrade AbstractVision to a version that supports MLX-Gen q4/q8 presets.
 - Install the backend extra: `pip install "abstractvision[mlx-gen]"`
 - Download the prepared model first, for example `abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen`.
-- For MLX-Gen mask edits, use a validated masked-edit route such as `AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, or `briaai/Fibo-Edit-RMBG`.
-- Structured control (`--control-image` / `--control-strength`, Python `control_image=` / `control_strength=`) is accepted by the request, but in this release every built-in backend, MLX-Gen included, refuses a `control_image` with `CapabilityNotSupportedError` (`field="control_image"`); MLX-Gen also refuses a `control_strength` given alone.
+- For MLX-Gen mask edits, use a validated masked-edit route such as `AbstractFramework/qwen-image-edit-2511-8bit`, FLUX.2 klein, Z-Image Turbo, `briaai/Fibo-Edit`, or `briaai/Fibo-Edit-RMBG`.
+- Structured control (`--control-image` / `--control-strength`, Python `control_image=` / `control_strength=`) runs on MLX-Gen's `AbstractFramework/qwen-image-8bit` only, with the ControlNet side weights in the cache (`abstractvision download InstantX/Qwen-Image-ControlNet-Union`); every other model and backend refuses a `control_image` with `CapabilityNotSupportedError` (`field="control_image"`), and MLX-Gen also refuses a `control_strength` given alone.
 - If you need a mask on another local route, use local Diffusers or `stable-diffusion.cpp` instead of expecting AbstractVision to silently fall back.
 
 Notes:
@@ -3850,7 +4187,7 @@ See also:
 |---|---|---|---|
 | OpenAI-compatible HTTP | [`openai_compatible.py`](../../src/abstractvision/backends/openai_compatible.py) | `text_to_image`, `image_to_image` (+ optional `text_to_video`, `image_to_video`) | Stdlib-only (`urllib`). Video is **opt-in** via configured paths. |
 | Diffusers (local) | [`huggingface_diffusers.py`](../../src/abstractvision/backends/huggingface_diffusers.py) | `text_to_image`, `image_to_image` | Requires `abstractvision[diffusers]`. Supports cache-only/offline mode. Local `text_to_video` groundwork exists but is currently experimental and disabled from the normal local surfaces. |
-| MLX-Gen (local, Apple-first) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image`, `text_to_video`, `image_to_video` | Requires `abstractvision[mlx-gen]` (or compatibility extra `abstractvision[mflux]`, or `abstractvision[all-apple]`). The current AbstractVision release is validated on Apple Silicon first; the install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Uses downloaded AbstractFramework q4/q8 MLX-Gen image preset snapshots plus official FIBO/Wan runtime snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
+| MLX-Gen (local, Apple-first) | [`mflux.py`](../../src/abstractvision/backends/mflux.py) | `text_to_image`, `image_to_image`, `text_to_video`, `image_to_video`, `video_to_video` | Requires `abstractvision[mlx-gen]` (or compatibility extra `abstractvision[mflux]`, or `abstractvision[all-apple]`). The current AbstractVision release is validated on Apple Silicon first; the install extra also exposes Linux support when upstream `mlx-gen` / `mlx` markers are available. Uses downloaded AbstractFramework q4/q8 MLX-Gen image preset snapshots plus official FIBO/Wan runtime snapshots from the Hugging Face cache; `ABSTRACTVISION_MODEL_DIR` is legacy migration input only. |
 | stable-diffusion.cpp (local GGUF/checkpoints) | [`stable_diffusion_cpp.py`](../../src/abstractvision/backends/stable_diffusion_cpp.py) | `text_to_image`, `image_to_image` | Uses external `sd-cli` if present, else `abstractvision[sdcpp]` python bindings. Start with single-file Stable Diffusion models; curated Qwen/FLUX GGUF presets now auto-resolve required VAE + LLM companions from the cache. |
 
 Notes:
@@ -3958,6 +4295,7 @@ Config fields:
 
 Runtime behavior notes:
 - The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
+- A local `model_id` is identified by its own folder or file name (a GGUF file by its file name), or, inside a Hugging Face cache, by the repository id followed by the path below the snapshot for a file or subfolder in it (`org/name`, `org/name/model.gguf`), never by a parent directory or the snapshot revision; a repository id, or a relative text that is not on disk, is its own name. That name sets the bfloat16 default of Qwen-Image-Edit `image_to_image` and inpainting on MPS, and the fallback chat template of a pipeline whose snapshot ships none (Qwen, FLUX.2, Z-Image, ERNIE-Image, GLM-Image). A Qwen-Image-Edit folder whose own name does not say so runs in the automatic dtype unless `torch_dtype="bfloat16"` is set.
 - Local Diffusers `GLM-Image` is temporarily disabled for both `text_to_image` and `image_to_image` pending the follow-up in [`../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Local Diffusers `text_to_video` is currently experimental and disabled from the normal local surfaces.
 - Local video export still requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for MP4 packaging.
@@ -3974,10 +4312,10 @@ Runtime behavior notes:
 **When to use**
 - You want local quantized MLX generation through the optional MLX-Gen runtime. This release is validated on Apple Silicon first, and the install extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers apply.
 - You want the AbstractFramework-published q4/q8 prepared folders from the [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
-- You want the official MLX-Gen `0.40.1+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
+- You want the official MLX-Gen `0.40.3+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
 - You want the official Prism ML Bonsai ternary 2-bit checkpoint (`prism-ml/bonsai-image-ternary-4B-mlx-2bit`) for very small local `text_to_image`.
 - You want SeedVR2 single-image upscaling through canonical `AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}` packages or the official `ByteDance-Seed/SeedVR2-*` bases.
-- You want local Wan 2.2 video generation through MLX-Gen `0.40.1+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
+- You want local Wan 2.2 video generation through MLX-Gen `0.40.3+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
 
 Install:
 - `pip install "abstractvision[mlx-gen]"` (or `pip install "abstractvision[all-apple]"`)
@@ -4013,6 +4351,16 @@ Model presets:
 - `abstractvision t2i`, `abstractvision i2i`, and Python callers select q4/q8
   by exact model id. Quantization is metadata of the published folder, not a
   generation-time parameter.
+- A source repository id (`black-forest-labs/FLUX.2-klein-4B`, `Tongyi-MAI/Z-Image`, `Qwen/Qwen-Image-2512`,
+  `baidu/ERNIE-Image-Turbo`, ...) whose own snapshot is in the Hugging Face cache is that model: it runs the
+  released 16-bit weights, unquantized, as `mlxgen generate --model <id>` does, even when one of its
+  prepared packages is cached too. The snapshot counts when it can load as the model: `model_index.json` and
+  readable `transformer/*.safetensors`, no partial download. It is a source, not a prepared package, as id or
+  as folder: `get_capabilities().quantize_bits` lists the engine's load-time widths and a request may set
+  `quantize`. The AbstractCore plugin passes such an id to the backend unchanged. A source runs at several
+  times a prepared package's memory (the 16-bit weights against q8 or q4). When the source is not cached (or
+  lacks those files), an id that maps to several prepared packages is refused as ambiguous, naming them: use
+  the exact package id.
 - `abstractvision upscale` defaults to `--provider mlx-gen --model AbstractFramework/seedvr2-3b-8bit --resolution 2x --softness 0.25`.
   Use `--resolution <pixels>` for a target short edge,
   `AbstractFramework/seedvr2-7b-8bit` when memory allows, and q4 SeedVR2
@@ -4026,7 +4374,7 @@ Model presets:
 - Prepared local folders work as model values. For example:
   `abstractvision upscale --provider mlx-gen --model /path/to/seedvr2-7b-8bit --image ./input.png --resolution 2x --softness 0.25 --open`.
 - Bonsai ternary is a pre-packed low-bit MLX artifact, not a q4/q8 prepared folder. Use the exact repo id; guidance is fixed at 1.0 and negative prompts are ignored. The binary 1-bit Bonsai checkpoint is not surfaced because stock MLX cannot run it yet.
-- Current shipped backend coverage includes `text_to_image` for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, ERNIE Image Turbo, FIBO, Fibo-lite, and Bonsai ternary. `image_to_image` edits are implemented for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, Fibo-lite, Fibo-Edit, and Fibo-Edit-RMBG; FIBO Edit snapshots support masks where the runtime supports them. `image_upscale` is implemented for SeedVR2.
+- Current shipped backend coverage includes `text_to_image` for FLUX.2 klein/base, Qwen Image, Z-Image, Z-Image Turbo, ERNIE Image Turbo, FIBO, Fibo-lite, and Bonsai ternary. `image_to_image` edits are implemented for FLUX.2 klein/base, base Qwen Image and Z-Image (latent image-to-image; Z-Image Turbo also masked), Qwen Image Edit, ERNIE Image Turbo, FIBO, Fibo-lite, Fibo-Edit, and Fibo-Edit-RMBG; `image_strength` selects FLUX.2's latent route (see [docs/api.md](../api.md#mlx-gen-image-routes)); FIBO Edit snapshots support masks where the runtime supports them, and FLUX.2 klein runs masked edits with `Flux2KleinInpaint`. `image_upscale` is implemented for SeedVR2.
 
 One-shot shell commands:
 
@@ -4106,12 +4454,12 @@ Config/env:
 Non-curated MLX-Gen models:
 - If you have an MLX-Gen-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
   - Pre-download it with `abstractvision download org/name` (HF cache) or `hf download org/name`
-  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (base model usually auto-infers; override with `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image` if needed).
+  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (the base model is inferred from a local folder's own name or card, or, inside a Hugging Face cache, its repo id, never from a parent directory; otherwise set `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image`).
 
 Runtime behavior notes:
 - MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
-- Local MLX-Gen `image_to_image` is supported for FLUX.2 klein/base, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models. Route-aware masked edit is available on `AbstractFramework/qwen-image-edit-2511-8bit`, `briaai/Fibo-Edit`, and `briaai/Fibo-Edit-RMBG`; unsupported routes fail closed instead of silently dropping the mask.
-- Local MLX-Gen does not run structured control: a typed `control_image` (CLI `--control-image`) is refused with `CapabilityNotSupportedError` (`field="control_image"`), as on every built-in backend in this release, and is never reinterpreted as an image edit.
+- Local MLX-Gen `image_to_image` is supported for FLUX.2 klein/base, base Qwen Image, Z-Image, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models. Route-aware masked edit is available on `AbstractFramework/qwen-image-edit-2511-8bit`, FLUX.2 klein, Z-Image Turbo, `briaai/Fibo-Edit`, and `briaai/Fibo-Edit-RMBG`; unsupported routes fail closed instead of silently dropping the mask.
+- Local MLX-Gen runs structured control on `AbstractFramework/qwen-image-8bit` only (`QwenImageControlNet`, see [docs/api.md](../api.md#control-image-control_image)); on any other model a typed `control_image` (CLI `--control-image`) is refused with `CapabilityNotSupportedError` (`field="control_image"`), as on every other built-in backend, and is never reinterpreted as an image edit.
 - Edit strength is passed as `strength` and normalized to MLX-Gen's `image_strength` parameter where the runtime supports it.
 - Local MLX-Gen video is implemented for `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, `AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit`, and the task-specific Wan A14B packages `AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit` / `AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit`. TI2V-5B should be run at `832x480` / `480x832` or above in practice. Wan A14B dimensions must be multiples of 16 and can still be smoke-tested at `480x240`.
 - Local MLX-Gen also serves MiniMax-H3 (`MiniMaxAI/MiniMax-H3`; packages `AbstractFramework/minimax-h3-8bit`, `-bf16`, `-4bit`): a video with a synchronized stereo soundtrack, `text_to_video` and first-frame `image_to_video`. Set `base_model` to `minimax-h3-turbo-544p`, `minimax-h3-turbo` or `minimax-h3` to pick the schedule. Requests take `soundscape`, `music`, `generate_audio`, `flow_shift` (the video shift) and `audio_shift`; MLX-Gen's capability row and its own MiniMax-H3 planning code (aspect window, prompt composition, adapter check) decide what is accepted, and every value is checked before any weights load, with an error that names the field. Results are the MP4 with its AAC track plus `GeneratedAsset.audio` and `GeneratedAsset.audio_summary()`; a track MLX-Gen could not mux is kept as a WAV (a second artifact when a store is set). `preload()` loads the model without a warm-up run, as for Wan. The weights are never downloaded during generation (gated; territorial licence). See [Video with sound](../api.md#video-with-sound-minimax-h3). `abstractvision download MiniMaxAI/MiniMax-H3 --base-model minimax-h3-turbo-544p` fetches the recommended package and the Turbo adapter.
@@ -4506,7 +4854,7 @@ Important boundary:
 
 - `vision_model_capabilities.json` is the curated package view of model-family tasks, downloadable variants, and model-level defaults.
 - `vision_adapter_capabilities.json` is the curated package view of adapter families, compatible base-model aliases, and adapter default/recommended parameters.
-- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask` or LoRA target roles at runtime (it refuses `control_image` on every route in this release).
+- Backend/runtime route truth still stays backend-owned. For example, MLX-Gen decides whether one exact local route currently supports `mask` or LoRA target roles at runtime (it runs `control_image` only on the Qwen-Image route whose row has a ControlNet).
 
 ## What the registry is used for
 
@@ -4521,6 +4869,7 @@ Important boundary:
   - additive parameter metadata such as `default`, `const`, `min`, `multiple_of`, `supported`, and `auto_derived_from_input` can be consumed by backends to keep model-specific defaults and constraints in one packaged source of truth.
 - **Adapter-aware request normalization hints**:
   - adapter profiles carry package-owned defaults such as recommended `steps`, `guidance_scale`, documentation links, and quantization notes.
+  - the packaged profiles cover the LightX2V Qwen-Image and Wan Lightning adapters and `dx8152/Flux2-Klein-9B-Consistency` (its V2 file: an image-to-image LoRA for FLUX.2 klein 9B edits, validated by MLX-Gen on the 8-bit package's `flux2.edit` route); `abstractvision adapters --provider mlx-gen --model AbstractFramework/flux.2-klein-9b-8bit --task image_to_image` lists it once it is in the Hugging Face cache (`--json` adds its notes and link); [MLX-Gen local examples](../mlx-gen-local-examples.md#flux2-klein-9b-edit-with-the-consistency-lora) shows an edit with it.
 
 Important:
 - The registry describes **model capability intent**.
@@ -5075,6 +5424,26 @@ mp4_bytes = llm.vision.t2v(
     on_progress=on_video_progress,
 )
 
+edited_mp4 = llm.vision.v2v(
+    "the same street at night",
+    "./source-clip.mp4",
+    provider="mlx-gen",
+    model="AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit",
+    video_strength=0.6,
+    width=480,
+    height=240,
+    num_frames=17,
+)
+
+restored_mp4 = llm.vision.upscale_video(
+    "./source-clip.mp4",
+    provider="mlx-gen",
+    model="AbstractFramework/seedvr2-3b-8bit",
+    start_seconds=1.0,
+    max_frames=17,
+    seed=42,
+)
+
 first_frame_mp4 = llm.vision.i2v(
     "./first-frame.png",
     prompt="slow camera push-in",
@@ -5097,10 +5466,10 @@ artifact ref dict when an `artifact_store` is supplied. Without an artifact
 store the plugin returns bytes; with `artifact_store=...` it returns the stored
 artifact ref, matching the runtime/gateway artifact path.
 Typed per-call keyword arguments such as `control_image`, `control_strength`,
-`lora_adapters`, `guidance_2`, and `on_progress` survive the plugin boundary.
-Unknown per-call keyword arguments
-such as `reference_images` and `max_sequence_length` are preserved in the
-AbstractVision request `extra` dict for local backends.
+`lora_adapters`, `guidance_2`, `reference_images` (each item bytes, a file path
+or an artifact ref, resolved to bytes) and `on_progress` survive the plugin
+boundary. Unknown per-call keyword arguments such as `max_sequence_length` are
+preserved in the AbstractVision request `extra` dict for local backends.
 `llm.vision.t2i(...)`, `llm.vision.i2i(...)`, `llm.vision.t2v(...)`, and
 `llm.vision.i2v(...)` forward `on_progress` to MLX-Gen. Image/edit events
 include diffusion-step progress; Wan video events use diffusion-step
@@ -5111,10 +5480,10 @@ parameter for the second-stage/low-noise guidance path. Pass it directly to
 `t2v(...)` / `i2v(...)`; do not wrap it in `extra`.
 
 `control_image=<bytes>` and `control_strength=<float>` reach the request as
-typed fields, but in this release every built-in backend, MLX-Gen included,
-refuses a `control_image` with `CapabilityNotSupportedError`
-(`field="control_image"`) instead of ignoring it; MLX-Gen also refuses a
-`control_strength` given alone, which the other built-in backends do not use.
+typed fields: MLX-Gen applies them on `AbstractFramework/qwen-image-8bit`
+(its Qwen ControlNet route) and refuses a `control_image` on any other model
+(`field="control_image"`) and a `control_strength` given alone; the other
+built-in backends refuse a `control_image`. `i2i` refuses both keywords.
 
 The same applies to LoRA adapters. Prefer the shared typed contract:
 
@@ -5180,13 +5549,22 @@ The current AbstractCore server's residency records are its own and independent
 of what this plugin lists as loaded.
 
 The facade forwards every typed field of the request a method builds, under the
-same name: `control_image` / `control_strength` on `t2i` (which every built-in
-backend refuses in this release), `soundscape`, `music`,
+same name: `control_image` / `control_strength` on `t2i` (applied by MLX-Gen on
+`AbstractFramework/qwen-image-8bit`), `image_strength`, `reference_images`,
+`outpaint_padding`, `outpaint_fill`, `outpaint_fill_color` and `reframe_padding`
+on `i2i` (MLX-Gen's latent, multi-reference, outpaint and reframe edits; the
+other backends refuse them by name), `soundscape`, `music`,
 `generate_audio`, `audio_shift` on `t2v` / `i2v`, and `quantize`, `memory_mode`
 and `cancel_event` on all of them. Two kinds of keyword are refused with
-`CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i`, and the soundtrack
-options (`soundscape`, `music`, `generate_audio`, `audio_shift`) on a call whose
-request has none. Every other unknown keyword remains a backend-specific `extra`
+`CapabilityNotSupportedError`: `guidance_2` on `t2i` / `i2i`, `control_image` and
+`control_strength` on `i2i`, and the soundtrack
+and edit options (`soundscape`, `music`, `generate_audio`, `audio_shift`;
+`image_strength`, `reference_images`, the outpaint and reframe fields) on a call
+whose request has none, unless the value is unset (None, an empty list, a blank
+string). Image inputs (`image`, `mask`, `control_image`, `reference_images`
+items) take bytes-like values, file paths (any path-like) and artifact refs;
+`v2v`'s and `upscale_video`'s `video` keeps a file path as a path. `strength=` is not the typed
+field: it stays `extra["strength"]`, as in 0.3.37. Every other unknown keyword remains a backend-specific `extra`
 parameter:
 `t2v(..., vae_tiling=False)` reaches Wan as `extra["vae_tiling"]`, and
 `t2i(..., fps=24)` lands in `extra` too.
@@ -5203,7 +5581,15 @@ and logs a warning when the soundtrack is not in them.
 request's `memory_mode` and `quantize` when it carries them (checked as a
 generation request's are, before anything loads), so that requests with those
 values reuse the model; on MLX-Gen a video model (Wan, MiniMax-H3) is loaded
-without a warm-up run. When the preload
+without a warm-up run. The payload's `task` also goes to a backend whose `preload`
+takes a `task` (MLX-Gen) as the task the host is about to run: on a model that has
+it, MLX-Gen loads the class a request of that task uses (`image_to_image` on
+FLUX.2 klein warms `Flux2KleinEdit` instead of `Flux2Klein`); other backends, and
+a payload without `task`, load as before. `task` takes `"video_upscale"` (also
+`"video-upscale"`, `"upscale_video"`) for a SeedVR2 video restoration. The
+payload's `warm_up` (default true) goes the same way to a `preload` that takes it:
+`false` builds the model without its warm-up; the record's `warmed` says whether
+the preload warmed it (`null` from a backend that does not say). When the preload
 fails, the backend drops what it loaded and the plugin does not list it; a
 preload refused for its values, or one that fails after reusing the model
 already held, leaves that model held (and listed).
@@ -5317,7 +5703,7 @@ videos = llm.vision.t2v_batch(
     flow_shift=3.0,
     lora_adapters=[
         LoRAAdapterSpec(
-            source="owner/wan-style:video.safetensors",
+            source="AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors",
             scale=0.9,
             target_role="transformer",
         )
@@ -5716,7 +6102,280 @@ Thanks to everyone who reports issues, suggests improvements, and contributes fi
 --- 8< --- FILE: CHANGELOG.md --- 8< ---
 # Changelog
 
-## Unreleased
+## 0.3.38 - 2026-11-27
+
+This release adds typed image-edit options on MLX-Gen (latent image-to-image, FLUX.2 masked edits,
+multi-reference edits, outpaint and reframe), Z-Image edits, a control image on Qwen-Image, video-to-video
+on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B, SeedVR2 video restoration (`video_upscale`), cached source
+repository ids, and `preload(task=..., warm_up=...)`. The MLX-Gen backend requires
+`mlx-gen>=0.40.3,<0.41.0` and, on macOS, MLX 0.32.4 or later. Requests that set none of the new fields run
+as in 0.3.37, except for the changes listed under Changed.
+
+### New
+
+- **MLX-Gen image routes chosen by the engine's planner.** Every `image_to_image` request on FLUX.2, Z-Image and
+  base Qwen-Image, and a request on any MLX-Gen model that sets `image_strength`, is routed by mlx-gen's own planner
+  (`resolve_generation_plan`, the one `mlxgen generate` uses) against the model's capability rows; the capability id
+  it selects decides the MLX-Gen class and call (`abstractvision.backends.mlx_gen_routes`). Other requests run as in
+  0.3.37. Everything is checked before any weights load, in `normalize_image_edit_request` as in `edit_image`: two
+  options that contradict each other raise `ValueError`; an option no row of the model applies, and adapters on a
+  row that takes none, raise `CapabilityNotSupportedError` naming the field (`supported=()`); a combination no row
+  serves raises it with the planner's message (`field=None`). A route new in this release writes the run's files
+  into one temporary directory, removed whatever the outcome; no metadata names it.
+- **Latent image-to-image: `ImageEditRequest.image_strength`**, in `(0, 1]` (the plugin's `i2i(image_strength=...)`).
+  On MLX-Gen, `extra["image_strength"]` is the same option. FLUX.2 klein runs it with `Flux2Klein` (the base models
+  pass the negative prompt, which their latent row takes); base Qwen-Image (`AbstractFramework/qwen-image-8bit`, the
+  Qwen-Image-2512 packages) now runs `image_to_image` with `QwenImage`, at `image_strength=0.4` when the request
+  names none; ERNIE-Image-Turbo runs it as its 0.3.37 latent edit. `list_provider_models()` publishes
+  `parameter_defaults["image_strength"] = 0.4` and its range for every model with a latent route, and the catalog
+  names the parameter `image_strength` on FLUX.2 klein, Qwen-Image, Z-Image and ERNIE (ERNIE's `strength` is
+  described as the 0.3.37 keyword below).
+  `extra["strength"]` (the CLI's `--strength`, the plugin's `strength=`) is the 0.3.37 cross-backend keyword: on
+  every route 0.3.37 had it keeps exactly its 0.3.37 meaning, and on the latent routes new in this release it is
+  read as the run's strength with the same clamp to `[0, 1]`. It never selects a route and is not read on a masked
+  route, and combined with `image_strength` it raises `ValueError`. A task this release adds to a model
+  (`image_to_image` on base Qwen-Image and Z-Image, `video_to_video` on Wan) is published and accepted only where the
+  engine's rows carry a route for it; without rows the model has its 0.3.37 tasks.
+
+- **FLUX.2 masked edits.** An edit with a `mask` on FLUX.2 klein runs `Flux2KleinInpaint` (MLX-Gen's
+  `flux2.inpaint`): the mask is decoded before any weights load (`ValueError` naming `mask` when it is not a
+  picture), the bytes are passed unchanged, an unset `guidance_scale` stays unset so the class applies its default,
+  and the base models take a negative prompt. A mask with `image_strength` raises `ValueError`; adapters on a row
+  that takes none are refused (`field="lora_adapters"`). The instance is built for masked edits: a plain edit after
+  it builds `Flux2KleinEdit` again, after releasing it.
+
+- **Multi-reference edits: `ImageEditRequest.reference_images`**, the images after `image` in order (bytes or file
+  paths; the plugin's `i2i` and `i2i_batch` resolve file paths and artifact refs to bytes). On MLX-Gen,
+  `extra["reference_images"]` is the same option. FLUX.2 klein and Qwen-Image-Edit 2509/2511 run it on their
+  multi-reference route (the 0.3.37 edit call with the list after the source); no maximum count is published or
+  enforced. A model without that route refuses it (`field="reference_images"`, `supported=()`), as does a
+  combination with a mask or a strength (`field=None`): the planner counts every picture, those of the 0.3.37
+  `extra` keys included, so a reference is never dropped. An item that is not image bytes or a path, or a picture
+  that fails to decode, raises `ValueError`. On a model the engine publishes no rows for, references run their
+  0.3.37 edit branch. The pictures a routed request carries (a mask, references) are decoded once
+  its route is known, still before any weights load.
+
+- **Outpaint and reframe: `ImageEditRequest.outpaint_padding`, `outpaint_fill`, `outpaint_fill_color`,
+  `reframe_padding`.** They run MLX-Gen's own canvas session (`mflux.outpaint`: canvas, fill policy, pass plan),
+  its workspace in the run's directory: FLUX.2 klein outpaint with `Flux2KleinOutpaint` and reframe (distilled)
+  with `Flux2KleinEdit`, Qwen-Image-Edit both with `QwenImageEdit`. The session is built before any weights load
+  and refuses a box the engine cannot apply (`ValueError` naming the field); a fill the row does not list, a fill or
+  color on Qwen's fixed fill, a color without `outpaint_fill="solid"`, a fill without an outpaint and
+  `extra["width"]`/`["height"]` with either are refused naming the field. A two-pass outpaint counts its progress
+  across both passes and is refused in low-RAM mode (`field="memory_mode"`, `supported=("default",)`). Results carry
+  `outpaint_notice` and `outpaint_warnings`.
+
+- **Video-to-video: `VideoToVideoRequest`, `VisionBackend.video_to_video`, `VisionManager.video_to_video` and the
+  plugin's `v2v`**, a new task `video_to_video` (catalog, residency names `video_to_video`, `video-to-video`, `v2v`).
+  On MLX-Gen, Wan 2.2 T2V-A14B runs it with `Wan2_2_TI2V`: `video_strength` in `(0, 1]` (unset: the engine's 0.8),
+  an optional one-image `mask`, the A14B defaults and memory plan of text-to-video, and a negative prompt only when
+  set; as on the engine CLI, `guidance_2` takes the model's 3.0 only when the request sets neither guidance (a
+  `guidance_scale` set alone leaves it to the engine, which then uses the same value). The source is a file read in place or bytes written once to the run's directory, and is probed before any
+  weights load (a clip too short for `num_frames` at `fps` is refused with `field="num_frames"`); `extra` takes the
+  progress callbacks, `max_sequence_length` and `vae_tiling`. The other backends refuse the task.
+
+- **Wan 2.1 VACE 1.3B (`Wan-AI/Wan2.1-VACE-1.3B-diffusers`)**, a new catalog entry and MLX-Gen model
+  (`wan2.1-vace-1.3b`, run by `WanVace`) for `video_to_video`: `reference_images` (any number, in order),
+  `masked_region_mode` (`generate` or `repaint`, with a mask) and `conditioning_scale` (default 1.0); it refuses
+  `video_strength` and `guidance_2` by name, and Wan 2.2 T2V-A14B refuses the three VACE fields. Defaults 832x480,
+  81 frames at 16 fps, 30 steps, guidance 5.0; `memory_mode="low"` releases the denoiser before the decode and drops
+  the model. A VACE preload loads `WanVace` and runs no warm-up generation; in the default mode it reads the
+  transformer and the VAE ahead, as the other Wan preloads do (Changed 23).
+
+- **Z-Image edits.** `image_to_image` on Z-Image and Z-Image-Turbo runs `ZImage` latent (at `image_strength=0.4`
+  when the request names none; Turbo keeps its forced guidance 0.0 and passes a negative prompt, which its row takes), and a `mask` on
+  Z-Image-Turbo runs its masked edit (the mask instead of the strength). Base Z-Image refuses a mask
+  (`field="mask"`), and both refuse references, outpaint and reframe by name.
+
+- **Control image on Qwen-Image (`AbstractFramework/qwen-image-8bit`).** `control_image` (and `control_strength`,
+  unset: the engine CLI's 0.4) runs `QwenImageControlNet` with the ControlNet its row names
+  (`InstantX/Qwen-Image-ControlNet-Union`). Its side weights are looked up in the Hugging Face cache before any
+  weights load and never downloaded during a generation; when missing, the request is refused
+  (`field="control_image"`) naming the repository, the file and `abstractvision download
+  InstantX/Qwen-Image-ControlNet-Union`. Any other model refuses `control_image`; a `control_strength` without it is
+  refused, and one that is not a finite number raises `ValueError`. A plain generation after a control run builds
+  `QwenImage` again.
+
+- **`preload(task=...)` on MLX-Gen.** The MLX-Gen backend's `preload` takes `task`, the task the host is about to
+  run, as a hint: a model that has it is loaded as a request of that task loads it (on FLUX.2 klein,
+  `task="image_to_image"` loads `Flux2KleinEdit`; a latent, masked or outpaint request rebuilds its own class); a
+  model without it, or `task=None`, preloads as before. It never refuses. The AbstractCore plugin's
+  `load_resident_model` passes the payload's `task` to a backend whose `preload` takes a `task` (or `**kwargs`).
+
+- **FLUX.2 klein 9B consistency LoRA profile.** `vision_adapter_capabilities.json` describes
+  `dx8152/Flux2-Klein-9B-Consistency` (file `Flux2-Klein-9B-consistency-V2.safetensors`): an image-to-image LoRA that
+  improves the consistency of klein 9B edits, no trigger word, apache-2.0, validated by MLX-Gen on
+  `AbstractFramework/flux.2-klein-9b-8bit`'s edit route; no parameter recommendation (the model card gives none).
+  `list_provider_adapters` (and `abstractvision adapters`) carries its notes and link once it is cached.
+
+- **`preload(warm_up=False)` on MLX-Gen.** The warm-up is optional: `warm_up=False` resolves, checks and builds the
+  model (a bad model still fails at the preload) and runs and reads nothing ahead; the default, `True`, warms as
+  Changed 23 says, and `low` / `lowest` are the same either way. `preload_warmed()` says whether the held model was
+  warmed; the plugin passes the load payload's `warm_up` to a `preload` that takes it, and its loaded-model records
+  carry `warmed` (`None` from a backend that does not say).
+
+- **SeedVR2 video restoration (`video_upscale`).** `VideoUpscaleRequest(video, resolution, softness, seed,
+  start_seconds, max_frames, drop_audio, quantize, ...)`, `VisionManager.upscale_video(video, **kwargs)` and the plugin's
+  `upscale_video(video, **kwargs)` restore a clip on SeedVR2 3B and 7B (MLX-Gen). `video` is the clip's bytes or a
+  local file read in place (a `str` or `Path` in the plugin). Before any weights load, MLX-Gen's own plan
+  (`SeedVR2VideoRestorePlan.for_video`, the one `mlxgen upscale --video-path` uses) probes the clip and decides the
+  scale, the chunking and the memory profile; a scale above 1x is refused (`field="resolution"`), a clip beyond the
+  safe memory profile or below its temporal quality floor is refused (`field=None`), each with the engine's message.
+  The plan counts the weights as loaded when this backend already holds the instance the run reuses. The run
+  applies the plan as the CLI does (MLX-Gen's low-RAM saver keeping the transformer, `restore_video_to_path` with
+  the planned chunks) in `memory_mode` `default` and `low` alike, under one MLX cache limit from before the load to
+  the end (the plan's 8 GB, never above a limit the host set), and drops the model at its end. The result is an MP4
+  whatever the source's container (the source's audio copied by MLX-Gen, which fails the run after the restoration when it
+  cannot; `drop_audio=True` gives a silent result, no copy attempted), progress is per chunk, a cancel removes the partial output. Unset values are the engine's: 1x, softness 0.0, from the clip's start to its
+  end. `preload(task="video_upscale")` reads the transformer and the VAE the run keeps.
+- **MLX-Gen 0.40.3.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`)
+  requires `mlx-gen>=0.40.3,<0.41.0` (0.3.37 required `>=0.40.1`) and, on macOS, `mlx>=0.32.4` as before.
+  0.40.3 is required because in it the engine names a local model by the same rule as AbstractVision (Changed
+  28): its own folder or file name, or its repository id inside a Hugging Face cache, never a parent directory.
+  Upgrade with `pip install -U "abstractvision[mlx-gen]"`. `video_upscale` runs on the SeedVR2 video
+  restoration plan that 0.40.2 adds. 0.40.2 also changes, with no change to AbstractVision's calls: the Wan
+  prompt encoding (Changed 27); SeedVR2 video restoration, which needs a fraction of 0.40.1's memory with
+  identical output and restores frames up to about 1.4 megapixels on its safe memory profile's 48 GB budget
+  (1280x720 fits), a larger frame being refused before the model loads (`field=None`) with a message naming the
+  largest size that fits; and FLUX.2 klein, which keeps one copy of its transformer weights whatever the number
+  of canvas sizes a process runs.
+
+### Changed
+
+Against 0.3.37 (the entries are numbered so that others can refer to them):
+
+1. MLX-Gen refuses an `image_strength`, typed or `extra["image_strength"]`, outside `(0, 1]`
+   (`CapabilityNotSupportedError`, `field="image_strength"`); 0.3.37 clamped `extra["image_strength"]` to `[0, 1]`.
+2. MLX-Gen raises `ValueError` for an `extra["image_strength"]` that is not a finite number; 0.3.37 dropped it.
+3. `extra["image_strength"]` on FLUX.2 (a model the engine publishes rows for) runs the latent route
+   (`Flux2Klein`); 0.3.37 ignored it and ran `Flux2KleinEdit`.
+4. `extra["image_strength"]` on Qwen-Image-Edit and FIBO-Edit is refused (`field="image_strength"`, `supported=()`);
+   0.3.37 ignored it.
+5. `extra["image_strength"]` on FIBO and Fibo-lite is refused before the model loads; 0.3.37 loaded it, then the
+   engine raised.
+6. `extra["reference_images"]` on a model whose rows have no multi-reference route is refused
+   (`field="reference_images"`): on plain Qwen-Image-Edit (not 2509 or 2511), where 0.3.37 passed the references to
+   the edit, and on ERNIE-Image-Turbo, FIBO and Fibo-lite, where 0.3.37 ran the edit and ignored them. A local
+   ERNIE-Image-Turbo, FIBO or Fibo-lite folder the engine publishes no rows for refuses them too; a FLUX.2 or
+   Qwen-Image-Edit folder without rows runs them as 0.3.37 did.
+7. `extra["reference_images"]` with an adapter on a route that takes none (`AbstractFramework/qwen-image-edit-2509-8bit`)
+   is refused (`field="lora_adapters"`); 0.3.37 ran it.
+8. A typed `image_strength` or `reference_images` with the same `extra` key of another value raises `ValueError`, as
+   does `image_strength` with `extra["strength"]` and `reference_images` with `extra["images"]`,
+   `["additional_images"]` or `["image_paths"]`.
+9. The plugin keywords `image_strength=`, `reference_images=`, `outpaint_padding=`, `outpaint_fill=`,
+   `outpaint_fill_color=` and `reframe_padding=` are refused with `field=` on `t2i`, `t2v`, `i2v` and
+   `upscale_image` on every backend, where 0.3.37 put them in `extra` and nothing read them; on `i2i` they are typed
+   fields, which Diffusers, OpenAI-compatible and stable-diffusion.cpp refuse by name (0.3.37 put them in `extra`,
+   which the OpenAI-compatible backend forwarded to the remote). An unset value (None, an empty list, a blank
+   string) is never refused. Passed as `extra={...}`, and `strength=`, they travel unchanged.
+10. `i2i(control_image=...)` and `i2i(control_strength=...)` are refused (`field=`); 0.3.37 put them in `extra`, where
+    nothing read them.
+11. `image_to_image` on base Qwen-Image and on Z-Image runs latent, at `image_strength=0.4` unless set; 0.3.37
+    refused the task.
+12. A `mask` on FLUX.2 klein runs `Flux2KleinInpaint`; 0.3.37 refused it (`field="mask"`) after loading the model.
+13. `control_image` on `AbstractFramework/qwen-image-8bit` runs `QwenImageControlNet`; 0.3.37 refused it
+    (`field="control_image"`).
+14. Published answers: `get_capabilities().supports_mask` is true on FLUX.2 klein and Z-Image-Turbo, and
+    `supports_control_image` on `AbstractFramework/qwen-image-8bit`;
+    `supported_tasks` and `list_provider_models(task="image_to_image")` include base Qwen-Image and Z-Image, and
+    `supported_tasks` gains `video_to_video` on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B. The catalog lists
+    `image_to_image` on `Qwen/Qwen-Image`, `Qwen/Qwen-Image-2512`, `Tongyi-MAI/Z-Image` and
+    `Tongyi-MAI/Z-Image-Turbo` (for the MLX-Gen backend), `image_strength` on FLUX.2 klein, ERNIE-Image-Turbo and
+    those four, `outpaint_padding`, `outpaint_fill` and `outpaint_fill_color` on FLUX.2 klein, `reframe_padding` on
+    the distilled FLUX.2 klein 4B and 9B (not on klein Base), `outpaint_padding` and `reframe_padding` on
+    Qwen-Image-Edit, 2509 and 2511 (no fill fields),
+    `control_image` and `control_strength` on `Qwen/Qwen-Image`'s `text_to_image`, and the new task
+    `video_to_video`. `reference_images` is no longer listed for `Qwen/Qwen-Image-Edit`.
+    `list_provider_models()`' `parameter_constraints["negative_prompt"]` follows the engine's rows as the runs do
+    (Changed 21): FLUX.2 klein Base and Z-Image-Turbo no longer publish `{"supported": false}` (a task whose routes
+    disagree publishes `supported: true` with a description naming it); a model without rows keeps 0.3.37's answer.
+15. A typed request option that is an empty list or tuple counts as unset (`option_is_set`). No 0.3.37 option is a
+    sequence, so no 0.3.37 request changes.
+16. stable-diffusion.cpp, which lists every catalog task of a model, lists `image_to_image` (and `supports_mask`)
+    with `capabilities_model_id` set to `Qwen/Qwen-Image`, `Qwen/Qwen-Image-2512`, `Tongyi-MAI/Z-Image` or
+    `Tongyi-MAI/Z-Image-Turbo`, and `video_to_video` with
+    `Wan-AI/Wan2.2-T2V-A14B`.
+17. On a model the engine publishes no rows for (a local folder whose name it cannot place), `extra["image_strength"]`
+    is refused (`field="image_strength"`) on every family but ERNIE-Image-Turbo, where it runs 0.3.37's latent edit;
+    0.3.37 ignored it on the other families.
+18. `metadata["mlx_gen"]` no longer carries `controlnet_image_path`, which 0.3.37 returned (always `None` then): it
+    is left out like the other temporary file paths of a run.
+19. In `memory_mode="default"` the MLX cache is capped as the engine's CLI caps it (total RAM / 8, between 1 and 8
+    GiB, once per process; a limit the host set at or below half of physical memory is left alone, a higher one is
+    replaced by the default cap) for every MLX-Gen model; 0.3.37 left Wan models uncapped (the Wan loader does not
+    apply the cap itself).
+20. Some requests 0.3.37 refused are now refused before the model loads instead of after, or with a different
+    `field` or exception type: a mask with references on FLUX.2; `extra["reference_images"]` on FIBO-Edit;
+    references with `extra["images"]` on FIBO-Edit; a mask on a FLUX.2 folder the engine cannot place; a mask with
+    `extra["reference_images"]` on ERNIE-Image-Turbo, FIBO, Fibo-lite and Qwen-Image-Edit 2509 and 2511 (now refused
+    before the load); `supported` on FIBO's and Fibo-lite's refusals goes from `None` to `()`. Nothing that ran is
+    affected.
+21. A negative prompt follows the row of the route a request runs (`supports_negative_prompt`) on every MLX-Gen
+    image route of a model the engine publishes rows for. It is now passed on FLUX.2 klein Base (4B and 9B) on
+    text-to-image, edit and multi-reference (0.3.37 dropped it; the latent, masked and outpaint routes already
+    passed it), and on Z-Image-Turbo on text-to-image, latent and masked edits (0.3.37 dropped it; at its forced
+    guidance 0.0 the engine runs no negative branch). FLUX.2 klein Base with a negative prompt at `guidance_scale`
+    1.0 or below now raises the engine's `ValueError` after the model loads. A route whose row takes none still
+    drops it silently; a model without rows keeps 0.3.37's answer.
+22. `load_resident_model({"task": "image_to_image", ...})` on an MLX-Gen model that has both text-to-image and
+    image-to-image (FLUX.2 klein, ERNIE-Image-Turbo, FIBO, Fibo-lite, and base Qwen-Image and Z-Image, which gain
+    image-to-image in this release) loads the model for image-to-image (on FLUX.2 klein `Flux2KleinEdit`) and warms
+    it with one image-to-image run (Changed 23) where 0.3.37 loaded the text-to-image class and ran its text-to-image
+    warm-up. A payload without `task`, or with
+    `text_to_image`, loads as in 0.3.37; other backends are unchanged.
+23. A default-mode MLX-Gen `preload` warms what a run of its task reads with a small ordinary request of that
+    route. 0.3.37 ran one text-to-image generation at the backend's default canvas (1024x1024 unless
+    `default_width` / `default_height` were set) and the model's default steps, and only built the object for every
+    other task. Now an image task runs one warm-up of the task on its plain route, its output discarded, at 256x256
+    (352 on base Qwen-Image, FIBO and Fibo-lite, 384 on FIBO-Edit, 512 on ERNIE-Image-Turbo and Bonsai: the smallest
+    side MLX-Gen itself runs those families at) and 2 steps (the fewest MLX-Gen's flow-match scheduler takes); a
+    backend whose `default_width` / `default_height` were set keeps that canvas, as in 0.3.37. Image-to-image preloads (Qwen-Image-Edit, FIBO-Edit,
+    and the image models given `task="image_to_image"`: `Flux2KleinEdit` on FLUX.2 klein) and SeedVR2 preloads (a
+    64x64 picture at 1x) run one too. Video preloads read the first denoiser and, where the run encodes an input
+    (image-to-video, video-to-video), the VAE (Wan TI2V-5B, T2V-A14B, I2V-A14B, VACE). The preload is short and the
+    weights are resident when it returns; the first request reads none. MiniMax-H3 and the `low` and `lowest` modes
+    are unchanged.
+24. SeedVR2's published answers gain `video_upscale`: `get_capabilities().supported_tasks` and
+    `list_provider_models()` on SeedVR2 3B and 7B, and the catalog (a top-level `video_upscale` task, with its params
+    on `ByteDance-Seed/SeedVR2-3B` and `-7B`). The catalog's `min_runtime_version` of Wan T2V-A14B and VACE
+    `video_to_video` and of MiniMax-H3 is 0.40.3, the package floor. The image upscale is unchanged.
+25. With mlx-gen 0.40.1 or 0.40.2 installed, every MLX-Gen request now raises `OptionalDependencyMissingError` naming
+    `mlx-gen>=0.40.3,<0.41.0`, as any version outside the pins already did.
+26. On MLX-Gen, a source repository id that maps to several prepared packages (the four FLUX.2 klein repos,
+    `Tongyi-MAI/Z-Image` and `Z-Image-Turbo`, the five Qwen-Image repos, `baidu/ERNIE-Image-Turbo`) runs its own
+    cached snapshot as released (16-bit, unquantized, as `mlxgen generate --model <id>` does), even when a
+    prepared package of it is cached too; 0.3.37 refused the id as ambiguous whatever was cached. Cached means a
+    snapshot that can load as the model: `model_index.json` and readable `transformer/*.safetensors`, no partial
+    download. It is a source, not a prepared package: it publishes the engine's load-time `quantize` widths and
+    accepts `quantize`. Through the AbstractCore plugin the id reaches the backend unchanged (0.3.37 rewrote
+    `Qwen/Qwen-Image-2512` to `qwen-image`, which it still does when that source is not cached). A source needs
+    several times a prepared package's memory. Not cached, or cached without those files, the id is refused as
+    ambiguous as before. The `Qwen/Qwen-Image-2512` source snapshot given as a folder, which 0.3.37 answered as a
+    prepared package (no `quantize` widths, `quantize` refused), is a source too.
+27. With mlx-gen 0.40.2 and later, Wan videos on MLX-Gen (Wan 2.2 text-, image- and video-to-video, Wan 2.1
+    VACE) for a given prompt and seed differ slightly from those of 0.3.37 with mlx-gen 0.40.1: the same scene and
+    composition, with small differences in details, because the engine's prompt encoding is now exact (float32).
+    A new prompt is encoded in seconds instead of more than a minute. See MLX-Gen's
+    [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
+28. On MLX-Gen and Diffusers, a local model is identified by its own name, by the rule mlx-gen 0.40.3 follows
+    too: a local folder or file by its own name (`~/models/qwen-image-edit/my-flux` is `my-flux`, a GGUF file
+    its file name); a path inside a Hugging Face cache by the repository id, followed by the path below the
+    snapshot for a file or subfolder in it (`models--org--name/snapshots/<revision>` is `org/name`, its
+    `transformer` folder `org/name/transformer`, a file in it `org/name/<file>`); a repository id, an alias, or a
+    relative text that is not on disk, as written. A parent directory and the snapshot revision never decide; on
+    MLX-Gen the model's own card does as before. On MLX-Gen this name sets its base model when `base_model` is not
+    given, its stored width (`metadata["quantization_bits"]` of a request without `quantize`, and the SeedVR2
+    local-folder match), the routes MLX-Gen publishes for it, and whether discovery skips it as a partial or
+    incompatible download. On Diffusers it sets the bfloat16 default of Qwen-Image-Edit image-to-image and
+    inpainting on Apple MPS, and the fallback chat template a pipeline gets when its snapshot ships none (Qwen,
+    FLUX.2, Z-Image, ERNIE-Image, GLM-Image). 0.3.37 read the whole path, so a model under a parent named after
+    another model or width (`~/models/qwen-image-edit_q4/flux2-klein-4b`, `~/models/qwen-image-edit/my-flux`,
+    `models_q4`, a temporary folder whose random name holds `_q1`) could be identified, routed or refused as that
+    other model, get a width it does not have, or run on Diffusers with another family's dtype or chat template,
+    and a parent named `*.partial`, `*-partial` or `*.incompatible` hid every MLX-Gen model under it. On MLX-Gen a
+    folder whose own name and card place no model needs `base_model`; on Diffusers a Qwen-Image-Edit folder whose
+    own name does not say so runs in the automatic dtype unless `torch_dtype="bfloat16"` is set.
 
 ## 0.3.37 - 2026-11-26
 
@@ -6585,14 +7244,14 @@ sdcpp = [
 # Native Apple image generation via MLX-Gen. Kept optional because it pulls
 # Apple-specific local runtime dependencies.
 mlx-gen = [
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
 # Compatibility extra for callers that still install the historical MFLUX extra.
 # It intentionally installs MLX-Gen, not the retired standalone mflux package.
 mflux = [
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
@@ -6612,7 +7271,7 @@ apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
@@ -6687,7 +7346,7 @@ all = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
@@ -6708,7 +7367,7 @@ all-apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]

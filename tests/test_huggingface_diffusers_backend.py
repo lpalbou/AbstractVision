@@ -145,6 +145,92 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
         picked = backend_explicit._preferred_torch_dtype_for_kind("i2i", "mps", _FakeTorch, _FakeTorch.float16)
         self.assertIs(picked, _FakeTorch.float16)
 
+    def test_edit_dtype_rule_reads_a_local_models_own_name_never_a_parent_directory(self):
+        from abstractvision.backends.huggingface_diffusers import (
+            HuggingFaceDiffusersBackendConfig,
+            HuggingFaceDiffusersVisionBackend,
+        )
+
+        class _FakeTorch:
+            float16 = object()
+            bfloat16 = object()
+
+        def picked(model_id: str):
+            backend = HuggingFaceDiffusersVisionBackend(
+                config=HuggingFaceDiffusersBackendConfig(model_id=model_id, device="mps", torch_dtype=None)
+            )
+            return backend._preferred_torch_dtype_for_kind("i2i", "mps", _FakeTorch, _FakeTorch.float16)
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            flux = root / "qwen-image-edit" / "my-flux"
+            flux_gguf = root / "qwen-image-edit" / "flux-dev-Q8_0.gguf"
+            qwen = root / "my-models" / "qwen-image-edit-2511"
+            qwen_snapshot = root / "hub" / "models--Qwen--Qwen-Image-Edit-2511" / "snapshots" / "abc123"
+            flux_snapshot = root / "qwen-image-edit" / "hub" / "models--black-forest-labs--FLUX.2-dev" / "snapshots" / "abc123"
+            flux_cached_gguf = root / "qwen-image-edit" / "hub" / "models--city96--FLUX.1-dev-gguf" / "snapshots" / "r1" / "flux1-dev-Q8_0.gguf"
+            for folder in (flux, qwen, qwen_snapshot, flux_snapshot, flux_cached_gguf.parent):
+                folder.mkdir(parents=True)
+            flux_gguf.write_bytes(b"GGUF")
+            flux_cached_gguf.write_bytes(b"GGUF")
+
+            self.assertIs(picked(str(flux)), _FakeTorch.float16)
+            self.assertIs(picked(str(flux_gguf)), _FakeTorch.float16)
+            self.assertIs(picked(str(flux_snapshot)), _FakeTorch.float16)
+            self.assertIs(picked(str(flux_cached_gguf)), _FakeTorch.float16)
+            self.assertIs(picked(str(qwen)), _FakeTorch.bfloat16)
+            self.assertIs(picked(str(qwen_snapshot)), _FakeTorch.bfloat16)
+        self.assertIs(picked("Qwen/Qwen-Image-Edit-2511"), _FakeTorch.bfloat16)
+        self.assertIs(picked("black-forest-labs/FLUX.2-dev"), _FakeTorch.float16)
+
+    def test_fallback_chat_templates_read_a_local_models_own_name_never_a_parent_directory(self):
+        from abstractvision.backends.huggingface_diffusers import _ensure_pipeline_chat_templates
+
+        class _FakeTokenizer:
+            chat_template = None
+
+        class _FakePeTokenizer:
+            chat_template = None
+
+        class _FakeProcessor:
+            chat_template = None
+
+        class _FakePipe:
+            def __init__(self):
+                self.tokenizer = _FakeTokenizer()
+                self.pe_tokenizer = _FakePeTokenizer()
+                self.processor = _FakeProcessor()
+
+        def templates(model_id: str):
+            pipe = _FakePipe()
+            _ensure_pipeline_chat_templates(pipe, snapshot_dir=None, model_id=model_id)
+            return pipe.tokenizer.chat_template, pipe.pe_tokenizer.chat_template, pipe.processor.chat_template
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            sdxl = root / "glm-image-z-image-flux2-qwen-ernie" / "my-sdxl"
+            qwen = root / "my-models" / "qwen-image-edit-2511"
+            glm_snapshot = root / "hub" / "models--zai-org--GLM-Image" / "snapshots" / "abc123"
+            sdxl_snapshot = root / "qwen" / "hub" / "models--stabilityai--sdxl-turbo" / "snapshots" / "abc123"
+            qwen_cached_file = root / "hub" / "models--Qwen--Qwen-Image-2512" / "snapshots" / "r1" / "model.safetensors"
+            for folder in (sdxl, qwen, glm_snapshot, sdxl_snapshot, qwen_cached_file.parent):
+                folder.mkdir(parents=True)
+            qwen_cached_file.write_bytes(b"x")
+
+            self.assertEqual(templates(str(sdxl)), (None, None, None))
+            self.assertEqual(templates(str(sdxl_snapshot)), (None, None, None))
+            tokenizer, pe_tokenizer, processor = templates(str(qwen))
+            self.assertIn("<|im_start|>", tokenizer)
+            self.assertIn("<|im_start|>", pe_tokenizer)
+            self.assertIsNone(processor)
+            tokenizer, _, _ = templates(str(qwen_cached_file))
+            self.assertIn("<|im_start|>", tokenizer)
+            _, _, processor = templates(str(glm_snapshot))
+            self.assertIn("<|image|>", processor)
+        _, pe_tokenizer, _ = templates("baidu/ERNIE-Image-Turbo")
+        self.assertIn("[SYSTEM_PROMPT]", pe_tokenizer)
+        self.assertEqual(templates("stabilityai/sdxl-turbo"), (None, None, None))
+
     def test_ensure_pipeline_chat_templates_reads_snapshot_files(self):
         from abstractvision.backends.huggingface_diffusers import _ensure_pipeline_chat_templates
 

@@ -1322,7 +1322,7 @@ print("ok")
         self.assertEqual(seen["request"].extra.get("custom_scheduler"), "fast")
         self.assertIs(seen["request"].extra.get("on_progress"), progress_callback)
 
-    def test_abstractcore_plugin_i2i_routes_progress_and_references_to_extra(self):
+    def test_abstractcore_plugin_i2i_routes_progress_references_and_extra(self):
         from abstractvision.integrations.abstractcore_plugin import _AbstractVisionCapability
         from abstractvision.types import GeneratedAsset
 
@@ -1361,10 +1361,8 @@ print("ok")
         self.assertTrue(out.startswith(b"\x89PNG"))
         self.assertEqual(seen["request"].prompt, "combine the product and style references")
         self.assertEqual(seen["request"].image, b"input-image")
-        self.assertEqual(
-            seen["request"].extra.get("reference_images"),
-            [b"style-reference", b"layout-reference"],
-        )
+        # A typed request field since 0.3.38 (MLX-Gen also reads it from `extra`).
+        self.assertEqual(seen["request"].reference_images, [b"style-reference", b"layout-reference"])
         self.assertEqual(seen["request"].extra.get("strength"), 0.55)
         self.assertEqual(seen["request"].extra.get("width"), 768)
         self.assertIs(seen["request"].extra.get("on_progress"), progress_callback)

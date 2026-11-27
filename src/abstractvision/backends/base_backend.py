@@ -19,6 +19,8 @@ from ..types import (
     ProviderAdapterInfo,
     ProviderModelInfo,
     VideoGenerationRequest,
+    VideoToVideoRequest,
+    VideoUpscaleRequest,
     VisionBackendCapabilities,
     highest_memory_mode_at_or_below,
     normalize_memory_mode,
@@ -37,6 +39,8 @@ _PRELOAD_REQUEST_TYPES: Dict[str, Callable[[], Any]] = {
     "image_upscale": lambda: ImageUpscaleRequest(image=b""),
     "text_to_video": lambda: VideoGenerationRequest(prompt=""),
     "image_to_video": lambda: ImageToVideoRequest(image=b""),
+    "video_to_video": lambda: VideoToVideoRequest(prompt="", video=b""),
+    "video_upscale": lambda: VideoUpscaleRequest(video=b""),
 }
 
 # The fallbacks of $ABSTRACTVISION_MEMORY_MODE already logged in this process, as
@@ -45,11 +49,20 @@ _PRELOAD_REQUEST_TYPES: Dict[str, Callable[[], Any]] = {
 _DEGRADED_PROCESS_MEMORY_MODES_LOGGED: set = set()
 _DEGRADED_PROCESS_MEMORY_MODES_LOCK = threading.Lock()
 
-# The typed request options, defined once. The soundtrack options exist on video requests only.
+# The typed request options, defined once. The soundtrack options exist on video requests only,
+# the edit options on image-edit requests only.
 SOUNDTRACK_REQUEST_FIELDS: Tuple[str, ...] = ("soundscape", "music", "generate_audio", "audio_shift")
+EDIT_REQUEST_FIELDS: Tuple[str, ...] = (
+    "image_strength",
+    "reference_images",
+    "outpaint_padding",
+    "outpaint_fill",
+    "outpaint_fill_color",
+    "reframe_padding",
+)
 # The options a backend must apply or refuse (never ignore); `supported_request_options` lists the
 # ones it applies.
-OPTIONAL_REQUEST_FIELDS: Tuple[str, ...] = ("quantize", *SOUNDTRACK_REQUEST_FIELDS)
+OPTIONAL_REQUEST_FIELDS: Tuple[str, ...] = ("quantize", *SOUNDTRACK_REQUEST_FIELDS, *EDIT_REQUEST_FIELDS)
 # Every typed request option, which a caller may also pass in `extra`: the memory mode (checked
 # against `supported_memory_modes`) and the options above.
 REQUEST_OPTION_FIELDS: Tuple[str, ...] = ("memory_mode", *OPTIONAL_REQUEST_FIELDS)
@@ -60,23 +73,26 @@ def option_is_set(value: Any) -> bool:
         return False
     if isinstance(value, str):
         return bool(value.strip())
+    if isinstance(value, (list, tuple)):
+        return bool(value)
     return True
 
 
 def merge_request_option(name: str, value: Any, extra: Mapping[str, Any]) -> Any:
     """Request option `name`: the typed `value`, else `extra[name]`; ValueError when both differ.
 
-    Memory modes compare by their canonical name ("LOW" and "low" agree).
+    Memory modes compare by their canonical name ("LOW" and "low" agree), sequences as tuples.
     """
     from_extra = extra.get(name)
     if not option_is_set(value):
         return from_extra if option_is_set(from_extra) else value
     if option_is_set(from_extra):
-        same = (
-            normalize_memory_mode(value) == normalize_memory_mode(from_extra)
-            if name == "memory_mode"
-            else value == from_extra
-        )
+        if name == "memory_mode":
+            same = normalize_memory_mode(value) == normalize_memory_mode(from_extra)
+        elif isinstance(value, (list, tuple)) and isinstance(from_extra, (list, tuple)):
+            same = tuple(value) == tuple(from_extra)
+        else:
+            same = value == from_extra
         if not same:
             raise ValueError(f"{name}={value!r} and extra[{name!r}]={from_extra!r} disagree; pass one.")
     return value
@@ -256,6 +272,20 @@ class VisionBackend(ABC):
         """Best-effort request normalization before execution."""
         return request
 
+    def normalize_video_to_video_request(
+        self,
+        request: VideoToVideoRequest,
+    ) -> VideoToVideoRequest:
+        """Best-effort request normalization before execution."""
+        return request
+
+    def normalize_video_upscale_request(
+        self,
+        request: VideoUpscaleRequest,
+    ) -> VideoUpscaleRequest:
+        """Best-effort request normalization before execution."""
+        return request
+
     def generate_image_with_progress(
         self,
         request: ImageGenerationRequest,
@@ -300,6 +330,24 @@ class VisionBackend(ABC):
         """Upscale an image, optionally reporting progress (best-effort)."""
         _ = progress_callback
         return self.upscale_image(request)
+
+    def video_to_video_with_progress(
+        self,
+        request: VideoToVideoRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        """Generate a video from a source clip, optionally reporting progress (best-effort)."""
+        _ = progress_callback
+        return self.video_to_video(request)
+
+    def upscale_video_with_progress(
+        self,
+        request: VideoUpscaleRequest,
+        progress_callback: Optional[Callable[[int, Optional[int]], None]] = None,
+    ) -> GeneratedAsset:
+        """Restore a source clip, optionally reporting progress (best-effort)."""
+        _ = progress_callback
+        return self.upscale_video(request)
 
     def describe_routes(
         self, *, model: Optional[str] = None, task: Optional[str] = None
@@ -388,4 +436,16 @@ class VisionBackend(ABC):
         _ = request
         raise CapabilityNotSupportedError(
             f"{self.__class__.__name__} does not support image_upscale."
+        )
+
+    def video_to_video(self, request: VideoToVideoRequest) -> GeneratedAsset:
+        _ = request
+        raise CapabilityNotSupportedError(
+            f"{self.__class__.__name__} does not support video_to_video."
+        )
+
+    def upscale_video(self, request: VideoUpscaleRequest) -> GeneratedAsset:
+        _ = request
+        raise CapabilityNotSupportedError(
+            f"{self.__class__.__name__} does not support video_upscale."
         )

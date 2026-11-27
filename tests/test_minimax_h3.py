@@ -1176,11 +1176,11 @@ class TestMiniMaxH3Backend(unittest.TestCase):
         self.assertTrue(set(source.quantize_bits()) <= {4, 8})
 
     def test_the_catalog_states_the_package_floor_for_minimax_h3(self):
-        # One floor: the install requirement (mlx-gen>=0.40.1) is what MiniMax-H3 needs at run time.
+        # One floor: the install requirement (mlx-gen>=0.40.3) is what MiniMax-H3 needs at run time.
         from abstractvision.backends import mflux
         from abstractvision.model_capabilities import VisionModelCapabilitiesRegistry
 
-        self.assertEqual(mflux.MLX_GEN_VERSION_FLOOR, "0.40.1")
+        self.assertEqual(mflux.MLX_GEN_VERSION_FLOOR, "0.40.3")
         spec = VisionModelCapabilitiesRegistry().get("MiniMaxAI/MiniMax-H3")
         for task in ("text_to_video", "image_to_video"):
             self.assertEqual(spec.tasks[task].requires["min_runtime_version"], mflux.MLX_GEN_VERSION_FLOOR)

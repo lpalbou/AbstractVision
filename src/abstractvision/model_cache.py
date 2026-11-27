@@ -5,7 +5,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
 DEFAULT_LEGACY_MODEL_ROOT = Path("~/models")
 
@@ -42,6 +42,86 @@ def _expand_path(value: str | Path) -> Path:
 
 def _repo_dir_name(repo_id: str) -> str:
     return "models--" + str(repo_id).strip().replace("/", "--")
+
+
+def looks_like_hf_repo_id(value: Any) -> bool:
+    """Return True when ``value`` resembles a Hugging Face repo id like ``org/name``.
+
+    This intentionally keeps the heuristic small and conservative so local paths
+    (e.g. ``./models`` or ``~/models``) are not misclassified as repo ids.
+    """
+
+    s = str(value or "").strip()
+    if not s:
+        return False
+    if s.startswith(("/", "./", "../", "~")):
+        return False
+    if "\\" in s or " " in s:
+        return False
+    return s.count("/") == 1 and all(part.strip() for part in s.split("/", 1))
+
+
+def hf_cache_dir_repo_id(name: str) -> Optional[str]:
+    text = str(name or "").strip()
+    if not text.startswith("models--"):
+        return None
+    tail = text[len("models--") :]
+    if "--" not in tail:
+        return None
+    org, repo = tail.split("--", 1)
+    if not org or not repo:
+        return None
+    return f"{org}/{repo}"
+
+
+def hf_cache_snapshot_repo_id(path: Path) -> Optional[str]:
+    # A Hugging Face cache snapshot: <root>/models--<org>--<name>/snapshots/<revision>.
+    if path.parent.name != "snapshots":
+        return None
+    return hf_cache_dir_repo_id(path.parent.parent.name)
+
+
+def local_model_name(value: Any) -> Any:
+    # What names a local model, the rule mlx-gen's `ConfigResolution.identifying_name` follows too: a repository
+    # id, an alias or a relative text that is not on disk is its own name; a local path inside a Hugging Face
+    # cache is the repository id, followed by the path below the snapshot; any other local path is its own last
+    # component. A parent directory never decides.
+    if isinstance(value, os.PathLike):
+        value = os.fspath(value)
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text or not _is_local_path_text(text):
+        return text
+    path = Path(os.path.abspath(os.path.expanduser(text)))
+    return _hf_cache_layout_name(path) or path.name
+
+
+def _is_local_path_text(text: str) -> bool:
+    if text.startswith(("/", "./", "../", "~")) or text in {".", ".."}:
+        return True
+    return os.path.exists(text)
+
+
+def _hf_cache_layout_name(path: Path) -> str | None:
+    # <cache>/models--<org>--<name>[/snapshots/<revision>[/<rest>]]; the innermost cache folder wins.
+    parts = path.parts
+    if parts and parts[-1].startswith("models--"):
+        return _hf_cache_folder_repo_id(parts[-1])
+    for index in range(len(parts) - 3, -1, -1):
+        if parts[index].startswith("models--") and parts[index + 1] == "snapshots":
+            repo_id = _hf_cache_folder_repo_id(parts[index])
+            if repo_id:
+                return "/".join((repo_id, *parts[index + 3 :]))
+    return None
+
+
+def _hf_cache_folder_repo_id(name: str) -> str | None:
+    repo_id = hf_cache_dir_repo_id(name)
+    if repo_id:
+        return repo_id
+    tail = name[len("models--") :]
+    return tail if tail and "--" not in tail else None
 
 
 def _dedupe_root_entries(entries: Sequence[_RootEntry]) -> List[_RootEntry]:

@@ -25,6 +25,15 @@ try:
 except ImportError:
     _PACKAGING_INSTALLED = False
 
+def _engine_rows_installed():
+    # Whether mlx-gen's capability rows are importable here: the tasks 0.3.38 adds need them.
+    try:
+        import mflux.task_inference  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
 PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X9+QAAAABJRU5ErkJggg=="
 )
@@ -772,7 +781,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                             self.assertEqual(_FakeSeedVR2.last_init["model_path"], str(snapshots[repo_id]))
                             self.assertIsNone(_FakeSeedVR2.last_init["quantize"])
 
-    def test_seedvr2_preload_uses_upscale_model_without_generation_warmup(self):
+    def test_seedvr2_preload_uses_upscale_model_with_one_warm_up_upscale(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         _FakeSeedVR2.last_generate = None
@@ -795,7 +804,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(_FakeSeedVR2.last_init["model_config"], "seedvr2-7b-config")
         self.assertIsNone(_FakeSeedVR2.last_init["quantize"])
-        self.assertIsNone(_FakeSeedVR2.last_generate)
+        # One warm-up upscale of the task (a neutral picture, its output discarded).
+        self.assertIsNotNone(_FakeSeedVR2.last_generate)
 
     def test_seedvr2_local_prepared_folder_infers_7b_base_model(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -806,7 +816,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
             caps = backend.get_capabilities()
 
-        self.assertEqual(caps.supported_tasks, ["image_upscale"])
+        self.assertEqual(caps.supported_tasks, ["image_upscale", "video_upscale"])
 
     def test_seedvr2_provider_catalog_surfaces_local_q8_and_q4_folders(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -1139,7 +1149,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(asset.metadata["base_model"], "bonsai-image-ternary")
         self.assertEqual(asset.metadata["quantization_bits"], 2)
 
-    def test_z_image_turbo_drops_noop_negative_prompt_and_forces_guidance_off(self):
+    def test_z_image_turbo_negative_prompt_follows_its_row_and_guidance_is_forced_off(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest
 
@@ -1163,7 +1173,12 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertTrue(asset.data.startswith(b"\x89PNG"))
         self.assertEqual(_FakeZImage.last_init["model_config"], "z-image-turbo-config")
         self.assertEqual(_FakeZImage.last_init["model_path"], str(snapshot))
-        self.assertNotIn("negative_prompt", _FakeZImage.last_generate)
+        # The engine's text-to-image row takes a negative prompt (0.3.38); without the rows the model
+        # definition drops it, as 0.3.37 did. At guidance 0.0 the engine runs no negative branch.
+        if _engine_rows_installed():
+            self.assertEqual(_FakeZImage.last_generate["negative_prompt"], "blur")
+        else:
+            self.assertNotIn("negative_prompt", _FakeZImage.last_generate)
         self.assertEqual(_FakeZImage.last_generate["num_inference_steps"], 9)
         self.assertEqual(_FakeZImage.last_generate["guidance"], 0.0)
 
@@ -1649,7 +1664,12 @@ class TestMFluxVisionBackend(unittest.TestCase):
         table = mflux_mod.WAN_VIDEO_DEFAULT_CANVASES
         self.assertEqual(
             set(table),
-            {mflux_mod.WAN_TI2V_MODEL_KEY, mflux_mod.WAN_T2V_A14B_MODEL_KEY, mflux_mod.WAN_I2V_A14B_MODEL_KEY},
+            {
+                mflux_mod.WAN_TI2V_MODEL_KEY,
+                mflux_mod.WAN_T2V_A14B_MODEL_KEY,
+                mflux_mod.WAN_I2V_A14B_MODEL_KEY,
+                mflux_mod.WAN_VACE_MODEL_KEY,
+            },
         )
         for key, canvas in table.items():
             model_def = mflux_mod._MFLUX_MODELS[key]
@@ -2255,7 +2275,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.40\.1",
+                        r"mlx-gen>=0\.40\.3",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(
@@ -2352,6 +2372,23 @@ class TestMFluxVisionBackend(unittest.TestCase):
             invalid["z-image-turbo"],
         )
 
+    def test_a_parent_directory_named_partial_or_incompatible_hides_no_model(self):
+        from abstractvision.backends.mflux import discover_cached_mflux_models
+
+        for parent in ("downloads.partial", "backup-partial", "old.incompatible"):
+            with self.subTest(parent=parent), tempfile.TemporaryDirectory() as td:
+                root = Path(td) / parent
+                self._make_model_dir(root / "models", "flux2-klein-4b-8bit")
+                self._make_cache_snapshot(root / "hub", "AbstractFramework/z-image-turbo-8bit")
+                with patch("abstractvision.backends.mflux.framework_local_model_roots", return_value=[]), patch.dict(
+                    "os.environ", {"HF_HUB_CACHE": str(Path(td) / "empty")}, clear=True
+                ), patch(
+                    "abstractvision.backends.mflux.framework_hf_cache_roots", return_value=[("cache", root / "hub")]
+                ):
+                    discovered = discover_cached_mflux_models(model_dir=str(root / "models"))
+                self.assertIn("flux2-klein-4b", discovered)
+                self.assertIn("z-image-turbo", discovered)
+
     def test_flux2_drops_unsupported_negative_prompt(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest
@@ -2441,8 +2478,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(normalized.guidance_scale, 1.0)
 
     def test_a_control_image_is_refused_before_anything_loads(self):
-        # MLX-Gen runs structured control through QwenImageControlNet and a ControlNet sidecar
-        # repository; this backend loads neither, so the field is refused, typed or in `extra`.
+        # Since 0.3.38 a typed control_image runs MLX-Gen's qwen.control route
+        # (test_mlx_gen_route_control.py); the `extra` spellings, and a strength alone, are refused
+        # before the model is resolved.
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.errors import CapabilityNotSupportedError
         from abstractvision.types import ImageGenerationRequest
@@ -2450,7 +2488,6 @@ class TestMFluxVisionBackend(unittest.TestCase):
         _FakeQwenImage.last_init = None
         backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/qwen-image-8bit"))
         for request, field in (
-            (ImageGenerationRequest(prompt="hello", control_image=PNG_1X1, control_strength=0.9), "control_image"),
             (ImageGenerationRequest(prompt="hello", extra={"control_image": PNG_1X1}), "control_image"),
             # The strength alone applies to nothing: refused the same way, not ignored.
             (ImageGenerationRequest(prompt="hello", control_strength=0.9), "control_strength"),
@@ -2617,7 +2654,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(_FakeQwenImage.last_init["model_path"], str(local_dir))
         self.assertEqual(_FakeQwenImage.last_generate["prompt"], "hello")
 
-    def test_qwen_image_capabilities_are_text_to_image_only(self):
+    def test_qwen_image_capabilities_list_image_to_image_without_a_mask(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         backend = MFluxVisionBackend(
@@ -2625,7 +2662,10 @@ class TestMFluxVisionBackend(unittest.TestCase):
         )
         caps = backend.get_capabilities()
 
-        self.assertEqual(caps.supported_tasks, ["text_to_image"])
+        # Since 0.3.38 base Qwen-Image runs latent image_to_image where the engine's rows carry it; its
+        # masked routes are not served.
+        expected = ["image_to_image", "text_to_image"] if _engine_rows_installed() else ["text_to_image"]
+        self.assertEqual(caps.supported_tasks, expected)
         self.assertFalse(caps.supports_mask)
 
     def test_qwen_base_control_is_not_advertised_although_the_route_row_has_it(self):
@@ -2661,7 +2701,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         # The engine's row supports control; this backend does not run that variant.
         self.assertFalse(caps.supports_control_image)
 
-    def test_qwen_image_provider_catalog_does_not_advertise_image_to_image(self):
+    def test_qwen_image_provider_catalog_advertises_image_to_image(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         with tempfile.TemporaryDirectory() as cache_td:
@@ -2676,10 +2716,15 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(len(models), 1)
         self.assertEqual(models[0].id, "AbstractFramework/qwen-image-2512-4bit")
-        self.assertEqual(tuple(models[0].capabilities), ("text_to_image",))
-        self.assertEqual(image_edit_models, [])
+        # Where the engine's rows carry base Qwen-Image's image_to_image (0.3.38).
+        if _engine_rows_installed():
+            self.assertEqual(tuple(models[0].capabilities), ("image_to_image", "text_to_image"))
+            self.assertEqual([model.id for model in image_edit_models], ["AbstractFramework/qwen-image-2512-4bit"])
+        else:
+            self.assertEqual(tuple(models[0].capabilities), ("text_to_image",))
+            self.assertEqual(image_edit_models, [])
 
-    def test_qwen_base_provider_catalog_lists_no_structured_control_params(self):
+    def test_qwen_base_provider_catalog_lists_the_structured_control_params(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         fake_capabilities = SimpleNamespace(
@@ -2712,8 +2757,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.assertEqual(len(models), 1)
         params = models[0].raw["task_specs"]["text_to_image"]["params"]
-        self.assertNotIn("control_image", params)
-        self.assertNotIn("control_strength", params)
+        # Since 0.3.38 the catalog lists them for Qwen/Qwen-Image (MLX-Gen's qwen.control route).
+        self.assertIn("control_image", params)
+        self.assertEqual(params["control_strength"]["default"], 0.4)
 
     def test_wan_provider_catalog_advertises_video_tasks(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -2776,7 +2822,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 i2v_models = list(backend.list_provider_models(task="image_to_video"))
 
         self.assertEqual([m.id for m in t2v_models], ["Wan-AI/Wan2.2-T2V-A14B-Diffusers"])
-        self.assertEqual(tuple(t2v_models[0].capabilities), ("text_to_video",))
+        # T2V-A14B also runs video_to_video since 0.3.38, where the engine's rows carry it.
+        expected = ("text_to_video", "video_to_video") if _engine_rows_installed() else ("text_to_video",)
+        self.assertEqual(tuple(t2v_models[0].capabilities), expected)
         self.assertEqual(t2v_models[0].raw["parameter_defaults"]["num_frames"], 81)
         self.assertEqual(t2v_models[0].raw["parameter_defaults"]["guidance_2"], 3.0)
         self.assertEqual([m.id for m in i2v_models], ["Wan-AI/Wan2.2-I2V-A14B-Diffusers"])
@@ -2803,7 +2851,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
             [m.id for m in t2v_models],
             ["AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"],
         )
-        self.assertEqual(tuple(t2v_models[0].capabilities), ("text_to_video",))
+        # T2V-A14B also runs video_to_video since 0.3.38, where the engine's rows carry it.
+        expected = ("text_to_video", "video_to_video") if _engine_rows_installed() else ("text_to_video",)
+        self.assertEqual(tuple(t2v_models[0].capabilities), expected)
         self.assertEqual(t2v_models[0].raw["base_model"], "wan2.2-t2v-a14b")
         self.assertEqual(t2v_models[0].raw["parameter_defaults"]["width"], 832)
         self.assertEqual(t2v_models[0].raw["parameter_defaults"]["height"], 480)
@@ -3036,6 +3086,62 @@ class TestMFluxVisionBackend(unittest.TestCase):
             adapters[0].raw["documentation_urls"],
         )
         self.assertTrue(adapters[0].raw["compatibility_notes"])
+
+    def test_provider_adapter_inventory_describes_the_flux2_klein_9b_consistency_lora(self):
+        from types import SimpleNamespace
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.lora_adapters import known_lora_adapter_profile
+
+        fake_capabilities = SimpleNamespace(
+            capabilities=(
+                SimpleNamespace(
+                    public_task="image-to-image",
+                    default_for_task=True,
+                    supports_lora=True,
+                    lora_status="validated",
+                    lora_target_roles=("transformer",),
+                    lora_validation_profile="lora_flux2_klein9b_q8_consistency_edit_2026_06_11",
+                ),
+            )
+        )
+        repo = "dx8152/Flux2-Klein-9B-Consistency"
+
+        with tempfile.TemporaryDirectory() as cache_td:
+            cache_root = Path(cache_td)
+            self._make_cache_snapshot(cache_root, "AbstractFramework/flux.2-klein-9b-8bit")
+            for name in ("Flux2-Klein-9B-consistency-V2.safetensors", "Klein-consistency.safetensors"):
+                self._make_adapter_snapshot(cache_root, repo, name, base_model="black-forest-labs/FLUX.2-klein-9B")
+            backend = MFluxVisionBackend(config=MFluxBackendConfig(model="AbstractFramework/flux.2-klein-9b-8bit"))
+
+            with patch.dict("os.environ", {"HF_HUB_CACHE": cache_td}, clear=True):
+                with patch(
+                    "abstractvision.backends.mflux._lazy_import_mlx_gen_task_inference",
+                    return_value=(lambda **kwargs: fake_capabilities, None),
+                ):
+                    adapters = {
+                        item.id: item
+                        for item in backend.list_provider_adapters(
+                            model="AbstractFramework/flux.2-klein-9b-8bit", task="image_to_image"
+                        )
+                    }
+
+        v2 = adapters[f"{repo}:Flux2-Klein-9B-consistency-V2.safetensors"]
+        self.assertEqual(v2.raw["adapter_family"], "dx8152-flux2-klein-consistency")
+        self.assertEqual(v2.raw["compatible_base_model"], "flux2-klein-9b")
+        # No scale or step recommendation: the model card gives none.
+        self.assertEqual(v2.raw["recommended_parameters"], {})
+        self.assertIn("https://huggingface.co/dx8152/Flux2-Klein-9B-Consistency", v2.raw["documentation_urls"])
+        self.assertTrue(any("flux2.edit" in note for note in v2.raw["compatibility_notes"]))
+        # The profile names the V2 file only; the earlier file is listed without it.
+        self.assertNotIn("adapter_family", adapters[f"{repo}:Klein-consistency.safetensors"].raw)
+
+        profile = known_lora_adapter_profile(f"{repo}:Flux2-Klein-9B-consistency-V2.safetensors")
+        self.assertEqual(profile["compatible_tasks"], ("image_to_image",))
+        self.assertEqual(
+            profile["model_aliases"],
+            ("flux2-klein-9b", "black-forest-labs/flux.2-klein-9b", "abstractframework/flux.2-klein-9b-8bit"),
+        )
 
     def test_provider_adapter_inventory_classifies_legacy_qwen_edit_lightning_by_path(self):
         from types import SimpleNamespace
@@ -3339,7 +3445,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertIs(MLXGenBackendConfig, MFluxBackendConfig)
         self.assertIs(MLXGenVisionBackend, MFluxVisionBackend)
 
-    def test_flux2_klein_capabilities_are_text_to_image_only(self):
+    def test_flux2_klein_capabilities_list_the_masked_edit_its_rows_serve(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
 
         backend = MFluxVisionBackend(
@@ -3348,7 +3454,8 @@ class TestMFluxVisionBackend(unittest.TestCase):
         caps = backend.get_capabilities()
 
         self.assertEqual(caps.supported_tasks, ["image_to_image", "text_to_image"])
-        self.assertFalse(caps.supports_mask)
+        # MLX-Gen's flux2.inpaint row (served since 0.3.38) decides; without mlx-gen there is no row.
+        self.assertEqual(caps.supports_mask, _engine_rows_installed())
 
     def test_flux2_edit_image_uses_edit_variant_and_input_dimensions(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -3488,9 +3595,10 @@ class TestMFluxVisionBackend(unittest.TestCase):
         self.assertEqual(len(_CountingFlux2.generate_calls), 1)
         warmup = _CountingFlux2.generate_calls[0]
         self.assertEqual(warmup["prompt"], "abstractvision preload warmup")
+        # The configured default canvas is kept; the steps are the fewest the route takes (0.3.38).
         self.assertEqual(warmup["width"], 320)
         self.assertEqual(warmup["height"], 192)
-        self.assertEqual(warmup["num_inference_steps"], 4)
+        self.assertEqual(warmup["num_inference_steps"], 2)
         self.assertEqual(warmup["guidance"], 1.0)
         self.assertEqual(warmup["seed"], 0)
 
@@ -3958,6 +4066,29 @@ class TestMFluxVisionBackend(unittest.TestCase):
             self.assertEqual(bits, [8, 8])
             self.assertEqual(len(_LowRamFlux2.instances), 3)
 
+    def test_a_local_model_width_is_read_from_its_own_folder_never_a_parent_directory(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            # Parents named like a width (a temporary folder can be `tmpab_q1cd`): the model folder decides.
+            cases = (
+                ("tmpab_q1cd/klein-source", None),
+                ("4bit-tests/klein-source", None),
+                ("models_q4/flux2-klein-4b-8bit", 8),
+                ("models--AbstractFramework--flux.2-klein-4b-8bit/snapshots/abc123", 8),
+            )
+            for relative, expected in cases:
+                source = self._make_model_dir(Path(td), relative)
+                backend = MFluxVisionBackend(
+                    config=MFluxBackendConfig(model=str(source), base_model="flux2-klein-4b")
+                )
+                result = backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2, seed=0))
+                self.assertEqual(result.metadata["quantization_bits"], expected, relative)
+
     def test_the_memory_plan_reads_the_resolved_model_on_a_backend_with_none_configured(self):
         import contextlib
 
@@ -3993,7 +4124,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 # SeedVR2's low mode is the cache limit alone: it keeps its model.
                 self.assertTrue(backend.has_loaded_model(), seed)
 
-    def test_preload_of_an_edit_only_model_loads_it_for_edits_without_a_warm_up(self):
+    def test_preload_of_an_edit_only_model_loads_it_for_edits_with_one_warm_up_edit(self):
         import contextlib
 
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
@@ -4008,8 +4139,10 @@ class TestMFluxVisionBackend(unittest.TestCase):
             backend.preload()
             self.assertTrue(backend.has_loaded_model())
             self.assertIsNotNone(_FakeQwenImageEdit.last_init)
-            self.assertIsNone(_FakeQwenImageEdit.last_generate)
+            # One warm-up edit of the task (a neutral picture, its output discarded).
+            self.assertEqual(_FakeQwenImageEdit.last_generate["prompt"], "abstractvision preload warmup")
             _FakeQwenImageEdit.last_init = None
+            _FakeQwenImageEdit.last_generate = None
             backend.edit_image(ImageEditRequest(prompt="a red door", image=PNG_1X1, steps=2, seed=1))
             self.assertIsNone(_FakeQwenImageEdit.last_init)  # the preloaded instance served the edit
             self.assertIsNotNone(_FakeQwenImageEdit.last_generate)
@@ -4184,12 +4317,13 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.addCleanup(mflux._require_runtime_versions.cache_clear)
         refused = {
-            "mlx-gen too old": ("darwin", {"mlx_gen": "0.38.0", "mlx": "0.32.5"}, "mlx-gen>=0.40.1,<0.41.0", "0.38.0"),
-            "mlx-gen a pre-release of the floor": ("linux", {"mlx_gen": "0.40.1rc1"}, "mlx-gen>=0.40.1,<0.41.0", "0.40.1rc1"),
-            "mlx-gen too new": ("linux", {"mlx_gen": "0.41.0"}, "mlx-gen>=0.40.1,<0.41.0", "0.41.0"),
-            "mlx-gen a pre-release of the ceiling": ("linux", {"mlx_gen": "0.41.0rc1"}, "mlx-gen>=0.40.1,<0.41.0", "0.41.0rc1"),
-            "mlx too old on macOS": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}, "mlx>=0.32.4 on macOS", "0.31.2"),
-            "mlx a pre-release of the floor": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.32.4.dev20261101"}, "mlx>=0.32.4 on macOS", "0.32.4.dev20261101"),
+            "mlx-gen too old": ("darwin", {"mlx_gen": "0.38.0", "mlx": "0.32.5"}, "mlx-gen>=0.40.3,<0.41.0", "0.38.0"),
+            "mlx-gen the release before the floor": ("linux", {"mlx_gen": "0.40.2"}, "mlx-gen>=0.40.3,<0.41.0", "0.40.2"),
+            "mlx-gen a pre-release of the floor": ("linux", {"mlx_gen": "0.40.3rc1"}, "mlx-gen>=0.40.3,<0.41.0", "0.40.3rc1"),
+            "mlx-gen too new": ("linux", {"mlx_gen": "0.41.0"}, "mlx-gen>=0.40.3,<0.41.0", "0.41.0"),
+            "mlx-gen a pre-release of the ceiling": ("linux", {"mlx_gen": "0.41.0rc1"}, "mlx-gen>=0.40.3,<0.41.0", "0.41.0rc1"),
+            "mlx too old on macOS": ("darwin", {"mlx_gen": "0.40.3", "mlx": "0.31.2"}, "mlx>=0.32.4 on macOS", "0.31.2"),
+            "mlx a pre-release of the floor": ("darwin", {"mlx_gen": "0.40.3", "mlx": "0.32.4.dev20261101"}, "mlx>=0.32.4 on macOS", "0.32.4.dev20261101"),
         }
         with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
             self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
@@ -4214,9 +4348,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
                         self.assertIn(f" {installed} is installed", message)
                         self.assertIn('pip install -U "abstractvision[mlx-gen]"', message)
             accepted = {
-                "in range": ("darwin", {"mlx_gen": "0.40.1", "mlx": "0.32.4"}),
-                "in range, a later patch and its pre-release": ("darwin", {"mlx_gen": "0.40.2rc1", "mlx": "0.33.0"}),
-                "old mlx off macOS": ("linux", {"mlx_gen": "0.40.1", "mlx": "0.31.2"}),
+                "in range": ("darwin", {"mlx_gen": "0.40.3", "mlx": "0.32.4"}),
+                "in range, a later patch and its pre-release": ("darwin", {"mlx_gen": "0.40.4rc1", "mlx": "0.33.0"}),
+                "old mlx off macOS": ("linux", {"mlx_gen": "0.40.3", "mlx": "0.31.2"}),
                 "engine absent": ("darwin", {}),
             }
             for case, (platform, versions) in accepted.items():

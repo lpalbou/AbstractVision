@@ -19,6 +19,7 @@ from .model_cache import (
     ensure_hf_repo_snapshot,
     hf_repo_dir,
     hf_snapshot_is_usable,
+    looks_like_hf_repo_id,
     resolve_hf_repo_snapshot,
     write_hf_ref,
 )
@@ -2592,23 +2593,6 @@ def default_download_root() -> Path:
     """Return the legacy preset root used for migration input only."""
 
     return default_legacy_model_root()
-
-
-def looks_like_hf_repo_id(value: Any) -> bool:
-    """Return True when ``value`` resembles a Hugging Face repo id like ``org/name``.
-
-    This intentionally keeps the heuristic small and conservative so local paths
-    (e.g. ``./models`` or ``~/models``) are not misclassified as repo ids.
-    """
-
-    s = str(value or "").strip()
-    if not s:
-        return False
-    if s.startswith(("/", "./", "../", "~")):
-        return False
-    if "\\" in s or " " in s:
-        return False
-    return s.count("/") == 1 and all(part.strip() for part in s.split("/", 1))
 
 
 def resolve_hf_token(token: Optional[str] = None) -> Optional[str]:

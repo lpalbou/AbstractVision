@@ -94,14 +94,14 @@ sdcpp = [
 # Native Apple image generation via MLX-Gen. Kept optional because it pulls
 # Apple-specific local runtime dependencies.
 mlx-gen = [
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
 # Compatibility extra for callers that still install the historical MFLUX extra.
 # It intentionally installs MLX-Gen, not the retired standalone mflux package.
 mflux = [
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
@@ -121,7 +121,7 @@ apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
@@ -196,7 +196,7 @@ all = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
@@ -217,7 +217,7 @@ all-apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.1,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
