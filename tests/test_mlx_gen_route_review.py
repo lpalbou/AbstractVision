@@ -689,5 +689,30 @@ class TestPublishedNegativePrompt(RouteCase):
         self.assertIn("image_to_image", constraint["description"])
 
 
+@needs_planner
+class TestALocalFolderIsAskedByItsOwnName(RouteCase):
+    """The engine identifies a model by its name: a local folder is asked by its own name, so a parent
+    directory named after another model gives it no rows and no route."""
+
+    def test_a_parent_directory_never_decides_the_rows(self):
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+
+        root = Path(self.snapshots[FLUX2]).parents[2]
+        for relative, selector in (
+            ("qwen-image-edit_q4/weights", None),
+            ("wan2.2-t2v-a14b-4bit-lora/weights", None),
+            ("qwen-image-edit_q4/flux2-klein-4b", "flux2-klein-4b"),
+        ):
+            with self.subTest(folder=relative):
+                path = root / relative
+                (path / "transformer").mkdir(parents=True)
+                (path / "transformer" / "0.safetensors").write_bytes(b"x")
+                backend = MFluxVisionBackend(config=MFluxBackendConfig(model=str(path), base_model="flux2-klein-4b"))
+                found, rows = backend._route_selector_with_rows()
+                self.assertEqual(found, selector)
+                self.assertEqual(bool(rows), selector is not None)
+                self.assertEqual(bool(backend.describe_routes(model=str(path))), selector is not None)
+
+
 if __name__ == "__main__":
     unittest.main()

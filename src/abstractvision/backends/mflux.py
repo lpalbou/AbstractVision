@@ -2115,10 +2115,18 @@ def _infer_bits_from_text(value: Any) -> Optional[int]:
 
 
 def _infer_bits_from_path(value: Any) -> Optional[int]:
-    # A local model's stored width, from its own folder name or the repository id of a Hugging Face cache
-    # snapshot; a parent directory never decides (a temporary or user folder named `x_q1` is no width).
-    path = Path(str(value or "").strip()).expanduser()
-    return _infer_bits_from_text(_hf_cache_repo_id(path) or path.name)
+    return _infer_bits_from_text(_local_model_name(value))
+
+
+def _local_model_name(value: Any) -> str:
+    # What names a local model: its own folder name, or the repository id of a Hugging Face cache snapshot;
+    # never a parent directory (a temporary or user folder named `qwen-image-edit_q4` names no model).
+    # A repository id or an alias is its own name.
+    text = str(value or "").strip()
+    path = Path(text).expanduser()
+    if len(path.parts) < 2 or (looks_like_hf_repo_id(text) and not path.is_dir()):
+        return text
+    return _hf_cache_repo_id(path) or path.name
 
 
 def _looks_like_path(value: str) -> bool:
@@ -2141,14 +2149,14 @@ def _has_incomplete_markers(path: Path) -> bool:
 
 
 def _is_partial_model_tree(path: Path) -> bool:
-    parts = [_norm(part) for part in path.parts]
-    if any(".partial" in part or part.endswith("-partial") for part in parts):
+    names = [_norm(name) for name in (path.name, _local_model_name(path))]
+    if any(".partial" in name or name.endswith("-partial") for name in names):
         return True
     return _has_incomplete_markers(path)
 
 
 def _is_incompatible_model_tree(path: Path) -> bool:
-    return any(".incompatible" in _norm(part) for part in path.parts)
+    return any(".incompatible" in _norm(name) for name in (path.name, _local_model_name(path)))
 
 
 def _looks_like_mflux_packaged_repo(value: Any) -> bool:
@@ -2944,8 +2952,8 @@ def _card_base_model(value: Any) -> Optional[str]:
 
 
 def _legacy_base_model_match(value: Any) -> Optional[str]:
-    # Name matching over the whole value; MiniMax-H3 is identified only exactly or by its card.
-    s = _norm(value)
+    # Name matching over the model's own name; MiniMax-H3 is identified only exactly or by its card.
+    s = _norm(_local_model_name(value))
     if not s:
         return None
     if "qwen" in s and "image-edit" in s:
@@ -3325,7 +3333,7 @@ class MFluxVisionBackend(VisionBackend):
         deduped: List[str] = []
         seen: set[str] = set()
         for selector in selectors:
-            selector_s = str(selector or "").strip()
+            selector_s = _local_model_name(selector)
             if not selector_s or selector_s in seen:
                 continue
             seen.add(selector_s)
@@ -3795,10 +3803,12 @@ class MFluxVisionBackend(VisionBackend):
     ) -> Dict[str, List[Dict[str, Any]]]:
         try:
             get_model_capabilities, _resolve_generation_plan = _lazy_import_mlx_gen_task_inference()
+            # The engine identifies a model by name, so a local folder is asked by its own name.
+            model_name = _local_model_name(model_selector)
             if base_model:
-                capabilities = get_model_capabilities(model=model_selector, base_model=base_model)
+                capabilities = get_model_capabilities(model=model_name, base_model=base_model)
             else:
-                capabilities = get_model_capabilities(model=model_selector)
+                capabilities = get_model_capabilities(model=model_name)
         except Exception:
             return {}
         out: Dict[str, List[Dict[str, Any]]] = {}

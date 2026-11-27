@@ -95,6 +95,17 @@ class TestBaseModelIdentification(unittest.TestCase):
         self.assertEqual(
             self.infer("/Users/someone/fibo-benchmarks/out/flux2-klein-4b"), "flux2-klein-4b"
         )
+        # Name matching reads the model's own folder too (a temporary or user folder holds models of any family).
+        self.assertIsNone(self.infer("/Users/someone/qwen-image-edit_q4/klein-source"))
+        self.assertEqual(
+            self.infer("/Volumes/wan2.2-t2v-a14b-models/my-qwen-image-finetune"), "qwen-image"
+        )
+        self.assertEqual(
+            self.infer("/Users/someone/qwen-image-edit_q4/my-klein-4b-finetune"), "flux2-klein-4b"
+        )
+        self.assertEqual(
+            self.infer("/cache/models--someone--my-z-image-turbo-ft/snapshots/abc123"), "z-image-turbo"
+        )
         # Exact identification of any value comes before name matching of any value.
         self.assertEqual(
             self.infer("/Users/someone/qwen-image-tests/x", "z-image-turbo"), "z-image-turbo"

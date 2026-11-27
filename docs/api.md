@@ -450,7 +450,7 @@ The MLX-Gen backend asks the same planner for every `image_to_image` request on
 FLUX.2, Z-Image and base Qwen-Image, and for a request on any model that sets an
 option only a route applies (`image_strength` below). The route it selects
 decides the MLX-Gen class and call; other requests run as in 0.3.37. On a model
-the engine publishes no rows for (a local folder whose name it cannot place),
+the engine publishes no rows for (a local folder whose own name it cannot place),
 the model has its 0.3.37 tasks, and an option runs its 0.3.37 branch on the
 families 0.3.37 applied it on (`image_strength` on ERNIE-Image-Turbo, reference
 images on FLUX.2 and Qwen-Image-Edit, a mask on Qwen-Image-Edit and FIBO-Edit)

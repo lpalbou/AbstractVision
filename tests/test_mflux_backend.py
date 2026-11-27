@@ -2372,6 +2372,23 @@ class TestMFluxVisionBackend(unittest.TestCase):
             invalid["z-image-turbo"],
         )
 
+    def test_a_parent_directory_named_partial_or_incompatible_hides_no_model(self):
+        from abstractvision.backends.mflux import discover_cached_mflux_models
+
+        for parent in ("downloads.partial", "backup-partial", "old.incompatible"):
+            with self.subTest(parent=parent), tempfile.TemporaryDirectory() as td:
+                root = Path(td) / parent
+                self._make_model_dir(root / "models", "flux2-klein-4b-8bit")
+                self._make_cache_snapshot(root / "hub", "AbstractFramework/z-image-turbo-8bit")
+                with patch("abstractvision.backends.mflux.framework_local_model_roots", return_value=[]), patch.dict(
+                    "os.environ", {"HF_HUB_CACHE": str(Path(td) / "empty")}, clear=True
+                ), patch(
+                    "abstractvision.backends.mflux.framework_hf_cache_roots", return_value=[("cache", root / "hub")]
+                ):
+                    discovered = discover_cached_mflux_models(model_dir=str(root / "models"))
+                self.assertIn("flux2-klein-4b", discovered)
+                self.assertIn("z-image-turbo", discovered)
+
     def test_flux2_drops_unsupported_negative_prompt(self):
         from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
         from abstractvision.types import ImageGenerationRequest

@@ -254,10 +254,16 @@ Against 0.3.37 (the entries are numbered so that others can refer to them):
     composition, with small differences in details, because the engine's prompt encoding is now exact (float32).
     A new prompt is encoded in seconds instead of more than a minute. See MLX-Gen's
     [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
-28. On MLX-Gen, a local model folder's stored width (`metadata["quantization_bits"]` of a request without
-    `quantize`, and the SeedVR2 local-folder match) is read from the folder's own name, or the repository id of a
-    Hugging Face cache snapshot; 0.3.37 read the whole path, so a parent such as `models_q4` or `4bit-tests`
-    (or a temporary folder whose random name holds `_q1`) set a width the model does not have.
+28. On MLX-Gen, a local model is identified by its own folder: the folder's name, or the repository id of a
+    Hugging Face cache snapshot (`models--org--name/snapshots/<revision>`), and its own card; a parent directory
+    never decides. This sets its base model when `base_model` is not given, its stored width
+    (`metadata["quantization_bits"]` of a request without `quantize`, and the SeedVR2 local-folder match), the
+    routes MLX-Gen publishes for it, and whether discovery skips it as a partial or incompatible download.
+    0.3.37 read the whole path, so a model under a parent named after another model or width
+    (`~/models/qwen-image-edit_q4/flux2-klein-4b`, `models_q4`, a temporary folder whose random name holds `_q1`)
+    could be identified, routed or refused as that other model, or get a width it does not have, and a parent
+    named `*.partial`, `*-partial` or `*.incompatible` hid every model under it. A folder whose own name and card
+    place no model needs `base_model`.
 
 ## 0.3.37 - 2026-11-26
 

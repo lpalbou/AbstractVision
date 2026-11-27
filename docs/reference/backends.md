@@ -279,7 +279,7 @@ Config/env:
 Non-curated MLX-Gen models:
 - If you have an MLX-Gen-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
   - Pre-download it with `abstractvision download org/name` (HF cache) or `hf download org/name`
-  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (base model usually auto-infers; override with `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image` if needed).
+  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (the base model is inferred from a local folder's own name or card, or a cache snapshot's repo id, never from a parent directory; otherwise set `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image`).
 
 Runtime behavior notes:
 - MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.

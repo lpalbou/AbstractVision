@@ -2781,7 +2781,7 @@ The MLX-Gen backend asks the same planner for every `image_to_image` request on
 FLUX.2, Z-Image and base Qwen-Image, and for a request on any model that sets an
 option only a route applies (`image_strength` below). The route it selects
 decides the MLX-Gen class and call; other requests run as in 0.3.37. On a model
-the engine publishes no rows for (a local folder whose name it cannot place),
+the engine publishes no rows for (a local folder whose own name it cannot place),
 the model has its 0.3.37 tasks, and an option runs its 0.3.37 branch on the
 families 0.3.37 applied it on (`image_strength` on ERNIE-Image-Turbo, reference
 images on FLUX.2 and Qwen-Image-Edit, a mask on Qwen-Image-Edit and FIBO-Edit)
@@ -4453,7 +4453,7 @@ Config/env:
 Non-curated MLX-Gen models:
 - If you have an MLX-Gen-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
   - Pre-download it with `abstractvision download org/name` (HF cache) or `hf download org/name`
-  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (base model usually auto-infers; override with `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image` if needed).
+  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (the base model is inferred from a local folder's own name or card, or a cache snapshot's repo id, never from a parent directory; otherwise set `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image`).
 
 Runtime behavior notes:
 - MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.
@@ -6355,10 +6355,16 @@ Against 0.3.37 (the entries are numbered so that others can refer to them):
     composition, with small differences in details, because the engine's prompt encoding is now exact (float32).
     A new prompt is encoded in seconds instead of more than a minute. See MLX-Gen's
     [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
-28. On MLX-Gen, a local model folder's stored width (`metadata["quantization_bits"]` of a request without
-    `quantize`, and the SeedVR2 local-folder match) is read from the folder's own name, or the repository id of a
-    Hugging Face cache snapshot; 0.3.37 read the whole path, so a parent such as `models_q4` or `4bit-tests`
-    (or a temporary folder whose random name holds `_q1`) set a width the model does not have.
+28. On MLX-Gen, a local model is identified by its own folder: the folder's name, or the repository id of a
+    Hugging Face cache snapshot (`models--org--name/snapshots/<revision>`), and its own card; a parent directory
+    never decides. This sets its base model when `base_model` is not given, its stored width
+    (`metadata["quantization_bits"]` of a request without `quantize`, and the SeedVR2 local-folder match), the
+    routes MLX-Gen publishes for it, and whether discovery skips it as a partial or incompatible download.
+    0.3.37 read the whole path, so a model under a parent named after another model or width
+    (`~/models/qwen-image-edit_q4/flux2-klein-4b`, `models_q4`, a temporary folder whose random name holds `_q1`)
+    could be identified, routed or refused as that other model, or get a width it does not have, and a parent
+    named `*.partial`, `*-partial` or `*.incompatible` hid every model under it. A folder whose own name and card
+    place no model needs `base_model`.
 
 ## 0.3.37 - 2026-11-26
 
