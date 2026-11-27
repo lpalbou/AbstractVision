@@ -1489,7 +1489,7 @@ unless you choose the matching extra.</p>
 <h3 id="symptom_1">Symptom<a class="headerlink" href="#symptom_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li>The first MLX-Gen model load raises <code>OptionalDependencyMissingError</code>: <code>The MLX-Gen backend needs
-  mlx-gen&gt;=0.40.1,&lt;0.41.0; mlx-gen &lt;version&gt; is installed</code> or <code>The MLX-Gen backend needs mlx&gt;=0.32.4 on
+  mlx-gen&gt;=0.40.3,&lt;0.41.0; mlx-gen &lt;version&gt; is installed</code> or <code>The MLX-Gen backend needs mlx&gt;=0.32.4 on
   macOS; mlx &lt;version&gt; is installed</code>.</li>
 </ul>
 <h3 id="likely-cause_1">Likely cause<a class="headerlink" href="#likely-cause_1" title="Permanent link">&para;</a></h3>
@@ -1500,7 +1500,7 @@ already installed, so the backend checks both before it loads a model.</p>
 <h3 id="fix_1">Fix<a class="headerlink" href="#fix_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>pip install -U "abstractvision[mlx-gen]"</code> (or the profile you installed, such as <code>abstractvision[apple]</code>):
-  it installs <code>mlx-gen&gt;=0.40.1,&lt;0.41.0</code> and, on macOS, <code>mlx&gt;=0.32.4</code>.</li>
+  it installs <code>mlx-gen&gt;=0.40.3,&lt;0.41.0</code> and, on macOS, <code>mlx&gt;=0.32.4</code>.</li>
 <li>With the one-line installer, run the same line again.</li>
 </ul>
 <h3 id="verify_1">Verify<a class="headerlink" href="#verify_1" title="Permanent link">&para;</a></h3>
@@ -1588,8 +1588,8 @@ capability.</p>
 <li>Upgrade AbstractVision to a version that supports MLX-Gen q4/q8 presets.</li>
 <li>Install the backend extra: <code>pip install "abstractvision[mlx-gen]"</code></li>
 <li>Download the prepared model first, for example <code>abstractvision download AbstractFramework/qwen-image-edit-2511-4bit --provider mlx-gen</code>.</li>
-<li>For MLX-Gen mask edits, use a validated masked-edit route such as <code>AbstractFramework/qwen-image-edit-2511-8bit</code>, <code>briaai/Fibo-Edit</code>, or <code>briaai/Fibo-Edit-RMBG</code>.</li>
-<li>Structured control (<code>--control-image</code> / <code>--control-strength</code>, Python <code>control_image=</code> / <code>control_strength=</code>) is accepted by the request, but in this release every built-in backend, MLX-Gen included, refuses a <code>control_image</code> with <code>CapabilityNotSupportedError</code> (<code>field="control_image"</code>); MLX-Gen also refuses a <code>control_strength</code> given alone.</li>
+<li>For MLX-Gen mask edits, use a validated masked-edit route such as <code>AbstractFramework/qwen-image-edit-2511-8bit</code>, FLUX.2 klein, Z-Image Turbo, <code>briaai/Fibo-Edit</code>, or <code>briaai/Fibo-Edit-RMBG</code>.</li>
+<li>Structured control (<code>--control-image</code> / <code>--control-strength</code>, Python <code>control_image=</code> / <code>control_strength=</code>) runs on MLX-Gen's <code>AbstractFramework/qwen-image-8bit</code> only, with the ControlNet side weights in the cache (<code>abstractvision download InstantX/Qwen-Image-ControlNet-Union</code>); every other model and backend refuses a <code>control_image</code> with <code>CapabilityNotSupportedError</code> (<code>field="control_image"</code>), and MLX-Gen also refuses a <code>control_strength</code> given alone.</li>
 <li>If you need a mask on another local route, use local Diffusers or <code>stable-diffusion.cpp</code> instead of expecting AbstractVision to silently fall back.</li>
 </ul>
 <p>Notes:

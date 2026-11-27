@@ -1895,9 +1895,9 @@ Leave out <code>--width/--height/--frames/--fps/--steps</code> to use each model
 (832x480 for every Wan model; 121 frames at 24 fps for TI2V-5B, 81 frames at
 16 fps for A14B). The measured memory per size is in
 <a href="../faq/#how-much-memory-does-wan-video-need">docs/faq.md</a>.
-<code>--control-image</code> is accepted by <code>t2i</code> but refused by every built-in backend in
-this release, MLX-Gen included. For masked edits, use the validated Qwen edit route
-<code>AbstractFramework/qwen-image-edit-2511-8bit</code> (or FIBO Edit) and pass
+<code>--control-image</code> on <code>t2i</code> runs on MLX-Gen's <code>AbstractFramework/qwen-image-8bit</code>
+only; every other model and backend refuses it. For masked edits, use the validated Qwen edit route
+<code>AbstractFramework/qwen-image-edit-2511-8bit</code> (or FIBO Edit, FLUX.2 klein, Z-Image Turbo) and pass
 <code>--mask</code>.</p>
 <p>Shared LoRA adapters:</p>
 <div class="highlight"><pre><span></span><code>abstractvision<span class="w"> </span>t2i<span class="w"> </span><span class="se">\</span>

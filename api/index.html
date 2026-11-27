@@ -472,6 +472,100 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#control-image-control_image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control image (control_image)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#video-to-video-video_to_video" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video-to-video (video_to_video)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#video-restoration-video_upscale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video restoration (video_upscale)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mlx-gen-image-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLX-Gen image routes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MLX-Gen image routes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#latent-image-to-image-image_strength" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Latent image-to-image (image_strength)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flux2-masked-edits-mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FLUX.2 masked edits (mask)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-reference-edits-reference_images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-reference edits (reference_images)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outpaint-and-reframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outpaint and reframe
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -970,6 +1064,100 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#control-image-control_image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control image (control_image)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#video-to-video-video_to_video" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video-to-video (video_to_video)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#video-restoration-video_upscale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video restoration (video_upscale)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mlx-gen-image-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLX-Gen image routes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MLX-Gen image routes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#latent-image-to-image-image_strength" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Latent image-to-image (image_strength)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flux2-masked-edits-mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FLUX.2 masked edits (mask)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-reference-edits-reference_images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-reference edits (reference_images)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#outpaint-and-reframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outpaint and reframe
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1134,6 +1322,8 @@
 <li><code>generate_video_batch(...)</code> → repeated <code>text_to_video</code> orchestration with explicit seed planning</li>
 <li><code>image_to_video(...)</code> → <code>image_to_video</code> (backend-dependent)</li>
 <li><code>image_to_video_batch(...)</code> → repeated <code>image_to_video</code> orchestration with explicit seed planning</li>
+<li><code>video_to_video(...)</code> → <code>video_to_video</code> (backend-dependent)</li>
+<li><code>upscale_video(...)</code> → <code>video_upscale</code> (backend-dependent)</li>
 <li><code>generate_angles(...)</code> → <code>multi_view_image</code> (API exists; no built-in backend implements it yet)</li>
 </ul>
 <p>Task names are also used by the capability registry (<a href="../src/abstractvision/assets/vision_model_capabilities.json"><code>../src/abstractvision/assets/vision_model_capabilities.json</code></a>).</p>
@@ -1217,7 +1407,7 @@ AbstractVision.</p>
 </code></pre></div>
 <p>Note: <code>allow_download=False</code> is the default. Pre-download model weights separately, or set <code>allow_download=True</code> only when you want runtime downloads.</p>
 <p><code>upscale_image(...)</code>, <code>generate_video(...)</code>, and <code>image_to_video(...)</code> are part
-of the public API. MLX-Gen <code>0.40.1+</code> supports SeedVR2 <code>image_upscale</code>, Wan
+of the public API. MLX-Gen <code>0.40.3+</code> supports SeedVR2 <code>image_upscale</code>, Wan
 <code>text_to_video</code>, and first-frame <code>image_to_video</code>, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an <code>ffmpeg</code>
@@ -1225,10 +1415,11 @@ executable on <code>PATH</code> whenever a backend returns frame sequences for l
 packaging.</p>
 <p><code>ImageGenerationRequest</code> includes typed <code>control_image</code> and <code>control_strength</code>
 fields: a structure guide such as edges, sketch, or pose, not a source-image edit
-input. No built-in backend applies them; each one, MLX-Gen included, refuses a
-<code>control_image</code> with <code>CapabilityNotSupportedError</code> (<code>field="control_image"</code>). MLX-Gen
-also refuses a <code>control_strength</code> given alone (<code>field="control_strength"</code>); the other
-built-in backends do not use it.</p>
+input. MLX-Gen applies them on <code>AbstractFramework/qwen-image-8bit</code> (see
+<a href="#control-image-control_image">Control image</a>) and refuses a <code>control_image</code> on
+any other model (<code>field="control_image"</code>) and a <code>control_strength</code> given alone
+(<code>field="control_strength"</code>); the other built-in backends refuse a <code>control_image</code>
+and do not use <code>control_strength</code>.</p>
 <h3 id="local-example-mlx-gen-backend">Local example (MLX-Gen backend)<a class="headerlink" href="#local-example-mlx-gen-backend" title="Permanent link">&para;</a></h3>
 <p>Install <code>abstractvision[mlx-gen]</code> and pre-download the exact model repo first,
 for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit --provider mlx-gen</code>.</p>
@@ -1254,28 +1445,26 @@ for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diff
     <span class="n">height</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># A plain edit runs FLUX.2's edit route, on which MLX-Gen validated this LoRA on the 8-bit package.</span>
+<span class="n">edit_asset</span> <span class="o">=</span> <span class="n">image_vm</span><span class="o">.</span><span class="n">edit_image</span><span class="p">(</span>
+    <span class="s2">"Turn this cat into a dog."</span><span class="p">,</span>
+    <span class="n">image</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./cat.png"</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(),</span>
     <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
-        <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">"prithivMLmods/Qwen-Image-2512-Pixel-Art-LoRA:Qwen-Image-2512-Master-Pixel-Art-LoRA.safetensors"</span><span class="p">,</span>
-            <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
-        <span class="p">)</span>
+        <span class="n">LoRAAdapterSpec</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="s2">"dx8152/Flux2-Klein-9B-Consistency:Flux2-Klein-9B-consistency-V2.safetensors"</span><span class="p">)</span>
     <span class="p">],</span>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="n">edit_asset</span> <span class="o">=</span> <span class="n">image_vm</span><span class="o">.</span><span class="n">edit_image</span><span class="p">(</span>
+<span class="n">reference_asset</span> <span class="o">=</span> <span class="n">image_vm</span><span class="o">.</span><span class="n">edit_image</span><span class="p">(</span>
     <span class="s2">"compose the subject using the second image as a style and layout reference"</span><span class="p">,</span>
     <span class="n">image</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./subject.png"</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(),</span>
     <span class="n">steps</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span>
     <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
-    <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
-        <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">"fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA:qwen-image-edit-2511-multiple-angles-lora.safetensors"</span><span class="p">,</span>
-            <span class="n">scale</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
-        <span class="p">)</span>
-    <span class="p">],</span>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
-    <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">"reference_images"</span><span class="p">:</span> <span class="p">[</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./style-reference.png"</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()]},</span>
+    <span class="n">reference_images</span><span class="o">=</span><span class="p">[</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./style-reference.png"</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()],</span>
 <span class="p">)</span>
 
 <span class="n">upscale_backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/seedvr2-3b-8bit"</span><span class="p">))</span>
@@ -1289,29 +1478,60 @@ for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diff
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
 <span class="p">)</span>
 
+<span class="n">ti2v_backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span>
+    <span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-ti2v-5b-diffusers-8bit"</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="n">ti2v_vm</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">ti2v_backend</span><span class="p">)</span>
+
+<span class="c1"># TI2V-5B has one transformer: its adapters take target_role="transformer".</span>
+<span class="n">styled_asset</span> <span class="o">=</span> <span class="n">ti2v_vm</span><span class="o">.</span><span class="n">generate_video</span><span class="p">(</span>
+    <span class="s2">"HST style HD film, early 1900s, autochrome, analog cinema. A horse-drawn carriage crossing a snowy town square at dusk"</span><span class="p">,</span>
+    <span class="n">width</span><span class="o">=</span><span class="mi">832</span><span class="p">,</span>
+    <span class="n">height</span><span class="o">=</span><span class="mi">480</span><span class="p">,</span>
+    <span class="n">num_frames</span><span class="o">=</span><span class="mi">17</span><span class="p">,</span>
+    <span class="n">fps</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+    <span class="n">flow_shift</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
+    <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors"</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
+            <span class="n">target_role</span><span class="o">=</span><span class="s2">"transformer"</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">],</span>
+    <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
+<span class="p">)</span>
+
 <span class="n">t2v_backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span>
     <span class="n">config</span><span class="o">=</span><span class="n">MLXGenBackendConfig</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"</span><span class="p">)</span>
 <span class="p">)</span>
 <span class="n">t2v_vm</span> <span class="o">=</span> <span class="n">VisionManager</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="n">t2v_backend</span><span class="p">)</span>
 
+<span class="c1"># A14B has two denoisers: each adapter names the one it targets (here the Wan 2.2 Lightning pair).</span>
 <span class="n">asset</span> <span class="o">=</span> <span class="n">t2v_vm</span><span class="o">.</span><span class="n">generate_video</span><span class="p">(</span>
     <span class="s2">"a red fox walking through a snowy forest, cinematic"</span><span class="p">,</span>
-    <span class="n">width</span><span class="o">=</span><span class="mi">432</span><span class="p">,</span>
+    <span class="n">width</span><span class="o">=</span><span class="mi">480</span><span class="p">,</span>
     <span class="n">height</span><span class="o">=</span><span class="mi">240</span><span class="p">,</span>
     <span class="n">num_frames</span><span class="o">=</span><span class="mi">41</span><span class="p">,</span>
-    <span class="n">fps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-    <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
-    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
-    <span class="n">guidance_2</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
+    <span class="n">fps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">guidance_2</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">flow_shift</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
     <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
         <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">"AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors"</span><span class="p">,</span>
-            <span class="n">scale</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
-            <span class="n">target_role</span><span class="o">=</span><span class="s2">"transformer"</span><span class="p">,</span>
-        <span class="p">)</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/high_noise_model.safetensors"</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+            <span class="n">target_role</span><span class="o">=</span><span class="s2">"high_noise_transformer"</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"lightx2v/Wan2.2-Lightning:Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V1.1/low_noise_model.safetensors"</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+            <span class="n">target_role</span><span class="o">=</span><span class="s2">"low_noise_transformer"</span><span class="p">,</span>
+        <span class="p">),</span>
     <span class="p">],</span>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
-    <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">"max_sequence_length"</span><span class="p">:</span> <span class="mi">256</span><span class="p">},</span>
 <span class="p">)</span>
 
 <span class="n">i2v_backend</span> <span class="o">=</span> <span class="n">MLXGenVisionBackend</span><span class="p">(</span>
@@ -1322,24 +1542,114 @@ for example <code>abstractvision download AbstractFramework/wan2.2-t2v-a14b-diff
 <span class="n">first_frame_asset</span> <span class="o">=</span> <span class="n">i2v_vm</span><span class="o">.</span><span class="n">image_to_video</span><span class="p">(</span>
     <span class="n">image</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">"./first-frame.png"</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(),</span>
     <span class="n">prompt</span><span class="o">=</span><span class="s2">"slow camera push-in"</span><span class="p">,</span>
-    <span class="n">width</span><span class="o">=</span><span class="mi">432</span><span class="p">,</span>
+    <span class="n">width</span><span class="o">=</span><span class="mi">480</span><span class="p">,</span>
     <span class="n">height</span><span class="o">=</span><span class="mi">240</span><span class="p">,</span>
     <span class="n">num_frames</span><span class="o">=</span><span class="mi">41</span><span class="p">,</span>
-    <span class="n">fps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-    <span class="n">steps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
-    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">3.5</span><span class="p">,</span>
-    <span class="n">guidance_2</span><span class="o">=</span><span class="mf">3.5</span><span class="p">,</span>
+    <span class="n">fps</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+    <span class="n">steps</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+    <span class="n">guidance_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">guidance_2</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">flow_shift</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
     <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
         <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">"AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors"</span><span class="p">,</span>
-            <span class="n">scale</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
-            <span class="n">target_role</span><span class="o">=</span><span class="s2">"transformer"</span><span class="p">,</span>
-        <span class="p">)</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/high_noise_model.safetensors"</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+            <span class="n">target_role</span><span class="o">=</span><span class="s2">"high_noise_transformer"</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"lightx2v/Wan2.2-Lightning:Wan2.2-I2V-A14B-4steps-lora-rank64-Seko-V1/low_noise_model.safetensors"</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+            <span class="n">target_role</span><span class="o">=</span><span class="s2">"low_noise_transformer"</span><span class="p">,</span>
+        <span class="p">),</span>
     <span class="p">],</span>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_progress</span><span class="p">,</span>
-    <span class="n">extra</span><span class="o">=</span><span class="p">{</span><span class="s2">"max_sequence_length"</span><span class="p">:</span> <span class="mi">256</span><span class="p">},</span>
 <span class="p">)</span>
 </code></pre></div>
+<h3 id="control-image-control_image">Control image (<code>control_image</code>)<a class="headerlink" href="#control-image-control_image" title="Permanent link">&para;</a></h3>
+<p>On <code>AbstractFramework/qwen-image-8bit</code>, the only model whose MLX-Gen rows have a
+control route (<code>qwen.control</code>), <code>generate_image(..., control_image=...)</code> runs
+<code>QwenImageControlNet</code> with the row's ControlNet
+(<code>InstantX/Qwen-Image-ControlNet-Union:diffusion_pytorch_model.safetensors</code>);
+<code>control_strength</code> is a finite number (unset: the engine CLI's 0.4). The
+ControlNet's side weights are looked up in the Hugging Face cache before any
+weights load and never downloaded during a generation: when they are missing the
+request is refused (<code>field="control_image"</code>) with the command that fetches them,
+<code>abstractvision download InstantX/Qwen-Image-ControlNet-Union</code>.
+<code>get_capabilities().supports_control_image</code> is true on that model only. <code>i2i</code>
+refuses <code>control_image</code> and <code>control_strength</code> (<code>field=</code>).</p>
+<h3 id="video-to-video-video_to_video">Video-to-video (<code>video_to_video</code>)<a class="headerlink" href="#video-to-video-video_to_video" title="Permanent link">&para;</a></h3>
+<p><code>VisionManager.video_to_video(prompt, video, **kwargs)</code> (<code>VideoToVideoRequest</code>;
+the plugin's <code>v2v(prompt, video, ...)</code>) edits a source clip. <code>video</code> is its bytes,
+written once to the run's directory, or a local file <code>Path</code> the engine reads in
+place (the plugin takes a file path, bytes or an artifact ref). On MLX-Gen it
+runs Wan 2.2 T2V-A14B's video-to-video route (<code>Wan2_2_TI2V</code>) with the A14B
+defaults and memory plan of text-to-video:</p>
+<ul>
+<li>Guidance as the engine CLI sets it on this route: unset, 4.0 and <code>guidance_2</code>
+  3.0; a <code>guidance_scale</code> set alone leaves <code>guidance_2</code> to the engine, which then
+  uses the same value (text-to-video and image-to-video keep <code>guidance_2</code> at the
+  model's default).</li>
+<li><code>video_strength</code> in <code>(0, 1]</code> (unset: the engine's 0.8) and an optional <code>mask</code>
+  (one image, white is the region to change; one with no white pixel raises
+  <code>ValueError</code>). A negative prompt is passed only when set, so the model's own
+  default applies.</li>
+<li>Before any weights load, the clip is probed by the engine's rule: one too short
+  for <code>num_frames</code> at <code>fps</code> is refused (<code>field="num_frames"</code>); <code>extra</code> takes the
+  progress callbacks, <code>max_sequence_length</code> and <code>vae_tiling</code> (as on the other Wan
+  routes), and any other key is refused naming it.</li>
+<li>The result is the engine's MP4 (the source's audio is not carried; the engine
+  records whether there was one) and <code>num_frames</code> is the engine's count, snapped
+  down to <code>4n+1</code>.</li>
+</ul>
+<p>Wan 2.1 VACE 1.3B (<code>Wan-AI/Wan2.1-VACE-1.3B-diffusers</code>, <code>WanVace</code>; defaults
+832x480, 81 frames at 16 fps, 30 steps, guidance 5.0) runs the same task with
+other controls: <code>reference_images</code> (images in order, no published maximum),
+<code>masked_region_mode</code> (<code>"generate"</code> or <code>"repaint"</code> the region the <code>mask</code> marks;
+it needs a mask) and <code>conditioning_scale</code> (a finite number, default 1.0). It
+takes no <code>video_strength</code> and no <code>guidance_2</code> (one transformer), and refuses
+them by name; T2V-A14B refuses the three VACE fields the same way. A VACE
+preload loads <code>WanVace</code> and runs no warm-up generation; in <code>"default"</code> it reads
+the transformer and the VAE ahead, as the other Wan preloads do.</p>
+<p>TI2V-5B and I2V-A14B have no video-to-video route and refuse the task, as do the
+other backends.</p>
+<h3 id="video-restoration-video_upscale">Video restoration (<code>video_upscale</code>)<a class="headerlink" href="#video-restoration-video_upscale" title="Permanent link">&para;</a></h3>
+<p><code>VisionManager.upscale_video(video, **kwargs)</code> (<code>VideoUpscaleRequest</code>; the
+plugin's <code>upscale_video(video, ...)</code>) restores a clip on SeedVR2 3B or 7B
+(MLX-Gen 0.40.2 and later). <code>video</code> is handled as for video-to-video. The options are
+<code>resolution</code> (unset: 1x), <code>softness</code> (<code>[0, 1]</code>, unset: 0.0), <code>start_seconds</code>
+(unset: the clip's start), <code>max_frames</code> (unset: to its end), <code>seed</code>, <code>quantize</code>
+(as for <code>upscale_image</code>) and <code>drop_audio</code> (True: the result is always silent,
+MLX-Gen does not copy the source's soundtrack; unset or False: MLX-Gen copies it,
+and fails the run after the restoration when it cannot). Before any weights load,
+MLX-Gen's own plan (<code>SeedVR2VideoRestorePlan.for_video</code>, the one <code>mlxgen upscale
+--video-path</code> uses) probes the clip and decides the chunking and the memory
+profile, counting the model's weights as loaded when this backend already holds
+the instance the run reuses:</p>
+<ul>
+<li>a scale above 1x is refused (<code>CapabilityNotSupportedError</code>,
+  <code>field="resolution"</code>, <code>supported=None</code>), and a clip beyond the safe memory
+  profile or below its temporal quality floor is refused (<code>field=None</code>), each with
+  MLX-Gen's message (on the safe profile's 48 GB budget a frame of up to about
+  1.4 megapixels fits, 1280x720 included; a larger one is refused with the
+  largest size that fits); MLX-Gen's argument errors (<code>start_seconds</code> below 0,
+  <code>max_frames</code> below 1) stay <code>ValueError</code>, as does a clip it cannot decode
+  ("video is not a readable clip"); an <code>extra</code> key other than the progress
+  callbacks is refused naming it (<code>vae_tiling</code> included).</li>
+<li>The run applies the plan as the CLI does: MLX-Gen's low-RAM saver keeping the
+  transformer, in <code>memory_mode="default"</code> and <code>"low"</code> alike (<code>"lowest"</code> is
+  refused); metadata reports the mode asked and <code>low_ram: true</code>. The MLX cache
+  limit is one value from before the model loads to the end of the run: the
+  plan's (8 GB, what MLX-Gen's CLI runs with on any Mac, above its default cap
+  where that is lower), except that a limit the host set (by MLX-Gen's own rule:
+  one at or below half of physical memory found before its default applied) is
+  never raised, so the smaller of the two applies; the limit in force before the
+  run is restored after it. The run drops the model at its end, so a later image
+  upscale loads a fresh one.</li>
+<li>The result is an MP4 whatever the source's container (as MLX-Gen writes it:
+  H.264, and AAC for the source's audio, which MLX-Gen copies);
+  <code>metadata["mlx_gen"]</code> is its sidecar.
+  Progress is per chunk; a cancel removes the partial output.</li>
+</ul>
 <p>Wan 2.2 A14B has two guidance controls. Use <code>guidance_scale</code> for the
 primary/high-noise stage and <code>guidance_2</code> for the second/low-noise stage. The
 registry default is <code>guidance_2=3.0</code> for text-to-video A14B and <code>3.5</code> for
@@ -1357,7 +1667,11 @@ default. The bundled visual proof uses <code>832x480</code> with <code>flow_shif
 each model's <code>raw["parameter_defaults"]</code>. The Wan VAE decode runs in overlapping spatial tiles by
 default, which bounds its memory; pass <code>extra={"vae_tiling": False}</code> to decode
 whole frames at once. Generated asset metadata records <code>vae_tiling</code>. Measured
-memory per size: <a href="../faq/#how-much-memory-does-wan-video-need">docs/faq.md</a>.</p>
+memory per size: <a href="../faq/#how-much-memory-does-wan-video-need">docs/faq.md</a>.
+MLX-Gen encodes the prompt with its UMT5 text encoder in float32 on the GPU: with mlx-gen 0.40.2 and later a
+new prompt is encoded in seconds, a prompt already used is served from MLX-Gen's on-disk cache, and
+results for a given prompt and seed differ slightly from those made with mlx-gen 0.40.1; see
+MLX-Gen's <a href="https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md">Wan prompt encoding</a>.</p>
 <p>For MLX-Gen, <code>on_progress</code> receives an <code>abstractvision.VideoProgressEvent</code>.
 Image generation/editing/upscaling events carry <code>phase</code>, <code>step</code>, <code>total_steps</code>,
 and denoise-step <code>progress</code>. Wan video events add <code>frame</code>, <code>total_frames</code>, and
@@ -1368,6 +1682,122 @@ and denoise-step <code>progress</code>. Wan video events add <code>frame</code>,
 two-argument <code>(current, total)</code> callback for backend-agnostic progress bars.
 For MLX-Gen, that callback reports denoise step counts; use
 <code>on_progress(event)</code> when a UI also needs video frame context.</p>
+<h2 id="mlx-gen-image-routes">MLX-Gen image routes<a class="headerlink" href="#mlx-gen-image-routes" title="Permanent link">&para;</a></h2>
+<p>MLX-Gen publishes, per model, the routes it can run (its capability rows,
+<code>backend.describe_routes()</code>), and <code>mlxgen generate</code> picks one with its planner.
+The MLX-Gen backend asks the same planner for every <code>image_to_image</code> request on
+FLUX.2, Z-Image and base Qwen-Image, and for a request on any model that sets an
+option only a route applies (<code>image_strength</code> below). The route it selects
+decides the MLX-Gen class and call; other requests run as in 0.3.37. On a model
+the engine publishes no rows for (a local folder whose own name it cannot place),
+the model has its 0.3.37 tasks, and an option runs its 0.3.37 branch on the
+families 0.3.37 applied it on (<code>image_strength</code> on ERNIE-Image-Turbo, reference
+images on FLUX.2 and Qwen-Image-Edit, a mask on Qwen-Image-Edit and FIBO-Edit)
+and is refused on any other with <code>field=&lt;option&gt;</code>, <code>supported=()</code>. On every
+MLX-Gen image route, text-to-image included, a negative prompt is passed where
+the row of the route the request runs takes one (<code>supports_negative_prompt</code>) and
+dropped silently where it takes none; a model without rows keeps 0.3.37's answer.
+<code>parameter_constraints["negative_prompt"]</code> in <code>list_provider_models()</code> says the same.
+A request is refused before any weights load, in <code>normalize_image_edit_request</code>
+as in <code>edit_image</code>:</p>
+<ul>
+<li>with <code>ValueError</code> when two of its options contradict each other (<code>mask</code> with
+  <code>image_strength</code>), or a value is not of its type (a picture that fails to
+  decode, checked once the route takes it);</li>
+<li>with <code>CapabilityNotSupportedError(field=&lt;option&gt;, supported=())</code> when no row of
+  the model applies an option it sets, and <code>field="lora_adapters"</code> when the
+  selected row takes no adapters;</li>
+<li>with <code>CapabilityNotSupportedError(field=None, supported=None)</code> and the planner's
+  message when no row serves that combination of options.</li>
+</ul>
+<p>Those are check point 1, from the request's values and the engine's rows. An
+outpaint or a reframe adds check point 2 at the start of <code>edit_image</code>, still
+before any weights load: the source is written to the run's directory and
+MLX-Gen's canvas session is built from it, which refuses a box it cannot apply
+and a two-pass outpaint in low-RAM mode. A caller who only calls
+<code>normalize_image_edit_request</code> sees check point 1 only.</p>
+<h3 id="latent-image-to-image-image_strength">Latent image-to-image (<code>image_strength</code>)<a class="headerlink" href="#latent-image-to-image-image_strength" title="Permanent link">&para;</a></h3>
+<p><code>ImageEditRequest.image_strength</code> (<code>edit_image(..., image_strength=0.6)</code>, the
+plugin's <code>i2i(image_strength=...)</code>) noises the source before denoising, in
+<code>(0, 1]</code>; a value outside is refused with <code>field="image_strength"</code>. On MLX-Gen,
+<code>extra["image_strength"]</code> is the same option (both set and different:
+<code>ValueError</code>); the other backends refuse the typed field and pass <code>extra</code> on
+unchanged.</p>
+<ul>
+<li>FLUX.2 klein: setting it selects the latent route (<code>Flux2Klein</code>); without it
+  an edit stays the reference edit (<code>Flux2KleinEdit</code>).</li>
+<li>Base Qwen-Image (<code>AbstractFramework/qwen-image-8bit</code>, the Qwen-Image-2512
+  packages): <code>image_to_image</code> runs latent (<code>QwenImage</code>), at <code>image_strength=0.4</code>
+  when the request names none; so do Z-Image and Z-Image-Turbo (<code>ZImage</code>).
+  ERNIE-Image-Turbo runs latent as before.</li>
+<li>Qwen-Image-Edit, FIBO, Fibo-lite and FIBO-Edit have no latent route and
+  refuse it (<code>field="image_strength", supported=()</code>).</li>
+</ul>
+<p><code>list_provider_models()</code> publishes <code>parameter_defaults["image_strength"] = 0.4</code>
+and <code>parameter_constraints["image_strength"] = {"min": 0.0, "min_exclusive":
+true, "max": 1.0}</code> for every model with a latent route.</p>
+<h3 id="flux2-masked-edits-mask">FLUX.2 masked edits (<code>mask</code>)<a class="headerlink" href="#flux2-masked-edits-mask" title="Permanent link">&para;</a></h3>
+<p>On FLUX.2 klein, an edit with a <code>mask</code> runs <code>Flux2KleinInpaint</code> (route
+<code>flux2.inpaint</code>): white in the mask is the region to change (MLX-Gen reads its
+luminance, resizes it to the canvas and ignores an alpha channel; the bytes are
+passed unchanged). The mask is decoded first, and one that is not a picture
+raises <code>ValueError</code> naming <code>mask</code>. An unset <code>guidance_scale</code> stays unset, so the
+class applies its default (4.0 on the base models, 1.0 on the distilled ones);
+the base models take a negative prompt. <code>get_capabilities().supports_mask</code> is
+true on FLUX.2 klein. A masked edit and a plain edit run on different classes,
+so alternating them reloads the model each time (never two instances at once).</p>
+<p>On Z-Image-Turbo a <code>mask</code> runs its masked edit (route <code>z-image.inpaint</code>, the
+mask instead of a strength); base Z-Image has no masked route and refuses it.</p>
+<h3 id="multi-reference-edits-reference_images">Multi-reference edits (<code>reference_images</code>)<a class="headerlink" href="#multi-reference-edits-reference_images" title="Permanent link">&para;</a></h3>
+<p><code>ImageEditRequest.reference_images</code> lists the images after <code>image</code>, in order:
+bytes, or local file paths the engine reads in place (the plugin's
+<code>i2i(reference_images=...)</code> and <code>i2i_batch</code> take bytes-like values, file paths
+(any path-like) and artifact
+refs, and pass bytes). On MLX-Gen, <code>extra["reference_images"]</code> is the same
+option, and the 0.3.37 keys <code>extra["images"]</code>, <code>["additional_images"]</code> and
+<code>["image_paths"]</code> keep working but raise <code>ValueError</code> with the typed list. The
+request runs MLX-Gen's multi-reference route: FLUX.2 klein (<code>Flux2KleinEdit</code>)
+and Qwen-Image-Edit 2509 and 2511 (<code>QwenImageEdit</code>); the first image decides the
+canvas, and no maximum count is published or enforced. A model without that
+route (plain Qwen-Image-Edit, ERNIE, base Qwen-Image) refuses it
+(<code>field="reference_images"</code>, <code>supported=()</code>), as does a combination with a mask
+or a strength (<code>field=None</code>); every picture counts there, those of the 0.3.37
+<code>extra</code> keys included, so none is dropped. An empty list is no reference.
+<code>extra["reference_images"]</code> is read as 0.3.37 read it (any iterable; <code>None</code> and
+blank items skipped), and only what that reading keeps counts; the typed field
+takes a list of image bytes or paths.</p>
+<h3 id="outpaint-and-reframe">Outpaint and reframe<a class="headerlink" href="#outpaint-and-reframe" title="Permanent link">&para;</a></h3>
+<p><code>outpaint_padding</code> grows the canvas by a box in MLX-Gen's syntax
+(<code>"top,right,bottom,left"</code>, each in pixels or <code>"N%"</code>; one to four values) and
+fills the new area, keeping the source; <code>reframe_padding</code> grows it the same way
+and lets the model recompose the whole picture. They run MLX-Gen's own canvas
+session (<code>mflux.outpaint</code>), which builds the conditioning canvas, plans the
+passes and owns the canvas size, so <code>extra["width"]</code> / <code>["height"]</code> are refused
+with them (<code>field="width"</code>). FLUX.2 klein runs outpaint with <code>Flux2KleinOutpaint</code>
+and reframe (distilled weights only) with <code>Flux2KleinEdit</code>; Qwen-Image-Edit runs
+both with <code>QwenImageEdit</code>.</p>
+<ul>
+<li><code>outpaint_fill</code> is one of the route's fill modes (FLUX.2: <code>auto</code>, <code>edge</code>,
+  <code>neutral</code>, <code>solid</code>, <code>blur</code>; unset: <code>auto</code>), <code>outpaint_fill_color</code> (<code>"R,G,B"</code>
+  or <code>"#rrggbb"</code>) the color of <code>outpaint_fill="solid"</code>. Qwen-Image-Edit's fill is
+  fixed (<code>edge</code>) and refuses both, and either one without an outpaint is refused.</li>
+<li>A box that pads both axes deeply runs as two passes (MLX-Gen's <code>auto</code> plan);
+  progress counts the steps across both, and <code>memory_mode="low"</code> refuses it
+  (<code>field="memory_mode"</code>, <code>supported=("default",)</code>: low-RAM mode frees the
+  transformer the second pass needs). An unset <code>guidance_scale</code> stays unset, so
+  the class applies its default.</li>
+<li>A box outside MLX-Gen's validated envelope runs, as on the engine's CLI;
+  <code>metadata["outpaint_warnings"]</code> says so, and <code>metadata["outpaint_notice"]</code> gives
+  the resolved canvas and passes. The engine's geometry fields are under
+  <code>metadata["mlx_gen"]</code>.</li>
+</ul>
+<p><code>extra["strength"]</code> (the CLI's <code>--strength</code>, the plugin's <code>strength=</code>) is the
+0.3.37 cross-backend keyword, not a second spelling of the typed field: on every
+route 0.3.37 had it keeps exactly its 0.3.37 meaning (clamped to <code>[0, 1]</code>,
+dropped when not a number, ignored by the FLUX.2 and Qwen-Image-Edit reference
+edits), and on the latent routes new in 0.3.38 it is read as the run's strength
+with the same clamp. It never selects a route and is not read on a masked route.
+Combined with <code>image_strength</code> it raises <code>ValueError</code>.</p>
 <h2 id="memory-modes-memory_mode">Memory modes (<code>memory_mode</code>)<a class="headerlink" href="#memory-modes-memory_mode" title="Permanent link">&para;</a></h2>
 <p>Every generation request (<code>generate_image</code>, <code>edit_image</code>, <code>upscale_image</code>,
 <code>generate_video</code>, <code>image_to_video</code> and their <code>_batch</code> variants) takes
@@ -1379,6 +1809,10 @@ The environment value is one setting for every backend in the process: a
 backend that cannot honour it runs the lowest-memory mode it lists that is not
 below it (<code>"lowest"</code> becomes <code>"low"</code> where <code>"low"</code> is listed, else <code>"default"</code>)
 and logs that once per process, while a mode passed on the request is refused.
+On MLX-Gen, every mode starts with the engine's default MLX cache cap, as its CLI
+applies it (total RAM / 8, between 1 and 8 GiB, once per process; a limit the
+host set at or below half of physical memory is left alone, a higher one is
+replaced by the default cap). <code>"low"</code> then lowers it to 1 GB for the run.
 <code>backend.preload(memory_mode=None, quantize=None)</code> loads the model as a request
 carrying those values would, so the first such request reuses it: the values
 are checked by the same function as a request's, before anything loads, with
@@ -1388,12 +1822,34 @@ MLX-Gen, <code>preload()</code> loads the model as the first request with those 
 starts it (under the same 1 GB cache hold in <code>"low"</code> and <code>"lowest"</code>) into the
 instance that request reuses, so in a mode whose runs drop the model (<code>"low"</code>,
 <code>"lowest"</code>, and every mode on Wan TI2V-5B, which releases its denoiser before
-the decode) the preloaded instance serves one request. A text-to-image model loaded for a mode
-that keeps it also runs one image generation in that mode as its warm-up;
-edit-only, video (Wan, MiniMax-H3) and upscale (SeedVR2) models load without one.
+the decode) the preloaded instance serves one request.
+In <code>"default"</code> an MLX-Gen preload warms exactly what a run of its task reads, so
+the first request reads no weights (MLX-Gen binds them lazily at load): an image
+task (text-to-image, image-to-image, upscale) runs one warm-up of that task on
+its plain route, its output discarded, with a small ordinary request: a
+neutral 256x256 picture or canvas (352 on base Qwen-Image, FIBO and Fibo-lite,
+384 on FIBO-Edit, 512 on ERNIE-Image-Turbo and Bonsai, the smallest side MLX-Gen
+runs those families at) at 2 steps, or for SeedVR2 a 64x64 picture at 1x; a
+backend whose <code>default_width</code> / <code>default_height</code> are set warms at that canvas
+instead. A video task, whose warm-up run would take minutes, reads the first
+denoiser and, where the run encodes an input (image-to-video, video-to-video),
+the VAE (the Wan A14B second expert is read at the switch, as in a run;
+MiniMax-H3 reads its transformer at load). <code>"low"</code> and <code>"lowest"</code> read nothing
+ahead. <code>preload(..., warm_up=False)</code> skips all of it: the model is still resolved
+(its files found), checked (MLX-Gen version, the task, the
+memory mode and <code>quantize</code>) and built, so a bad model fails at the preload and not
+at the first request, but nothing is run or read ahead, and the first request
+reads the weights as a request without a preload does, minus the construction;
+<code>backend.preload_warmed()</code> says which the held model got.
 When anything in a preload fails, the model it loaded is dropped before the error
 is raised. A preload refused for its values, or one that fails after reusing the
-model already held, leaves that model held.</p>
+model already held, leaves that model held. The MLX-Gen backend's <code>preload</code> also
+takes <code>task</code>, the task the host is about to run, as a hint: when the model has
+that task, the model is loaded as a request of that task loads it (on FLUX.2
+klein, <code>task="image_to_image"</code> loads <code>Flux2KleinEdit</code>, the class of a plain or
+multi-reference edit; a latent, masked or outpaint request then rebuilds its own
+class), and when it does not, or <code>task</code> is <code>None</code>, the preload chooses as before.
+<code>task</code> is never a reason to refuse; the other backends' <code>preload</code> takes no <code>task</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="n">asset_or_ref</span> <span class="o">=</span> <span class="n">vm</span><span class="o">.</span><span class="n">generate_video</span><span class="p">(</span>
     <span class="s2">"a red fox trots through fresh snow"</span><span class="p">,</span>
     <span class="n">memory_mode</span><span class="o">=</span><span class="s2">"low"</span><span class="p">,</span>
@@ -1808,7 +2264,7 @@ The CLI's <code>download</code>, <code>catalog</code>, <code>show-model</code> a
   <code>{task, memory_mode, width, height, frames, steps, peak_bytes, machine_total_ram_bytes}</code> (<code>peak_bytes</code> is
   the whole-process footprint, <code>machine_total_ram_bytes</code> the memory of the Mac it ran on), kept to the
   package's stored width. A run names its canvas, frames and steps but not the schedule it ran with, and
-  mlx-gen 0.40.1 publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
+  mlx-gen publishes the same runs on every MiniMax-H3 schedule (all at 8 steps), so the rows are
   per package, not per schedule. Empty for a repository that is not a prepared MLX-Gen package of the
   catalog, or when mlx-gen is not installed or publishes nothing; no model is built.</li>
 <li><code>abstractvision.backends.mflux.resolve_mlx_gen_schedule_adapter(base_model, download=False)</code>: the
@@ -1832,7 +2288,7 @@ The CLI's <code>download</code>, <code>catalog</code>, <code>show-model</code> a
 <li><code>GenerationCancelledError</code> (the request's <code>cancel_event</code> was set)</li>
 <li><code>UnknownModelError</code> (model id isn’t present in the registry)</li>
 <li><code>OptionalDependencyMissingError</code> (backend dependency is missing, e.g. Diffusers/Torch)</li>
-<li><code>GpuOutOfMemoryError</code> (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen MiniMax-H3 routes, raised when MLX-Gen's preflight reports that the weights or a run cannot fit, naming the <code>memory_mode</code> it used and the lower ones; MLX-Gen 0.40.1 reports this for MiniMax-H3 only)</li>
+<li><code>GpuOutOfMemoryError</code> (a CUDA out-of-memory during a Diffusers generation: the message names the model's size, its placement, what was free and what to change: a smaller canvas or fewer steps, sequential CPU offload, or the GGUF path; raised instead of torch's traceback. On MLX-Gen MiniMax-H3 routes, raised when MLX-Gen's preflight reports that the weights or a run cannot fit, naming the <code>memory_mode</code> it used and the lower ones; MLX-Gen reports this for MiniMax-H3 only)</li>
 </ul>
 
 

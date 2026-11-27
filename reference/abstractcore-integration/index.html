@@ -935,6 +935,26 @@ and is refused on prepared packages and on the other local backends.</p>
     <span class="n">on_progress</span><span class="o">=</span><span class="n">on_video_progress</span><span class="p">,</span>
 <span class="p">)</span>
 
+<span class="n">edited_mp4</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">v2v</span><span class="p">(</span>
+    <span class="s2">"the same street at night"</span><span class="p">,</span>
+    <span class="s2">"./source-clip.mp4"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit"</span><span class="p">,</span>
+    <span class="n">video_strength</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span>
+    <span class="n">width</span><span class="o">=</span><span class="mi">480</span><span class="p">,</span>
+    <span class="n">height</span><span class="o">=</span><span class="mi">240</span><span class="p">,</span>
+    <span class="n">num_frames</span><span class="o">=</span><span class="mi">17</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">restored_mp4</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">upscale_video</span><span class="p">(</span>
+    <span class="s2">"./source-clip.mp4"</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">"mlx-gen"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">"AbstractFramework/seedvr2-3b-8bit"</span><span class="p">,</span>
+    <span class="n">start_seconds</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">max_frames</span><span class="o">=</span><span class="mi">17</span><span class="p">,</span>
+    <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span>
+<span class="p">)</span>
+
 <span class="n">first_frame_mp4</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">vision</span><span class="o">.</span><span class="n">i2v</span><span class="p">(</span>
     <span class="s2">"./first-frame.png"</span><span class="p">,</span>
     <span class="n">prompt</span><span class="o">=</span><span class="s2">"slow camera push-in"</span><span class="p">,</span>
@@ -956,10 +976,10 @@ artifact ref dict when an <code>artifact_store</code> is supplied. Without an ar
 store the plugin returns bytes; with <code>artifact_store=...</code> it returns the stored
 artifact ref, matching the runtime/gateway artifact path.
 Typed per-call keyword arguments such as <code>control_image</code>, <code>control_strength</code>,
-<code>lora_adapters</code>, <code>guidance_2</code>, and <code>on_progress</code> survive the plugin boundary.
-Unknown per-call keyword arguments
-such as <code>reference_images</code> and <code>max_sequence_length</code> are preserved in the
-AbstractVision request <code>extra</code> dict for local backends.
+<code>lora_adapters</code>, <code>guidance_2</code>, <code>reference_images</code> (each item bytes, a file path
+or an artifact ref, resolved to bytes) and <code>on_progress</code> survive the plugin
+boundary. Unknown per-call keyword arguments such as <code>max_sequence_length</code> are
+preserved in the AbstractVision request <code>extra</code> dict for local backends.
 <code>llm.vision.t2i(...)</code>, <code>llm.vision.i2i(...)</code>, <code>llm.vision.t2v(...)</code>, and
 <code>llm.vision.i2v(...)</code> forward <code>on_progress</code> to MLX-Gen. Image/edit events
 include diffusion-step progress; Wan video events use diffusion-step
@@ -968,10 +988,10 @@ include diffusion-step progress; Wan video events use diffusion-step
 parameter for the second-stage/low-noise guidance path. Pass it directly to
 <code>t2v(...)</code> / <code>i2v(...)</code>; do not wrap it in <code>extra</code>.</p>
 <p><code>control_image=&lt;bytes&gt;</code> and <code>control_strength=&lt;float&gt;</code> reach the request as
-typed fields, but in this release every built-in backend, MLX-Gen included,
-refuses a <code>control_image</code> with <code>CapabilityNotSupportedError</code>
-(<code>field="control_image"</code>) instead of ignoring it; MLX-Gen also refuses a
-<code>control_strength</code> given alone, which the other built-in backends do not use.</p>
+typed fields: MLX-Gen applies them on <code>AbstractFramework/qwen-image-8bit</code>
+(its Qwen ControlNet route) and refuses a <code>control_image</code> on any other model
+(<code>field="control_image"</code>) and a <code>control_strength</code> given alone; the other
+built-in backends refuse a <code>control_image</code>. <code>i2i</code> refuses both keywords.</p>
 <p>The same applies to LoRA adapters. Prefer the shared typed contract:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abstractvision</span><span class="w"> </span><span class="kn">import</span> <span class="n">LoRAAdapterSpec</span>
 
@@ -1025,13 +1045,22 @@ with <code>"low"</code> each item loads the model again.</p>
 <p>The current AbstractCore server's residency records are its own and independent
 of what this plugin lists as loaded.</p>
 <p>The facade forwards every typed field of the request a method builds, under the
-same name: <code>control_image</code> / <code>control_strength</code> on <code>t2i</code> (which every built-in
-backend refuses in this release), <code>soundscape</code>, <code>music</code>,
+same name: <code>control_image</code> / <code>control_strength</code> on <code>t2i</code> (applied by MLX-Gen on
+<code>AbstractFramework/qwen-image-8bit</code>), <code>image_strength</code>, <code>reference_images</code>,
+<code>outpaint_padding</code>, <code>outpaint_fill</code>, <code>outpaint_fill_color</code> and <code>reframe_padding</code>
+on <code>i2i</code> (MLX-Gen's latent, multi-reference, outpaint and reframe edits; the
+other backends refuse them by name), <code>soundscape</code>, <code>music</code>,
 <code>generate_audio</code>, <code>audio_shift</code> on <code>t2v</code> / <code>i2v</code>, and <code>quantize</code>, <code>memory_mode</code>
 and <code>cancel_event</code> on all of them. Two kinds of keyword are refused with
-<code>CapabilityNotSupportedError</code>: <code>guidance_2</code> on <code>t2i</code> / <code>i2i</code>, and the soundtrack
-options (<code>soundscape</code>, <code>music</code>, <code>generate_audio</code>, <code>audio_shift</code>) on a call whose
-request has none. Every other unknown keyword remains a backend-specific <code>extra</code>
+<code>CapabilityNotSupportedError</code>: <code>guidance_2</code> on <code>t2i</code> / <code>i2i</code>, <code>control_image</code> and
+<code>control_strength</code> on <code>i2i</code>, and the soundtrack
+and edit options (<code>soundscape</code>, <code>music</code>, <code>generate_audio</code>, <code>audio_shift</code>;
+<code>image_strength</code>, <code>reference_images</code>, the outpaint and reframe fields) on a call
+whose request has none, unless the value is unset (None, an empty list, a blank
+string). Image inputs (<code>image</code>, <code>mask</code>, <code>control_image</code>, <code>reference_images</code>
+items) take bytes-like values, file paths (any path-like) and artifact refs;
+<code>v2v</code>'s and <code>upscale_video</code>'s <code>video</code> keeps a file path as a path. <code>strength=</code> is not the typed
+field: it stays <code>extra["strength"]</code>, as in 0.3.37. Every other unknown keyword remains a backend-specific <code>extra</code>
 parameter:
 <code>t2v(..., vae_tiling=False)</code> reaches Wan as <code>extra["vae_tiling"]</code>, and
 <code>t2i(..., fps=24)</code> lands in <code>extra</code> too.</p>
@@ -1046,7 +1075,15 @@ and logs a warning when the soundtrack is not in them.</p>
 request's <code>memory_mode</code> and <code>quantize</code> when it carries them (checked as a
 generation request's are, before anything loads), so that requests with those
 values reuse the model; on MLX-Gen a video model (Wan, MiniMax-H3) is loaded
-without a warm-up run. When the preload
+without a warm-up run. The payload's <code>task</code> also goes to a backend whose <code>preload</code>
+takes a <code>task</code> (MLX-Gen) as the task the host is about to run: on a model that has
+it, MLX-Gen loads the class a request of that task uses (<code>image_to_image</code> on
+FLUX.2 klein warms <code>Flux2KleinEdit</code> instead of <code>Flux2Klein</code>); other backends, and
+a payload without <code>task</code>, load as before. <code>task</code> takes <code>"video_upscale"</code> (also
+<code>"video-upscale"</code>, <code>"upscale_video"</code>) for a SeedVR2 video restoration. The
+payload's <code>warm_up</code> (default true) goes the same way to a <code>preload</code> that takes it:
+<code>false</code> builds the model without its warm-up; the record's <code>warmed</code> says whether
+the preload warmed it (<code>null</code> from a backend that does not say). When the preload
 fails, the backend drops what it loaded and the plugin does not list it; a
 preload refused for its values, or one that fails after reusing the model
 already held, leaves that model held (and listed).</p>
@@ -1142,7 +1179,7 @@ expansion, and typed video controls such as <code>guidance_2</code> / <code>flow
     <span class="n">flow_shift</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span>
     <span class="n">lora_adapters</span><span class="o">=</span><span class="p">[</span>
         <span class="n">LoRAAdapterSpec</span><span class="p">(</span>
-            <span class="n">source</span><span class="o">=</span><span class="s2">"owner/wan-style:video.safetensors"</span><span class="p">,</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">"AlekseyCalvin/HSToric_Color_Wan2.2_5B_LoRA_BySilverAgePoets:HSToric_color_Wan22_5b_LoRA.safetensors"</span><span class="p">,</span>
             <span class="n">scale</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
             <span class="n">target_role</span><span class="o">=</span><span class="s2">"transformer"</span><span class="p">,</span>
         <span class="p">)</span>
