@@ -6,7 +6,7 @@ This release adds typed image-edit options on MLX-Gen (latent image-to-image, FL
 multi-reference edits, outpaint and reframe), Z-Image edits, a control image on Qwen-Image, video-to-video
 on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B, SeedVR2 video restoration (`video_upscale`), cached source
 repository ids, and `preload(task=..., warm_up=...)`. The MLX-Gen backend requires
-`mlx-gen>=0.40.2,<0.41.0` and, on macOS, MLX 0.32.4 or later. Requests that set none of the new fields run
+`mlx-gen>=0.40.3,<0.41.0` and, on macOS, MLX 0.32.4 or later. Requests that set none of the new fields run
 as in 0.3.37, except for the changes listed under Changed.
 
 ### New
@@ -126,8 +126,10 @@ as in 0.3.37, except for the changes listed under Changed.
   whatever the source's container (the source's audio copied by MLX-Gen, which fails the run after the restoration when it
   cannot; `drop_audio=True` gives a silent result, no copy attempted), progress is per chunk, a cancel removes the partial output. Unset values are the engine's: 1x, softness 0.0, from the clip's start to its
   end. `preload(task="video_upscale")` reads the transformer and the VAE the run keeps.
-- **MLX-Gen 0.40.2.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`)
-  requires `mlx-gen>=0.40.2,<0.41.0` (0.3.37 required `>=0.40.1`) and, on macOS, `mlx>=0.32.4` as before.
+- **MLX-Gen 0.40.3.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`)
+  requires `mlx-gen>=0.40.3,<0.41.0` (0.3.37 required `>=0.40.1`) and, on macOS, `mlx>=0.32.4` as before.
+  0.40.3 is required because in it the engine itself names a local model by its own folder, never by a parent
+  directory, as AbstractVision does (Changed 28).
   Upgrade with `pip install -U "abstractvision[mlx-gen]"`. `video_upscale` runs on the SeedVR2 video
   restoration plan that 0.40.2 adds. 0.40.2 also changes, with no change to AbstractVision's calls: the Wan
   prompt encoding (Changed 27); SeedVR2 video restoration, which needs a fraction of 0.40.1's memory with
@@ -235,9 +237,9 @@ Against 0.3.37 (the entries are numbered so that others can refer to them):
 24. SeedVR2's published answers gain `video_upscale`: `get_capabilities().supported_tasks` and
     `list_provider_models()` on SeedVR2 3B and 7B, and the catalog (a top-level `video_upscale` task, with its params
     on `ByteDance-Seed/SeedVR2-3B` and `-7B`). The catalog's `min_runtime_version` of Wan T2V-A14B and VACE
-    `video_to_video` and of MiniMax-H3 is 0.40.2, the package floor. The image upscale is unchanged.
-25. With mlx-gen 0.40.1 installed, every MLX-Gen request now raises `OptionalDependencyMissingError` naming
-    `mlx-gen>=0.40.2,<0.41.0`, as any version outside the pins already did.
+    `video_to_video` and of MiniMax-H3 is 0.40.3, the package floor. The image upscale is unchanged.
+25. With mlx-gen 0.40.1 or 0.40.2 installed, every MLX-Gen request now raises `OptionalDependencyMissingError` naming
+    `mlx-gen>=0.40.3,<0.41.0`, as any version outside the pins already did.
 26. On MLX-Gen, a source repository id that maps to several prepared packages (the four FLUX.2 klein repos,
     `Tongyi-MAI/Z-Image` and `Z-Image-Turbo`, the five Qwen-Image repos, `baidu/ERNIE-Image-Turbo`) runs its own
     cached snapshot as released (16-bit, unquantized, as `mlxgen generate --model <id>` does), even when a
@@ -249,7 +251,7 @@ Against 0.3.37 (the entries are numbered so that others can refer to them):
     several times a prepared package's memory. Not cached, or cached without those files, the id is refused as
     ambiguous as before. The `Qwen/Qwen-Image-2512` source snapshot given as a folder, which 0.3.37 answered as a
     prepared package (no `quantize` widths, `quantize` refused), is a source too.
-27. With the required mlx-gen 0.40.2, Wan videos on MLX-Gen (Wan 2.2 text-, image- and video-to-video, Wan 2.1
+27. With mlx-gen 0.40.2 and later, Wan videos on MLX-Gen (Wan 2.2 text-, image- and video-to-video, Wan 2.1
     VACE) for a given prompt and seed differ slightly from those of 0.3.37 with mlx-gen 0.40.1: the same scene and
     composition, with small differences in details, because the engine's prompt encoding is now exact (float32).
     A new prompt is encoded in seconds instead of more than a minute. See MLX-Gen's

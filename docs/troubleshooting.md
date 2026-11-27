@@ -39,7 +39,7 @@ unless you choose the matching extra.
 ### Symptom
 
 - The first MLX-Gen model load raises `OptionalDependencyMissingError`: `The MLX-Gen backend needs
-  mlx-gen>=0.40.2,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
+  mlx-gen>=0.40.3,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
   macOS; mlx <version> is installed`.
 
 ### Likely cause
@@ -52,7 +52,7 @@ already installed, so the backend checks both before it loads a model.
 ### Fix
 
 - `pip install -U "abstractvision[mlx-gen]"` (or the profile you installed, such as `abstractvision[apple]`):
-  it installs `mlx-gen>=0.40.2,<0.41.0` and, on macOS, `mlx>=0.32.4`.
+  it installs `mlx-gen>=0.40.3,<0.41.0` and, on macOS, `mlx>=0.32.4`.
 - With the one-line installer, run the same line again.
 
 ### Verify

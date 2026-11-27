@@ -2275,7 +2275,7 @@ class TestMFluxVisionBackend(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(
                         OptionalDependencyMissingError,
-                        r"mlx-gen>=0\.40\.2",
+                        r"mlx-gen>=0\.40\.3",
                     ):
                         backend.image_to_video(
                             ImageToVideoRequest(
@@ -4317,12 +4317,13 @@ class TestMFluxVisionBackend(unittest.TestCase):
 
         self.addCleanup(mflux._require_runtime_versions.cache_clear)
         refused = {
-            "mlx-gen too old": ("darwin", {"mlx_gen": "0.38.0", "mlx": "0.32.5"}, "mlx-gen>=0.40.2,<0.41.0", "0.38.0"),
-            "mlx-gen a pre-release of the floor": ("linux", {"mlx_gen": "0.40.2rc1"}, "mlx-gen>=0.40.2,<0.41.0", "0.40.2rc1"),
-            "mlx-gen too new": ("linux", {"mlx_gen": "0.41.0"}, "mlx-gen>=0.40.2,<0.41.0", "0.41.0"),
-            "mlx-gen a pre-release of the ceiling": ("linux", {"mlx_gen": "0.41.0rc1"}, "mlx-gen>=0.40.2,<0.41.0", "0.41.0rc1"),
-            "mlx too old on macOS": ("darwin", {"mlx_gen": "0.40.2", "mlx": "0.31.2"}, "mlx>=0.32.4 on macOS", "0.31.2"),
-            "mlx a pre-release of the floor": ("darwin", {"mlx_gen": "0.40.2", "mlx": "0.32.4.dev20261101"}, "mlx>=0.32.4 on macOS", "0.32.4.dev20261101"),
+            "mlx-gen too old": ("darwin", {"mlx_gen": "0.38.0", "mlx": "0.32.5"}, "mlx-gen>=0.40.3,<0.41.0", "0.38.0"),
+            "mlx-gen the release before the floor": ("linux", {"mlx_gen": "0.40.2"}, "mlx-gen>=0.40.3,<0.41.0", "0.40.2"),
+            "mlx-gen a pre-release of the floor": ("linux", {"mlx_gen": "0.40.3rc1"}, "mlx-gen>=0.40.3,<0.41.0", "0.40.3rc1"),
+            "mlx-gen too new": ("linux", {"mlx_gen": "0.41.0"}, "mlx-gen>=0.40.3,<0.41.0", "0.41.0"),
+            "mlx-gen a pre-release of the ceiling": ("linux", {"mlx_gen": "0.41.0rc1"}, "mlx-gen>=0.40.3,<0.41.0", "0.41.0rc1"),
+            "mlx too old on macOS": ("darwin", {"mlx_gen": "0.40.3", "mlx": "0.31.2"}, "mlx>=0.32.4 on macOS", "0.31.2"),
+            "mlx a pre-release of the floor": ("darwin", {"mlx_gen": "0.40.3", "mlx": "0.32.4.dev20261101"}, "mlx>=0.32.4 on macOS", "0.32.4.dev20261101"),
         }
         with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
             self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
@@ -4347,9 +4348,9 @@ class TestMFluxVisionBackend(unittest.TestCase):
                         self.assertIn(f" {installed} is installed", message)
                         self.assertIn('pip install -U "abstractvision[mlx-gen]"', message)
             accepted = {
-                "in range": ("darwin", {"mlx_gen": "0.40.2", "mlx": "0.32.4"}),
-                "in range, a later patch and its pre-release": ("darwin", {"mlx_gen": "0.40.3rc1", "mlx": "0.33.0"}),
-                "old mlx off macOS": ("linux", {"mlx_gen": "0.40.2", "mlx": "0.31.2"}),
+                "in range": ("darwin", {"mlx_gen": "0.40.3", "mlx": "0.32.4"}),
+                "in range, a later patch and its pre-release": ("darwin", {"mlx_gen": "0.40.4rc1", "mlx": "0.33.0"}),
+                "old mlx off macOS": ("linux", {"mlx_gen": "0.40.3", "mlx": "0.31.2"}),
                 "engine absent": ("darwin", {}),
             }
             for case, (platform, versions) in accepted.items():

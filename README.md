@@ -41,11 +41,11 @@ flowchart LR
 ## Status (current backend support)
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
-- What's new in 0.3.38: MLX-Gen latent, masked, multi-reference, outpaint and reframe edits, video-to-video on Wan, and SeedVR2 video restoration; it requires `mlx-gen>=0.40.2,<0.41.0`. See [CHANGELOG.md](CHANGELOG.md#0338---2026-11-27).
+- What's new in 0.3.38: MLX-Gen latent, masked, multi-reference, outpaint and reframe edits, video-to-video on Wan, and SeedVR2 video restoration; it requires `mlx-gen>=0.40.3,<0.41.0`. See [CHANGELOG.md](CHANGELOG.md#0338---2026-11-27).
 - Checked on Linux without a GPU, Linux with an NVIDIA card and Apple silicon; the measured generation times per model are in [docs/benchmark.md](docs/benchmark.md).
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
 - Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, base Qwen Image, Z-Image, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`, and `video_to_video` on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B; supports SeedVR2 video restoration (`video_upscale`, see [docs/api.md](docs/api.md#video-restoration-video_upscale)); and supports MiniMax-H3, video with a synchronized stereo soundtrack (`text_to_video` and first-frame `image_to_video`, with `soundscape` / `music`), from the gated `AbstractFramework/minimax-h3-*` packages. See [docs/api.md](docs/api.md#video-with-sound-minimax-h3).
-- Local MLX-Gen `0.40.2+` exposes route-aware masked edit on validated Qwen 2511 edit routes, FLUX.2 klein and Z-Image Turbo through `mask`. It runs structured control (`control_image`) on `AbstractFramework/qwen-image-8bit` only, with the ControlNet side weights in the cache; any other model raises `CapabilityNotSupportedError` (`field="control_image"`).
+- Local MLX-Gen `0.40.3+` exposes route-aware masked edit on validated Qwen 2511 edit routes, FLUX.2 klein and Z-Image Turbo through `mask`. It runs structured control (`control_image`) on `AbstractFramework/qwen-image-8bit` only, with the ControlNet side weights in the cache; any other model raises `CapabilityNotSupportedError` (`field="control_image"`).
 - Local MLX-Gen exposes a shared `lora_adapters` contract across `text_to_image`, `image_to_image`, `text_to_video`, and `image_to_video`. Route-level LoRA truth stays backend-owned and is surfaced through provider catalogs as `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
@@ -86,7 +86,7 @@ pip install "abstractvision[apple]"   # Apple Silicon
 pip install "abstractvision[gpu]"     # NVIDIA / Linux
 ```
 
-The MLX-Gen extras (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) install `mlx-gen>=0.40.2,<0.41.0` and,
+The MLX-Gen extras (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) install `mlx-gen>=0.40.3,<0.41.0` and,
 on macOS, `mlx>=0.32.4`. Upgrade with the extra (`pip install -U "abstractvision[apple]"`): an upgrade without it
 keeps the installed mlx-gen and MLX, and the MLX-Gen backend then refuses them at the first model load
 ([Troubleshooting](docs/troubleshooting.md#mlx-gen-refuses-the-installed-mlx-gen-or-mlx-version)).
@@ -239,7 +239,7 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen `0.40.2+` also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen `0.40.3+` also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, the prepared TI2V package

@@ -23,7 +23,7 @@ uses.
 The helpers use the mlx-gen VAE surface (``post_quant_conv``, ``decoder``,
 ``unpatchify``, the feature-cache helpers, ``latents_mean``/``latents_std``),
 unchanged from 0.38 through 0.40.
-AbstractVision pins ``mlx-gen>=0.40.2,<0.41.0``; a change to that surface fails
+AbstractVision pins ``mlx-gen>=0.40.3,<0.41.0``; a change to that surface fails
 loudly here rather than silently decoding untiled.
 """
 

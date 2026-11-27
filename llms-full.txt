@@ -185,11 +185,11 @@ flowchart LR
 ## Status (current backend support)
 
 - Development status: **Alpha** (0.x). The public API is stable-by-design, but breaking changes may still happen and will be called out in `CHANGELOG.md`.
-- What's new in 0.3.38: MLX-Gen latent, masked, multi-reference, outpaint and reframe edits, video-to-video on Wan, and SeedVR2 video restoration; it requires `mlx-gen>=0.40.2,<0.41.0`. See [CHANGELOG.md](CHANGELOG.md#0338---2026-11-27).
+- What's new in 0.3.38: MLX-Gen latent, masked, multi-reference, outpaint and reframe edits, video-to-video on Wan, and SeedVR2 video restoration; it requires `mlx-gen>=0.40.3,<0.41.0`. See [CHANGELOG.md](CHANGELOG.md#0338---2026-11-27).
 - Checked on Linux without a GPU, Linux with an NVIDIA card and Apple silicon; the measured generation times per model are in [docs/benchmark.md](docs/benchmark.md).
 - Built-in backends implement images (`text_to_image`, `image_to_image`) plus backend-dependent video (`text_to_video`, `image_to_video`).
 - Local MLX-Gen supports `text_to_image` for curated FLUX.2, Qwen Image, Z-Image, ERNIE Image Turbo, FIBO, and Bonsai ternary models; supports `image_to_image` for FLUX.2 klein/base, base Qwen Image, Z-Image, Qwen Image Edit, ERNIE Image Turbo, FIBO, and FIBO Edit models; supports Wan 2.2 TI2V plus task-specific Wan 2.2 A14B packages for local `text_to_video` and first-frame `image_to_video`, and `video_to_video` on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B; supports SeedVR2 video restoration (`video_upscale`, see [docs/api.md](docs/api.md#video-restoration-video_upscale)); and supports MiniMax-H3, video with a synchronized stereo soundtrack (`text_to_video` and first-frame `image_to_video`, with `soundscape` / `music`), from the gated `AbstractFramework/minimax-h3-*` packages. See [docs/api.md](docs/api.md#video-with-sound-minimax-h3).
-- Local MLX-Gen `0.40.2+` exposes route-aware masked edit on validated Qwen 2511 edit routes, FLUX.2 klein and Z-Image Turbo through `mask`. It runs structured control (`control_image`) on `AbstractFramework/qwen-image-8bit` only, with the ControlNet side weights in the cache; any other model raises `CapabilityNotSupportedError` (`field="control_image"`).
+- Local MLX-Gen `0.40.3+` exposes route-aware masked edit on validated Qwen 2511 edit routes, FLUX.2 klein and Z-Image Turbo through `mask`. It runs structured control (`control_image`) on `AbstractFramework/qwen-image-8bit` only, with the ControlNet side weights in the cache; any other model raises `CapabilityNotSupportedError` (`field="control_image"`).
 - Local MLX-Gen exposes a shared `lora_adapters` contract across `text_to_image`, `image_to_image`, `text_to_video`, and `image_to_video`. Route-level LoRA truth stays backend-owned and is surfaced through provider catalogs as `supports_lora`, `lora_status`, `lora_target_roles`, and `lora_validation_profile`.
 - Local Diffusers `text_to_video` remains experimental and is temporarily disabled from the normal local runtime surfaces pending [`docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](docs/backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Remote `text_to_video` / `image_to_video` are also supported through the OpenAI-compatible backend **when** endpoints are configured.
@@ -230,7 +230,7 @@ pip install "abstractvision[apple]"   # Apple Silicon
 pip install "abstractvision[gpu]"     # NVIDIA / Linux
 ```
 
-The MLX-Gen extras (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) install `mlx-gen>=0.40.2,<0.41.0` and,
+The MLX-Gen extras (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`) install `mlx-gen>=0.40.3,<0.41.0` and,
 on macOS, `mlx>=0.32.4`. Upgrade with the extra (`pip install -U "abstractvision[apple]"`): an upgrade without it
 keeps the installed mlx-gen and MLX, and the MLX-Gen backend then refuses them at the first model load
 ([Troubleshooting](docs/troubleshooting.md#mlx-gen-refuses-the-installed-mlx-gen-or-mlx-version)).
@@ -383,7 +383,7 @@ The shipped MLX-Gen backend currently supports curated q4/q8 prepared folders
 for `flux2-klein-4b`, `flux2-klein-9b`, `flux2-klein-base-4b`,
 `flux2-klein-base-9b`, `qwen-image`, `qwen-image-edit`, `z-image`, and
 `z-image-turbo` families, plus the q4/q8 `ernie-image-turbo` prepared folders.
-MLX-Gen `0.40.2+` also runs official runtime snapshots such as `briaai/FIBO`,
+MLX-Gen `0.40.3+` also runs official runtime snapshots such as `briaai/FIBO`,
 `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`,
 `prism-ml/bonsai-image-ternary-4B-mlx-2bit`, and
 `Wan-AI/Wan2.2-TI2V-5B-Diffusers`, the prepared TI2V package
@@ -1942,7 +1942,7 @@ All assets referenced here were generated through AbstractVision with
   local Qwen and Wan Lightning work, q8 is the preferred prepared route when
   memory allows; q4 remains available for tighter memory budgets.
 - The current AbstractVision MLX runtime floor is
-  `mlx-gen>=0.40.2,<0.41.0`, with `mlx>=0.32.4` on macOS.
+  `mlx-gen>=0.40.3,<0.41.0`, with `mlx>=0.32.4` on macOS.
 
 MLX-Gen is validated on Apple Silicon, and the proof assets on this page are
 Apple validations. The explicit `mlx-gen` extra also installs on Linux (upstream
@@ -2482,7 +2482,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen `0.40.2+` supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.40.3+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
@@ -2702,7 +2702,7 @@ other backends.
 
 `VisionManager.upscale_video(video, **kwargs)` (`VideoUpscaleRequest`; the
 plugin's `upscale_video(video, ...)`) restores a clip on SeedVR2 3B or 7B
-(MLX-Gen 0.40.2). `video` is handled as for video-to-video. The options are
+(MLX-Gen 0.40.2 and later). `video` is handled as for video-to-video. The options are
 `resolution` (unset: 1x), `softness` (`[0, 1]`, unset: 0.0), `start_seconds`
 (unset: the clip's start), `max_frames` (unset: to its end), `seed`, `quantize`
 (as for `upscale_image`) and `drop_audio` (True: the result is always silent,
@@ -2757,7 +2757,7 @@ each model's `raw["parameter_defaults"]`. The Wan VAE decode runs in overlapping
 default, which bounds its memory; pass `extra={"vae_tiling": False}` to decode
 whole frames at once. Generated asset metadata records `vae_tiling`. Measured
 memory per size: [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
-MLX-Gen encodes the prompt with its UMT5 text encoder in float32 on the GPU: with mlx-gen 0.40.2 a
+MLX-Gen encodes the prompt with its UMT5 text encoder in float32 on the GPU: with mlx-gen 0.40.2 and later a
 new prompt is encoded in seconds, a prompt already used is served from MLX-Gen's on-disk cache, and
 results for a given prompt and seed differ slightly from those made with mlx-gen 0.40.1; see
 MLX-Gen's [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
@@ -3814,7 +3814,7 @@ unless you choose the matching extra.
 ### Symptom
 
 - The first MLX-Gen model load raises `OptionalDependencyMissingError`: `The MLX-Gen backend needs
-  mlx-gen>=0.40.2,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
+  mlx-gen>=0.40.3,<0.41.0; mlx-gen <version> is installed` or `The MLX-Gen backend needs mlx>=0.32.4 on
   macOS; mlx <version> is installed`.
 
 ### Likely cause
@@ -3827,7 +3827,7 @@ already installed, so the backend checks both before it loads a model.
 ### Fix
 
 - `pip install -U "abstractvision[mlx-gen]"` (or the profile you installed, such as `abstractvision[apple]`):
-  it installs `mlx-gen>=0.40.2,<0.41.0` and, on macOS, `mlx>=0.32.4`.
+  it installs `mlx-gen>=0.40.3,<0.41.0` and, on macOS, `mlx>=0.32.4`.
 - With the one-line installer, run the same line again.
 
 ### Verify
@@ -4312,10 +4312,10 @@ Runtime behavior notes:
 **When to use**
 - You want local quantized MLX generation through the optional MLX-Gen runtime. This release is validated on Apple Silicon first, and the install extra also exposes the upstream Linux/CUDA path when `mlx[cuda13]` markers apply.
 - You want the AbstractFramework-published q4/q8 prepared folders from the [AbstractFramework/mlx-gen Hugging Face collection](https://huggingface.co/collections/AbstractFramework/mlx-gen/).
-- You want the official MLX-Gen `0.40.2+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
+- You want the official MLX-Gen `0.40.3+` FIBO snapshots (`briaai/FIBO`, `briaai/Fibo-lite`, `briaai/Fibo-Edit`, `briaai/Fibo-Edit-RMBG`).
 - You want the official Prism ML Bonsai ternary 2-bit checkpoint (`prism-ml/bonsai-image-ternary-4B-mlx-2bit`) for very small local `text_to_image`.
 - You want SeedVR2 single-image upscaling through canonical `AbstractFramework/seedvr2-{3b,7b}-{8bit,4bit}` packages or the official `ByteDance-Seed/SeedVR2-*` bases.
-- You want local Wan 2.2 video generation through MLX-Gen `0.40.2+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
+- You want local Wan 2.2 video generation through MLX-Gen `0.40.3+`, including the prepared TI2V package and the task-specific A14B `text_to_video` / first-frame `image_to_video` packages.
 
 Install:
 - `pip install "abstractvision[mlx-gen]"` (or `pip install "abstractvision[all-apple]"`)
@@ -6108,7 +6108,7 @@ This release adds typed image-edit options on MLX-Gen (latent image-to-image, FL
 multi-reference edits, outpaint and reframe), Z-Image edits, a control image on Qwen-Image, video-to-video
 on Wan 2.2 T2V-A14B and Wan 2.1 VACE 1.3B, SeedVR2 video restoration (`video_upscale`), cached source
 repository ids, and `preload(task=..., warm_up=...)`. The MLX-Gen backend requires
-`mlx-gen>=0.40.2,<0.41.0` and, on macOS, MLX 0.32.4 or later. Requests that set none of the new fields run
+`mlx-gen>=0.40.3,<0.41.0` and, on macOS, MLX 0.32.4 or later. Requests that set none of the new fields run
 as in 0.3.37, except for the changes listed under Changed.
 
 ### New
@@ -6228,8 +6228,10 @@ as in 0.3.37, except for the changes listed under Changed.
   whatever the source's container (the source's audio copied by MLX-Gen, which fails the run after the restoration when it
   cannot; `drop_audio=True` gives a silent result, no copy attempted), progress is per chunk, a cancel removes the partial output. Unset values are the engine's: 1x, softness 0.0, from the clip's start to its
   end. `preload(task="video_upscale")` reads the transformer and the VAE the run keeps.
-- **MLX-Gen 0.40.2.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`)
-  requires `mlx-gen>=0.40.2,<0.41.0` (0.3.37 required `>=0.40.1`) and, on macOS, `mlx>=0.32.4` as before.
+- **MLX-Gen 0.40.3.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`)
+  requires `mlx-gen>=0.40.3,<0.41.0` (0.3.37 required `>=0.40.1`) and, on macOS, `mlx>=0.32.4` as before.
+  0.40.3 is required because in it the engine itself names a local model by its own folder, never by a parent
+  directory, as AbstractVision does (Changed 28).
   Upgrade with `pip install -U "abstractvision[mlx-gen]"`. `video_upscale` runs on the SeedVR2 video
   restoration plan that 0.40.2 adds. 0.40.2 also changes, with no change to AbstractVision's calls: the Wan
   prompt encoding (Changed 27); SeedVR2 video restoration, which needs a fraction of 0.40.1's memory with
@@ -6337,9 +6339,9 @@ Against 0.3.37 (the entries are numbered so that others can refer to them):
 24. SeedVR2's published answers gain `video_upscale`: `get_capabilities().supported_tasks` and
     `list_provider_models()` on SeedVR2 3B and 7B, and the catalog (a top-level `video_upscale` task, with its params
     on `ByteDance-Seed/SeedVR2-3B` and `-7B`). The catalog's `min_runtime_version` of Wan T2V-A14B and VACE
-    `video_to_video` and of MiniMax-H3 is 0.40.2, the package floor. The image upscale is unchanged.
-25. With mlx-gen 0.40.1 installed, every MLX-Gen request now raises `OptionalDependencyMissingError` naming
-    `mlx-gen>=0.40.2,<0.41.0`, as any version outside the pins already did.
+    `video_to_video` and of MiniMax-H3 is 0.40.3, the package floor. The image upscale is unchanged.
+25. With mlx-gen 0.40.1 or 0.40.2 installed, every MLX-Gen request now raises `OptionalDependencyMissingError` naming
+    `mlx-gen>=0.40.3,<0.41.0`, as any version outside the pins already did.
 26. On MLX-Gen, a source repository id that maps to several prepared packages (the four FLUX.2 klein repos,
     `Tongyi-MAI/Z-Image` and `Z-Image-Turbo`, the five Qwen-Image repos, `baidu/ERNIE-Image-Turbo`) runs its own
     cached snapshot as released (16-bit, unquantized, as `mlxgen generate --model <id>` does), even when a
@@ -6351,7 +6353,7 @@ Against 0.3.37 (the entries are numbered so that others can refer to them):
     several times a prepared package's memory. Not cached, or cached without those files, the id is refused as
     ambiguous as before. The `Qwen/Qwen-Image-2512` source snapshot given as a folder, which 0.3.37 answered as a
     prepared package (no `quantize` widths, `quantize` refused), is a source too.
-27. With the required mlx-gen 0.40.2, Wan videos on MLX-Gen (Wan 2.2 text-, image- and video-to-video, Wan 2.1
+27. With mlx-gen 0.40.2 and later, Wan videos on MLX-Gen (Wan 2.2 text-, image- and video-to-video, Wan 2.1
     VACE) for a given prompt and seed differ slightly from those of 0.3.37 with mlx-gen 0.40.1: the same scene and
     composition, with small differences in details, because the engine's prompt encoding is now exact (float32).
     A new prompt is encoded in seconds instead of more than a minute. See MLX-Gen's
@@ -7239,14 +7241,14 @@ sdcpp = [
 # Native Apple image generation via MLX-Gen. Kept optional because it pulls
 # Apple-specific local runtime dependencies.
 mlx-gen = [
-  "mlx-gen>=0.40.2,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
 # Compatibility extra for callers that still install the historical MFLUX extra.
 # It intentionally installs MLX-Gen, not the retired standalone mflux package.
 mflux = [
-  "mlx-gen>=0.40.2,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
 ]
 
@@ -7266,7 +7268,7 @@ apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.2,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
@@ -7341,7 +7343,7 @@ all = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.2,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]
@@ -7362,7 +7364,7 @@ all-apple = [
   "peft>=0.10.0",
   "gguf>=0.10.0",
   "stable-diffusion-cpp-python>=0.4.2,<0.4.6",
-  "mlx-gen>=0.40.2,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
+  "mlx-gen>=0.40.3,<0.41.0; (platform_system == 'Darwin' or platform_system == 'Linux') and python_version >= '3.10'",
   "mlx>=0.32.4; platform_system == 'Darwin' and python_version >= '3.10'",
   "Pillow>=9.0",
 ]

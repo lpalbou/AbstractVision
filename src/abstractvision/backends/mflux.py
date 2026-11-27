@@ -90,7 +90,7 @@ logger = logging.getLogger(__name__)
 MLX_GEN_RUNTIME = "mlx-gen"
 MFLUX_PROVIDER = "mflux"
 # The mlx-gen releases this AbstractVision runs: >=MLX_GEN_VERSION_FLOOR, <MLX_GEN_VERSION_CEILING.
-MLX_GEN_VERSION_FLOOR = "0.40.2"
+MLX_GEN_VERSION_FLOOR = "0.40.3"
 MLX_GEN_VERSION_CEILING = "0.41.0"
 # On macOS: MLX 0.31.0 to 0.32.3 free a 3D convolution's padding buffer before the Metal command that reads it,
 # which can end a run with an "invalid resource" error during a decode.

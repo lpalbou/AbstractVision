@@ -3870,7 +3870,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.2"
+            "min_runtime_version": "0.40.3"
           }
         }
       }
@@ -3991,7 +3991,7 @@
           "bits": 16,
           "repo_id": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
           "source": "official",
-          "notes": "Official Wan 2.1 VACE 1.3B Diffusers snapshot, run by MLX-Gen 0.40.2+ (WanVace). Not a prepared q4/q8 folder."
+          "notes": "Official Wan 2.1 VACE 1.3B Diffusers snapshot, run by MLX-Gen 0.40.3+ (WanVace). Not a prepared q4/q8 folder."
         }
       ],
       "tasks": {
@@ -4066,7 +4066,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.2"
+            "min_runtime_version": "0.40.3"
           }
         }
       }
@@ -4835,7 +4835,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.2"
+            "min_runtime_version": "0.40.3"
           }
         }
       }
@@ -4997,7 +4997,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.2"
+            "min_runtime_version": "0.40.3"
           }
         }
       }
@@ -5201,7 +5201,7 @@
           "repo_id": "MiniMaxAI/MiniMax-H3",
           "explicit_download": true,
           "source": "official",
-          "notes": "Official MiniMax-H3 source repository, consumed by MLX-Gen 0.40.2+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Not gated; the MiniMax H3 Community License applies. `download` fetches the files MLX-Gen loads, not the whole repository."
+          "notes": "Official MiniMax-H3 source repository, consumed by MLX-Gen 0.40.3+ (16-bit, or quantize 8 / 4 at load). Not a prepared package. Not gated; the MiniMax H3 Community License applies. `download` fetches the files MLX-Gen loads, not the whole repository."
         }
       ],
       "tasks": {
@@ -5278,7 +5278,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.2"
+            "min_runtime_version": "0.40.3"
           }
         },
         "image_to_video": {
@@ -5359,7 +5359,7 @@
           },
           "requires": {
             "backend": "mlx-gen",
-            "min_runtime_version": "0.40.2"
+            "min_runtime_version": "0.40.3"
           }
         }
       }

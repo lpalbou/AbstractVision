@@ -151,7 +151,7 @@ asset = vm.generate_image("a watercolor painting of a lighthouse", width=512, he
 Note: `allow_download=False` is the default. Pre-download model weights separately, or set `allow_download=True` only when you want runtime downloads.
 
 `upscale_image(...)`, `generate_video(...)`, and `image_to_video(...)` are part
-of the public API. MLX-Gen `0.40.2+` supports SeedVR2 `image_upscale`, Wan
+of the public API. MLX-Gen `0.40.3+` supports SeedVR2 `image_upscale`, Wan
 `text_to_video`, and first-frame `image_to_video`, including A14B task-specific
 checkpoints. Local Diffusers video remains experimental and disabled from the
 normal local surfaces. Generated MP4 outputs still require an `ffmpeg`
@@ -371,7 +371,7 @@ other backends.
 
 `VisionManager.upscale_video(video, **kwargs)` (`VideoUpscaleRequest`; the
 plugin's `upscale_video(video, ...)`) restores a clip on SeedVR2 3B or 7B
-(MLX-Gen 0.40.2). `video` is handled as for video-to-video. The options are
+(MLX-Gen 0.40.2 and later). `video` is handled as for video-to-video. The options are
 `resolution` (unset: 1x), `softness` (`[0, 1]`, unset: 0.0), `start_seconds`
 (unset: the clip's start), `max_frames` (unset: to its end), `seed`, `quantize`
 (as for `upscale_image`) and `drop_audio` (True: the result is always silent,
@@ -426,7 +426,7 @@ each model's `raw["parameter_defaults"]`. The Wan VAE decode runs in overlapping
 default, which bounds its memory; pass `extra={"vae_tiling": False}` to decode
 whole frames at once. Generated asset metadata records `vae_tiling`. Measured
 memory per size: [docs/faq.md](faq.md#how-much-memory-does-wan-video-need).
-MLX-Gen encodes the prompt with its UMT5 text encoder in float32 on the GPU: with mlx-gen 0.40.2 a
+MLX-Gen encodes the prompt with its UMT5 text encoder in float32 on the GPU: with mlx-gen 0.40.2 and later a
 new prompt is encoded in seconds, a prompt already used is served from MLX-Gen's on-disk cache, and
 results for a given prompt and seed differ slightly from those made with mlx-gen 0.40.1; see
 MLX-Gen's [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
