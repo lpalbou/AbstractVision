@@ -2114,6 +2114,13 @@ def _infer_bits_from_text(value: Any) -> Optional[int]:
     return None
 
 
+def _infer_bits_from_path(value: Any) -> Optional[int]:
+    # A local model's stored width, from its own folder name or the repository id of a Hugging Face cache
+    # snapshot; a parent directory never decides (a temporary or user folder named `x_q1` is no width).
+    path = Path(str(value or "").strip()).expanduser()
+    return _infer_bits_from_text(_hf_cache_repo_id(path) or path.name)
+
+
 def _looks_like_path(value: str) -> bool:
     s = str(value or "").strip()
     return s.startswith(("/", "./", "../", "~")) or "\\" in s
@@ -3834,7 +3841,7 @@ class MFluxVisionBackend(VisionBackend):
                 local_candidate = discovered.get(preset.key)
                 if local_candidate is not None:
                     preset_bits = getattr(preset, "quantization_bits", None)
-                    local_bits = _infer_bits_from_text(local_candidate.repo_id) or _infer_bits_from_text(
+                    local_bits = _infer_bits_from_text(local_candidate.repo_id) or _infer_bits_from_path(
                         local_candidate.snapshot_dir
                     )
                     if preset_bits is None or local_bits is None or int(preset_bits) == int(local_bits):
@@ -4295,7 +4302,7 @@ class MFluxVisionBackend(VisionBackend):
                         "Set vision_mflux_base_model / ABSTRACTVISION_MFLUX_BASE_MODEL "
                         "to the matching base family for that local path."
                     )
-                return str(expanded), base, _infer_bits_from_text(configured_model)
+                return str(expanded), base, _infer_bits_from_path(expanded)
 
             preset = _preset_for(configured_model)
             if preset is not None:

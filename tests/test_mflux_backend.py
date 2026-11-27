@@ -4049,6 +4049,29 @@ class TestMFluxVisionBackend(unittest.TestCase):
             self.assertEqual(bits, [8, 8])
             self.assertEqual(len(_LowRamFlux2.instances), 3)
 
+    def test_a_local_model_width_is_read_from_its_own_folder_never_a_parent_directory(self):
+        import contextlib
+
+        from abstractvision.backends.mflux import MFluxBackendConfig, MFluxVisionBackend
+        from abstractvision.types import ImageGenerationRequest
+
+        with tempfile.TemporaryDirectory() as td, contextlib.ExitStack() as stack:
+            self._state_patches(stack, td, caps=_route_capabilities("text-to-image"))
+            # Parents named like a width (a temporary folder can be `tmpab_q1cd`): the model folder decides.
+            cases = (
+                ("tmpab_q1cd/klein-source", None),
+                ("4bit-tests/klein-source", None),
+                ("models_q4/flux2-klein-4b-8bit", 8),
+                ("models--AbstractFramework--flux.2-klein-4b-8bit/snapshots/abc123", 8),
+            )
+            for relative, expected in cases:
+                source = self._make_model_dir(Path(td), relative)
+                backend = MFluxVisionBackend(
+                    config=MFluxBackendConfig(model=str(source), base_model="flux2-klein-4b")
+                )
+                result = backend.generate_image(ImageGenerationRequest(prompt="fox", steps=2, seed=0))
+                self.assertEqual(result.metadata["quantization_bits"], expected, relative)
+
     def test_the_memory_plan_reads_the_resolved_model_on_a_backend_with_none_configured(self):
         import contextlib
 
