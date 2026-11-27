@@ -128,8 +128,8 @@ as in 0.3.37, except for the changes listed under Changed.
   end. `preload(task="video_upscale")` reads the transformer and the VAE the run keeps.
 - **MLX-Gen 0.40.3.** Every extra that installs MLX-Gen (`mlx-gen`, `mflux`, `apple`, `all`, `all-apple`)
   requires `mlx-gen>=0.40.3,<0.41.0` (0.3.37 required `>=0.40.1`) and, on macOS, `mlx>=0.32.4` as before.
-  0.40.3 is required because in it the engine itself names a local model by its own folder, never by a parent
-  directory, as AbstractVision does (Changed 28).
+  0.40.3 is required because in it the engine names a local model by the same rule as AbstractVision (Changed
+  28): its own folder or file name, or its repository id inside a Hugging Face cache, never a parent directory.
   Upgrade with `pip install -U "abstractvision[mlx-gen]"`. `video_upscale` runs on the SeedVR2 video
   restoration plan that 0.40.2 adds. 0.40.2 also changes, with no change to AbstractVision's calls: the Wan
   prompt encoding (Changed 27); SeedVR2 video restoration, which needs a fraction of 0.40.1's memory with
@@ -256,21 +256,24 @@ Against 0.3.37 (the entries are numbered so that others can refer to them):
     composition, with small differences in details, because the engine's prompt encoding is now exact (float32).
     A new prompt is encoded in seconds instead of more than a minute. See MLX-Gen's
     [Wan prompt encoding](https://github.com/lpalbou/mlx-gen/blob/main/docs/wan-text-encoder.md).
-28. On MLX-Gen and Diffusers, a local model is identified by its own folder: the folder's name, or the repository
-    id of a Hugging Face cache snapshot (`models--org--name/snapshots/<revision>`), and on MLX-Gen its own card; a
-    parent directory never decides. On MLX-Gen this sets its base model when `base_model` is not given, its
-    stored width (`metadata["quantization_bits"]` of a request without `quantize`, and the SeedVR2 local-folder
-    match), the routes MLX-Gen publishes for it, and whether discovery skips it as a partial or incompatible
-    download. On Diffusers it sets the bfloat16 default of Qwen-Image-Edit image-to-image and inpainting on Apple
-    MPS, and the fallback chat template a pipeline gets when its snapshot ships none (Qwen, FLUX.2, Z-Image,
-    ERNIE-Image, GLM-Image); a GGUF file is named by its own file name. 0.3.37 read the whole path, so a model
-    under a parent named after another model or width (`~/models/qwen-image-edit_q4/flux2-klein-4b`,
-    `~/models/qwen-image-edit/my-flux`, `models_q4`, a temporary folder whose random name holds `_q1`) could be
-    identified, routed or refused as that other model, get a width it does not have, or run on Diffusers with
-    another family's dtype or chat template, and a parent named `*.partial`, `*-partial` or `*.incompatible` hid
-    every MLX-Gen model under it. On MLX-Gen a folder whose own name and card place no model needs `base_model`;
-    on Diffusers a Qwen-Image-Edit folder whose own name does not say so runs in the automatic dtype unless
-    `torch_dtype="bfloat16"` is set.
+28. On MLX-Gen and Diffusers, a local model is identified by its own name, by the rule mlx-gen 0.40.3 follows
+    too: a local folder or file by its own name (`~/models/qwen-image-edit/my-flux` is `my-flux`, a GGUF file
+    its file name); a path inside a Hugging Face cache by the repository id, followed by the path below the
+    snapshot for a file or subfolder in it (`models--org--name/snapshots/<revision>` is `org/name`, its
+    `transformer` folder `org/name/transformer`, a file in it `org/name/<file>`); a repository id, an alias, or a
+    relative text that is not on disk, as written. A parent directory and the snapshot revision never decide; on
+    MLX-Gen the model's own card does as before. On MLX-Gen this name sets its base model when `base_model` is not
+    given, its stored width (`metadata["quantization_bits"]` of a request without `quantize`, and the SeedVR2
+    local-folder match), the routes MLX-Gen publishes for it, and whether discovery skips it as a partial or
+    incompatible download. On Diffusers it sets the bfloat16 default of Qwen-Image-Edit image-to-image and
+    inpainting on Apple MPS, and the fallback chat template a pipeline gets when its snapshot ships none (Qwen,
+    FLUX.2, Z-Image, ERNIE-Image, GLM-Image). 0.3.37 read the whole path, so a model under a parent named after
+    another model or width (`~/models/qwen-image-edit_q4/flux2-klein-4b`, `~/models/qwen-image-edit/my-flux`,
+    `models_q4`, a temporary folder whose random name holds `_q1`) could be identified, routed or refused as that
+    other model, get a width it does not have, or run on Diffusers with another family's dtype or chat template,
+    and a parent named `*.partial`, `*-partial` or `*.incompatible` hid every MLX-Gen model under it. On MLX-Gen a
+    folder whose own name and card place no model needs `base_model`; on Diffusers a Qwen-Image-Edit folder whose
+    own name does not say so runs in the automatic dtype unless `torch_dtype="bfloat16"` is set.
 
 ## 0.3.37 - 2026-11-26
 

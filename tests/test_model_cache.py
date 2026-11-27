@@ -1,3 +1,4 @@
+import contextlib
 import os
 import tempfile
 import unittest
@@ -238,30 +239,84 @@ if __name__ == "__main__":
 
 
 class TestLocalModelName(unittest.TestCase):
-    def test_a_local_model_is_named_by_its_own_folder_or_file_never_a_parent_directory(self):
+    # The specification table shared with mlx-gen's `ConfigResolution.identifying_name`, row by row.
+    def test_the_shared_specification_table(self):
         from abstractvision.model_cache import local_model_name
 
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            folder = root / "qwen-image-edit" / "my-flux"
-            gguf = root / "qwen-image-edit" / "flux-dev-Q8_0.gguf"
-            snapshot = root / "flux2" / "hub" / "models--Qwen--Qwen-Image-Edit-2511" / "snapshots" / "abc123"
-            folder.mkdir(parents=True)
-            snapshot.mkdir(parents=True)
-            gguf.write_bytes(b"GGUF")
+            t = Path(td) / "T"
+            c = Path(td) / "C" / "hub"
+            empty = Path(td) / "empty"
+            turbo = c / "models--Tongyi-MAI--Z-Image-Turbo" / "snapshots" / "abc7b123"
+            seedvr2 = c / "models--numz--SeedVR2_comfyUI" / "snapshots" / "r1" / "seedvr2_ema_7b_fp16.safetensors"
+            lora = c / "models--user--my-loras" / "snapshots" / "abc" / "flux2-klein-4b-style.safetensors"
+            for folder in (
+                empty,
+                t / "qwen-image-edit_q4" / "klein-source",
+                t / "qwen" / "flux2-klein-4b",
+                t / "wan-models",
+                t / "qwen-image_q4",
+                t / "z-image-turbo",
+                t / "qwen" / "real",
+                t / "models--fake" / "flux",
+                t / "qwen" / "snapshots" / "abc" / "flux2-klein-4b",
+                turbo / "transformer",
+                seedvr2.parent,
+                lora.parent,
+                c / "models--gpt2" / "snapshots" / "abc",
+                c / "models--org--name",
+            ):
+                folder.mkdir(parents=True, exist_ok=True)
+            for file in (t / "wan-models" / "model-q4.gguf", seedvr2, lora):
+                file.write_bytes(b"x")
+            os.symlink(t / "qwen" / "real", t / "link-name")
 
-            self.assertEqual(local_model_name(str(folder)), "my-flux")
+            rows = [
+                (1, "flux2-klein-4b", empty, "flux2-klein-4b"),
+                (2, "black-forest-labs/FLUX.2-klein-4B", empty, "black-forest-labs/FLUX.2-klein-4B"),
+                (3, "org/repo:file.safetensors", empty, "org/repo:file.safetensors"),
+                (3, "org/repo@rev", empty, "org/repo@rev"),
+                (4, "black-forest-labs/FLUX.2-klein-4B/transformer", empty, "black-forest-labs/FLUX.2-klein-4B/transformer"),
+                (5, "", empty, ""),
+                (5, "   ", empty, ""),
+                (6, str(t / "qwen-image-edit_q4" / "klein-source"), empty, "klein-source"),
+                (7, str(t / "qwen" / "flux2-klein-4b") + "/", empty, "flux2-klein-4b"),
+                (8, str(t / "wan-models" / "model-q4.gguf"), empty, "model-q4.gguf"),
+                (9, str(turbo), empty, "Tongyi-MAI/Z-Image-Turbo"),
+                (10, str(turbo / "transformer"), empty, "Tongyi-MAI/Z-Image-Turbo/transformer"),
+                (11, str(seedvr2), empty, "numz/SeedVR2_comfyUI/seedvr2_ema_7b_fp16.safetensors"),
+                (12, str(c / "models--gpt2" / "snapshots" / "abc"), empty, "gpt2"),
+                (13, str(c / "models--org--name"), empty, "org/name"),
+                (14, "./qwen-image_q4", t, "qwen-image_q4"),
+                (15, "~/x/flux2-klein-4b", empty, "flux2-klein-4b"),
+                (16, ".", t / "z-image-turbo", "z-image-turbo"),
+                (17, str(t / "link-name"), empty, "link-name"),
+                (18, str(t / "models--fake" / "flux"), empty, "flux"),
+                (19, str(lora), empty, "user/my-loras/flux2-klein-4b-style.safetensors"),
+                (20, str(t / "qwen" / "snapshots" / "abc" / "flux2-klein-4b"), empty, "flux2-klein-4b"),
+            ]
+            for row, text, cwd, expected in rows:
+                with self.subTest(row=row, text=text), self._in_directory(cwd):
+                    with patch.dict("os.environ", {"HOME": str(t)}):
+                        name = local_model_name(text)
+                        self.assertEqual(name, expected)
+                        self.assertEqual(local_model_name(name), name)
+
+    def test_a_path_object_is_named_as_its_text(self):
+        from abstractvision.model_cache import local_model_name
+
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td) / "qwen-image-edit" / "my-flux"
+            folder.mkdir(parents=True)
             self.assertEqual(local_model_name(folder), "my-flux")
-            self.assertEqual(local_model_name(str(gguf)), "flux-dev-Q8_0.gguf")
-            self.assertEqual(local_model_name(str(snapshot)), "Qwen/Qwen-Image-Edit-2511")
-            self.assertEqual(local_model_name(str(root / "my-models" / "qwen-image-edit-2511")), "qwen-image-edit-2511")
 
     def test_a_repository_id_or_alias_is_its_own_name(self):
         from abstractvision.model_cache import local_model_name
 
-        self.assertEqual(local_model_name("Qwen/Qwen-Image-Edit-2511"), "Qwen/Qwen-Image-Edit-2511")
-        self.assertEqual(local_model_name(" qwen-image-edit-2511 "), "qwen-image-edit-2511")
-        self.assertEqual(local_model_name(None), "")
+        with tempfile.TemporaryDirectory() as td, self._in_directory(Path(td)):
+            self.assertEqual(local_model_name("Qwen/Qwen-Image-Edit-2511"), "Qwen/Qwen-Image-Edit-2511")
+            self.assertEqual(local_model_name(" qwen-image-edit-2511 "), "qwen-image-edit-2511")
+            self.assertIsNone(local_model_name(None))
 
     def test_a_relative_file_shaped_like_a_repository_id_is_named_by_its_file(self):
         from abstractvision.model_cache import local_model_name
@@ -269,12 +324,18 @@ class TestLocalModelName(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             (Path(td) / "qwen-image-edit").mkdir()
             (Path(td) / "qwen-image-edit" / "flux-dev-Q8_0.gguf").write_bytes(b"GGUF")
-            cwd = os.getcwd()
-            os.chdir(td)
-            try:
+            with self._in_directory(Path(td)):
                 self.assertEqual(local_model_name("qwen-image-edit/flux-dev-Q8_0.gguf"), "flux-dev-Q8_0.gguf")
-            finally:
-                os.chdir(cwd)
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _in_directory(folder: Path):
+        previous = os.getcwd()
+        os.chdir(folder)
+        try:
+            yield
+        finally:
+            os.chdir(previous)
 
 
 class TestCacheRefs(unittest.TestCase):

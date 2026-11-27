@@ -168,13 +168,16 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
             qwen = root / "my-models" / "qwen-image-edit-2511"
             qwen_snapshot = root / "hub" / "models--Qwen--Qwen-Image-Edit-2511" / "snapshots" / "abc123"
             flux_snapshot = root / "qwen-image-edit" / "hub" / "models--black-forest-labs--FLUX.2-dev" / "snapshots" / "abc123"
-            for folder in (flux, qwen, qwen_snapshot, flux_snapshot):
+            flux_cached_gguf = root / "qwen-image-edit" / "hub" / "models--city96--FLUX.1-dev-gguf" / "snapshots" / "r1" / "flux1-dev-Q8_0.gguf"
+            for folder in (flux, qwen, qwen_snapshot, flux_snapshot, flux_cached_gguf.parent):
                 folder.mkdir(parents=True)
             flux_gguf.write_bytes(b"GGUF")
+            flux_cached_gguf.write_bytes(b"GGUF")
 
             self.assertIs(picked(str(flux)), _FakeTorch.float16)
             self.assertIs(picked(str(flux_gguf)), _FakeTorch.float16)
             self.assertIs(picked(str(flux_snapshot)), _FakeTorch.float16)
+            self.assertIs(picked(str(flux_cached_gguf)), _FakeTorch.float16)
             self.assertIs(picked(str(qwen)), _FakeTorch.bfloat16)
             self.assertIs(picked(str(qwen_snapshot)), _FakeTorch.bfloat16)
         self.assertIs(picked("Qwen/Qwen-Image-Edit-2511"), _FakeTorch.bfloat16)
@@ -209,8 +212,10 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
             qwen = root / "my-models" / "qwen-image-edit-2511"
             glm_snapshot = root / "hub" / "models--zai-org--GLM-Image" / "snapshots" / "abc123"
             sdxl_snapshot = root / "qwen" / "hub" / "models--stabilityai--sdxl-turbo" / "snapshots" / "abc123"
-            for folder in (sdxl, qwen, glm_snapshot, sdxl_snapshot):
+            qwen_cached_file = root / "hub" / "models--Qwen--Qwen-Image-2512" / "snapshots" / "r1" / "model.safetensors"
+            for folder in (sdxl, qwen, glm_snapshot, sdxl_snapshot, qwen_cached_file.parent):
                 folder.mkdir(parents=True)
+            qwen_cached_file.write_bytes(b"x")
 
             self.assertEqual(templates(str(sdxl)), (None, None, None))
             self.assertEqual(templates(str(sdxl_snapshot)), (None, None, None))
@@ -218,6 +223,8 @@ class TestHuggingFaceDiffusersVisionBackend(unittest.TestCase):
             self.assertIn("<|im_start|>", tokenizer)
             self.assertIn("<|im_start|>", pe_tokenizer)
             self.assertIsNone(processor)
+            tokenizer, _, _ = templates(str(qwen_cached_file))
+            self.assertIn("<|im_start|>", tokenizer)
             _, _, processor = templates(str(glm_snapshot))
             self.assertIn("<|image|>", processor)
         _, pe_tokenizer, _ = templates("baidu/ERNIE-Image-Turbo")

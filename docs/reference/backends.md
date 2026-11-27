@@ -121,7 +121,7 @@ Config fields:
 
 Runtime behavior notes:
 - The Diffusers backend now reads packaged registry task metadata for known models when it normalizes requests.
-- A local `model_id` is identified by its own folder name (a GGUF file by its own file name), or the repository id of a Hugging Face cache snapshot, never by a parent directory. That name sets the bfloat16 default of Qwen-Image-Edit `image_to_image` and inpainting on MPS, and the fallback chat template of a pipeline whose snapshot ships none (Qwen, FLUX.2, Z-Image, ERNIE-Image, GLM-Image). A Qwen-Image-Edit folder whose own name does not say so runs in the automatic dtype unless `torch_dtype="bfloat16"` is set.
+- A local `model_id` is identified by its own folder or file name (a GGUF file by its file name), or, inside a Hugging Face cache, by the repository id followed by the path below the snapshot for a file or subfolder in it (`org/name`, `org/name/model.gguf`), never by a parent directory or the snapshot revision; a repository id, or a relative text that is not on disk, is its own name. That name sets the bfloat16 default of Qwen-Image-Edit `image_to_image` and inpainting on MPS, and the fallback chat template of a pipeline whose snapshot ships none (Qwen, FLUX.2, Z-Image, ERNIE-Image, GLM-Image). A Qwen-Image-Edit folder whose own name does not say so runs in the automatic dtype unless `torch_dtype="bfloat16"` is set.
 - Local Diffusers `GLM-Image` is temporarily disabled for both `text_to_image` and `image_to_image` pending the follow-up in [`../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md`](../backlog/planned/0023_local_runtime_capability_quarantine_for_glm_mflux_and_t2v.md).
 - Local Diffusers `text_to_video` is currently experimental and disabled from the normal local surfaces.
 - Local video export still requires an `ffmpeg` executable on `PATH` whenever a local backend emits frames for MP4 packaging.
@@ -280,7 +280,7 @@ Config/env:
 Non-curated MLX-Gen models:
 - If you have an MLX-Gen-compatible Hugging Face repo id that is not in `model-presets`, you can still use it:
   - Pre-download it with `abstractvision download org/name` (HF cache) or `hf download org/name`
-  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (the base model is inferred from a local folder's own name or card, or a cache snapshot's repo id, never from a parent directory; otherwise set `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image`).
+  - Set `ABSTRACTVISION_MFLUX_MODEL` to that repo id or local path (the base model is inferred from a local folder's own name or card, or, inside a Hugging Face cache, its repo id, never from a parent directory; otherwise set `ABSTRACTVISION_MFLUX_BASE_MODEL=qwen-image`).
 
 Runtime behavior notes:
 - MLX-Gen request normalization is backend-level, so model constraints such as fixed guidance for turbo/distilled families, minimum step counts, and unsupported negative prompts are handled the same way through the CLI/REPL, playground API, and AbstractCore.

@@ -81,15 +81,47 @@ def hf_cache_snapshot_repo_id(path: Path) -> Optional[str]:
     return hf_cache_dir_repo_id(path.parent.parent.name)
 
 
-def local_model_name(value: Any) -> str:
-    # What names a local model: its own folder or file name, or the repository id of a Hugging Face cache
-    # snapshot; never a parent directory (a temporary or user folder named `qwen-image-edit_q4` names no
-    # model). A repository id or an alias is its own name.
-    text = str(value or "").strip()
-    path = Path(text).expanduser()
-    if len(path.parts) < 2 or (looks_like_hf_repo_id(text) and not path.exists()):
+def local_model_name(value: Any) -> Any:
+    # What names a local model, the rule mlx-gen's `ConfigResolution.identifying_name` follows too: a repository
+    # id, an alias or a relative text that is not on disk is its own name; a local path inside a Hugging Face
+    # cache is the repository id, followed by the path below the snapshot; any other local path is its own last
+    # component. A parent directory never decides.
+    if isinstance(value, os.PathLike):
+        value = os.fspath(value)
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text or not _is_local_path_text(text):
         return text
-    return hf_cache_snapshot_repo_id(path) or path.name
+    path = Path(os.path.abspath(os.path.expanduser(text)))
+    return _hf_cache_layout_name(path) or path.name
+
+
+def _is_local_path_text(text: str) -> bool:
+    if text.startswith(("/", "./", "../", "~")) or text in {".", ".."}:
+        return True
+    return os.path.exists(text)
+
+
+def _hf_cache_layout_name(path: Path) -> str | None:
+    # <cache>/models--<org>--<name>[/snapshots/<revision>[/<rest>]]; the innermost cache folder wins.
+    parts = path.parts
+    if parts and parts[-1].startswith("models--"):
+        return _hf_cache_folder_repo_id(parts[-1])
+    for index in range(len(parts) - 3, -1, -1):
+        if parts[index].startswith("models--") and parts[index + 1] == "snapshots":
+            repo_id = _hf_cache_folder_repo_id(parts[index])
+            if repo_id:
+                return "/".join((repo_id, *parts[index + 3 :]))
+    return None
+
+
+def _hf_cache_folder_repo_id(name: str) -> str | None:
+    repo_id = hf_cache_dir_repo_id(name)
+    if repo_id:
+        return repo_id
+    tail = name[len("models--") :]
+    return tail if tail and "--" not in tail else None
 
 
 def _dedupe_root_entries(entries: Sequence[_RootEntry]) -> List[_RootEntry]:
