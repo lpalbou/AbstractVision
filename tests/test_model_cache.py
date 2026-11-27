@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -234,6 +235,46 @@ class TestModelCache(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLocalModelName(unittest.TestCase):
+    def test_a_local_model_is_named_by_its_own_folder_or_file_never_a_parent_directory(self):
+        from abstractvision.model_cache import local_model_name
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            folder = root / "qwen-image-edit" / "my-flux"
+            gguf = root / "qwen-image-edit" / "flux-dev-Q8_0.gguf"
+            snapshot = root / "flux2" / "hub" / "models--Qwen--Qwen-Image-Edit-2511" / "snapshots" / "abc123"
+            folder.mkdir(parents=True)
+            snapshot.mkdir(parents=True)
+            gguf.write_bytes(b"GGUF")
+
+            self.assertEqual(local_model_name(str(folder)), "my-flux")
+            self.assertEqual(local_model_name(folder), "my-flux")
+            self.assertEqual(local_model_name(str(gguf)), "flux-dev-Q8_0.gguf")
+            self.assertEqual(local_model_name(str(snapshot)), "Qwen/Qwen-Image-Edit-2511")
+            self.assertEqual(local_model_name(str(root / "my-models" / "qwen-image-edit-2511")), "qwen-image-edit-2511")
+
+    def test_a_repository_id_or_alias_is_its_own_name(self):
+        from abstractvision.model_cache import local_model_name
+
+        self.assertEqual(local_model_name("Qwen/Qwen-Image-Edit-2511"), "Qwen/Qwen-Image-Edit-2511")
+        self.assertEqual(local_model_name(" qwen-image-edit-2511 "), "qwen-image-edit-2511")
+        self.assertEqual(local_model_name(None), "")
+
+    def test_a_relative_file_shaped_like_a_repository_id_is_named_by_its_file(self):
+        from abstractvision.model_cache import local_model_name
+
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "qwen-image-edit").mkdir()
+            (Path(td) / "qwen-image-edit" / "flux-dev-Q8_0.gguf").write_bytes(b"GGUF")
+            cwd = os.getcwd()
+            os.chdir(td)
+            try:
+                self.assertEqual(local_model_name("qwen-image-edit/flux-dev-Q8_0.gguf"), "flux-dev-Q8_0.gguf")
+            finally:
+                os.chdir(cwd)
 
 
 class TestCacheRefs(unittest.TestCase):

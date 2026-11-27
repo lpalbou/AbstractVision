@@ -48,8 +48,11 @@ from ..model_cache import (
     ensure_hf_repo_snapshot,
     framework_hf_cache_roots,
     framework_local_model_roots,
+    hf_cache_dir_repo_id as _repo_id_from_cache_dir_name,
     hf_cache_roots,
+    hf_cache_snapshot_repo_id as _hf_cache_repo_id,
     hf_snapshot_is_usable,
+    local_model_name as _local_model_name,
     resolve_hf_repo_snapshot,
 )
 from ..types import (
@@ -2118,17 +2121,6 @@ def _infer_bits_from_path(value: Any) -> Optional[int]:
     return _infer_bits_from_text(_local_model_name(value))
 
 
-def _local_model_name(value: Any) -> str:
-    # What names a local model: its own folder name, or the repository id of a Hugging Face cache snapshot;
-    # never a parent directory (a temporary or user folder named `qwen-image-edit_q4` names no model).
-    # A repository id or an alias is its own name.
-    text = str(value or "").strip()
-    path = Path(text).expanduser()
-    if len(path.parts) < 2 or (looks_like_hf_repo_id(text) and not path.is_dir()):
-        return text
-    return _hf_cache_repo_id(path) or path.name
-
-
 def _looks_like_path(value: str) -> bool:
     s = str(value or "").strip()
     return s.startswith(("/", "./", "../", "~")) or "\\" in s
@@ -2188,19 +2180,6 @@ def _wrap_mlx_gen_download_required(exc: BaseException) -> OptionalDependencyMis
     if prepare_command:
         parts.append(f"Prepare a reusable local folder: {prepare_command}")
     return OptionalDependencyMissingError("\n".join(parts))
-
-
-def _repo_id_from_cache_dir_name(name: str) -> Optional[str]:
-    text = str(name or "").strip()
-    if not text.startswith("models--"):
-        return None
-    tail = text[len("models--") :]
-    if "--" not in tail:
-        return None
-    org, repo = tail.split("--", 1)
-    if not org or not repo:
-        return None
-    return f"{org}/{repo}"
 
 
 def _display_repo_id(repo_id: str) -> str:
@@ -2928,13 +2907,6 @@ def _exact_base_model(value: Any) -> Optional[str]:
         if key:
             return key
     return None
-
-
-def _hf_cache_repo_id(path: Path) -> Optional[str]:
-    # A Hugging Face cache snapshot: <root>/models--<org>--<name>/snapshots/<revision>.
-    if path.parent.name != "snapshots":
-        return None
-    return _repo_id_from_cache_dir_name(path.parent.parent.name)
 
 
 def _card_base_model(value: Any) -> Optional[str]:

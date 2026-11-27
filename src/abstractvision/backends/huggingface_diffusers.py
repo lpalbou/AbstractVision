@@ -30,6 +30,7 @@ from ..model_cache import (
     hf_snapshot_has_weight_files,
     hf_snapshot_is_usable,
     hf_snapshot_missing_indexed_weight_files,
+    local_model_name,
     resolve_hf_repo_snapshot,
 )
 from ..types import (
@@ -252,11 +253,12 @@ def _ensure_pipeline_chat_templates(
     snapshot_dir: Optional[Path],
     model_id: Optional[str],
 ) -> None:
+    # The model's own name, never a parent directory of a local path, decides a fallback template.
     model_hint = (
         " ".join(
             str(value or "")
             for value in (
-                model_id,
+                local_model_name(model_id),
                 type(pipe).__name__,
                 getattr(getattr(pipe, "tokenizer", None), "__class__", type(None)).__name__,
                 getattr(getattr(pipe, "processor", None), "__class__", type(None)).__name__,
@@ -1509,13 +1511,12 @@ class HuggingFaceDiffusersVisionBackend(VisionBackend):
     ) -> Any:
         if kind not in {"i2i", "inpaint"}:
             return torch_dtype
-        model_id = self._canonical_model_id().lower()
         device_name = str(device or "").strip().lower()
         if not (device_name == "mps" or device_name.startswith("mps:")):
             return torch_dtype
         gguf_spec = self._diffusers_gguf_transformer_spec()
         model_hint = (
-            (gguf_spec.base_model_id if gguf_spec is not None else model_id)
+            (gguf_spec.base_model_id if gguf_spec is not None else local_model_name(self._canonical_model_id()))
             .replace("_", "-")
             .lower()
         )

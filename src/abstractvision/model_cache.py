@@ -5,7 +5,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
 DEFAULT_LEGACY_MODEL_ROOT = Path("~/models")
 
@@ -42,6 +42,54 @@ def _expand_path(value: str | Path) -> Path:
 
 def _repo_dir_name(repo_id: str) -> str:
     return "models--" + str(repo_id).strip().replace("/", "--")
+
+
+def looks_like_hf_repo_id(value: Any) -> bool:
+    """Return True when ``value`` resembles a Hugging Face repo id like ``org/name``.
+
+    This intentionally keeps the heuristic small and conservative so local paths
+    (e.g. ``./models`` or ``~/models``) are not misclassified as repo ids.
+    """
+
+    s = str(value or "").strip()
+    if not s:
+        return False
+    if s.startswith(("/", "./", "../", "~")):
+        return False
+    if "\\" in s or " " in s:
+        return False
+    return s.count("/") == 1 and all(part.strip() for part in s.split("/", 1))
+
+
+def hf_cache_dir_repo_id(name: str) -> Optional[str]:
+    text = str(name or "").strip()
+    if not text.startswith("models--"):
+        return None
+    tail = text[len("models--") :]
+    if "--" not in tail:
+        return None
+    org, repo = tail.split("--", 1)
+    if not org or not repo:
+        return None
+    return f"{org}/{repo}"
+
+
+def hf_cache_snapshot_repo_id(path: Path) -> Optional[str]:
+    # A Hugging Face cache snapshot: <root>/models--<org>--<name>/snapshots/<revision>.
+    if path.parent.name != "snapshots":
+        return None
+    return hf_cache_dir_repo_id(path.parent.parent.name)
+
+
+def local_model_name(value: Any) -> str:
+    # What names a local model: its own folder or file name, or the repository id of a Hugging Face cache
+    # snapshot; never a parent directory (a temporary or user folder named `qwen-image-edit_q4` names no
+    # model). A repository id or an alias is its own name.
+    text = str(value or "").strip()
+    path = Path(text).expanduser()
+    if len(path.parts) < 2 or (looks_like_hf_repo_id(text) and not path.exists()):
+        return text
+    return hf_cache_snapshot_repo_id(path) or path.name
 
 
 def _dedupe_root_entries(entries: Sequence[_RootEntry]) -> List[_RootEntry]:
